@@ -3,21 +3,6 @@ import { NextResponse, type NextRequest } from "next/server";
 
 type CookieToSet = { name: string; value: string; options?: CookieOptions };
 
-/** Routes reachable without a session. Everything else requires login. */
-const PUBLIC_PATHS = ["/login", "/health"];
-
-function isPublicPath(pathname: string): boolean {
-  if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"))) {
-    return true;
-  }
-  // Dev-only visual verification pages (/dev/tokens, /dev/shell) are never
-  // reachable in production.
-  if (process.env.NODE_ENV !== "production" && pathname.startsWith("/dev")) {
-    return true;
-  }
-  return false;
-}
-
 function redirectToLogin(request: NextRequest): NextResponse {
   const url = request.nextUrl.clone();
   url.pathname = "/login";
@@ -26,22 +11,30 @@ function redirectToLogin(request: NextRequest): NextResponse {
 }
 
 /**
- * Refreshes the Supabase auth session on every request and enforces the gate:
- * unauthenticated users may only reach public paths. Fails closed — if the
- * project is misconfigured or unreachable, non-public paths still go to /login.
+ * Refreshes the Supabase auth session and enforces the gate: only /login and
+ * /health are reachable without a session. Fails closed — if the project is
+ * misconfigured or unreachable, protected paths still go to /login.
  */
 export async function updateSession(request: NextRequest): Promise<NextResponse> {
   const pathname = request.nextUrl.pathname;
-  const publicPath = isPublicPath(pathname);
 
-  // /health and dev-only pages never need a session — don't call the auth server.
-  const skipAuth =
-    pathname === "/health" ||
-    pathname.startsWith("/health/") ||
-    (process.env.NODE_ENV !== "production" && pathname.startsWith("/dev"));
-  if (skipAuth) {
+  // Dev-only verification pages (/dev/tokens, /dev/shell):
+  //  - production: 404 for EVERYONE, authenticated or not. Returned here, before
+  //    any auth logic, so login state is irrelevant — these never exist live.
+  //  - development: reachable without a session.
+  if (pathname === "/dev" || pathname.startsWith("/dev/")) {
+    if (process.env.NODE_ENV === "production") {
+      return new NextResponse(null, { status: 404 });
+    }
     return NextResponse.next({ request });
   }
+
+  // /health is a public liveness endpoint and never needs a session.
+  if (pathname === "/health" || pathname.startsWith("/health/")) {
+    return NextResponse.next({ request });
+  }
+
+  const publicPath = pathname === "/login" || pathname.startsWith("/login/");
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -73,8 +66,7 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
     const result = await supabase.auth.getUser();
     user = result.data.user;
   } catch {
-    // Auth server unreachable — treat as signed out (fail closed below).
-    user = null;
+    user = null; // fail closed below
   }
 
   if (!user && !publicPath) {
