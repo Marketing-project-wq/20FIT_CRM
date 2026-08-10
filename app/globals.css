@@ -1,0 +1,87 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =============================================================================
+   20FIT Design System v1.0 — Glass Minimalist (3 Jul 2026)
+   Single source of truth. Token values are transcribed from the design system
+   (mirrored in PRD §18 "TOKEN IMPLEMENTATION") — they are not invented.
+   Hard-coded hex outside this file is a review-blocking defect. A new colour
+   requires a design-system amendment first, not a Tailwind arbitrary value.
+   ========================================================================== */
+:root {
+  --red:#E4002B; --blue:#0068C9; --amber:#C77A00; --green:#1C8A4B;
+  --ink:#1D1D1F; --ink-soft:#6E6E73; --ink-faint:#9A9A9E;
+  --bg-from:#F2E9E6; --bg-to:#E9EEF3;
+  --glass:rgba(255,255,255,.55);
+  --glass-strong:rgba(255,255,255,.72);
+  --glass-border:rgba(255,255,255,.90);
+  --radius:22px; --radius-sm:14px; --blur:28px;
+
+  /* PROPOSED extension — elevation is not specified by DS v1.0; provided so
+     glass surfaces read as raised. Awaiting design sign-off (PRD §18 pattern). */
+  --shadow-glass:0 8px 32px rgba(29,29,31,.10);
+  --shadow-glass-lg:0 24px 64px rgba(29,29,31,.16);
+}
+[data-theme="dark"] {
+  --red:#FF3B57; --blue:#4DA8FF; --amber:#FFB454; --green:#34C77B;
+  --ink:#F5F5F5; --ink-soft:#A1A1A6; --ink-faint:#6E6E73;
+  --bg-from:#1C1C1E; --bg-to:#0B0B0D;
+  --glass:rgba(255,255,255,.08);
+  --glass-strong:rgba(255,255,255,.14);
+  --glass-border:rgba(255,255,255,.12);
+
+  --shadow-glass:0 8px 32px rgba(0,0,0,.44);
+  --shadow-glass-lg:0 24px 64px rgba(0,0,0,.60);
+}
+.glass {
+  background: var(--glass);
+  backdrop-filter: blur(var(--blur));
+  -webkit-backdrop-filter: blur(var(--blur));
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+}
+
+/* -----------------------------------------------------------------------------
+   PROPOSED extensions (not in DS v1.0). Kept in this file so colour logic stays
+   the single source of truth and components never hard-code a value.
+   -------------------------------------------------------------------------- */
+
+/* Raised panel / modal / sticky header surface (DS token --glass-strong). */
+.glass-strong {
+  background: var(--glass-strong);
+  backdrop-filter: blur(var(--blur));
+  -webkit-backdrop-filter: blur(var(--blur));
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+}
+
+/* Status pill tints — the four fixed status colours + neutral (PRD §18.6).
+   CRM states are folded onto these; the palette is never expanded. */
+.tint-red     { background: color-mix(in srgb, var(--red) 12%, transparent);       color: var(--red); }
+.tint-blue    { background: color-mix(in srgb, var(--blue) 12%, transparent);      color: var(--blue); }
+.tint-amber   { background: color-mix(in srgb, var(--amber) 14%, transparent);     color: var(--amber); }
+.tint-green   { background: color-mix(in srgb, var(--green) 12%, transparent);     color: var(--green); }
+.tint-neutral { background: color-mix(in srgb, var(--ink-faint) 18%, transparent); color: var(--ink-soft); }
+
+@layer base {
+  * { border-color: var(--glass-border); }
+
+  html { color-scheme: light; }
+  html[data-theme="dark"] { color-scheme: dark; }
+
+  body {
+    min-height: 100dvh;
+    color: var(--ink);
+    background: linear-gradient(150deg, var(--bg-from) 0%, var(--bg-to) 100%);
+    background-attachment: fixed;
+    font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection { background: var(--red); color: #fff; }
+
+  /* Mono numerals align in tables and KPI rows. */
+  .font-mono { font-variant-numeric: tabular-nums; }
+}

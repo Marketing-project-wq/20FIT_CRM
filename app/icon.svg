@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <!-- PLACEHOLDER favicon — derived from the red counter-dot (PRD §18.1, "TO PRODUCE").
+       Uses the UI brand primary #E4002B. Replace with the official export from design. -->
+  <circle cx="16" cy="16" r="11" fill="#E4002B"/>
+</svg>
