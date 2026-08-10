@@ -71,7 +71,7 @@ comment on table public.crm_suppression is
   'Do-not-contact, MENANG atas semua consent (ditegakkan di kode). Di-key pada identitas kontak plaintext ternormalisasi (bukan customer_id). Sticky: cabut via status=lifted + audit, DELETE dilarang di aplikasi. Setiap pembacaan wajib masuk audit.';
 
 comment on column public.crm_suppression.identity_key is
-  'PLAINTEXT ternormalisasi. WAJIB dari SATU fungsi kanonik (lib/crm/normalize.ts), sama persis dengan ingestion & master_customer; JANGAN normalkan di SQL. Beda satu kasus = suppression gagal cocok diam-diam.';
+  'PLAINTEXT ternormalisasi. WAJIB dari SATU fungsi kanonik (lib/crm/normalize.ts), sama persis dengan ingestion & master_customer; JANGAN normalkan di SQL. Beda satu kasus = suppression gagal cocok diam-diam. TERVERIFIKASI 2026-08-10: UNIQUE(identity_kind, identity_key) CASE-SENSITIVE — "x@e.com" dan "X@E.com" tersimpan sebagai DUA baris. Constraint DB TIDAK menegakkan normalisasi; perlindungan asli HANYA di normalize.ts. Penulisan lewat SQL Editor/skrip yang melewati normalize.ts TIDAK tertahan apa pun.';
 
 comment on column public.crm_suppression.status is
   'active = menang atas consent. lifted = pencabutan sah tercatat (lifted_at/lifted_reason), baris dipertahankan. DELETE dilarang di aplikasi.';

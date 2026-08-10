@@ -33,16 +33,21 @@ create table public.crm_profile_scores (
 
   -- Monetary — dari master_customer.lifetime_value (TERVERIFIKASI nyata: 214 nilai
   -- distinct, sebaran lebar; beda dari artefak yang seragam). Disimpan sebagai
-  -- TIER, bukan angka. Tiga syarat (Q7-2):
-  --  1) LTV negatif -> tier eksplisit tersendiri (mis. 'invalid'); JANGAN jatuh
-  --     diam-diam ke bucket terendah — negatif = sinyal data bermasalah.
-  --  2) BATAS tier TIDAK dikarang di skema. 1.112 pembayar & sebaran selebar ini
-  --     -> kuantil lebih jujur dari angka bulat; batas diputuskan saat ingestion
-  --     Sprint 3 dengan data di depan mata. Skema hanya menyimpan label — karena
-  --     itu SENGAJA tanpa CHECK vokabuler (belum tetap, jangan dikunci dini).
+  -- TIER, bukan angka. Q7-2 — dua hal TERPISAH:
+  --  1) KOSAKATA tier DIKUNCI CHECK sekarang: 'no_revenue' | 'invalid' | tier_1..
+  --     tier_99. Semantik 'invalid' (LTV negatif) & 'no_revenue' (nol pendapatan)
+  --     terlalu penting untuk jadi konvensi komentar belaka — konvensi gugur saat
+  --     orang mengejar tenggat (pelajaran lifecycle_stage). JANGAN biarkan negatif
+  --     jatuh diam-diam ke bucket terendah.
+  --  2) BATAS/JUMLAH tier TIDAK dikunci di skema: kuantil, diputuskan saat ingestion
+  --     Sprint 3 dengan data di depan mata (tier_1..tier_99 semuanya sah).
   --  Anomali konteks (baris tunggal, tak membatalkan kolom): 1 baris -61.200.000
   --     (LTV negatif); 1 baris 251.542.200 (~10% total LTV di satu orang).
-  monetary_tier   text,
+  monetary_tier   text
+                    constraint crm_profile_scores_monetary_tier_check
+                    check (monetary_tier is null
+                           or monetary_tier in ('no_revenue','invalid')
+                           or monetary_tier ~ '^tier_[1-9][0-9]?$'),
 
   scored_at       timestamptz,
   updated_at      timestamptz not null default now()
@@ -52,7 +57,7 @@ comment on table public.crm_profile_scores is
   'Skor turunan (1:1). Hanya sumber terverifikasi: cross_sell_tier (unit_count) & monetary_tier (lifetime_value NYATA). lifecycle_stage SENGAJA tak ada (recency = artefak; lihat header). RLS ON tanpa policy.';
 
 comment on column public.crm_profile_scores.monetary_tier is
-  'Dari master_customer.lifetime_value (nyata). LTV negatif -> tier invalid eksplisit, jangan diam-diam bucket terendah. Batas tier = kuantil, diputuskan saat ingestion (bukan di skema). Total Rp 2.520.881.225 adalah nilai TERCATAT DI CRM, BELUM direkonsiliasi dengan Finance (Viana/Mayar) — jangan dipakai sebagai angka keuangan.';
+  'Dari master_customer.lifetime_value (nyata). Kosakata DIKUNCI CHECK: no_revenue | invalid | tier_1..tier_99. LTV negatif -> invalid; nol pendapatan -> no_revenue; jangan diam-diam bucket terendah. Batas/jumlah tier = kuantil, diputuskan saat ingestion (bukan di skema). Total Rp 2.520.881.225 adalah nilai TERCATAT DI CRM, BELUM direkonsiliasi dengan Finance (Viana/Mayar) — jangan dipakai sebagai angka keuangan.';
 
 -- Pola wajib (mengikuti doctor_bookings): RLS ON, NOL policy — akses via service role.
 alter table public.crm_profile_scores enable row level security;
