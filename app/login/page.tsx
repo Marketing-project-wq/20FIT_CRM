@@ -10,6 +10,8 @@ export const metadata: Metadata = { title: "Masuk" };
 const ERRORS: Record<string, string> = {
   invalid: "Email atau kata sandi salah.",
   missing: "Email dan kata sandi wajib diisi.",
+  unavailable:
+    "Tidak dapat terhubung ke server autentikasi. Coba lagi sebentar lagi, atau hubungi admin bila berlanjut.",
 };
 
 export default function LoginPage({
