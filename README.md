@@ -1,0 +1,95 @@
+# 20FIT CRM
+
+Internal **Audience Data & CRM** for 20FIT — audience pool, profiling,
+segmentation and marketing automation for the Marketing Division.
+
+> **Sprint 1 = foundation only.** Repo, design system, app shell, authentication
+> and the deploy pipeline. **No** database migrations, **no** customer-table
+> queries, **no** message sending. Those arrive in later sprints (see PRD §22).
+
+Full spec: `PRD — 20FIT Audience Data & CRM System v1.1`.
+
+## Stack
+
+- Next.js 14 (App Router) + TypeScript (strict)
+- Tailwind CSS 3 + shadcn/ui (restyled to the 20FIT design tokens)
+- Supabase Auth via `@supabase/ssr` (cookie-based sessions, no localStorage)
+- Self-hosted fonts via `next/font` (Barlow Condensed, JetBrains Mono, Manrope)
+- Deploy: Railway (source = GitHub, auto-deploy on `main`)
+
+## Run locally
+
+```bash
+npm install
+cp .env.example .env.local     # then fill in the values (see below)
+npm run dev                     # http://localhost:3000
+```
+
+- The first user is created by an admin in **Supabase Dashboard → Authentication
+  → Add user**. There is no self-registration.
+- Unauthenticated requests are redirected to `/login`. Only `/login` and
+  `/health` are public.
+
+### Verification pages (development only)
+
+- `/dev/tokens` — every colour token, all three fonts, and all restyled
+  components. Returns 404 in production.
+- `/dev/shell` — the authenticated shell without needing a live session.
+
+## Environment variables
+
+Set these in **Railway → Variables** (and in `.env.local` for local dev). Never
+commit real values — `.env*` is git-ignored except `.env.example`.
+
+| Variable | Scope | Notes |
+|----------|-------|-------|
+| `NEXT_PUBLIC_SUPABASE_URL` | client + server | Project `cpvzwqptzcxnwzfzgrmt`. |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | client + server | Public anon key. |
+| `SUPABASE_SERVICE_ROLE_KEY` | **server only** | Bypasses all RLS. **Never** prefix with `NEXT_PUBLIC_`. Unused in Sprint 1. |
+| `NEXT_PUBLIC_APP_ENV` | client | `production` on Railway. |
+| `NODE_ENV` | server | `production` on Railway. |
+
+Not needed yet (noted so they aren't forgotten): `RESEND_API_KEY`,
+`WHATSAPP_*`, `MAYAR_WEBHOOK_SECRET`.
+
+## Deploy
+
+Railway builds and deploys automatically on every push to `main`
+(`railway.json`: build `npm run build`, start `npm run start`; the port is read
+from `process.env.PORT` by `next start`).
+
+- `GET /health` → `{ ok, timestamp, supabase: "reachable" | "unreachable" }`.
+  It pings only Supabase's public liveness endpoint — no keys leaked, no
+  customer table touched.
+
+## Design system
+
+`app/globals.css` is the single source of truth for colour, radius and surface
+tokens (20FIT Design System v1.0, mirrored in PRD §18). **Hard-coded hex outside
+`globals.css` is a review-blocking defect** — components use Tailwind token
+classes (`bg-red`, `text-ink`, `rounded-card`, `.glass`) that resolve to CSS
+variables, so one `[data-theme="dark"]` switch re-tints the whole surface.
+
+Brand logos live in `public/brand/` — currently **placeholders**; see
+`public/brand/README.md` to install the official assets.
+
+## Project layout
+
+```
+app/
+  (app)/            authenticated shell + dashboard + placeholder screens
+  login/            dark login screen + sign-in server action
+  logout/           sign-out route
+  health/           liveness + Supabase reachability
+  dev/              tokens & shell previews (dev only)
+  globals.css       design tokens (single source of truth)
+components/
+  ui/               restyled shadcn primitives
+  shell/            sidebar, app shell, theme toggle, nav
+  brand/            BrandLogo
+  dashboard/        stat card + dashboard content
+lib/
+  supabase/         client / server / admin / middleware helpers
+  theme.ts          theme cookie helpers
+middleware.ts       auth gate
+```
