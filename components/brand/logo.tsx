@@ -11,16 +11,14 @@ import { cn } from "@/lib/utils";
  * never place the white lockup on mid-tone glass — it needs a genuinely dark
  * backdrop so the dark ring around the counter-dot disappears cleanly.
  *
- * NOTE: the files in /public/brand are generated PLACEHOLDERS. Drop the official
- * design exports over them (same filenames) and update INTRINSIC if the aspect
- * ratio differs. See public/brand/README.md.
+ * The two lockups have different aspect ratios, so each carries its own intrinsic
+ * size and the display width is derived from `height`. If a re-export changes an
+ * asset's dimensions, update the matching entry below. See public/brand/README.md.
  */
-const SRC = {
-  white: "/brand/20fit-logo-white.png",
-  color: "/brand/20fit-logo-color.png",
+const ASSETS = {
+  white: { src: "/brand/20fit-logo-white.png", width: 2405, height: 677 },
+  color: { src: "/brand/20fit-logo-color.png", width: 285, height: 73 },
 } as const;
-
-const INTRINSIC = { width: 840, height: 264 } as const;
 
 export function BrandLogo({
   variant = "color",
@@ -28,15 +26,16 @@ export function BrandLogo({
   priority = false,
   className,
 }: {
-  variant?: keyof typeof SRC;
+  variant?: keyof typeof ASSETS;
   height?: number;
   priority?: boolean;
   className?: string;
 }) {
-  const width = Math.round((INTRINSIC.width / INTRINSIC.height) * height);
+  const asset = ASSETS[variant];
+  const width = Math.round((asset.width / asset.height) * height);
   return (
     <Image
-      src={SRC[variant]}
+      src={asset.src}
       alt="20FIT"
       width={width}
       height={height}

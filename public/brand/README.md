@@ -3,25 +3,18 @@
 These files back the `BrandLogo` component (`components/brand/logo.tsx`) and the
 app favicon (`app/icon.svg`).
 
-## ⚠️ The logo files here are generated PLACEHOLDERS
+## Official assets installed
 
-The official raster lockups were **not supplied** with Sprint 1. What ships here
-was generated so the build renders and the layout is correct — the wordmark uses
-a fallback bold sans-serif, **not** Barlow Condensed, and the counter-dot red is
-approximate.
+The official raster lockups (uploaded by Marketing) are in place:
 
-### To install the official assets
+| File | Dimensions | Surface |
+|------|-----------|---------|
+| `20fit-logo-white.png` | 2405×677 | Dark: sidebar, login, dark email |
+| `20fit-logo-color.png` | 285×73 | Light: light-theme header, PDF/CSV letterhead, light email |
 
-Drop the design exports over these files, keeping the **exact same filenames** —
-no code change needed:
-
-| File | Surface | Source (per PRD §18.1) |
-|------|---------|------------------------|
-| `20fit-logo-white.png` | Dark: sidebar, login, dark email | `new-logo-20fit.png` (trimmed) |
-| `20fit-logo-color.png` | Light: light-theme header, PDF/CSV letterhead, light email | `20FITcolor.png` (trimmed) |
-
-If the official aspect ratio differs from the placeholder (840×264), update
-`INTRINSIC` in `components/brand/logo.tsx`.
+The two lockups differ in aspect ratio, so `components/brand/logo.tsx` carries
+each one's intrinsic size. Update the matching entry there if an asset is
+re-exported at new dimensions.
 
 ### Still "TO PRODUCE" by design (PRD §18.1) — not shipped here
 
