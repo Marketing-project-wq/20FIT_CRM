@@ -9,6 +9,45 @@ segmentation and marketing automation for the Marketing Division.
 
 Full spec: `PRD — 20FIT Audience Data & CRM System v1.1`.
 
+> ## ⚠️ MANDATORY DEPLOY ORDER — RBAC fails closed
+>
+> 1. **Run the `crm_*` migrations** (`supabase/migrations/`).
+> 2. **Seed the first `super_admin`** in `crm_user_role`.
+> 3. **Only then deploy the RBAC code.**
+>
+> RBAC resolves every user's role from `crm_user_role` and **fails closed**: no row
+> → no role → access denied. If the RBAC code reaches production **before** steps
+> 1–2, **everyone is locked out of the app.**
+>
+> **Do NOT merge the RBAC branch (`claude/20fit-crm-sprint-2`) into `main` until
+> steps 1–2 are done** — a push to `main` triggers Railway's auto-deploy, and the
+> lockout is immediate. This warning is here, not only in `lib/auth/current-role.ts`,
+> because whoever merges is reading this file, not the auth code.
+
+> ## ⚠️ Migration ledger diverged — do NOT run `supabase db push`
+>
+> Six of the seven Sprint 2 migrations were applied to `cpvzwqptzcxnwzfzgrmt` on
+> 2026-08-10 via the Supabase MCP `apply_migration` (one per review gate). That path
+> stamps its **own** ledger version, which does **not** match the repo file-name
+> timestamps. Migration 3 (`crm_consent`) was deliberately **skipped** (awaiting
+> legal sign-off) and is absent from the ledger.
+>
+> | Repo file (prefix) | Ledger version | Ledger name |
+> |---|---|---|
+> | `…074534_create_crm_user_role` | `20260810125856` | `create_crm_user_role` |
+> | `…074535_create_crm_audit_log` | `20260810131751` | `create_crm_audit_log` |
+> | `…074536_create_crm_consent` | **— skipped (held for legal)** | — |
+> | `…074537_create_crm_suppression` | `20260810132715` | `create_crm_suppression` |
+> | `…074538_create_crm_profile_demographic` | `20260810133334` | `create_crm_profile_demographic` |
+> | `…074539_create_crm_profile_behavior` | `20260810133751` | `create_crm_profile_behavior` |
+> | `…074540_create_crm_profile_scores` | `20260810134736` | `create_crm_profile_scores` |
+>
+> **Do NOT run `supabase db push` against this project until the ledger and repo are
+> reconciled.** No repo file-name timestamp exists in the ledger, so the CLI would
+> treat all seven repo migrations as unapplied and try to run them all — re-running
+> the six live tables (which fail as "already exists") **and** applying the held
+> migration 3. Run any further migration one-by-one via a reviewed path, not `db push`.
+
 ## Stack
 
 - Next.js 14 (App Router) + TypeScript (strict)
