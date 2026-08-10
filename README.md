@@ -9,6 +9,21 @@ segmentation and marketing automation for the Marketing Division.
 
 Full spec: `PRD — 20FIT Audience Data & CRM System v1.1`.
 
+> ## ⚠️ MANDATORY DEPLOY ORDER — RBAC fails closed
+>
+> 1. **Run the `crm_*` migrations** (`supabase/migrations/`).
+> 2. **Seed the first `super_admin`** in `crm_user_role`.
+> 3. **Only then deploy the RBAC code.**
+>
+> RBAC resolves every user's role from `crm_user_role` and **fails closed**: no row
+> → no role → access denied. If the RBAC code reaches production **before** steps
+> 1–2, **everyone is locked out of the app.**
+>
+> **Do NOT merge the RBAC branch (`claude/20fit-crm-sprint-2`) into `main` until
+> steps 1–2 are done** — a push to `main` triggers Railway's auto-deploy, and the
+> lockout is immediate. This warning is here, not only in `lib/auth/current-role.ts`,
+> because whoever merges is reading this file, not the auth code.
+
 ## Stack
 
 - Next.js 14 (App Router) + TypeScript (strict)
