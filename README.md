@@ -47,7 +47,7 @@ commit real values — `.env*` is git-ignored except `.env.example`.
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | client + server | Public anon key. |
 | `SUPABASE_SERVICE_ROLE_KEY` | **server only** | Bypasses all RLS. **Never** prefix with `NEXT_PUBLIC_`. Unused in Sprint 1. |
 | `NEXT_PUBLIC_APP_ENV` | client | `production` on Railway. |
-| `NODE_ENV` | server | `production` on Railway. |
+| `NODE_ENV` | build | Forced to `production` by the `railway.json` build command — **do not set it as a Railway Variable**. See [Deploy](#deploy). |
 
 Not needed yet (noted so they aren't forgotten): `RESEND_API_KEY`,
 `WHATSAPP_*`, `MAYAR_WEBHOOK_SECRET`.
@@ -55,8 +55,31 @@ Not needed yet (noted so they aren't forgotten): `RESEND_API_KEY`,
 ## Deploy
 
 Railway builds and deploys automatically on every push to `main`
-(`railway.json`: build `npm run build`, start `npm run start`; the port is read
-from `process.env.PORT` by `next start`).
+(`railway.json`: build `NODE_ENV=production npm run build`, start `npm run start`;
+the port is read from `process.env.PORT` by `next start`).
+
+### Why the build command hard-codes `NODE_ENV=production`
+
+`railway.json` is JSON and cannot carry comments, so the reasoning lives here.
+**Do not remove the `NODE_ENV=production` prefix without reading this.**
+
+- Railway's build environment can inherit a wrong `NODE_ENV`. Railway's
+  **Suggested Variables** reads values straight from source files and offers to
+  add them — that is how `NODE_ENV=development` got set once already.
+- Without the prefix, `next build` inherits that value and **fails across all 19
+  pages**: React's dev and prod runtimes mix and prerendering throws `TypeError:
+  Cannot read properties of null (reading 'useContext')`. Reproduced locally with
+  `NODE_ENV=development npm run build` → 90 `useContext` errors, exit 1.
+- The prefix **forces `production` regardless of the inherited value**, so the
+  build is deterministic whatever the environment carries.
+- **Beware false-green local tests.** `next build` resolves `NODE_ENV || 'production'`,
+  so an **unset** _and_ an **empty** value both silently become `production` —
+  `env -u NODE_ENV npm run build` and `NODE_ENV="" npm run build` both PASS and
+  prove nothing. To replicate the real Railway failure you must set a wrong value:
+  `NODE_ENV=development npm run build`. A green build from unset/empty is **not**
+  evidence that the prefix is safe to remove — that mistake has been made twice.
+- **Never remove this prefix** until a real Railway build is proven green without
+  it (locally, until `NODE_ENV=development npm run build` builds clean without it).
 
 - `GET /health` → `{ ok, timestamp, supabase: "reachable" | "unreachable" }`.
   It pings only Supabase's public liveness endpoint — no keys leaked, no
