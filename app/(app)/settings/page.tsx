@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import { Stethoscope } from "lucide-react";
 import { getCurrentUserRole } from "@/lib/auth/current-role";
 import { isPermitted, resolveGrant } from "@/lib/auth/roles";
 import { Badge } from "@/components/ui/badge";
@@ -48,6 +50,12 @@ export default async function SettingsPage() {
         <p className="mt-2 font-body text-[14px] text-ink-soft">
           Tata kelola: peran RBAC dan jejak audit. Keduanya read-only di sprint ini.
         </p>
+        <Link
+          href="/settings/diagnostik"
+          className="mt-4 inline-flex items-center gap-2 rounded-sm border border-glass-border px-4 py-2 font-display text-[12px] font-bold uppercase tracking-wide text-ink-soft transition-colors hover:bg-glass hover:text-ink"
+        >
+          <Stethoscope className="h-4 w-4" /> Buka Diagnostik — status verifikasi & pemeriksaan lapisan baca
+        </Link>
       </header>
 
       <AuditLogPanel />

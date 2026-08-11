@@ -145,3 +145,17 @@ sempat mengubah penilaian risiko merge. Sejak 3C, `git fetch` + melaporkan tiga 
 Lima sprint melaporkan "runtime belum pernah terbukti". Ketika laporan 3G ditulis,
 buktinya sudah ada di baris audit `id=32` — `/consent` berjalan di produksi — dua baris
 sebelum jumlah yang mereka hitung. Yang dicari ada di tempat yang sudah dibaca.
+
+### S-07 · Bukti terlewat DUA KALI — ini pola, bukan kelalaian satu orang
+`/consent` terbukti di `id=32` tapi terbaca "belum terbukti" **satu sprint penuh** (S-06).
+`/settings` terbukti di `id` 44–47 dan baru ketahuan saat seseorang **memeriksa ulang**
+(Sprint 3K). Lalu ketiga kalinya nyaris terjadi: V-6 tertutup di `id=51` (13:38:31 UTC,
+`profile.viewed` pertama, `target_id` terisi) — prompt Sprint 3L masih menulis
+"`profile.viewed` = 0" karena diukur sebelum sesi 13:38. **Penyebab yang sama tiap kali:**
+status hidup di markdown yang harus diperbarui manusia, sementara bukti hidup di
+`crm_audit_log` yang bergerak sendiri. Manusia lupa; tabel tidak. **Perbaikan pola
+(bukan orangnya):** status diturunkan dari data di `/settings/diagnostik` → K-22. Bonus:
+V-6 tertutup **membalik** kecurigaan 3K bahwa detail profil rusak — ia jalan; gap
+`37,38,39` tunggal & tak berulang (sesi 13:37–13:39 sukses penuh, gap tak bertambah),
+konsisten dengan kejadian transient, bukan cacat deterministik. Penyebab pastinya tetap
+butuh log Railway jendela 08:01–08:58 UTC — belum terjawab.

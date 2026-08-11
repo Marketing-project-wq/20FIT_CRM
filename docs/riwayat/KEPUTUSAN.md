@@ -166,3 +166,17 @@ satu-satunya bukti yang tersisa. Gap ditampilkan di layar audit `/settings` (ban
 Kegagalan route kini juga meninggalkan jejak PII-free di log Railway
 (`lib/crm/failure-log.ts`), supaya gap berikutnya bisa ditelusuri, bukan hanya dihitung.
 **Membalikkan:** tidak ada.
+
+## K-22 · Status verifikasi DIHITUNG dari data, dokumen tidak lagi memegang status
+**Sprint 3L.** Status "terbukti/belum terbukti" tiap rute diturunkan dari `crm_audit_log`
+(`lib/crm/verification-status.ts`), bukan diketik ke markdown. Alasannya adalah kegagalan
+yang sudah terjadi **dua kali**: bukti hidup di tabel yang bergerak sendiri, status hidup
+di dokumen yang harus diperbarui manusia — jadi status basi (`/consent` terbukti di `id=32`
+tapi terbaca "belum" satu sprint; `/settings` terbukti di `id` 44–47, baru ketahuan saat
+dicek ulang; V-6 tertutup di `id=51` tanpa ada yang tahu sampai dihitung). → TEMUAN **S-07**.
+**Tiga kategori, dan yang ketiga tak boleh disatukan dengan kedua:** `proven`,
+`unproven`, dan **`not_auditable`** (`/`, `/quality` sengaja tak menulis audit — K-07; nol
+baris di sana **benar**, bukan kurang bukti). Menyatukan `not_auditable` ke `unproven`
+membalik aturan Sprint 3E. Ditampilkan di `/settings/diagnostik`; ceklis + skrip jadi
+jalur cadangan (untuk saat aplikasi tak bisa dibuka).
+**Membalikkan:** tidak ada — kembali ke status-diketik-tangan mengembalikan bug basi ini.

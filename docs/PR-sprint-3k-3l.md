@@ -1,5 +1,19 @@
-# PR: Sprint 3I + 3J + 3K → main
+# PR: Sprint 3K + 3L → main
 
+> ## 🩺 3L: SIKLUS INI MEMASANG INSTRUMENNYA SEKALIGUS MEMBUAT PEMAKAIANNYA SATU KLIK
+>
+> 3K memberi produksi sebuah instrumen (pemantauan gap + jejak kegagalan), tapi **selama ia
+> di branch, instrumen itu tak mencatat apa pun — tiap hari tak mendarat adalah hari
+> kejadian berikutnya kembali hilang tanpa bekas.** 3L menutup lingkarnya: halaman
+> **`/settings/diagnostik`** menghitung status tiap rute **dari `crm_audit_log`** (tak bisa
+> basi), menjalankan pemeriksaan lapisan baca saat dibuka (`verify-live.mjs` tanpa terminal),
+> menampilkan kesehatan gap, dan memberi **satu tautan** untuk menutup V-6. **Cara tercepat
+> memvalidasi deploy-nya sendiri: buka satu halaman setelah deploy — seluruh lapisan baca
+> terperiksa.** Dan ini memperbaiki pola yang menggigit tiga kali: bukti terlewat karena
+> status disimpan di dokumen, bukan dihitung dari data (S-07, K-22). **Buktinya langsung:**
+> saat 3L dibangun, V-6 tertutup di produksi (`profile.viewed id=51`) — status-terhitung
+> menangkapnya otomatis; dokumen manual (dan prompt sprint ini) masih menulis "0".
+>
 > ## 🕳️ 3K MEMBUAT KEGAGALAN TERLIHAT — SELAMA INI HILANG TANPA JEJAK
 >
 > **Argumen mendaratkan siklus ini:** di produksi, sebuah `503`/`500` hilang tanpa bekas
@@ -32,9 +46,9 @@
 > adalah berkas migrasinya + pagar test + dokumen — supaya repo cocok dengan produksi.
 >
 > **Branch:** `claude/lanjutkan-pekerjaan-mno804`
-> **Base:** `main` @ `3ac62b1` (PR #5 — 3G + 3H sudah ter-merge; jalur tulis suppression live)
-> **Isi branch di atas base:** `69e59ca` (3I — migrasi 10 + pagar EXECUTE) · `6504645` (3J — pencarian) · `46d3978` (dokumentasi `docs/riwayat/`) · commit 3K (gap monitoring + jejak kegagalan). **Nol perubahan skema/DB di 3J & 3K.**
-> **Perubahan skema:** **nol di 3J.** Migrasi 10 (3I) sudah diterapkan; indeks yang dipakai pencarian sudah ada. **Nol tulis data** di sprint ini (pencarian baca-saja).
+> **Base:** `main` @ `36a2291` (PR #6 — 3I + 3J + dokumentasi `docs/riwayat/` sudah ter-merge)
+> **Isi branch di atas base:** `5b6bcc2` (3K — gap monitoring + jejak kegagalan, di-rebase) · commit 3L (status terhitung + `/settings/diagnostik`).
+> **Perubahan skema/DB/migrasi: NOL** di 3K & 3L. Diagnostik **baca-saja**; nol tulis ke data pelanggan/suppression/consent; satu-satunya tulis = self-audit `list.viewed`/`crm_audit_log` (`view=diagnostik`), bukan aksi baru.
 > **JANGAN merge / buka PR ke `main` tanpa izin eksplisit.**
 >
 > > Catatan konteks: 3G + 3H (jalur tulis suppression) **sudah di main lewat PR #5**. Bagian
@@ -101,6 +115,21 @@
 
 > **Nol perubahan skema/DB/migrasi di 3K.** Tidak menulis `crm_audit_log` (hanya membaca
 > min/max/count). Sequence tak disentuh — verified masih `47`, gap `4,37,38,39` utuh.
+
+### Sprint 3L (satu klik, bukan satu ceklis)
+| Perubahan bagi pemakai | Sifat |
+|---|---|
+| **`/settings/diagnostik`** (baru, gerbang `audit.view`) — status tiap rute **dihitung dari `crm_audit_log`**, pemeriksaan lapisan baca LULUS/GAGAL + waktu, kesehatan gap, dan **satu tautan** untuk menutup V-6 | **BARU** |
+| `/settings` dapat tautan ke Diagnostik | **MENGUBAH TAMPILAN** |
+| `lib/crm/verification-status.ts` (murni + test) — tiga kategori: `proven` / `unproven` / **`not_auditable`** (yang ketiga TAK disatukan dengan kedua, K-07) | Kode + **Pagar** |
+| `lib/crm/diagnostic.ts` — pemanggil lapisan baca; **membuktikan nol audit ditulis** untuk rute yang diperiksa (test spy: nol write op) | Kode + **Pagar** |
+| CEKLIS + `verify-live.mjs` jadi **jalur cadangan** ("app tak bisa dibuka"); status manual dipensiunkan → K-22, temuan S-07 | Dokumen |
+| Test: 227 → **238** (+7 status, +4 diagnostik nol-tulis) | **Pagar** (test) |
+
+> **Nol perubahan skema/DB/migrasi di 3L.** Diagnostik baca-saja; satu-satunya tulis =
+> self-audit `list.viewed`/`crm_audit_log` (`view=diagnostik`). **Bukti nol-inflasi audit:**
+> pemeriksaan memanggil lapisan baca (bukan route handler), diuji dengan spy client yang
+> menegaskan nol `insert` ke `crm_audit_log`.
 
 ## 2. Yang TIDAK berubah (batas keras sprint ini)
 - **Nol jalur tulis consent.** `crm_consent` masih baca-saja — belum ada kanal opt-in nyata untuk ditunjuk. Nol `INSERT` ke `crm_consent`.
@@ -214,29 +243,29 @@ dijalankan dengan data oleh baris pertama ini.
 Log Railway: deploy hijau, `/health` (`env: configured`, `supabase: reachable`), prefix
 `NODE_ENV=production` utuh, nol lonjakan 500 sistemik di `/api/*`.
 
-## 6. Yang masih menggantung (status jujur)
-- **`profile.viewed` masih 0 dan `/settings` belum pernah dibuka** — dua verifikasi yang
-  menunggu **satu orang membuka satu halaman**, sudah beberapa sprint. Diangkat ke paling
-  atas `docs/CEKLIS-verifikasi-live.md` (V-6/V-7).
-- **Baris suppression pertama belum ada.** Jalur tulisnya kini **live** (3H, PR #5), tapi
-  praktis tak terjangkau tanpa pencarian — **itulah yang 3J tambahkan**. Setelah 3J deploy,
-  permintaan berhenti pertama bisa dicatat lewat cari → profil → suppression. Panduannya
-  siap di `docs/PERTAMA-suppression.md`; verifikasi baris pertama di §5c.
-- **Dua commit belum ter-merge** (3I + 3J). 3I mencocokkan repo dengan perbaikan keamanan
-  yang **sudah live** di DB; 3J membuat suppression yang **sudah live** bisa dipakai.
-  Membiarkannya di branch berarti: repo tak mencerminkan DB (3I), dan jalur tulis yang ada
-  tetap menganggur (3J).
+## 6. Yang masih menggantung (status jujur, 11 Agu 13:39 UTC)
+- **V-6 TERTUTUP** (baru) — `/audience/[id]` terbukti: `profile.viewed id=51`, `target_id`
+  terisi, 13:38:31 UTC. V-7 (`/settings`) juga terbukti. `/api/search` terbukti. Kini
+  **dihitung otomatis** di `/settings/diagnostik` — tak perlu diketik ke dokumen lagi.
+- **RISIKO TERATAS TAK BERUBAH: penyebab gap `37,38,39` masih belum terbukti.** V-6
+  tertutup **melemahkan** hipotesis "detail profil rusak" (ia jalan; gap tak bertambah dari
+  sesi sukses 13:37–13:39), tapi tak **membuktikan** penyebabnya. Hanya **log Railway**
+  jendela 08:01–08:58 UTC 11 Agu yang bisa menjawab — cari request `/api/audience/[id]`
+  yang 503/dibatalkan. `get_logs` masih gagal untuk saya.
+- **Baris suppression pertama belum ada** — jalur tulis (3H) + pencarian (3J) kini di main,
+  jadi terjangkau; masih menunggu **permintaan nyata**. **Jangan** buatkan baris uji
+  (`docs/PERTAMA-suppression.md`).
+- **Dua commit belum ter-merge** (3K instrumen + 3L pemakaian-satu-klik). Selama di branch,
+  jejak kegagalan 3K tak mencatat apa pun — kejadian berikutnya kembali hilang tanpa bekas.
 
 ## 7. Prasyarat & catatan merge
 - **JANGAN merge / buka PR ke `main` tanpa izin eksplisit.** Push ke `main` memicu deploy
   Railway ke sistem yang dipakai orang.
-- **3J baca-saja, nol skema:** pencarian tak menulis data dan tak mengubah skema; revert =
-  `git revert` kode saja. **Migrasi 10 (3I) JANGAN direvert** (§4 Tingkat 0) — DB-nya sudah
-  ditutup. Jalur tulis suppression (3H) sudah di main; referensi operasionalnya di §3–§5.
-- Verifikasi end-to-end pencarian (gerbang, masking di UI, baris `search.performed`) hanya
-  bisa setelah deploy oleh sesi login — sama seperti celah verifikasi sebelumnya. Yang bisa
-  tanpa deploy sudah: tipe, lint, seluruh test, build produksi, dan kecocokan desain dengan
-  indeks nyata (`pg_indexes`).
+- **3K & 3L baca-saja, nol skema.** Revert = `git revert` kode saja. **Migrasi 10 (3I)
+  JANGAN direvert** (§4 Tingkat 0) — DB-nya sudah ditutup, dan 3I sudah di main via PR #6.
+- **Validasi deploy 3L itu sendiri = buka `/settings/diagnostik`** setelah deploy: seluruh
+  lapisan baca terperiksa dalam satu halaman. Yang bisa tanpa deploy sudah: tipe, lint,
+  238 test, build produksi, dan bukti spy bahwa diagnostik nol-tulis audit.
 - **Perbarui `docs/riwayat/` sebagai bagian dari siklus ini** (dan tiap siklus berikutnya):
   `LINIMASA.md` (baris sprint + status merge), `KEPUTUSAN.md`/`TEMUAN.md` bila ada yang baru,
   `FAKTA-DATA.md` bila angka DB bergerak (bertanggal), `sprint-3j/02-laporan.md` +

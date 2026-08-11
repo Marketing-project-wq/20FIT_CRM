@@ -1,5 +1,18 @@
 # Ceklis verifikasi live — dijalankan manusia dengan sesi login
 
+> ## 🩺 CARA TERMUDAH KINI: buka `/settings/diagnostik` (Sprint 3L)
+>
+> Berkas ini **jalur cadangan**, bukan jalur utama lagi. Cara tercepat memvalidasi deploy:
+> **login lalu buka `/settings/diagnostik`** (gerbang `audit.view`). Halaman itu menghitung
+> status tiap rute **dari `crm_audit_log`** (tak bisa basi), menjalankan pemeriksaan lapisan
+> baca saat dibuka (LULUS/GAGAL + waktu — yang skrip ini lakukan tapi butuh terminal),
+> menampilkan kesehatan gap, dan memberi **satu tautan** untuk menutup V-6. Buka satu
+> halaman → seluruh lapisan baca terperiksa.
+>
+> **Skrip + ceklis ini tetap ada** untuk kasus **"aplikasinya sendiri tak bisa dibuka"** —
+> saat itulah pemeriksaan dari luar aplikasi jadi satu-satunya cara. Selama app hidup,
+> `/settings/diagnostik` lebih cepat dan tak bisa lupa diperbarui.
+
 RBAC dan audit hanya **nyata di balik sesi login**. Skrip `scripts/verify-live.mjs`
 memverifikasi lapisan baca (konstruksi query PostgREST), tetapi tidak bisa membuktikan
 bahwa gerbang peran, masking di UI, dan penulisan audit benar-benar terjadi saat orang
@@ -23,30 +36,22 @@ select count(*) as audit_before from crm_audit_log;
 
 ---
 
-## ⭐ MULAI DARI SINI — status verifikasi (diperbarui 11 Agu 2026)
+## ⭐ Status verifikasi (kini dihitung di `/settings/diagnostik`, bukan diketik di sini)
 
-Per `crm_audit_log` (11 Agu 2026, 09:05 UTC): `/audience`, `/consent`, **dan `/settings`**
-sudah terbukti jalan di produksi.
+Snapshot 11 Agu 2026 13:39 UTC — **tapi jangan percaya angka di dokumen; buka
+`/settings/diagnostik` untuk yang terkini** (itu inti Sprint 3L):
 
-- ✅ **V-7 TERTUTUP — layar audit `/settings` terbukti jalan.** 4 baris
-  `list.viewed`/`crm_audit_log` (`id` 44–47, `tifany@20fit.id`, 09:04–09:05 UTC). Tidak
-  lagi "belum".
-- ⛔ **V-6 BELUM — dan kini bukan sekadar menunggu orang.** `profile.viewed` tetap **0**,
-  dan ada **gap id `37,38,39`** di jendela pemakaian yang sama — konsisten dengan detail
-  profil yang **gagal** dibuka (audit-write mengambil nomor lalu di-rollback), bukan "tak
-  ada yang mengklik". Diselidiki Sprint 3K (lihat `docs/PR-sprint-3i-3j.md`/`3k` &
-  `docs/riwayat/`). Verifikasi V-6 tetap: buka `/audience`, klik satu nama, lalu:
-  ```sql
-  select id, actor_email, action, target_id, occurred_at
-  from crm_audit_log where action='profile.viewed' order by id desc limit 1;
-  -- Harus muncul 1 baris, target_id = UUID profil. Hari ini jumlahnya 0.
-  -- Kalau tetap 0 SETELAH mengklik + muncul gap id baru → detail profil gagal (503);
-  -- cek log Railway untuk `[api /audience/[id]] audit_write_failed` (kode DB, bebas PII).
-  ```
-
-> **Jangan salah hitung `/` dan `/quality`.** Keduanya **sengaja tidak menulis audit**
-> (aturan 3E). **Nol baris dari keduanya BUKAN bukti mereka jalan** — buktinya hanya log
-> Railway atau mata yang melihat layarnya. (Diulang di §akhir.)
+- ✅ **V-7 — `/settings` terbukti** (`list.viewed`/`crm_audit_log`, `id` 44–47).
+- ✅ **V-6 — `/audience/[id]` TERBUKTI** (baru). `profile.viewed` **`id=51`**, `target_id`
+  terisi, `tifany@20fit.id`, 13:38:31 UTC — profil detail **berhasil** dibuka di produksi.
+  Ini **membalik** hipotesis 3K "detail profil rusak": ia jalan. Gap `37,38,39` **tidak
+  bertambah** dari sesi 13:37–13:39 (list, 4× search, 1 profil, semua sukses) — jadi gap itu
+  **tunggal & tak berulang**, konsisten dengan kejadian transient/dibatalkan, bukan cacat
+  deterministik. (Pola ini persis kenapa status tak boleh diketik manual — lihat TEMUAN S-07.)
+- ✅ **`/api/search` terbukti** — `search.performed` (`id` 49,50,53,54).
+- **Tak dapat dibuktikan dari audit:** `/` dan `/quality` **sengaja tak menulis audit**
+  (K-07). Nol baris di sana adalah perilaku **benar**, bukan kekurangan bukti — jangan
+  disatukan dengan "belum terbukti". Bukti keduanya hanya log Railway atau mata orang.
 
 ---
 

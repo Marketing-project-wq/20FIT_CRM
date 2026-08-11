@@ -2,6 +2,12 @@
 /**
  * verify-live.mjs — LIVE data-layer verification against the real Supabase project.
  *
+ * ⚠️ FALLBACK PATH (Sprint 3L). The easiest way to validate a deploy is now to log in and
+ * open `/settings/diagnostik` — it runs these same read-layer checks from a page and
+ * computes each route's status from crm_audit_log, no terminal needed. Keep this script
+ * for the case the APP ITSELF won't open (bad build, env, or Supabase down) — then an
+ * out-of-app check is the only way. While the app is up, prefer /settings/diagnostik.
+ *
  * WHY THIS EXISTS: for three sprints the audience/quality/dashboard/audit/profile read
  * layers could not be executed here — this sandbox's proxy 403s the Supabase host. The
  * one unverified thing is the PostgREST query CONSTRUCTION, so this script runs the
