@@ -26,8 +26,7 @@
 >
 > ## 🔐 3O: SIKLUS INI TIDAK MENAMBAH PAPARAN APA PUN — IA MENGUKURNYA
 >
-> Seluruh sprint di PR ini **baca-saja, nol perubahan skema**, dan satu-satunya tabel baru
-> yang disentuh (`customer_engagement`, 3N) **sudah RLS ON**. 3O tidak membangun fitur; ia
+> Seluruh sprint di PR ini **baca-saja, nol perubahan skema** pada jalur aplikasi. 3O tidak membangun fitur; ia
 > menutup lubang perhatian: temuan terberat proyek ini — **NIK + data kesehatan ±1.100 orang
 > terbaca `anon` tanpa login** — sebelumnya terkubur di poin 5 laporan 3N. 3O **mengukurnya
 > tepat** (sapuan seluruh skema `public`: tabel RLS OFF × kolom sensitif, **hitungan saja,
@@ -35,9 +34,11 @@
 > (dua halaman, untuk pengambil keputusan), ke T-15, dan ke **puncak** `docs/riwayat/README.md`.
 > Terberat: `cf_hyrox_participants` (RLS OFF) — NIK 1.030, tgl lahir, golongan darah, kontak
 > darurat; plus diagnosa medis (`clinic_*` RLS OFF) dan `cf_user.password` bernama polos.
-> **Bukan kebocoran CRM:** `master_customer`/`crm_*`/`customer_engagement` semua RLS ON, dan
-> pemeriksaan lapisan baca CRM (3O) menemukan **nol** kolom sensitif keluar dari server —
+> **Pemeriksaan lapisan baca CRM (3O)** menemukan **nol** kolom sensitif keluar dari server;
 > `customer_engagement` kini dijaga **test kolom aman** agar `raw_value` tak bisa diselipkan.
+> **KOREKSI 3Q:** klaim 3O bahwa `master_customer`/`customer_engagement` "aman karena RLS ON"
+> **keliru** — keduanya punya policy `authenticated_full_access` (baca+tulis untuk 887 akun,
+> T-17). Hanya `crm_*` yang benar-benar terkunci. Dokumen eskalasi sudah dikoreksi (S-08, K-23).
 > Perbaikan RLS sendiri milik pemilik data (menyalakan RLS tanpa policy memutus aplikasi tim
 > lain) — **larangan sprint: jangan sentuh tabelnya**.
 > **Validasi deploy tercepat:** buka `/settings/diagnostik` (3L) sekali — seluruh lapisan baca terperiksa.

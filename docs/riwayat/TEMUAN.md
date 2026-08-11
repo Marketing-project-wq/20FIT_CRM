@@ -62,6 +62,23 @@ RLS **tanpa policy** memutus aplikasi tim lain yang membacanya lewat anon key �
 belum dikerjakan. Sprint ini **mengukur dan mengangkat**, tidak menyentuh.
 → `docs/ESKALASI-paparan-data-sensitif.md`
 
+### T-17 · `master_customer` + `customer_engagement` terbuka BACA+TULIS untuk 887 akun login — MILIK TIM LAIN
+**Ditemukan 11 Agu (Sprint 3Q).** Keduanya **RLS ON** tapi punya policy
+`authenticated_full_access` (`PERMISSIVE · roles {authenticated} · cmd ALL · USING true`).
+Artinya **setiap dari 887 akun `auth.users`** yang bisa login punya akses **BACA dan TULIS**
+(`ALL` mencakup `UPDATE`/`DELETE`) ke seluruh **82.253 profil** (dan 90.419 baris engagement),
+**tanpa masking, tanpa audit, melewati RBAC**. Anon key + sesi login = jalan langsung ke
+PostgREST; keduanya ada di tiap bundel JS.
+
+Klasifikasi ulang 383 tabel `public` (RLS × policy × grant, bukan RLS saja): **199 terbuka
+`anon`**, **43 terbuka siapa pun yang login** (incl. `master_customer`, `customer_engagement`),
+**141 terkunci**. Seluruh `crm_*` **terkunci** (RLS ON + 0 policy) — pola itu benar; yang
+gagal adalah dua tabel utama produk yang punya policy permisif. **Bukan menembus, melewati:**
+masking (K-02), read-only `master_customer`, jejak `list.viewed` semua di jalur aplikasi;
+database tidak menegakkannya. Perbaikan (menyempitkan policy) **akan memutus aplikasi tim
+lain** yang mengandalkannya → keputusan pemilik data + owner Supabase, bukan sepihak.
+→ `docs/ESKALASI-paparan-data-sensitif.md`, K-23. Silang-rujuk T-02.
+
 ---
 
 ## Korektness
@@ -211,3 +228,18 @@ V-6 tertutup **membalik** kecurigaan 3K bahwa detail profil rusak — ia jalan; 
 `37,38,39` tunggal & tak berulang (sesi 13:37–13:39 sukses penuh, gap tak bertambah),
 konsisten dengan kejadian transient, bukan cacat deterministik. Penyebab pastinya tetap
 butuh log Railway jendela 08:01–08:58 UTC — belum terjawab.
+
+### S-08 · Ukuran lebih sempit dari klaim: `relrowsecurity` dipakai untuk klaim "terlindungi"
+**Sprint 3O → dikoreksi 3Q.** Inventaris 3O mengukur **`relrowsecurity`** (RLS on/off) lalu
+menyimpulkan `master_customer`/`customer_engagement` "aman" dan menulisnya di dokumen
+**eskalasi** — yang dibaca pengambil keputusan. Ternyata keduanya RLS ON **tapi** punya
+policy `authenticated_full_access` (`ALL`/`USING true`) → terbuka baca+tulis untuk 887 akun
+(T-17). **Ukuran (RLS) lebih sempit daripada klaim (terlindungi).**
+
+Yang membuat ini pola, bukan kelalaian tunggal: **kehati-hatiannya sudah ditulis** — poin 8
+laporan 3O menyatakan persis *"saya mengukur `relrowsecurity`, bukan tiap policy — tabel RLS
+ON secara teoretis bisa punya policy permisif."* Keraguan itu benar, ditulis, lalu **tidak
+ditindaklanjuti**. Ini **kali kedua** jawabannya sudah ada di tempat yang sudah dilihat
+(bandingkan S-07: bukti ada di `crm_audit_log`, terlewat). **Perbaikan pola:** klaim keamanan
+tabel kini **wajib** menyebut RLS **dan** policy **dan** grant (K-23), dan kueri klasifikasinya
+masuk monitoring supaya bisa dijalankan ulang, bukan diandalkan pada ingatan.

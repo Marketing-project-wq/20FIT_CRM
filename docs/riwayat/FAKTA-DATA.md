@@ -167,10 +167,15 @@ Sapuan skema `public`: tabel **RLS OFF** yang memuat data pribadi sensitif. **Hi
 | `events` | OFF | 17 | `timeline_share_token` 2 |
 | `staff_password_resets` | OFF | 0 | kosong |
 
-`staging_20fit_data` (T-02): **88.536**, RLS OFF (tak berubah). Tabel RLS **ON** yang juga
-menyimpan sensitif (mis. `rb_staff`, `talent_accounts`, `uob_users` — NIK/KTP; `my20fit_*`,
-`clinic_patients`, `youngstars_health_forms` — kesehatan/DOB/darurat) **tidak** terbaca anon
-(tolak-default). Diukur `relrowsecurity`, bukan tiap policy — lihat "tidak bisa diverifikasi".
+`staging_20fit_data` (T-02): **88.536**, RLS OFF (tak berubah).
+
+> **KOREKSI 3Q (T-17, K-23):** blok di atas mengukur `relrowsecurity` **saja**. Itu tak
+> cukup — RLS ON **tidak** berarti tolak-default: `master_customer`/`customer_engagement` RLS
+> ON tapi policy `authenticated_full_access` (`ALL`/`USING true`) → **baca+tulis untuk 887
+> akun**. Klasifikasi benar (RLS × policy × grant): **199 anon-open, 43 login-open, 141
+> terkunci**; hanya `crm_*` yang benar-benar terkunci. Kueri: `docs/PASCA-MERGE-monitoring-revert.md`.
+> Tabel RLS-ON lain di atas (`rb_staff`, `talent_accounts`, dll.) **perlu dicek policy-nya
+> satu per satu** sebelum disebut "tidak terbaca anon" — belum dilakukan (lihat "tidak bisa diverifikasi").
 
 ## Pemakaian nyata `crm_audit_log`
 

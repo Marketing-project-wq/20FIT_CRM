@@ -111,3 +111,46 @@ from b;
 Migrasi `crm_consent` sudah jalan lebih dulu (3F). Deploy kode ini datang **setelah** tabel
 ada dan RBAC hidup — kebalikan dari peringatan urutan keras Sprint 3A di README. Tidak ada
 langkah pengurutan untuk deploy ini.
+
+## Monitoring keamanan: klasifikasi akses tabel (RLS × policy × grant) — Sprint 3Q
+
+Jalankan ulang kapan saja. Policy bisa berubah tanpa memberi tahu tim ini (proyek dipakai
+bersama; 102 fungsi anon-exec naik dari 101 dalam hitungan hari). Ukuran `relrowsecurity`
+SAJA tidak cukup (K-23, S-08) — kueri ini menggabungkan RLS, policy, dan grant.
+
+```sql
+WITH tabs AS (
+  SELECT c.relname, c.relrowsecurity AS rls FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+  WHERE n.nspname='public' AND c.relkind='r'
+),
+gr AS (
+  SELECT table_name,
+    bool_or(grantee='anon' AND privilege_type='SELECT') AS anon_sel,
+    bool_or(grantee='authenticated' AND privilege_type='SELECT') AS auth_sel,
+    bool_or(grantee='authenticated' AND privilege_type IN ('INSERT','UPDATE','DELETE')) AS auth_write
+  FROM information_schema.role_table_grants WHERE table_schema='public' GROUP BY table_name
+),
+pol AS (
+  SELECT tablename,
+    bool_or(permissive='PERMISSIVE' AND cmd IN ('SELECT','ALL') AND (roles::text[] && ARRAY['anon','public'])) AS anon_read_pol,
+    bool_or(permissive='PERMISSIVE' AND cmd IN ('SELECT','ALL') AND (roles::text[] && ARRAY['authenticated','public'])) AS auth_read_pol,
+    bool_or(permissive='PERMISSIVE' AND cmd IN ('INSERT','UPDATE','DELETE','ALL') AND (roles::text[] && ARRAY['authenticated','public'])) AS auth_write_pol
+  FROM pg_policies WHERE schemaname='public' GROUP BY tablename
+),
+cls AS (
+  SELECT t.relname AS tbl,
+    (coalesce(g.anon_sel,false) AND (NOT t.rls OR coalesce(p.anon_read_pol,false))) AS anon_read,
+    (coalesce(g.auth_sel,false) AND (NOT t.rls OR coalesce(p.auth_read_pol,false))) AS auth_read,
+    (coalesce(g.auth_write,false) AND (NOT t.rls OR coalesce(p.auth_write_pol,false))) AS auth_write
+  FROM tabs t LEFT JOIN gr g ON g.table_name=t.relname LEFT JOIN pol p ON p.tablename=t.relname
+)
+SELECT CASE WHEN anon_read THEN 'anon-open' WHEN auth_read THEN 'authenticated-open' ELSE 'locked' END AS tier,
+  count(*) AS tables, count(*) FILTER (WHERE auth_write) AS auth_writable
+FROM cls GROUP BY 1 ORDER BY 1;
+```
+
+**Baseline 11 Agu 2026:** `anon-open` **199** (172 writable) · `authenticated-open` **43**
+(39 writable) · `locked` **141**. `master_customer` & `customer_engagement` = authenticated-open
++ writable (T-17). Seluruh `crm_*` = locked. **Kenaikan angka anon-open/login-open, atau
+`crm_*` yang keluar dari `locked`, adalah alarm.** Ganti `GROUP BY 1` dengan `WHERE tbl IN (…)`
+untuk memeriksa tabel tertentu.

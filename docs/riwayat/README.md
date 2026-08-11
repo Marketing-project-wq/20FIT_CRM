@@ -19,12 +19,18 @@ Temuan keamanan tidak boleh terkubur di poin 5 sebuah laporan sprint. Yang terbu
 semuanya di **tabel milik tim lain** (bukan kontrol CRM — `master_customer`/`crm_*`/`customer_engagement`
 semua RLS ON):
 
+- **T-17 — `master_customer` + `customer_engagement` terbuka BACA+TULIS untuk 887 akun login.**
+  RLS ON **tapi** policy `authenticated_full_access` (`ALL`/`USING true`) → 82.253 profil bisa
+  dibaca/diubah/dihapus tanpa masking/audit. **"RLS ON" ≠ terlindungi** (K-23). Dokumen eskalasi
+  yang semula menyebutnya "aman" sudah dikoreksi (S-08). → `docs/ESKALASI-paparan-data-sensitif.md`
 - **T-15 — NIK + data kesehatan ±1.100 orang terpapar `anon`.** `cf_hyrox_participants` (RLS OFF):
   NIK 1.030, tgl lahir, golongan darah, kontak darurat. Plus diagnosa/riwayat medis di
   `clinic_assessments`/`clinic_screenings` (RLS OFF), dan `cf_user.password` bernama polos.
-  **Kelas paling berat proyek ini.** → `docs/ESKALASI-paparan-data-sensitif.md`
 - **T-03 — 102 fungsi `SECURITY DEFINER` anon-executable** di luar `crm_*` (naik dari 101).
 - **T-02 — `staging_20fit_data` 88.536 baris RLS OFF** (nama/telepon/email).
+
+Klasifikasi 383 tabel (RLS × policy × grant): **199 anon-open · 43 login-open · 141 terkunci**.
+`crm_*` semua terkunci (pola benar). Kueri di `docs/PASCA-MERGE-monitoring-revert.md`.
 
 Perbaikannya milik **pemilik data + owner Supabase**: menyalakan RLS tanpa policy memutus
 aplikasi tim lain. Tim CRM mengukur dan mengangkat, tidak menyentuh.
