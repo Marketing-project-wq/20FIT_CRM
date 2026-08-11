@@ -88,6 +88,8 @@ export async function POST(request: NextRequest) {
         revenue: criteria.revenue,
         has_phone: criteria.hasPhone,
         has_email: criteria.hasEmail,
+        eco_unit: criteria.ecoUnit,
+        eco_product: criteria.ecoProduct,
       },
       matched: counts.matched,
       contactable: counts.contactable,

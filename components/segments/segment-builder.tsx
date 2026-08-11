@@ -2,13 +2,14 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Filter, Clock, MapPin, Users, Send } from "lucide-react";
+import { Filter, Clock, MapPin, Users, Send, Network } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   AUDIENCE_UNITS,
   AUDIENCE_SEGMENTS,
   SEGMENT_NULL,
 } from "@/lib/crm/audience-constants";
+import { ECOSYSTEM_UNITS, ECOSYSTEM_PRODUCTS_BY_UNIT } from "@/lib/crm/engagement-constants";
 import { EMPTY_CRITERIA, type SegmentCriteria, type RevenueCriterion } from "@/lib/crm/segment";
 
 interface Counts {
@@ -153,6 +154,50 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total }: { cityFillPct
               Punya email
             </label>
           </div>
+        </div>
+
+        {/* Ecosystem presence (customer_engagement) — a DIFFERENT table + vocabulary from
+            the attributes above. "Ada engagement di unit/produk ini", keyed by customer_id. */}
+        <div className="mt-5 rounded-sm border border-glass-border/70 p-4">
+          <div className="flex items-center gap-2">
+            <Network className="h-4 w-4 text-ink-soft" aria-hidden />
+            <h3 className="font-display text-[12px] font-bold uppercase tracking-wide text-ink">
+              Ekosistem 20FIT
+            </h3>
+          </div>
+          <p className="mt-1 max-w-3xl font-body text-[12px] leading-relaxed text-ink-soft">
+            Menyaring profil yang punya <strong>minimal satu</strong> baris di{" "}
+            <span className="font-mono">customer_engagement</span> pada unit / produk terpilih. Kosakata
+            ini beda dari “Unit” di atas (ada <span className="font-mono">event</span> &amp;{" "}
+            <span className="font-mono">membership</span>). Tetap <strong>tanpa kriteria waktu</strong>:{" "}
+            <span className="font-mono">last_seen_at</span> 99,51% cap muat.
+          </p>
+          <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <label className="flex flex-col gap-1">
+              <span className="font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">Unit ekosistem</span>
+              <select className={selectCls} value={c.ecoUnit ?? ""} onChange={(e) => set("ecoUnit", e.target.value || null)}>
+                <option value="">Semua unit ekosistem</option>
+                {ECOSYSTEM_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">Produk ekosistem</span>
+              <select className={selectCls} value={c.ecoProduct ?? ""} onChange={(e) => set("ecoProduct", e.target.value || null)}>
+                <option value="">Semua produk</option>
+                {ECOSYSTEM_UNITS.map((u) => (
+                  <optgroup key={u} label={u}>
+                    {ECOSYSTEM_PRODUCTS_BY_UNIT[u].map((p) => <option key={p} value={p}>{p}</option>)}
+                  </optgroup>
+                ))}
+              </select>
+            </label>
+          </div>
+          {c.ecoUnit && c.ecoProduct && (
+            <p className="mt-2 font-body text-[11px] leading-relaxed text-ink-faint">
+              Unit dan produk dipilih bersamaan: menyaring <strong>satu</strong> engagement yang cocok
+              keduanya sekaligus. Karena tiap produk hanya milik satu unit, kombinasi lintas-unit berjumlah 0.
+            </p>
+          )}
         </div>
 
         {/* City warning — in place, not a footnote (93% empty). */}

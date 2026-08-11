@@ -111,6 +111,21 @@ Baris audit `id=18` menyimpan `filters.city = "tifany"` — ketikan pengguna, ap
 Jaminan "metadata bebas PII" bersifat **perilaku, bukan struktur**. Diredam cap panjang
 dan pemangkasan 90 hari. → K-17
 
+### T-14 · `last_seen_at` ekosistem adalah cap muat untuk 99,51% baris — DATA, tidak diremediasi
+**Ditemukan 11 Agu (Sprint 3N).** `customer_engagement` (90.419 baris): **89.974 (99,51%)**
+punya `last_seen_at = first_seen_at` — cap waktu muat, bukan aktivitas. Hanya **444 baris
+(0,49%)** membawa aktivitas nyata (`last_seen_at > first_seen_at`, ≤ hari ini), **semuanya**
+dari sumber `live_txn_sync` dan terpusat di dua produk: Transaksi Clinic (274) dan Transaksi
+Arena (170). Plus **1 baris tanggal-masa-depan** (2026-12-05).
+
+Ini **kali keempat** sebuah kolom waktu ternyata cap muat — setelah `created_at` (T-09),
+`first_seen_at` (T-08), dan `last_activity_at` (Sprint 2). Empat kali bukan kebetulan; ini
+**properti sumbernya**, bukan temuan per-kolom. Konsekuensi mengikat: **tidak ada kriteria
+waktu** untuk ekosistem di segment builder — recency di atas kolom 99,51% cap muat sama tak
+jujurnya seperti di `master_customer`. Perbandingan antar-kolom tak bisa dihitung live lewat
+PostgREST → masuk `VERIFIED_ARTIFACTS` bertanggal (`ecosystem_last_seen_load_stamp`), sejajar
+T-11. Baris masa-depan dihitung live di `/quality` (bandingkan ke literal waktu). → K-19
+
 ---
 
 ## Kesalahan sendiri

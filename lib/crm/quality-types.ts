@@ -46,6 +46,22 @@ export interface SatelliteCoverage {
   note: string;
 }
 
+/** One ecosystem unit's row spread in customer_engagement (Sprint 3N, live head:true count). */
+export interface EcosystemUnitSpread {
+  unit: string;
+  rows: number;
+}
+
+/** Parameter-free ecosystem aggregates for /quality. Only what PostgREST computes live is
+ *  here; the load-stamp % and distinct coverage (column-to-column / count distinct) are in
+ *  VERIFIED_ARTIFACTS, dated. Shared shape so the client component can render it. */
+export interface EcosystemQuality {
+  totalRows: number;
+  unitSpread: EcosystemUnitSpread[];
+  futureDated: number;
+  computedAt: string;
+}
+
 export interface QualitySnapshot {
   /** Rows in master_customer — the denominator for every percentage below. */
   total: number;
@@ -55,6 +71,8 @@ export interface QualitySnapshot {
   duplicates: IssueCount[];
   queues: IssueCount[];
   satellites: SatelliteCoverage[];
+  /** Ecosystem (customer_engagement) live aggregates — Sprint 3N. */
+  ecosystem: EcosystemQuality;
   /** ISO timestamp the snapshot was computed. Never cached. */
   computedAt: string;
 }
@@ -134,6 +152,18 @@ export const VERIFIED_ARTIFACTS = [
     label: "14 baris “pertama terlihat” setelah dibuat (kontradiksi logis)",
     detail:
       "14 baris punya first_seen_at LEBIH BARU dari created_at (selisih terbesar 7 hari 11 jam), semuanya di live_txn_ingest. Sebuah baris yang “pertama terlihat” setelah barisnya sendiri dibuat adalah kontradiksi, bukan sekadar data kotor. Seperti LTV negatif, ia tak muncul di filter layar mana pun — PostgREST tak punya perbandingan antar-kolom (pelajaran Sprint 3B), jadi diangkat di sini sebagai temuan terverifikasi, bukan filter yang dipaksakan. Diverifikasi 11 Agustus 2026.",
+  },
+  {
+    key: "ecosystem_last_seen_load_stamp",
+    label: "“last_seen_at” ekosistem adalah cap muat untuk 99,51% baris",
+    detail:
+      "customer_engagement: 89.974 dari 90.419 baris (99,51%) punya last_seen_at = first_seen_at — cap waktu muat, bukan aktivitas. Hanya 444 baris (0,49%) membawa aktivitas nyata (last_seen_at > first_seen_at, ≤ hari ini), SEMUANYA dari sumber live_txn_sync dan terpusat di dua produk: Transaksi Clinic (274) dan Transaksi Arena (170). Ini KALI KEEMPAT sebuah kolom waktu ternyata cap muat (setelah created_at, first_seen_at, last_activity_at) — pola, bukan kejutan. Perbandingan antar-kolom tak bisa dihitung live lewat PostgREST; diverifikasi 11 Agustus 2026. Konsekuensi: TIDAK ada kriteria waktu di segment builder untuk ekosistem — recency di atas kolom 99,51% cap muat sama tak jujurnya dengan di master_customer (K-19).",
+  },
+  {
+    key: "ecosystem_coverage",
+    label: "82.089 dari 82.253 profil (99,80%) punya jejak ekosistem",
+    detail:
+      "customer_engagement mencakup 82.089 profil master berbeda dari 82.253 (99,80%; count distinct — tak bisa live via PostgREST), lewat 90.419 baris, 0 baris yatim (setiap customer_id ada di master_customer). 164 profil tidak muncul sama sekali di ekosistem. Sebaran didominasi satu produk: membership/Fitco User = 67.828 baris (75%). Diverifikasi 11 Agustus 2026.",
   },
   // NOTE: `phone_canonical_gap` sengaja DIHAPUS di Sprint 3B (2026-08-11). Temuan itu
   // sudah DIPERBAIKI — normalizePhoneID() kini menghasilkan `62…` tanpa `+`, cocok

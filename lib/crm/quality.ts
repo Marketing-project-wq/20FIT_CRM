@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { QualitySnapshot } from "./quality-types";
+import { fetchEcosystemQuality } from "./engagement";
 
 /**
  * Data-quality snapshot — READ-ONLY aggregates over the EXISTING tables.
@@ -49,6 +50,9 @@ function notNull(column: string): Filter {
 }
 
 export async function fetchQualitySnapshot(admin: SupabaseClient): Promise<QualitySnapshot> {
+  // Ecosystem aggregates (customer_engagement) run concurrently with the master_customer
+  // counts — same posture: parameter-free, head:true, not audited (Sprint 3N).
+  const ecosystemPromise = fetchEcosystemQuality(admin);
   const [
     total,
     fullName,
@@ -100,9 +104,12 @@ export async function fetchQualitySnapshot(admin: SupabaseClient): Promise<Quali
     countRows(admin, "crm_profile_scores"),
   ]);
 
+  const ecosystem = await ecosystemPromise;
+
   return {
     total,
     computedAt: new Date().toISOString(),
+    ecosystem,
 
     fillRates: [
       { key: "full_name", label: "Nama", column: "full_name", filled: fullName },

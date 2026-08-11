@@ -83,7 +83,30 @@ Tidak ada indeks atas `city` — filter kota adalah seq scan.
 | `customer_orphan` | 32 | tak bisa dikaitkan ke satu profil master |
 | `customer_excluded` | 6.361 | alasan pengecualian belum ditinjau ulang |
 | `staging_20fit_data` | **88.536** | RLS **OFF** — lihat T-02 |
-| `customer_engagement` | 90.419 | belum dipakai |
+| `customer_engagement` | 90.419 | **dipakai sejak 3N** — lihat blok di bawah |
+
+## `customer_engagement` — 11 Agustus 2026 (Sprint 3N)
+
+Tabel EKSISTING, dibaca di tempat (nol ingestion, nol salin ke `crm_*`). Dikaitkan ke
+profil lewat `customer_id`.
+
+| Fakta | Nilai |
+|---|---:|
+| Baris | 90.419 |
+| Baris `customer_id` NULL | 0 |
+| Baris yatim (tak ada di `master_customer`) | 0 |
+| Profil master berbeda tercakup | 82.089 / 82.253 (**99,80%**) |
+| Unit berbeda | 6 (`arena`, `clinic`, `event`, `gym`, `membership`, `shop`) |
+| Produk berbeda | 25 |
+| `last_seen_at = first_seen_at` (**cap muat**) | 89.974 (**99,51%**) |
+| `last_seen_at > first_seen_at`, ≤ hari ini (**aktivitas nyata**) | 444 (0,49%) |
+| `last_seen_at` di masa depan (anomali) | 1 (2026-12-05) |
+| Sumber | 2 — `20fit_data_import` (89.051, 0 nyata), `live_txn_sync` (1.368, 444 nyata) |
+
+Aktivitas nyata **hanya** di dua produk `live_txn_sync`: Transaksi Clinic (274) + Transaksi
+Arena (170). Sebaran didominasi `membership/Fitco User` = 67.828 baris (75%). Kolom
+`raw_value`/`source_row_id`/`period` **tidak** dibaca aplikasi (potensi data sumber sensitif).
+→ T-14, K-19. Sumber aktivitas lain yang BELUM masuk sini: `docs/SUMBER-AKTIVITAS.md`.
 
 ## Tabel `crm_*` — 11 Agustus 2026
 

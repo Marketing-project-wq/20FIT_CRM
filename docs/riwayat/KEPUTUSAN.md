@@ -142,9 +142,12 @@ mereproduksi kegagalan aslinya, `NODE_ENV=development npm run build`.
 dihapus dua kali. → `README.md`
 
 ## K-19 · Kolom waktu tidak dipakai sebagai sinyal
-**Sprint 3E.** `created_at` adalah cap waktu muat (satu instan per sumber).
+**Sprint 3E; diperluas 3N.** `created_at` adalah cap waktu muat (satu instan per sumber).
 `first_seen_at` juga cap muat untuk 98,7% pool. `last_activity_at` dilarang sejak
-Sprint 2. Segmentasi berbasis recency **tidak mungkin jujur** dengan data hari ini.
+Sprint 2. **Sprint 3N** menambah yang keempat: `customer_engagement.last_seen_at` cap
+muat untuk **99,51%** baris (T-14). Empat kolom waktu, empat kali cap muat — ini properti
+sumber, bukan kejutan per-kolom. Segmentasi berbasis recency **tidak mungkin jujur** dengan
+data hari ini, termasuk di segment builder ekosistem (tak ada kotak waktu di sana).
 **Membalikkan:** setelah ada ingestion berkelanjutan. → `docs/KOLOM-WAKTU.md`
 
 ## K-20 · Data anomali dibuat terlihat, bukan diperbaiki

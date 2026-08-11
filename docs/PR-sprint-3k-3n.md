@@ -1,5 +1,22 @@
-# PR: Sprint 3K + 3L + 3M → main
+# PR: Sprint 3K + 3L + 3M + 3N → main
 
+> ## 🌐 3N: PROFIL BUKAN SATU BARIS — TAPI KOLOM WAKTUNYA CAP MUAT UNTUK KE-EMPAT KALINYA
+>
+> `customer_engagement` (90.419 baris, EKSISTING) menunjukkan di mana seorang pelanggan
+> muncul di ekosistem 20FIT: arena, clinic, event, gym, membership, shop — dibaca **di
+> tempat**, nol ingestion, nol salin ke `crm_*`, dikaitkan lewat `customer_id` (0 baris
+> yatim). Ia menambah bagian **"Ekosistem 20FIT"** di detail profil, kriteria **unit +
+> produk** di segment builder, dan blok kualitas ekosistem di `/quality`.
+> **Temuan yang mengikat keputusan:** `last_seen_at` ternyata **cap waktu muat untuk 99,51%
+> baris** (`= first_seen_at`). Aktivitas nyata hanya **444 baris (0,49%)**, semuanya di
+> `live_txn_sync` (Transaksi Clinic + Transaksi Arena). Ini **kali keempat** sebuah kolom
+> waktu ternyata cap muat (setelah `created_at`, `first_seen_at`, `last_activity_at`) —
+> **pola, bukan kejutan** (T-14). Karena itu **tidak ada kriteria waktu** untuk ekosistem
+> (K-19), dan setiap baris `last_seen_at` ditampilkan sesuai kelasnya: "aktivitas nyata"
+> (tanggal), "tidak terekam" (cap muat — **bukan** em-dash, bukan "tidak aktif"), atau
+> "anomali" (1 baris tanggal masa depan). Sumber aktivitas yang **belum** terwakili (HYROX,
+> my20fit, race-timing) dipetakan tanpa dibangun: `docs/SUMBER-AKTIVITAS.md`.
+>
 > ## 📊 3M: LAYAR PERTAMA YANG MENUNJUKKAN BERAPA BANYAK ORANG YANG TIDAK BOLEH DIHUBUNGI
 >
 > Segment builder (`/segments`) menampilkan tiap definisi dengan **dua** angka
@@ -58,8 +75,8 @@
 >
 > **Branch:** `claude/lanjutkan-pekerjaan-mno804`
 > **Base:** `main` @ `36a2291` (PR #6 — 3I + 3J + dokumentasi `docs/riwayat/` sudah ter-merge)
-> **Isi branch di atas base:** `5b6bcc2` (3K — gap monitoring + jejak kegagalan, di-rebase) · commit 3L (status terhitung + `/settings/diagnostik`).
-> **Perubahan skema/DB/migrasi: NOL** di 3K & 3L. Diagnostik **baca-saja**; nol tulis ke data pelanggan/suppression/consent; satu-satunya tulis = self-audit `list.viewed`/`crm_audit_log` (`view=diagnostik`), bukan aksi baru.
+> **Isi branch di atas base:** `5b6bcc2` (3K — gap monitoring + jejak kegagalan) · `73173de` (3L — status terhitung + `/settings/diagnostik`) · `c3dc5ea` (3M — segment builder) · commit 3N (ekosistem `customer_engagement`).
+> **Perubahan skema/DB/migrasi: NOL** di 3K, 3L, 3M, dan 3N. Semua baca-saja; nol tulis ke data pelanggan/suppression/consent; tulis satu-satunya = self-audit `list.viewed`/`crm_audit_log` (diagnostik `view=diagnostik`, segment `view=segment_builder`), bukan aksi baru. 3N: `customer_engagement` dibaca di tempat, nol ingestion.
 > **JANGAN merge / buka PR ke `main` tanpa izin eksplisit.**
 >
 > > Catatan konteks: 3G + 3H (jalur tulis suppression) **sudah di main lewat PR #5**. Bagian
@@ -151,6 +168,24 @@
 > **Nol perubahan skema/DB di 3M.** Baca-saja atas `master_customer` + `crm_consent` +
 > `crm_suppression`; satu-satunya tulis = audit `list.viewed` per perhitungan (button-triggered,
 > bukan live). Nol daftar orang dikeluarkan.
+
+### Sprint 3N (ekosistem 20FIT — baca `customer_engagement`, nol ingestion)
+| Perubahan | Sifat |
+|---|---|
+| `lib/crm/engagement.ts` (server-only) — baca per-profil + agregat + resolusi id ekosistem. Kolom aman saja (**tanpa** `raw_value`/`source_row_id`/`period`). Kait lewat `customer_id` | **BARU — BACA SAJA** |
+| `lib/crm/engagement-constants.ts` (murni + test) — kosakata 6 unit / 25 produk (kosakata SENDIRI, beda dari `AUDIENCE_UNITS`) + `classifyLastSeen` (real/cap-muat/anomali/missing) | Kode + **Pagar** |
+| Detail profil: bagian **"Ekosistem 20FIT"** — tabel unit/produk/jumlah/terakhir; `last_seen_at` per baris diklasifikasi (cap-muat = "tidak terekam", **bukan** em-dash). **Nol audit kedua** (`profile.viewed` sudah mencakup) | **MENGUBAH TAMPILAN** |
+| Segment builder: kriteria **unit + produk ekosistem** (closed-list). Jumlah berpasangan tetap (boleh-dihubungi tetap **0**). Distinct-id via paginasi kolom `customer_id`; intersect di memori (andalkan 0-yatim untuk jalur cepat) | **MENGUBAH TAMPILAN + BACA** |
+| `/quality`: blok ekosistem — total baris, sebaran per-unit (live), baris tanggal-masa-depan (live). **Nol audit** (agregat tanpa parameter, K-07) | **MENGUBAH TAMPILAN** |
+| `VERIFIED_ARTIFACTS` +2: `ecosystem_last_seen_load_stamp` (99,51% cap muat — antar-kolom, tak bisa live) + `ecosystem_coverage` (99,80% cakupan — count distinct) — bertanggal | Dokumen (di kode) |
+| `docs/SUMBER-AKTIVITAS.md` — 4 sumber (HYROX 1.038, my20fit_profile 886, my20fit_user_activity 175, rc_team_members 1.545; rc_participant_photos **kosong**) dipetakan: kunci identitas (email/nama, **bukan** `customer_id`), waktu nyata?, keputusan pra-ingestion. **Nol ingestion dibangun** | Dokumen |
+| T-14 (cap muat ke-4) + K-19 diperluas + `FAKTA-DATA.md` blok `customer_engagement` | Dokumen (riwayat) |
+| Test: 249 → **262** (+12 `classifyLastSeen`/kosakata ekosistem; +1 kriteria ekosistem closed-list) | **Pagar** (test) |
+
+> **Nol perubahan skema/DB/migrasi di 3N.** `customer_engagement` dibaca di tempat — nol
+> INSERT ke `crm_*`, nol tabel/view/RPC baru, nol `setval`. Tulis satu-satunya tetap audit
+> `list.viewed` per perhitungan segment (button-triggered). Detail profil **tidak** menulis
+> audit kedua. Kolom sumber sensitif (`raw_value`, NIK/kesehatan di tabel lain) tak dibaca.
 
 > **Nol perubahan skema/DB/migrasi di 3L.** Diagnostik baca-saja; satu-satunya tulis =
 > self-audit `list.viewed`/`crm_audit_log` (`view=diagnostik`). **Bukti nol-inflasi audit:**

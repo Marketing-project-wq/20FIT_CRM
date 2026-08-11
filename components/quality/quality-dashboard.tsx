@@ -297,6 +297,62 @@ export function QualityDashboard() {
           </Panel>
 
           <Panel
+            title="Ekosistem 20FIT — customer_engagement"
+            caption={`Jejak keterlibatan lintas unit (arena, clinic, event, gym, membership, shop) dari tabel customer_engagement — dibaca di tempat, tanpa disalin ke crm_*. Angka di sini yang bisa dihitung live (baris total, sebaran per-unit, baris tanggal-masa-depan). Dua angka terpenting — % cap muat dan cakupan profil — perbandingan antar-kolom / count distinct yang tidak bisa lewat API baca ini; ada di panel bertanggal di bawah.`}
+          >
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <p className="font-body text-[14px] font-semibold text-ink">Total baris engagement</p>
+                <p className="font-mono text-[13px] text-ink">{formatCount(data.ecosystem.totalRows)}</p>
+              </div>
+
+              <div className="space-y-3 border-t border-glass-border pt-3">
+                <p className="font-body text-[12px] text-ink-soft">
+                  Sebaran per unit (<strong>baris</strong>, bukan pelanggan — satu pelanggan bisa punya
+                  beberapa produk di unit yang sama):
+                </p>
+                {data.ecosystem.unitSpread
+                  .slice()
+                  .sort((a, b) => b.rows - a.rows)
+                  .map((u) => {
+                    const rate = pct(u.rows, data.ecosystem.totalRows);
+                    return (
+                      <div key={u.unit}>
+                        <div className="flex flex-wrap items-baseline justify-between gap-2">
+                          <p className="font-mono text-[13px] text-ink">{u.unit}</p>
+                          <p className="font-mono text-[13px] text-ink">
+                            {formatPct(rate)}{" "}
+                            <span className="text-ink-faint">· {formatCount(u.rows)}</span>
+                          </p>
+                        </div>
+                        <div className="mt-1.5">
+                          <FillBar rate={rate} tone="neutral" />
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+
+              <div className="flex flex-wrap items-start justify-between gap-3 border-t border-glass-border pt-3.5">
+                <div className="min-w-0 flex-1">
+                  <p className="font-body text-[14px] font-semibold text-ink">
+                    Baris <span className="font-mono text-[12px]">last_seen_at</span> di masa depan
+                  </p>
+                  <p className="mt-1 max-w-2xl font-body text-[12px] leading-relaxed text-ink-soft">
+                    last_seen_at &gt; sekarang — cacat data (tanggal yang belum terjadi tak bisa jadi
+                    aktivitas). Sejajar dengan LTV negatif dan first_seen_at &gt; created_at: ditampilkan,
+                    bukan diperbaiki (K-20). Ini SATU-satunya bagian cap-muat ekosistem yang bisa dihitung
+                    live (perbandingan ke literal waktu, bukan antar-kolom).
+                  </p>
+                </div>
+                <Badge tone={issueTone(data.ecosystem.futureDated)}>
+                  {formatCount(data.ecosystem.futureDated)}
+                </Badge>
+              </div>
+            </div>
+          </Panel>
+
+          <Panel
             title="Temuan yang tidak bisa dihitung live"
             caption={`Hal-hal berikut sudah diverifikasi langsung ke database pada ${ARTIFACTS_VERIFIED_ON}, tetapi tidak bisa dihitung ulang lewat API baca yang dipakai halaman ini (tidak ada perbandingan antar-kolom maupun regex). Angkanya statis dan sengaja diberi tanggal — jangan dibaca sebagai angka hari ini.`}
           >
