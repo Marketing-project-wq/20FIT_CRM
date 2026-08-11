@@ -5,6 +5,7 @@ import {
   AUDIT_MAX_PAGE_SIZE,
 } from "./audit-log-constants";
 import { COMPLIANCE_OR, OPERATIONAL_OR } from "./retention-policy";
+import { summarizeAuditGap, type AuditGapSummary } from "./audit-gap";
 
 /**
  * Audit-log read layer — READ-ONLY over crm_audit_log. Server-only; the service-role
@@ -63,6 +64,9 @@ export interface AuditLogResult {
   pageSize: number;
   category: AuditCategory;
   counts: AuditCounts;
+  /** Id-sequence gap over the WHOLE log (not the filtered page). A hole = a failed
+   *  audited operation whose row never landed. See lib/crm/audit-gap.ts. */
+  gap: AuditGapSummary;
 }
 
 // PostgREST `.or()` patterns are DERIVED from the single retention-policy source —
@@ -130,11 +134,13 @@ export async function fetchAuditLog(
     .range(from, to);
 
   // Ratio over the SAME range (ignoring category): compliance vs operational vs other.
-  const [listRes, compliance, operational, total] = await Promise.all([
+  // Gap is over the WHOLE log (unfiltered) — min id, max id, total rows.
+  const [listRes, compliance, operational, total, gapAgg] = await Promise.all([
     q,
     countWith(admin, query, COMPLIANCE_OR),
     countWith(admin, query, OPERATIONAL_OR),
     countWith(admin, query, null),
+    fetchGapAggregates(admin),
   ]);
   if (listRes.error) throw listRes.error;
 
@@ -145,5 +151,25 @@ export async function fetchAuditLog(
     pageSize,
     category,
     counts: { compliance, operational, other: total - compliance - operational, total },
+    gap: summarizeAuditGap(gapAgg.minId, gapAgg.maxId, gapAgg.count),
   };
+}
+
+/** Whole-log min id / max id / row count — three cheap reads, no filters. Feeds the gap
+ *  summary. Unfiltered on purpose: a filtered id range's holes are mostly filter
+ *  exclusions, not failures. */
+async function fetchGapAggregates(
+  admin: SupabaseClient,
+): Promise<{ minId: number | null; maxId: number | null; count: number }> {
+  const [minRes, maxRes, countRes] = await Promise.all([
+    admin.from("crm_audit_log").select("id").order("id", { ascending: true }).limit(1).maybeSingle(),
+    admin.from("crm_audit_log").select("id").order("id", { ascending: false }).limit(1).maybeSingle(),
+    admin.from("crm_audit_log").select("id", { count: "exact", head: true }),
+  ]);
+  if (minRes.error) throw minRes.error;
+  if (maxRes.error) throw maxRes.error;
+  if (countRes.error) throw countRes.error;
+  const minId = (minRes.data as { id: number } | null)?.id ?? null;
+  const maxId = (maxRes.data as { id: number } | null)?.id ?? null;
+  return { minId, maxId, count: countRes.count ?? 0 };
 }

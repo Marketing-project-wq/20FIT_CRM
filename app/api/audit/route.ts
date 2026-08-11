@@ -5,6 +5,7 @@ import { getCurrentUserRole } from "@/lib/auth/current-role";
 import { isPermitted, resolveGrant } from "@/lib/auth/roles";
 import { fetchAuditLog, clampAuditPageSize } from "@/lib/crm/audit-log";
 import { AUDIT_DEFAULT_PAGE_SIZE } from "@/lib/crm/audit-log-constants";
+import { logApiFailure } from "@/lib/crm/failure-log";
 
 export const dynamic = "force-dynamic";
 
@@ -66,7 +67,8 @@ export async function GET(request: NextRequest) {
   let result;
   try {
     result = await fetchAuditLog(admin, { page, pageSize, action, actorEmail, dateFrom, dateTo, category });
-  } catch {
+  } catch (e) {
+    logApiFailure("/audit", "audit_query_failed", { code: (e as { code?: string })?.code });
     return NextResponse.json({ error: "query_failed" }, { status: 500 });
   }
 
@@ -93,6 +95,7 @@ export async function GET(request: NextRequest) {
     },
   });
   if (auditError) {
+    logApiFailure("/audit", "audit_write_failed", { code: auditError.code });
     return NextResponse.json(
       { error: "audit_failed", message: "Pembacaan ditolak: gagal mencatat audit (akuntabilitas)." },
       { status: 503 },

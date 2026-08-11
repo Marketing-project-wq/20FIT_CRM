@@ -23,27 +23,26 @@ select count(*) as audit_before from crm_audit_log;
 
 ---
 
-## ⭐ MULAI DARI SINI — dua verifikasi yang sudah menunggu dua sprint
+## ⭐ MULAI DARI SINI — status verifikasi (diperbarui 11 Agu 2026)
 
-Per `crm_audit_log` (11 Agu 2026): `/audience` dan `/consent` **sudah terbukti jalan di
-produksi**. Dua layar berikut **belum pernah dibuka satu kali pun** — masing-masing hanya
-butuh **satu orang membuka satu halaman**. Prioritas tertinggi; detail penuh di V-6/V-7
-bawah, ringkasnya:
+Per `crm_audit_log` (11 Agu 2026, 09:05 UTC): `/audience`, `/consent`, **dan `/settings`**
+sudah terbukti jalan di produksi.
 
-1. **Detail profil menulis `profile.viewed` PERTAMA.** Buka `/audience`, klik satu nama.
-   ```sql
-   select id, actor_email, action, target_id, occurred_at
-   from crm_audit_log where action='profile.viewed' order by id desc limit 1;
-   -- Harus muncul 1 baris, target_id = UUID profil. Hari ini jumlahnya 0.
-   ```
-2. **Layar audit `/settings` menulis `list.viewed`/`crm_audit_log`.** Buka `/settings`
-   (peran `audit.view`).
-   ```sql
-   select id, actor_email, action, target_table, occurred_at
-   from crm_audit_log where action='list.viewed' and target_table='crm_audit_log'
-   order by id desc limit 1;
-   -- Harus muncul 1 baris, aktor = email Anda, tepat setelah membuka /settings.
-   ```
+- ✅ **V-7 TERTUTUP — layar audit `/settings` terbukti jalan.** 4 baris
+  `list.viewed`/`crm_audit_log` (`id` 44–47, `tifany@20fit.id`, 09:04–09:05 UTC). Tidak
+  lagi "belum".
+- ⛔ **V-6 BELUM — dan kini bukan sekadar menunggu orang.** `profile.viewed` tetap **0**,
+  dan ada **gap id `37,38,39`** di jendela pemakaian yang sama — konsisten dengan detail
+  profil yang **gagal** dibuka (audit-write mengambil nomor lalu di-rollback), bukan "tak
+  ada yang mengklik". Diselidiki Sprint 3K (lihat `docs/PR-sprint-3i-3j.md`/`3k` &
+  `docs/riwayat/`). Verifikasi V-6 tetap: buka `/audience`, klik satu nama, lalu:
+  ```sql
+  select id, actor_email, action, target_id, occurred_at
+  from crm_audit_log where action='profile.viewed' order by id desc limit 1;
+  -- Harus muncul 1 baris, target_id = UUID profil. Hari ini jumlahnya 0.
+  -- Kalau tetap 0 SETELAH mengklik + muncul gap id baru → detail profil gagal (503);
+  -- cek log Railway untuk `[api /audience/[id]] audit_write_failed` (kode DB, bebas PII).
+  ```
 
 > **Jangan salah hitung `/` dan `/quality`.** Keduanya **sengaja tidak menulis audit**
 > (aturan 3E). **Nol baris dari keduanya BUKAN bukti mereka jalan** — buktinya hanya log

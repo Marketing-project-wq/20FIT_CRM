@@ -1,5 +1,18 @@
-# PR: Sprint 3I + 3J → main
+# PR: Sprint 3I + 3J + 3K → main
 
+> ## 🕳️ 3K MEMBUAT KEGAGALAN TERLIHAT — SELAMA INI HILANG TANPA JEJAK
+>
+> **Argumen mendaratkan siklus ini:** di produksi, sebuah `503`/`500` hilang tanpa bekas
+> begitu responsnya terkirim. Bukti bahwa itu masalah nyata sudah ada: `crm_audit_log`
+> punya **gap id `37,38,39`** — tiga operasi teraudit yang gagal (audit-write mengambil
+> nomor sequence lalu di-rollback, tak meninggalkan baris). Sebelum 3K tak ada yang
+> melihatnya, dan `profile.viewed` tetap **0** meski orang jelas menjelajah. 3K menjadikan
+> **gap sebagai pemantauan tetap** (SQL + banner di `/settings`) dan memberi **setiap**
+> route jejak kegagalan PII-free di log Railway, supaya gap berikutnya bisa **ditelusuri**,
+> bukan hanya dihitung. **Root cause gap belum terbukti** (DB menerima tiap audit-write;
+> lihat §7) — jadi tidak ada perbaikan yang dikarang; yang dibangun adalah **jejaknya**.
+> Gap tidak bertambah (stabil di `37,38,39`), jadi tak ada yang sedang aktif rusak.
+>
 > ## 🔎 PENCARIAN INILAH YANG MEMBUAT JALUR SUPPRESSION BISA DIPAKAI
 >
 > Jalur tulis suppression (3H) **sudah ter-merge (PR #5) dan di main** — tapi titik
@@ -20,7 +33,7 @@
 >
 > **Branch:** `claude/lanjutkan-pekerjaan-mno804`
 > **Base:** `main` @ `3ac62b1` (PR #5 — 3G + 3H sudah ter-merge; jalur tulis suppression live)
-> **Isi branch di atas base:** `69e59ca` (3I — migrasi 10 + pagar EXECUTE + dokumen, di-rebase) · commit-commit 3J (pencarian profil)
+> **Isi branch di atas base:** `69e59ca` (3I — migrasi 10 + pagar EXECUTE) · `6504645` (3J — pencarian) · `46d3978` (dokumentasi `docs/riwayat/`) · commit 3K (gap monitoring + jejak kegagalan). **Nol perubahan skema/DB di 3J & 3K.**
 > **Perubahan skema:** **nol di 3J.** Migrasi 10 (3I) sudah diterapkan; indeks yang dipakai pencarian sudah ada. **Nol tulis data** di sprint ini (pencarian baca-saja).
 > **JANGAN merge / buka PR ke `main` tanpa izin eksplisit.**
 >
@@ -74,6 +87,20 @@
 > `idx_master_customer_phone_unique`, `idx_master_customer_email_unique`) sudah ada —
 > diverifikasi di `pg_indexes` 2026-08-11. Pencarian dirancang **mengikuti** indeks yang
 > ada, dan desain tercepat kebetulan juga yang paling aman (sama-persis, bukan awalan).
+
+### Sprint 3K (kegagalan yang tidak meninggalkan jejak)
+| Perubahan | Sifat |
+|---|---|
+| **Investigasi gap `37,38,39`** (tanpa menebak): DB menerima tiap audit-write (repro tabel temp), suppression RPC dikesampingkan (`crm_suppression`=0, raise sebelum audit). **Cacat deterministik tak terbukti**; gap stabil, tak bertambah. Tak ada perbaikan dikarang | Investigasi |
+| `lib/crm/audit-gap.ts` (murni + test) — ringkas gap id; `id=4` known-legit; hitung "tak dikenal" | **Pagar** (test) |
+| Banner **"Daftar ini tidak lengkap"** di `/settings` — jumlah id hilang & artinya; `fetchAuditLog` kini mengembalikan `gap` (min/max/count seluruh log) | **MENGUBAH TAMPILAN** |
+| `lib/crm/failure-log.ts` — jejak kegagalan **PII-free** (hanya `code`/`status`) di **7 route** (500/503), mengikuti pola `login/actions.ts`. Kegagalan tak lagi hilang tanpa bekas | **BARU** |
+| SQL deteksi gap di `docs/PASCA-MERGE-monitoring-revert.md`; keputusan **K-21** (gap = sinyal, JANGAN reset sequence) di `docs/riwayat/KEPUTUSAN.md` | Dokumen |
+| V-7 tertutup di `docs/CEKLIS-verifikasi-live.md` (layar audit terbukti jalan; `id` 44–47) | Dokumen |
+| Test: 219 → **227** (+8 gap-summary; batas & bentuk produksi nyata) | **Pagar** (test) |
+
+> **Nol perubahan skema/DB/migrasi di 3K.** Tidak menulis `crm_audit_log` (hanya membaca
+> min/max/count). Sequence tak disentuh — verified masih `47`, gap `4,37,38,39` utuh.
 
 ## 2. Yang TIDAK berubah (batas keras sprint ini)
 - **Nol jalur tulis consent.** `crm_consent` masih baca-saja — belum ada kanal opt-in nyata untuk ditunjuk. Nol `INSERT` ke `crm_consent`.

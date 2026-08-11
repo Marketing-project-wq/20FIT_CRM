@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUserRole } from "@/lib/auth/current-role";
 import { isPermitted, shouldMaskContact, resolveGrant } from "@/lib/auth/roles";
 import { fetchConsentScreen, CONSENT_PAGE_SIZE } from "@/lib/crm/consent";
+import { logApiFailure } from "@/lib/crm/failure-log";
 
 export const dynamic = "force-dynamic";
 
@@ -57,7 +58,8 @@ export async function GET(request: NextRequest) {
       { consentPage, suppressionPage, pageSize: CONSENT_PAGE_SIZE },
       masked,
     );
-  } catch {
+  } catch (e) {
+    logApiFailure("/consent", "consent_query_failed", { code: (e as { code?: string })?.code });
     return NextResponse.json({ error: "query_failed" }, { status: 500 });
   }
 
@@ -78,6 +80,7 @@ export async function GET(request: NextRequest) {
     },
   });
   if (auditError) {
+    logApiFailure("/consent", "audit_write_failed", { code: auditError.code });
     return NextResponse.json(
       { error: "audit_failed", message: "Pembacaan ditolak: gagal mencatat audit (akuntabilitas)." },
       { status: 503 },

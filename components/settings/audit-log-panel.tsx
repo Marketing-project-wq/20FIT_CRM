@@ -32,6 +32,16 @@ interface AuditCounts {
   total: number;
 }
 
+interface AuditGap {
+  minId: number | null;
+  maxId: number | null;
+  count: number;
+  span: number;
+  missing: number;
+  knownLegit: number;
+  unexplained: number;
+}
+
 interface ApiResult {
   rows: AuditRow[];
   total: number;
@@ -39,6 +49,7 @@ interface ApiResult {
   pageSize: number;
   category: AuditCategory;
   counts: AuditCounts;
+  gap: AuditGap;
 }
 
 function formatTs(iso: string | null): string {
@@ -83,6 +94,42 @@ function RetentionNote() {
         Catatan: nilai filter yang tersimpan di <span className="font-mono">metadata</span> baris{" "}
         <span className="font-mono">list.viewed</span> (mis. kota) berasal dari <strong>ketikan
         pengguna</strong>, bukan data terkurasi — diperlakukan apa adanya dan dibatasi panjangnya.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * The id-gap banner — the ONLY visible trace of failed audited operations. A hole in the
+ * id sequence means an audit INSERT took its number but its row never committed (rolled
+ * back / cancelled / dropped). Shown whenever any id is missing, distinguishing the one
+ * documented benign gap (id=4) from unexplained holes = real failures.
+ */
+function GapNote({ gap }: { gap: AuditGap }) {
+  if (!gap || gap.missing <= 0 || gap.minId == null || gap.maxId == null) return null;
+  const alarm = gap.unexplained > 0;
+  return (
+    <div className={`${alarm ? "tint-red" : "tint-blue"} rounded-card p-4`}>
+      <div className="flex items-center gap-2">
+        <AlertTriangle className="h-4 w-4" aria-hidden />
+        <h3 className="font-display text-[13px] font-bold uppercase tracking-wide text-ink">
+          Daftar ini tidak lengkap — {gap.missing} nomor id tanpa baris
+        </h3>
+      </div>
+      <p className="mt-2 max-w-3xl font-body text-[12px] leading-relaxed text-ink-soft">
+        Sepanjang audit log, rentang id <span className="font-mono">{gap.minId}–{gap.maxId}</span>{" "}
+        ({gap.span.toLocaleString("id-ID")} nomor) hanya memuat{" "}
+        <span className="font-mono">{gap.count.toLocaleString("id-ID")}</span> baris.{" "}
+        <strong>{gap.missing}</strong> nomor tidak punya baris:{" "}
+        <strong>{gap.knownLegit}</strong> sah (artefak uji yang dihapus) dan{" "}
+        <strong className={alarm ? "text-ink" : ""}>{gap.unexplained}</strong> tak dikenal.
+      </p>
+      <p className="mt-2 max-w-3xl font-body text-[12px] leading-relaxed text-ink-soft">
+        Id memakai sequence: sebuah operasi teraudit yang <strong>gagal atau di-rollback</strong>{" "}
+        tetap mengambil nomornya lalu tak meninggalkan baris. Jadi tiap id yang hilang adalah{" "}
+        <strong>satu operasi teraudit yang gagal</strong> — barisnya yang seharusnya mencatatnya
+        justru yang tak pernah mendarat. {gap.unexplained > 0 && "Yang tak dikenal perlu ditelusuri di log Railway. "}
+        Sequence <strong>tidak pernah</strong> diisi ulang atau diatur ulang — itu menghapus satu-satunya bukti.
       </p>
     </div>
   );
@@ -186,6 +233,8 @@ export function AuditLogPanel() {
       </div>
 
       <RetentionNote />
+
+      {data?.gap && <GapNote gap={data.gap} />}
 
       {/* Category toggle (compliance-first default) + ratio over the current range */}
       <div className="flex flex-wrap items-center justify-between gap-3">

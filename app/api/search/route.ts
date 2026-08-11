@@ -5,6 +5,7 @@ import { getCurrentUserRole } from "@/lib/auth/current-role";
 import { canViewProfileList, shouldMaskContact, resolveGrant } from "@/lib/auth/roles";
 import { isSearchKind, prepareSearch } from "@/lib/crm/search";
 import { runProfileSearch } from "@/lib/crm/search-read";
+import { logApiFailure } from "@/lib/crm/failure-log";
 
 export const dynamic = "force-dynamic";
 
@@ -77,7 +78,8 @@ export async function POST(request: NextRequest) {
   let outcome;
   try {
     outcome = await runProfileSearch(admin, prepared, masked);
-  } catch {
+  } catch (e) {
+    logApiFailure("/search", "search_query_failed", { code: (e as { code?: string })?.code });
     return NextResponse.json({ error: "query_failed" }, { status: 500 });
   }
 
@@ -106,6 +108,7 @@ export async function POST(request: NextRequest) {
     },
   });
   if (auditError) {
+    logApiFailure("/search", "audit_write_failed", { code: auditError.code });
     return NextResponse.json(
       { error: "audit_failed", message: "Pencarian ditolak: gagal mencatat audit (akuntabilitas)." },
       { status: 503 },

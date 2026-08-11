@@ -11,6 +11,7 @@ import {
   type RevenueFilter,
 } from "@/lib/crm/audience";
 import { capFilterValue } from "@/lib/crm/audience-constants";
+import { logApiFailure } from "@/lib/crm/failure-log";
 
 export const dynamic = "force-dynamic";
 
@@ -84,8 +85,9 @@ export async function GET(request: NextRequest) {
   let result;
   try {
     result = await fetchAudience(admin, { page, pageSize, unit, segment, city, revenue }, masked);
-  } catch {
-    // Never leak DB internals to the client.
+  } catch (e) {
+    // Never leak DB internals to the client; leave a PII-free server trace.
+    logApiFailure("/audience", "list_query_failed", { code: (e as { code?: string })?.code });
     return NextResponse.json({ error: "query_failed" }, { status: 500 });
   }
 
@@ -129,6 +131,7 @@ export async function GET(request: NextRequest) {
     },
   });
   if (auditError) {
+    logApiFailure("/audience", "audit_write_failed", { code: auditError.code });
     return NextResponse.json(
       { error: "audit_failed", message: "Pembacaan ditolak: gagal mencatat audit (akuntabilitas)." },
       { status: 503 },

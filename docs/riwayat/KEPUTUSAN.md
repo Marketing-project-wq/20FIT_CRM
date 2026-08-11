@@ -151,3 +151,18 @@ Sprint 2. Segmentasi berbasis recency **tidak mungkin jujur** dengan data hari i
 LTV negatif (1 baris) dan `first_seen_at > created_at` (14 baris) ditampilkan di
 `/quality`. Remediasi data milik tim pemilik data.
 **Membalikkan:** keputusan tim.
+
+## K-21 · Gap id `crm_audit_log` adalah SINYAL, bukan cacat kosmetik
+**Sprint 3K.** `crm_audit_log.id` memakai sequence. Sebuah `INSERT` yang gagal atau
+di-rollback tetap **mengambil** nomornya lalu tak meninggalkan baris — jadi lubang di
+urutan id adalah **satu-satunya jejak** operasi teraudit yang gagal (barisnya yang
+seharusnya mencatatnya justru yang tak pernah mendarat). Ditemukan lewat gap `37,38,39`
+(di samping `id=4` yang sah dari uji purge 3A), di jendela pemakaian nyata `tifany@20fit.id`
+11 Agu 2026, dengan `profile.viewed` tetap 0.
+**Konsekuensi yang mengikat:** **JANGAN PERNAH** menjalankan `setval`/`ALTER SEQUENCE …
+RESTART`/mengisi ulang `crm_audit_log_id_seq`, dan jangan "merapikan" gap — itu menghapus
+satu-satunya bukti yang tersisa. Gap ditampilkan di layar audit `/settings` (banner
+"tidak lengkap") dan dipantau lewat SQL di `docs/PASCA-MERGE-monitoring-revert.md`.
+Kegagalan route kini juga meninggalkan jejak PII-free di log Railway
+(`lib/crm/failure-log.ts`), supaya gap berikutnya bisa ditelusuri, bukan hanya dihitung.
+**Membalikkan:** tidak ada.
