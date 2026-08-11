@@ -1,31 +1,32 @@
-# PR: Sprint 3G + 3H + 3I → main
+# PR: Sprint 3I + 3J → main
 
-> ## 🔒 SIKLUS INI MEMPERBAIKI LUBANG KEAMANAN YANG SUDAH LIVE
+> ## 🔎 PENCARIAN INILAH YANG MEMBUAT JALUR SUPPRESSION BISA DIPAKAI
 >
-> **Argumen terkuat untuk mendaratkan siklus ini, bukan menundanya lagi:** migrasi 10
-> menutup `crm_purge_audit_log` — fungsi `SECURITY DEFINER` yang menonaktifkan trigger
-> append-only lalu menghapus baris audit — yang `EXECUTE`-nya **terbuka ke `anon`** sejak
-> ia dibuat (Sprint 3A). Siapa pun pemegang anon key bisa memanggilnya tanpa login, tanpa
-> peran. **Migrasi 10 sudah diterapkan ke database dan berlaku TERLEPAS dari apakah kode
-> ini di-merge** — perbaikan keamanannya tidak menunggu deploy. Yang menunggu merge adalah
-> jalur tulis suppression (3H) yang tidak melindungi siapa pun selama masih di branch.
+> Jalur tulis suppression (3H) **sudah ter-merge (PR #5) dan di main** — tapi titik
+> masuknya adalah detail profil, dan **tak ada cara menemukan satu profil**. Tanpa
+> pencarian, staf yang ditelepon seseorang yang minta berhenti harus membuka halaman demi
+> halaman atau menyerah ke SQL Editor (melewati normalisasi, RBAC, dan audit). **Sprint 3J
+> menambahkan pencarian profil** — itulah yang mengubah suppression dari "ada tapi tak
+> terpakai" menjadi bisa diselesaikan tanpa meninggalkan aplikasi. Mendaratkan pencarian
+> bersama pengunci keamanan (3I) lebih masuk akal daripada membiarkan jalur tulis menganggur.
 >
-> ## ⛔ INI SIKLUS PERTAMA YANG MENULIS DATA
+> ## 🔒 3I MEMPERBAIKI LUBANG KEAMANAN YANG SUDAH LIVE (DB sudah ditutup)
 >
-> Semua sprint sebelumnya **baca-saja**: satu-satunya tulis adalah baris audit
-> append-only. Untuk semuanya, `git revert` cukup — kembalikan kode, selesai.
->
-> **Tidak lagi.** Sprint 3H membuka jalur tulis `crm_suppression`. Sebuah baris
-> suppression adalah **catatan permintaan orang sungguhan** — seseorang yang meminta
-> berhenti dihubungi. **Menghapus baris itu = menghubungi kembali orang yang sudah
-> minta berhenti.** Revert kode mengembalikan aplikasi; ia **tidak** dan **tidak boleh**
-> menghapus baris-baris itu. Lihat §4 (revert tiga tingkat) sebelum menyentuh apa pun.
+> Migrasi 10 menutup `crm_purge_audit_log` — fungsi `SECURITY DEFINER` yang menonaktifkan
+> trigger append-only lalu menghapus baris audit — yang `EXECUTE`-nya **terbuka ke `anon`**
+> sejak Sprint 3A. **Migrasi 10 sudah diterapkan ke database** (verified: `proacl =
+> {postgres, service_role}`); perbaikan keamanannya **tidak menunggu merge**. Yang di PR ini
+> adalah berkas migrasinya + pagar test + dokumen — supaya repo cocok dengan produksi.
 >
 > **Branch:** `claude/lanjutkan-pekerjaan-mno804`
-> **Base:** `main` @ `eff733c` (PR #4 — 3B–3F, sudah live & dipakai)
-> **Isi branch di atas base:** `9a7b296` + `ef0ea89` (3G) · `c63280a` + `15cb3f7` + `a0035d9` (3H) · commit-commit 3I (migrasi 10 + pagar + dokumen)
-> **⚠️ MENGUBAH SKEMA PRODUKSI:** migrasi 9 (dua fungsi tulis) **dan** migrasi 10 (cabut EXECUTE terbuka). **MENULIS data pelanggan:** baris suppression (3H). Aturan revert berbeda per hal — §4.
+> **Base:** `main` @ `3ac62b1` (PR #5 — 3G + 3H sudah ter-merge; jalur tulis suppression live)
+> **Isi branch di atas base:** `69e59ca` (3I — migrasi 10 + pagar EXECUTE + dokumen, di-rebase) · commit-commit 3J (pencarian profil)
+> **Perubahan skema:** **nol di 3J.** Migrasi 10 (3I) sudah diterapkan; indeks yang dipakai pencarian sudah ada. **Nol tulis data** di sprint ini (pencarian baca-saja).
 > **JANGAN merge / buka PR ke `main` tanpa izin eksplisit.**
+>
+> > Catatan konteks: 3G + 3H (jalur tulis suppression) **sudah di main lewat PR #5**. Bagian
+> > §3–§5 di bawah adalah **referensi operasional** untuk jalur yang kini live itu (bukti
+> > K-3, revert tiga tingkat, pemantauan) — tetap berlaku, tapi bukan lagi yang di-review PR ini.
 
 ## 1. Yang berubah, per bagian
 
@@ -57,6 +58,22 @@
 | README ledger diluruskan: 10 berkas repo → **11** entri ledger (migrasi 9 apply ganda), migrasi 10 ditambahkan, peringatan `db push` dibetulkan | Dokumen |
 | Sapuan `crm_*`: 4 objek, semua fungsi `SECURITY DEFINER` kini terkunci; fungsi trigger `crm_audit_log_no_mutate` dinilai aman (tak bisa dipanggil via RPC) | Verifikasi |
 | Test: 194 → **202** (+8 pagar EXECUTE) | **Pagar** (test) |
+
+### Sprint 3J (pencarian profil — membuat suppression bisa dipakai)
+| Perubahan | Sifat |
+|---|---|
+| `POST /api/search` — cari satu orang; gate `profile.view_list`; nama substring (trigram), telepon/email **sama persis** ternormalisasi; masking server-side | **BARU — BACA SAJA** |
+| Audit `search.performed` (operasional, dipangkas > 90 hari): `kind` + `result_count` + `target_id` bila hasil **tepat satu**. **Query TIDAK disimpan** (ia identitas orang) | **BARU** |
+| Pencarian di `/audience` di atas filter; telepon/email hasil-tunggal langsung ke profil; beda jelas "cari satu orang" (`search.performed`) vs "saring daftar" (`list.viewed`) | **MENGUBAH TAMPILAN** |
+| `lib/crm/search.ts` (murni: validasi bentuk per kind, min 3 huruf nama, cap 10 + `too_many`, tolak pola sapuan) + `lib/crm/search-read.ts` (server) | Kode |
+| `docs/PENCARIAN-exact-match.md` — kenapa telepon/email sama-persis & apa yang berubah bila diminta awalan | Dokumen |
+| Konsumen runtime **kedua** kanon 3B (`normalize.ts`) — setelah jalur tulis suppression | — |
+| Test: 202 → **219** (+16 pencarian: batas & penyalahgunaan; +1 aksi `search.performed` operasional) | **Pagar** (test) |
+
+> **Nol perubahan skema di 3J.** Indeks yang dipakai (`idx_master_customer_name_trgm`,
+> `idx_master_customer_phone_unique`, `idx_master_customer_email_unique`) sudah ada —
+> diverifikasi di `pg_indexes` 2026-08-11. Pencarian dirancang **mengikuti** indeks yang
+> ada, dan desain tercepat kebetulan juga yang paling aman (sama-persis, bukan awalan).
 
 ## 2. Yang TIDAK berubah (batas keras sprint ini)
 - **Nol jalur tulis consent.** `crm_consent` masih baca-saja — belum ada kanal opt-in nyata untuk ditunjuk. Nol `INSERT` ke `crm_consent`.
@@ -170,13 +187,26 @@ dijalankan dengan data oleh baris pertama ini.
 Log Railway: deploy hijau, `/health` (`env: configured`, `supabase: reachable`), prefix
 `NODE_ENV=production` utuh, nol lonjakan 500 sistemik di `/api/*`.
 
-## 6. Prasyarat & catatan merge
+## 6. Yang masih menggantung (status jujur)
+- **`profile.viewed` masih 0 dan `/settings` belum pernah dibuka** — dua verifikasi yang
+  menunggu **satu orang membuka satu halaman**, sudah beberapa sprint. Diangkat ke paling
+  atas `docs/CEKLIS-verifikasi-live.md` (V-6/V-7).
+- **Baris suppression pertama belum ada.** Jalur tulisnya kini **live** (3H, PR #5), tapi
+  praktis tak terjangkau tanpa pencarian — **itulah yang 3J tambahkan**. Setelah 3J deploy,
+  permintaan berhenti pertama bisa dicatat lewat cari → profil → suppression. Panduannya
+  siap di `docs/PERTAMA-suppression.md`; verifikasi baris pertama di §5c.
+- **Dua commit belum ter-merge** (3I + 3J). 3I mencocokkan repo dengan perbaikan keamanan
+  yang **sudah live** di DB; 3J membuat suppression yang **sudah live** bisa dipakai.
+  Membiarkannya di branch berarti: repo tak mencerminkan DB (3I), dan jalur tulis yang ada
+  tetap menganggur (3J).
+
+## 7. Prasyarat & catatan merge
 - **JANGAN merge / buka PR ke `main` tanpa izin eksplisit.** Push ke `main` memicu deploy
-  Railway ke sistem yang dipakai orang — dan kini deploy itu mengaktifkan jalur **tulis**.
-- Verifikasi produksi jalur tulis end-to-end (§5c) hanya bisa dilakukan **setelah deploy**
-  oleh orang dengan sesi login — sama seperti celah verifikasi sprint-sprint sebelumnya.
-  Yang bisa dibuktikan tanpa deploy sudah dibuktikan: atomik (§3, probe ROLLBACK), tipe,
-  lint, 194 test, build produksi.
-- Urutan deploy: **tak ada langkah pengurutan.** Migrasi 9 (fungsi) sudah dijalankan;
-  `crm_suppression` + `crm_user_role` sudah ada sejak Fase 2/3A. Kode ini deploy setelah
-  fungsinya ada.
+  Railway ke sistem yang dipakai orang.
+- **3J baca-saja, nol skema:** pencarian tak menulis data dan tak mengubah skema; revert =
+  `git revert` kode saja. **Migrasi 10 (3I) JANGAN direvert** (§4 Tingkat 0) — DB-nya sudah
+  ditutup. Jalur tulis suppression (3H) sudah di main; referensi operasionalnya di §3–§5.
+- Verifikasi end-to-end pencarian (gerbang, masking di UI, baris `search.performed`) hanya
+  bisa setelah deploy oleh sesi login — sama seperti celah verifikasi sebelumnya. Yang bisa
+  tanpa deploy sudah: tipe, lint, seluruh test, build produksi, dan kecocokan desain dengan
+  indeks nyata (`pg_indexes`).

@@ -15,6 +15,12 @@ describe("classifyAction (single source)", () => {
       expect(classifyAction(a)).toBe("operational");
     }
   });
+  it("the exact profile-search action is operational (purged after 90 days)", () => {
+    // Sprint 3J writes exactly this action name. Confirmed here (not assumed) so it can't
+    // silently land outside migration 8's allowlist; parity with the SQL stays enforced
+    // by retention-policy.parity.test.ts.
+    expect(classifyAction("search.performed")).toBe("operational");
+  });
   it("compliance = the permanently-excluded categories", () => {
     for (const a of ["consent.x", "suppression.x", "role.granted", "profile.deleted", "export.x", "retention.x"]) {
       expect(classifyAction(a)).toBe("compliance");
