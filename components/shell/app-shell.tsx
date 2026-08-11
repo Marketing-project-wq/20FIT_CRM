@@ -1,25 +1,51 @@
 import { cookies } from "next/headers";
 import { Sidebar } from "./sidebar";
+import { NAV_ITEMS } from "./nav";
 import { THEME_COOKIE, resolveTheme } from "@/lib/theme";
+import { getCurrentUserRole } from "@/lib/auth/current-role";
+import { canSeeNav } from "@/lib/auth/roles";
 
 /**
  * Application chrome: always-dark sidebar + light/dark content surface. The
  * content sits on the body's `--bg-from → --bg-to` gradient, which re-tints with
- * the theme. `activePath` is only for dev previews.
+ * the theme.
+ *
+ * Nav is filtered SERVER-SIDE by the RBAC matrix (canSeeNav). Only href STRINGS
+ * cross to the client Sidebar — icon components are not serializable and stay in the
+ * client. This is cosmetic only; every route + API still enforces its own guard.
+ * Fail-closed: no role -> only the dashboard shows.
+ *
+ * `activePath` is a dev-preview override for the active item. `showAllNav` bypasses
+ * RBAC filtering for the dev shell preview (which has no live session).
  */
-export function AppShell({
+export async function AppShell({
   userEmail,
   activePath,
+  showAllNav = false,
   children,
 }: {
   userEmail: string;
   activePath?: string;
+  showAllNav?: boolean;
   children: React.ReactNode;
 }) {
   const theme = resolveTheme(cookies().get(THEME_COOKIE)?.value);
+
+  const allowedHrefs = showAllNav
+    ? NAV_ITEMS.map((i) => i.href)
+    : await (async () => {
+        const role = await getCurrentUserRole();
+        return NAV_ITEMS.filter((i) => canSeeNav(role, i.href)).map((i) => i.href);
+      })();
+
   return (
     <div className="flex min-h-[100dvh]">
-      <Sidebar userEmail={userEmail} initialTheme={theme} activePath={activePath} />
+      <Sidebar
+        userEmail={userEmail}
+        initialTheme={theme}
+        activePath={activePath}
+        allowedHrefs={allowedHrefs}
+      />
       <main className="min-w-0 flex-1">
         <div className="mx-auto max-w-7xl px-6 py-8 md:px-10">{children}</div>
       </main>

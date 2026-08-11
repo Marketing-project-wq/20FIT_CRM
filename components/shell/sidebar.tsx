@@ -18,13 +18,19 @@ export function Sidebar({
   userEmail,
   initialTheme,
   activePath,
+  allowedHrefs,
 }: {
   userEmail: string;
   initialTheme: Theme;
   activePath?: string;
+  /** RBAC-filtered set of visible hrefs, computed server-side (canSeeNav). */
+  allowedHrefs: string[];
 }) {
   const livePath = usePathname();
   const pathname = activePath ?? livePath;
+
+  const allowed = new Set(allowedHrefs);
+  const items = NAV_ITEMS.filter((item) => allowed.has(item.href));
 
   const isActive = (href: string) =>
     href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/");
@@ -39,7 +45,7 @@ export function Sidebar({
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-2">
-        {NAV_ITEMS.map((item) => {
+        {items.map((item) => {
           const active = isActive(item.href);
           const Icon = item.icon;
           return (
