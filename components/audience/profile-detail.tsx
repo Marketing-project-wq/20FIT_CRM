@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Lock, HeartPulse } from "lucide-react";
+import { ArrowLeft, Lock, HeartPulse, Ban } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { SuppressionForm } from "@/components/consent/suppression-form";
 
 interface Profile {
   customer_id: string;
@@ -55,9 +57,10 @@ function Field({ label, children, mono }: { label: string; children: React.React
   );
 }
 
-export function ProfileDetail({ id }: { id: string }) {
+export function ProfileDetail({ id, canEditConsent }: { id: string; canEditConsent: boolean }) {
   const [data, setData] = useState<ApiResult | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "not_found" | "error">("loading");
+  const [suppressOpen, setSuppressOpen] = useState(false);
 
   useEffect(() => {
     const ac = new AbortController();
@@ -137,14 +140,33 @@ export function ProfileDetail({ id }: { id: string }) {
           </h1>
           <p className="mt-2 font-mono text-[12px] text-ink-faint">{p.customer_id}</p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {p.masked && (
             <Badge tone="amber" className="gap-1.5"><Lock className="h-3.5 w-3.5" /> Kontak disamarkan</Badge>
           )}
           {p.is_merged ? <Badge tone="neutral">Sudah di-merge</Badge> : null}
           {p.is_potential_duplicate ? <Badge tone="amber">Kemungkinan duplikat</Badge> : null}
+          {/* Write entry point — only for roles that may edit consent, and only when a
+              real (unmasked) identity exists to suppress. The API re-checks the gate. */}
+          {canEditConsent && !p.masked && (p.phone || p.email) && (
+            <Button size="sm" variant="outline" onClick={() => setSuppressOpen(true)}>
+              <Ban className="h-3.5 w-3.5" /> Catat permintaan berhenti
+            </Button>
+          )}
         </div>
       </header>
+
+      {canEditConsent && (
+        <SuppressionForm
+          mode="profile"
+          open={suppressOpen}
+          onOpenChange={setSuppressOpen}
+          customerId={p.customer_id}
+          phone={p.masked ? null : p.phone}
+          email={p.masked ? null : p.email}
+          personName={p.full_name}
+        />
+      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Kontak */}

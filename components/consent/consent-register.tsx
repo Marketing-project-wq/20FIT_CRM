@@ -1,8 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ShieldAlert, Ban, Lock } from "lucide-react";
+import { ShieldAlert, Ban, Lock, Undo2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { SuppressionForm } from "@/components/consent/suppression-form";
+import { LiftSuppressionDialog } from "@/components/consent/lift-dialog";
 
 interface ConsentRow {
   id: string;
@@ -151,6 +154,8 @@ export function ConsentRegister() {
   const [data, setData] = useState<ApiResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [recordOpen, setRecordOpen] = useState(false);
+  const [liftTarget, setLiftTarget] = useState<{ id: string; label: string } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const load = useCallback(async () => {
@@ -272,12 +277,17 @@ export function ConsentRegister() {
 
       {/* Suppression list */}
       <section className="space-y-3">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <h2 className="font-display text-[18px] font-extrabold uppercase tracking-wide text-ink">Daftar suppression</h2>
           <span className="font-mono text-[12px] text-ink-faint">crm_suppression</span>
           {suppression && suppression.rows.some((r) => r.identity_key?.includes("*")) && (
             <Badge tone="amber" className="gap-1.5"><Lock className="h-3.5 w-3.5" /> disamarkan</Badge>
           )}
+          {/* Direct write entry — someone phoned in / messaged to stop. The page gate
+              (consent.edit) already guards this whole screen; the API re-checks. */}
+          <Button size="sm" variant="outline" className="ml-auto" onClick={() => setRecordOpen(true)}>
+            <Ban className="h-3.5 w-3.5" /> Catat permintaan berhenti
+          </Button>
         </div>
         {loading && !data ? (
           <p className="font-body text-[14px] text-ink-soft">Memuat…</p>
@@ -297,6 +307,7 @@ export function ConsentRegister() {
                     <th className="px-4 py-3 font-bold">Alasan</th>
                     <th className="px-4 py-3 font-bold">Status</th>
                     <th className="px-4 py-3 font-bold">Dicatat</th>
+                    <th className="px-4 py-3 font-bold text-right">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="font-body text-[13px] text-ink">
@@ -307,6 +318,24 @@ export function ConsentRegister() {
                       <td className="px-4 py-3">{r.reason_code}</td>
                       <td className="px-4 py-3"><Badge tone={r.status === "active" ? "red" : "neutral"}>{r.status}</Badge></td>
                       <td className="px-4 py-3 font-mono text-[12px] text-ink-soft">{formatTs(r.created_at)}</td>
+                      <td className="px-4 py-3 text-right">
+                        {r.status === "active" ? (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() =>
+                              setLiftTarget({
+                                id: r.id,
+                                label: `${r.identity_kind} · ${r.identity_key ?? "—"}`,
+                              })
+                            }
+                          >
+                            <Undo2 className="h-3.5 w-3.5" /> Cabut
+                          </Button>
+                        ) : (
+                          <span className="font-mono text-[11px] text-ink-faint">—</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -319,8 +348,21 @@ export function ConsentRegister() {
       </section>
 
       <p className="font-mono text-[11px] text-ink-faint">
-        Baca saja · nol tombol tulis · dibaca via service role server-side · pembukaan halaman ini tercatat (list.viewed, crm_consent).
+        Suppression: catat &amp; cabut (atomik dengan audit, nol DELETE) · consent tetap baca-saja (menunggu kanal opt-in) ·
+        dibaca via service role server-side · pembukaan halaman ini tercatat (list.viewed, crm_consent).
       </p>
+
+      {/* Write path — direct entry (someone asked to stop) + per-row lift. */}
+      <SuppressionForm mode="direct" open={recordOpen} onOpenChange={setRecordOpen} onRecorded={load} />
+      {liftTarget && (
+        <LiftSuppressionDialog
+          open={liftTarget !== null}
+          onOpenChange={(o) => !o && setLiftTarget(null)}
+          suppressionId={liftTarget.id}
+          identityLabel={liftTarget.label}
+          onLifted={load}
+        />
+      )}
     </div>
   );
 }
