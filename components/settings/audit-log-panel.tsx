@@ -23,11 +23,22 @@ interface AuditRow {
   metadata: unknown;
 }
 
+type AuditCategory = "compliance" | "operational" | "all";
+
+interface AuditCounts {
+  compliance: number;
+  operational: number;
+  other: number;
+  total: number;
+}
+
 interface ApiResult {
   rows: AuditRow[];
   total: number;
   page: number;
   pageSize: number;
+  category: AuditCategory;
+  counts: AuditCounts;
 }
 
 function formatTs(iso: string | null): string {
@@ -68,6 +79,11 @@ function RetentionNote() {
         lama tidak berarti tidak ada yang terjadi. <strong>Fungsi purge belum dijadwalkan</strong>, jadi
         sampai hari ini belum ada satu baris pun yang benar-benar terpangkas.
       </p>
+      <p className="mt-2 max-w-3xl font-body text-[12px] leading-relaxed text-ink-soft">
+        Catatan: nilai filter yang tersimpan di <span className="font-mono">metadata</span> baris{" "}
+        <span className="font-mono">list.viewed</span> (mis. kota) berasal dari <strong>ketikan
+        pengguna</strong>, bukan data terkurasi — diperlakukan apa adanya dan dibatasi panjangnya.
+      </p>
     </div>
   );
 }
@@ -78,6 +94,10 @@ export function AuditLogPanel() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [applied, setApplied] = useState({ action: "", actorEmail: "", from: "", to: "" });
+  // Default view is COMPLIANCE-first: on open, the rows that justify this table's
+  // existence (role/consent/suppression/export/retention/profile.deleted) come first.
+  // Operational rows are one click away, never hidden.
+  const [category, setCategory] = useState<AuditCategory>("compliance");
   const [page, setPage] = useState(1);
 
   const [data, setData] = useState<ApiResult | null>(null);
@@ -95,6 +115,7 @@ export function AuditLogPanel() {
     const params = new URLSearchParams();
     params.set("page", String(page));
     params.set("pageSize", String(AUDIT_DEFAULT_PAGE_SIZE));
+    params.set("category", category);
     if (applied.action) params.set("action", applied.action);
     if (applied.actorEmail) params.set("actorEmail", applied.actorEmail);
     if (applied.from) params.set("from", applied.from);
@@ -116,7 +137,7 @@ export function AuditLogPanel() {
     } finally {
       if (!ac.signal.aborted) setLoading(false);
     }
-  }, [page, applied]);
+  }, [page, applied, category]);
 
   useEffect(() => {
     load();
@@ -133,6 +154,11 @@ export function AuditLogPanel() {
     setFrom("");
     setTo("");
     setApplied({ action: "", actorEmail: "", from: "", to: "" });
+    setCategory("compliance");
+    setPage(1);
+  };
+  const switchCategory = (c: AuditCategory) => {
+    setCategory(c);
     setPage(1);
   };
 
@@ -160,6 +186,39 @@ export function AuditLogPanel() {
       </div>
 
       <RetentionNote />
+
+      {/* Category toggle (compliance-first default) + ratio over the current range */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="inline-flex overflow-hidden rounded-sm border border-glass-border">
+          {([
+            ["compliance", "Kepatuhan"],
+            ["operational", "Operasional"],
+            ["all", "Semua"],
+          ] as [AuditCategory, string][]).map(([c, label]) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => switchCategory(c)}
+              className={`px-4 py-1.5 font-display text-[12px] font-bold uppercase tracking-wide transition-colors ${
+                category === c ? "bg-red text-white" : "text-ink-soft hover:bg-glass"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {data && (
+          <p className="font-mono text-[12px] text-ink-soft">
+            Dalam rentang ini:{" "}
+            <span className="text-ink">Kepatuhan {data.counts.compliance.toLocaleString("id-ID")}</span>
+            {" · "}
+            Operasional {data.counts.operational.toLocaleString("id-ID")}
+            {data.counts.other > 0 ? ` · Lain ${data.counts.other.toLocaleString("id-ID")}` : ""}
+            {" · total "}
+            {data.counts.total.toLocaleString("id-ID")}
+          </p>
+        )}
+      </div>
 
       {/* Filters */}
       <div className="flex flex-wrap items-end gap-3">

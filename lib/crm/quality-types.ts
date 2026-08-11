@@ -117,6 +117,12 @@ export const VERIFIED_ARTIFACTS = [
     detail:
       "1.242 profil tanpa segment (NULL) justru memiliki rata-rata lifetime value tertinggi. Ditampilkan apa adanya; tidak ada aturan yang “merapikan” ini.",
   },
+  {
+    key: "source_two_batches",
+    label: "“live_txn_ingest” adalah muatan batch, bukan feed hidup",
+    detail:
+      "master_customer datang sebagai DUA muatan batch, bukan satu impor dan bukan pipeline berkelanjutan: 20fit_data_import 81.178 baris (semua created_at 2026-04-20) dan live_txn_ingest 1.075 baris (semua created_at 2026-07-31 — satu instan, bukan sepekan). first_seen_at baris live_txn_ingest membentang Feb–Agu 2026 (tanggal transaksi yang di-backfill), tetapi keduanya DIMUAT sekali jalan. Jadi kartu “Profil terakhir bertambah: 31 Juli” = tanggal muatan batch terakhir, BUKAN pipeline yang telat — nama “live_txn_ingest” untuk sumber yang hanya berjalan sekali adalah label yang menyesatkan.",
+  },
   // NOTE: `phone_canonical_gap` sengaja DIHAPUS di Sprint 3B (2026-08-11). Temuan itu
   // sudah DIPERBAIKI — normalizePhoneID() kini menghasilkan `62…` tanpa `+`, cocok
   // dengan master_customer. Temuan yang sudah ditutup tidak boleh terus tampil di layar

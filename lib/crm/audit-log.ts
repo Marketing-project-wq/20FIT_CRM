@@ -29,6 +29,9 @@ export interface AuditLogRow {
   metadata: unknown;
 }
 
+/** Which retention class to restrict the list to. Default view is compliance-first. */
+export type AuditCategory = "compliance" | "operational" | "all";
+
 export interface AuditLogQuery {
   page: number;
   pageSize: number;
@@ -39,6 +42,17 @@ export interface AuditLogQuery {
   /** ISO date (inclusive) lower/upper bound on occurred_at. */
   dateFrom?: string | null;
   dateTo?: string | null;
+  /** Restrict to a retention class. Default is 'compliance' at the UI (see route). */
+  category?: AuditCategory;
+}
+
+/** Counts by retention class over the current range (action/actor/date filters,
+ *  IGNORING category + pagination) — this is the ratio the screen surfaces. */
+export interface AuditCounts {
+  compliance: number;
+  operational: number;
+  other: number;
+  total: number;
 }
 
 export interface AuditLogResult {
@@ -46,7 +60,16 @@ export interface AuditLogResult {
   total: number;
   page: number;
   pageSize: number;
+  category: AuditCategory;
+  counts: AuditCounts;
 }
+
+// PostgREST `.or()` patterns — MIRROR migration 8 / classifyAction exactly. `*` is the
+// PostgREST like wildcard (becomes SQL `%`).
+const COMPLIANCE_OR =
+  "action.like.consent.*,action.like.suppression.*,action.like.role.*,action.eq.profile.deleted,action.like.export.*,action.like.retention.*";
+const OPERATIONAL_OR =
+  "action.eq.profile.viewed,action.eq.list.viewed,action.like.search.*,action.like.login.*";
 
 export function clampAuditPageSize(n: number): number {
   if (!Number.isFinite(n) || n < 1) return AUDIT_DEFAULT_PAGE_SIZE;
@@ -58,6 +81,32 @@ function escapeLike(s: string): string {
   return s.replace(/[%_,]/g, (m) => `\\${m}`);
 }
 
+/** Apply the range filters (action / actor / date) shared by the list and the counts.
+ *  The Supabase filter builder is awkward to type generically, so `any` here mirrors
+ *  the existing pattern in quality.ts. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function applyRangeFilters(q: any, query: AuditLogQuery): any {
+  let out = q;
+  if (query.action) out = out.ilike("action", `${escapeLike(query.action)}%`);
+  if (query.actorEmail) out = out.ilike("actor_email", `%${escapeLike(query.actorEmail)}%`);
+  if (query.dateFrom) out = out.gte("occurred_at", query.dateFrom);
+  if (query.dateTo) out = out.lte("occurred_at", query.dateTo);
+  return out;
+}
+
+async function countWith(
+  admin: SupabaseClient,
+  query: AuditLogQuery,
+  orPattern: string | null,
+): Promise<number> {
+  let q = admin.from("crm_audit_log").select("id", { count: "exact", head: true });
+  q = applyRangeFilters(q, query);
+  if (orPattern) q = q.or(orPattern);
+  const { count, error } = await q;
+  if (error) throw error;
+  return count ?? 0;
+}
+
 export async function fetchAuditLog(
   admin: SupabaseClient,
   query: AuditLogQuery,
@@ -66,6 +115,7 @@ export async function fetchAuditLog(
   const pageSize = clampAuditPageSize(query.pageSize);
   const from = (page - 1) * pageSize;
   const to = from + pageSize - 1;
+  const category: AuditCategory = query.category ?? "all";
 
   let q = admin
     .from("crm_audit_log")
@@ -73,23 +123,30 @@ export async function fetchAuditLog(
       count: "exact",
     });
 
-  if (query.action) q = q.ilike("action", `${escapeLike(query.action)}%`);
-  if (query.actorEmail) q = q.ilike("actor_email", `%${escapeLike(query.actorEmail)}%`);
-  if (query.dateFrom) q = q.gte("occurred_at", query.dateFrom);
-  if (query.dateTo) q = q.lte("occurred_at", query.dateTo);
+  q = applyRangeFilters(q, query);
+  if (category === "compliance") q = q.or(COMPLIANCE_OR);
+  else if (category === "operational") q = q.or(OPERATIONAL_OR);
 
   q = q
     .order("occurred_at", { ascending: false, nullsFirst: false })
     .order("id", { ascending: false })
     .range(from, to);
 
-  const { data, count, error } = await q;
-  if (error) throw error;
+  // Ratio over the SAME range (ignoring category): compliance vs operational vs other.
+  const [listRes, compliance, operational, total] = await Promise.all([
+    q,
+    countWith(admin, query, COMPLIANCE_OR),
+    countWith(admin, query, OPERATIONAL_OR),
+    countWith(admin, query, null),
+  ]);
+  if (listRes.error) throw listRes.error;
 
   return {
-    rows: (data ?? []) as AuditLogRow[],
-    total: count ?? 0,
+    rows: (listRes.data ?? []) as AuditLogRow[],
+    total: listRes.count ?? 0,
     page,
     pageSize,
+    category,
+    counts: { compliance, operational, other: total - compliance - operational, total },
   };
 }

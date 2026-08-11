@@ -55,12 +55,17 @@ export async function GET(request: NextRequest) {
   const actorEmail = sp.get("actorEmail")?.trim() || null;
   const dateFrom = sp.get("from")?.trim() || null;
   const dateTo = sp.get("to")?.trim() || null;
+  const catParam = sp.get("category");
+  const category =
+    catParam === "compliance" || catParam === "operational" || catParam === "all"
+      ? catParam
+      : "all";
 
   const admin = createAdminClient();
 
   let result;
   try {
-    result = await fetchAuditLog(admin, { page, pageSize, action, actorEmail, dateFrom, dateTo });
+    result = await fetchAuditLog(admin, { page, pageSize, action, actorEmail, dateFrom, dateTo, category });
   } catch {
     return NextResponse.json({ error: "query_failed" }, { status: 500 });
   }

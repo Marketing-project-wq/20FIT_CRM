@@ -125,12 +125,15 @@ export function DashboardContent() {
             nothing to check. */}
         <StatCard label="Workflow aktif" value={DASH} hint="belum ada tabel workflow" />
         {/* Replaces the old "Profil baru · 7 hari": that window reads 0 forever because
-            master_customer is a one-time import (created_at ends 31 Jul 2026), not a
-            live feed. Data freshness is the honest, useful fact instead. */}
+            master_customer arrived as TWO batch loads (created_at is a single instant per
+            source: 20fit_data_import 2026-04-20, live_txn_ingest 2026-07-31), not a live
+            feed. This date is the last BATCH LOAD, not a lagging pipeline — the correction
+            matters: "pipeline 11 days late" would send someone hunting a feed that never
+            existed. See the /quality finding. */}
         <StatCard
           label="Profil terakhir bertambah"
           value={freshnessValue}
-          hint="impor satu kali — bukan feed hidup; ingestion belum jalan"
+          hint="tanggal muatan batch terakhir (2 muatan: 20 Apr & 31 Jul 2026) — bukan feed berkelanjutan"
         />
       </section>
     </div>
