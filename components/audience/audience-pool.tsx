@@ -14,6 +14,7 @@ import {
 // Row shape mirrors lib/crm/audience.ts AudienceRow (phone/email already masked
 // server-side when `masked`). We never receive customer_id — not a display column.
 interface Row {
+  customer_id: string;
   full_name: string | null;
   phone: string | null;
   email: string | null;
@@ -312,9 +313,16 @@ export function AudiencePool() {
                 </td>
               </tr>
             ) : (
-              rows.map((r, i) => (
-                <tr key={firstRow + i} className="border-b border-glass-border last:border-0 hover:bg-glass">
-                  <td className="px-4 py-3">{r.full_name ? r.full_name : <Empty />}</td>
+              rows.map((r) => (
+                <tr key={r.customer_id} className="border-b border-glass-border last:border-0 hover:bg-glass">
+                  <td className="px-4 py-3">
+                    <Link
+                      href={`/audience/${r.customer_id}`}
+                      className="font-semibold text-ink underline decoration-glass-border underline-offset-2 hover:decoration-red"
+                    >
+                      {r.full_name ? r.full_name : "(tanpa nama)"}
+                    </Link>
+                  </td>
                   <td className="px-4 py-3 font-mono text-[13px]">{r.phone ? r.phone : <Empty />}</td>
                   <td className="px-4 py-3 font-mono text-[13px]">{r.email ? r.email : <Empty />}</td>
                   <td className="px-4 py-3">{r.city ? r.city : <Empty />}</td>
@@ -374,8 +382,9 @@ export function AudiencePool() {
       </div>
 
       <p className="font-mono text-[11px] text-ink-faint">
-        Baca saja · nol tombol ekspor/edit/hapus · setiap pembukaan daftar tercatat di audit log
-        (list.viewed) · kontak disamarkan di server untuk peran analyst.
+        Baca saja · nol tombol ekspor/edit/hapus · klik nama untuk membuka profil (tercatat
+        sebagai profile.viewed) · setiap pembukaan daftar tercatat (list.viewed) · kontak
+        disamarkan di server untuk peran analyst.
       </p>
     </div>
   );

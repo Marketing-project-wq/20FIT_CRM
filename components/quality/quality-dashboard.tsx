@@ -298,7 +298,7 @@ export function QualityDashboard() {
 
           <Panel
             title="Temuan yang tidak bisa dihitung live"
-            caption={`Tiga hal berikut sudah diverifikasi langsung ke database pada ${ARTIFACTS_VERIFIED_ON}, tetapi tidak bisa dihitung ulang lewat API baca yang dipakai halaman ini (tidak ada perbandingan antar-kolom maupun regex). Angkanya statis dan sengaja diberi tanggal — jangan dibaca sebagai angka hari ini.`}
+            caption={`Hal-hal berikut sudah diverifikasi langsung ke database pada ${ARTIFACTS_VERIFIED_ON}, tetapi tidak bisa dihitung ulang lewat API baca yang dipakai halaman ini (tidak ada perbandingan antar-kolom maupun regex). Angkanya statis dan sengaja diberi tanggal — jangan dibaca sebagai angka hari ini.`}
           >
             <ul className="space-y-3.5">
               {VERIFIED_ARTIFACTS.map((a) => (
@@ -317,7 +317,7 @@ export function QualityDashboard() {
 
           <p className="font-mono text-[11px] text-ink-faint">
             Dihitung {new Date(data.computedAt).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })} WIB
-            · agregat saja, tidak ada baris individual yang dibaca · setiap pembukaan halaman tercatat di audit
+            · agregat saja, tidak ada baris individual yang dibaca · agregat tetap tanpa parameter pengguna — tidak diaudit
           </p>
         </>
       )}

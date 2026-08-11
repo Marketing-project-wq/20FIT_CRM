@@ -11,39 +11,47 @@ export const dynamic = "force-dynamic";
  * Data-quality snapshot API. Aggregates only — this endpoint can never return an
  * individual profile.
  *
- * Enforcement mirrors /api/audience exactly, in the same order, all server-side:
+ * Enforcement, all server-side:
  *   1. Signed in -> else 401.
  *   2. Role resolved server-side via the service role; the client is never trusted.
  *   3. FAIL-CLOSED on profile.view_list. Gating quality on the SAME action the
  *      audience list uses is deliberate — canSeeNav("/quality") already resolves to
- *      canViewProfileList, and a menu item that is visible but 403s is a bug. If the
- *      PRD later gives quality its own matrix row, this moves with it.
+ *      canViewProfileList, and a menu item that is visible but 403s is a bug.
  *   4. NO masking step, and that is not an omission: fetchQualitySnapshot runs every
- *      query with head:true, so no phone, email or name is ever read. There is
- *      nothing to mask.
- *   5. Every successful read writes an audit row. If that write fails we REFUSE to
- *      serve (503) — an unlogged read of customer data is not allowed here either.
+ *      query with head:true, so no phone, email or name is ever read. Nothing to mask.
  *
- * WHY THE AUDIT ACTION IS `list.viewed` AND NOT `quality.viewed`:
- * migration 8 (crm_purge_audit_log) purges on an ALLOWLIST of exact operational
- * actions — profile.viewed, list.viewed, search.*, login.* — and permanently
- * protects the compliance categories. A brand-new `quality.viewed` would sit in
- * NEITHER set: never purged, never protected, silently accumulating forever. Reusing
- * the allowlisted action keeps retention correct without touching the diverged
- * migration ledger; `metadata.view = "quality"` is what distinguishes it. Renaming
- * this action means editing migration 8's allowlist first.
+ * ─────────────────────────────────────────────────────────────────────────────────
+ * NO AUDIT ROW IS WRITTEN HERE — and that is the RULE, not an oversight.
+ *
+ *   Audit is mandatory when a response contains INDIVIDUAL ROWS, or when the
+ *   aggregate is SHAPED BY USER-SUPPLIED PARAMETERS. A fixed, parameter-free
+ *   aggregate is NOT audited.
+ *
+ * Audit answers "who looked at whose data". A fixed count has no "whose" on its
+ * object — the row would answer nothing, and would only add volume that migration 8
+ * must later purge. This endpoint takes ZERO parameters from the client and returns
+ * only counts, so it earns no audit row. (Contrast /api/audience: individual rows +
+ * user filters -> mandatory audit; and the audit-log screen at /api/audit, same.)
+ *
+ * ⚠️  WARNING TO THE NEXT PERSON — READ BEFORE ADDING A FILTER HERE:
+ * The moment this endpoint accepts ANY parameter from the client (a unit filter, a
+ * city, a date range — anything that lets the caller narrow the aggregate), the count
+ * can be squeezed until it points at one person, and it STOPS being a plain aggregate.
+ * At that instant audit becomes MANDATORY again: write a `list.viewed` row
+ * (target_table = 'master_customer', NEVER a new action name — migration 8 purges on
+ * an exact allowlist) and refuse to serve (503) if that write fails, exactly as
+ * /api/audience does. Do not add a filter and leave this comment behind.
+ * ─────────────────────────────────────────────────────────────────────────────────
  *
  * There is no POST/PUT/DELETE and no export path: read-only by construction.
  */
 export async function GET() {
   // 1. Session
   let userId: string | null = null;
-  let userEmail: string | null = null;
   try {
     const supabase = createClient();
     const { data } = await supabase.auth.getUser();
     userId = data.user?.id ?? null;
-    userEmail = data.user?.email ?? null;
   } catch {
     userId = null;
   }
@@ -70,36 +78,12 @@ export async function GET() {
 
   const admin = createAdminClient();
 
-  let snapshot;
   try {
-    snapshot = await fetchQualitySnapshot(admin);
+    const snapshot = await fetchQualitySnapshot(admin);
+    // No audit write: fixed parameter-free aggregate (see the rule above).
+    return NextResponse.json(snapshot, { headers: { "Cache-Control": "no-store" } });
   } catch {
     // Never leak DB internals to the client.
     return NextResponse.json({ error: "query_failed" }, { status: 500 });
   }
-
-  // 5. Mandatory audit. An unlogged read is not served.
-  const { error: auditError } = await admin.from("crm_audit_log").insert({
-    actor_id: userId,
-    actor_email: userEmail,
-    action: "list.viewed",
-    target_table: "master_customer",
-    summary: `Dasbor kualitas data dibuka (agregat ${snapshot.total} profil, tanpa membaca baris individual).`,
-    // AGGREGATE ONLY. Nothing here identifies a customer, by construction.
-    metadata: {
-      view: "quality",
-      total: snapshot.total,
-      aggregate_only: true,
-    },
-  });
-  if (auditError) {
-    return NextResponse.json(
-      { error: "audit_failed", message: "Pembacaan ditolak: gagal mencatat audit (akuntabilitas)." },
-      { status: 503 },
-    );
-  }
-
-  return NextResponse.json(snapshot, {
-    headers: { "Cache-Control": "no-store" },
-  });
 }

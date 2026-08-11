@@ -77,11 +77,37 @@ Two related things changed:
   the `.tint-*` utilities are the only working options.
 
 `/quality` is gated on `profile.view_list`, the same action `canSeeNav("/quality")`
-already resolves to, and writes an audit row per view. The audit action is
-`list.viewed` with `metadata.view = "quality"` — **not** a new `quality.viewed` —
-because migration 8 purges on an exact allowlist, and a new action would be neither
-purged nor compliance-protected, accumulating silently forever. Renaming it means
-editing migration 8's allowlist first.
+already resolves to. It is **not** audited — see the audit rule below.
+
+## When a read is audited
+
+There is ONE rule, and it is the same for every read endpoint:
+
+> **Audit is mandatory when a response contains INDIVIDUAL ROWS, or when the
+> aggregate is SHAPED BY USER-SUPPLIED PARAMETERS. A fixed, parameter-free aggregate
+> is not audited.**
+
+Audit answers *"who looked at whose data"*. A fixed count has no "whose" on its
+object, so a row would answer nothing and only add volume for migration 8 to purge.
+But the moment a caller can narrow an aggregate, the count can be squeezed until it
+points at one person — at which point it stops being an aggregate and audit is
+required again.
+
+| Endpoint | Individual rows? | User params? | Audited |
+|---|---|---|---|
+| `/api/audience` (list) | yes | yes (filters) | **yes** — `list.viewed`, `master_customer` |
+| `/api/audience/[id]` (detail) | yes | yes (id) | **yes** — `profile.viewed`, `target_id` |
+| `/api/audit` (audit-log screen) | yes | yes (filters) | **yes** — `list.viewed`, `crm_audit_log` |
+| `/api/quality` | no (counts) | no | **no** |
+| `/api/dashboard` | no (counts) | no | **no** |
+
+Every audit row reuses an action name already on migration 8's exact purge allowlist
+(`list.viewed`, `profile.viewed`) — **never** a new name like `quality.viewed` or
+`audit.viewed`, which would be neither purged nor compliance-protected and would
+accumulate forever. `/api/quality` and `/api/dashboard` each carry a warning: if a
+client-driven filter is ever added, audit becomes mandatory again, and the warning
+sits in the file the person adding the filter will read. This rule is reversible — but
+reverse it in **both** aggregate endpoints, never leave two answers.
 
 ## Stack
 
@@ -184,9 +210,12 @@ Brand logos live in `public/brand/` — currently **placeholders**; see
 
 ```
 app/
-  (app)/            authenticated shell + dashboard + audience + quality + placeholders
-  api/audience/     read-only audience pool (RBAC + server-side masking + audit)
-  api/quality/      read-only data-quality aggregates (RBAC + audit, counts only)
+  (app)/            authenticated shell: dashboard + audience (list + [id] detail)
+                    + quality + settings (audit log + roles) + placeholders
+  api/audience/     read-only audience list + [id] detail (RBAC + masking + audit)
+  api/quality/      read-only data-quality aggregates (RBAC, counts only, no audit)
+  api/dashboard/    read-only KPI aggregates (RBAC, counts only, no audit)
+  api/audit/        read-only audit-log (audit.view gate, paginated, self-audited)
   login/            dark login screen + sign-in server action
   logout/           sign-out route
   health/           liveness + Supabase reachability
@@ -197,8 +226,11 @@ components/
   shell/            sidebar, app shell, theme toggle, nav
   brand/            BrandLogo
   dashboard/        stat card + dashboard content
+  audience/         audience pool + profile detail
+  quality/          data-quality dashboard
+  settings/         roles panel + audit-log panel
 lib/
-  crm/              normalize / mask / audience read layer / quality aggregates
+  crm/              normalize / mask / audience + profile / quality / audit-log / dashboard
   auth/             RBAC matrix, role resolution, server guards
   supabase/         client / server / admin / middleware helpers
   theme.ts          theme cookie helpers

@@ -12,9 +12,16 @@ export const dynamic = "force-dynamic";
  * profile. Gated on profile.view_list, the same action as the other read screens, so
  * a role without list access gets 403 and the UI shows `—` cards instead of numbers.
  *
- * No masking (nothing individual is read) and no audit (aggregate-only landing page;
- * see lib/crm/dashboard.ts). Server-side by construction — the client never queries
- * the database, it fetches this handler.
+ * NO AUDIT ROW, by the project rule (see /api/quality for the full statement and the
+ * README): audit is mandatory only when a response contains individual rows OR when
+ * the aggregate is shaped by user-supplied parameters. This endpoint takes ZERO client
+ * parameters and returns only counts, so it earns no audit row — a fixed count has no
+ * "whose" to record, and would only add volume for migration 8 to purge. If this ever
+ * gains a client-driven filter, audit becomes mandatory (write `list.viewed`, refuse
+ * on failure), exactly as /api/audience.
+ *
+ * No masking either (nothing individual is read). Server-side by construction — the
+ * client never queries the database, it fetches this handler.
  */
 export async function GET() {
   let userId: string | null = null;

@@ -1,0 +1,99 @@
+import { NextResponse, type NextRequest } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { getCurrentUserRole } from "@/lib/auth/current-role";
+import {
+  canViewProfileList,
+  shouldMaskContact,
+  isPermitted,
+  resolveGrant,
+} from "@/lib/auth/roles";
+import { fetchProfileById, isUuid } from "@/lib/crm/audience";
+
+export const dynamic = "force-dynamic";
+
+/**
+ * Single-profile detail. Returns ONE individual row and is keyed by a user-supplied
+ * id, so by the project audit rule it MUST audit: one `profile.viewed` row per open,
+ * target_id = customer_id. An unlogged read is refused (503).
+ *
+ * Enforcement, all server-side:
+ *   1. Signed in -> 401.
+ *   2. FAIL-CLOSED on profile.view_list (to open a row you must be allowed the list).
+ *   3. Masking of phone/email for any role without profile.view_contact — same server
+ *      rule as the list; the real value never reaches the browser.
+ *   4. Unknown / malformed id -> 404, IDENTICAL to "exists but you can't see it would
+ *      never happen here" — there is exactly one 404 shape, so this endpoint cannot be
+ *      used to enumerate which ids exist.
+ *   5. Health flags are gated on profile.view_health SEPARATELY (super_admin,
+ *      crm_manager) — but master_customer has NO health column, so even a permitted
+ *      viewer is told "no data source", never a blank that reads as "healthy".
+ */
+export async function GET(_request: NextRequest, { params }: { params: { id: string } }) {
+  let userId: string | null = null;
+  let userEmail: string | null = null;
+  try {
+    const supabase = createClient();
+    const { data } = await supabase.auth.getUser();
+    userId = data.user?.id ?? null;
+    userEmail = data.user?.email ?? null;
+  } catch {
+    userId = null;
+  }
+  if (!userId) {
+    return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  }
+
+  const role = await getCurrentUserRole();
+  if (!canViewProfileList(role)) {
+    return NextResponse.json(
+      { error: "forbidden", decision: resolveGrant(role, "profile.view_list") },
+      { status: 403 },
+    );
+  }
+
+  const id = params.id;
+  // Malformed id -> the SAME 404 as a non-existent one (no enumeration signal).
+  if (!isUuid(id)) {
+    return NextResponse.json({ error: "not_found" }, { status: 404 });
+  }
+
+  const masked = shouldMaskContact(role);
+  const admin = createAdminClient();
+
+  let profile;
+  try {
+    profile = await fetchProfileById(admin, id, masked);
+  } catch {
+    return NextResponse.json({ error: "query_failed" }, { status: 500 });
+  }
+  if (!profile) {
+    return NextResponse.json({ error: "not_found" }, { status: 404 });
+  }
+
+  // Mandatory audit — individual row. Refuse to serve if it can't be logged.
+  const { error: auditError } = await admin.from("crm_audit_log").insert({
+    actor_id: userId,
+    actor_email: userEmail,
+    action: "profile.viewed",
+    target_table: "master_customer",
+    target_id: profile.customer_id,
+    summary: `Profil dibuka${masked ? " (kontak disamarkan)" : ""}.`,
+    // NON-PII: identity is carried by target_id; only view context here.
+    metadata: { view: "profile_detail", masked },
+  });
+  if (auditError) {
+    return NextResponse.json(
+      { error: "audit_failed", message: "Pembacaan ditolak: gagal mencatat audit (akuntabilitas)." },
+      { status: 503 },
+    );
+  }
+
+  // Health section is gated structurally, even though there is no source to show.
+  const canViewHealth = isPermitted(role, "profile.view_health");
+
+  return NextResponse.json(
+    { profile, canViewHealth },
+    { headers: { "Cache-Control": "no-store" } },
+  );
+}
