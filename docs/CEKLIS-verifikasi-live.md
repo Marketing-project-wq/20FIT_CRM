@@ -23,6 +23,34 @@ select count(*) as audit_before from crm_audit_log;
 
 ---
 
+## ⭐ MULAI DARI SINI — dua verifikasi yang sudah menunggu dua sprint
+
+Per `crm_audit_log` (11 Agu 2026): `/audience` dan `/consent` **sudah terbukti jalan di
+produksi**. Dua layar berikut **belum pernah dibuka satu kali pun** — masing-masing hanya
+butuh **satu orang membuka satu halaman**. Prioritas tertinggi; detail penuh di V-6/V-7
+bawah, ringkasnya:
+
+1. **Detail profil menulis `profile.viewed` PERTAMA.** Buka `/audience`, klik satu nama.
+   ```sql
+   select id, actor_email, action, target_id, occurred_at
+   from crm_audit_log where action='profile.viewed' order by id desc limit 1;
+   -- Harus muncul 1 baris, target_id = UUID profil. Hari ini jumlahnya 0.
+   ```
+2. **Layar audit `/settings` menulis `list.viewed`/`crm_audit_log`.** Buka `/settings`
+   (peran `audit.view`).
+   ```sql
+   select id, actor_email, action, target_table, occurred_at
+   from crm_audit_log where action='list.viewed' and target_table='crm_audit_log'
+   order by id desc limit 1;
+   -- Harus muncul 1 baris, aktor = email Anda, tepat setelah membuka /settings.
+   ```
+
+> **Jangan salah hitung `/` dan `/quality`.** Keduanya **sengaja tidak menulis audit**
+> (aturan 3E). **Nol baris dari keduanya BUKAN bukti mereka jalan** — buktinya hanya log
+> Railway atau mata yang melihat layarnya. (Diulang di §akhir.)
+
+---
+
 ## 1. Dashboard `/` — aturan `0` vs `—`
 
 Buka `/`. Harus tampak empat kartu:

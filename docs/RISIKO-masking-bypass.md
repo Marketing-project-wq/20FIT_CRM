@@ -107,3 +107,7 @@ artinya bila salinan mentah audiensnya bisa ditarik tanpa kontrol di sebelahnya.
 
 Semua di atas adalah keputusan tim (Fase 0). Dokumen ini hanya menaruh fakta dan
 opsinya di atas meja.
+
+---
+
+> **Konteks lintas-sprint:** temuan `docs/riwayat/TEMUAN.md` **T-02** (kontrol dilewati, bukan ditembus) & kesalahan **S-01** (RLS-OFF bukan temuan baru).

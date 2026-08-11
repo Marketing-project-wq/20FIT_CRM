@@ -9,6 +9,19 @@ segmentation and marketing automation for the Marketing Division.
 
 Full spec: `PRD — 20FIT Audience Data & CRM System v1.1`.
 
+> ## 📚 Project history — read before changing a "warning" comment
+>
+> `docs/riwayat/` records why this system is the way it is: every sprint's prompt,
+> the decisions taken (`KEPUTUSAN.md`) and **what would reverse each one**, the
+> findings and self-corrections (`TEMUAN.md`), the database facts with dates
+> (`FAKTA-DATA.md`), and the sprint/commit/ledger timeline (`LINIMASA.md`).
+>
+> **Open it before you touch anything whose code comment reads like a warning** — a
+> canon (`normalize.ts`), a `revoke`, a `NODE_ENV=production` prefix, an "exact match
+> only". The reason the warning exists is a decision in `KEPUTUSAN.md`; changing the
+> code without reading it is how a rule gets broken silently instead of on purpose.
+> The two big warning blocks below each map to a decision there (K-18, ledger).
+
 > ## ⚠️ MANDATORY DEPLOY ORDER — RBAC fails closed
 >
 > 1. **Run the `crm_*` migrations** (`supabase/migrations/`).
@@ -26,41 +39,44 @@ Full spec: `PRD — 20FIT Audience Data & CRM System v1.1`.
 
 > ## ⚠️ Migration ledger diverged — do NOT run `supabase db push`
 >
-> All seven Sprint 2 migrations were applied to `cpvzwqptzcxnwzfzgrmt` via the Supabase
-> MCP `apply_migration` (one per review gate). Six went in on 2026-08-10; migration 3
-> (`crm_consent`) was held for legal sign-off and applied on **2026-08-11 (Sprint 3F)**
-> once legal cleared it. That path stamps its **own** ledger version, which does **not**
-> match the repo file-name timestamps.
+> Every CRM migration was applied to `cpvzwqptzcxnwzfzgrmt` via the Supabase MCP
+> `apply_migration` (one per review gate), which stamps its **own** ledger version that
+> does **not** match the repo file-name timestamp. Full map below — verified against
+> `supabase_migrations.schema_migrations` on 2026-08-11.
 >
-> | Repo file (prefix) | Ledger version | Ledger name |
-> |---|---|---|
-> | `…074534_create_crm_user_role` | `20260810125856` | `create_crm_user_role` |
-> | `…074535_create_crm_audit_log` | `20260810131751` | `create_crm_audit_log` |
-> | `…074536_create_crm_consent` | `20260811072232` | `create_crm_consent` |
-> | `…074537_create_crm_suppression` | `20260810132715` | `create_crm_suppression` |
-> | `…074538_create_crm_profile_demographic` | `20260810133334` | `create_crm_profile_demographic` |
-> | `…074539_create_crm_profile_behavior` | `20260810133751` | `create_crm_profile_behavior` |
-> | `…074540_create_crm_profile_scores` | `20260810134736` | `create_crm_profile_scores` |
+> | # | Repo file (prefix) | Ledger version(s) | Ledger name |
+> |---|---|---|---|
+> | 1 | `…074534_create_crm_user_role` | `20260810125856` | `create_crm_user_role` |
+> | 2 | `…074535_create_crm_audit_log` | `20260810131751` | `create_crm_audit_log` |
+> | 3 | `…074536_create_crm_consent` | `20260811072232` | `create_crm_consent` |
+> | 4 | `…074537_create_crm_suppression` | `20260810132715` | `create_crm_suppression` |
+> | 5 | `…074538_create_crm_profile_demographic` | `20260810133334` | `create_crm_profile_demographic` |
+> | 6 | `…074539_create_crm_profile_behavior` | `20260810133751` | `create_crm_profile_behavior` |
+> | 7 | `…074540_create_crm_profile_scores` | `20260810134736` | `create_crm_profile_scores` |
+> | 8 | `…090000_create_crm_purge_audit_log` | `20260811034942` | `create_crm_purge_audit_log` |
+> | 9 | `…100000_create_crm_record_suppression` | `20260811081711` **+** `20260811081920` | `create_crm_record_suppression` (×2) |
+> | 10 | `…110000_lock_crm_purge_audit_log_execute` | `20260811085420` | `lock_crm_purge_audit_log_execute` |
 >
-> (Migration 8, `…090000_create_crm_purge_audit_log`, was added later and is applied too:
-> ledger `20260811034942`.)
+> **Count reconciliation: 10 repo files → 11 CRM ledger entries.** The extra entry is
+> migration **9**, applied **twice** under the same name (Sprint 3H). The first apply left
+> Supabase's default `EXECUTE` grant to `anon`/`authenticated` in place (a `revoke … from
+> public` does **not** remove explicit per-role grants); the second apply carried the
+> corrected `revoke … from public, anon, authenticated`. `create or replace` is idempotent,
+> so both stamps point at the same two functions — the repo file is the canonical full
+> definition and re-running it on a fresh DB reaches the same end state in one pass. No
+> other migration is duplicated.
 >
-> **Migration 9 (Sprint 3H) — first WRITE path:** `…100000_create_crm_record_suppression`
-> creates two `SECURITY DEFINER` functions (`crm_record_suppression`, `crm_lift_suppression`)
-> — no new table. Applied 2026-08-11, ledger version `20260811081711`
-> (`create_crm_record_suppression`; again the stamp ≠ file-name timestamp — the eighth time).
-> It was applied **twice** under the same name: the first apply left Supabase's default
-> `EXECUTE` grant to `anon`/`authenticated` in place (a `revoke … from public` does not
-> remove explicit role grants), so a second apply of the corrected `revoke … from public,
-> anon, authenticated` closed it. Both functions now grant `EXECUTE` to `service_role`
-> only. The repo file is the canonical full definition; re-running it on a fresh DB
-> yields the same end state in one pass.
+> **Migration 8 is historical and is NOT edited.** Its `EXECUTE` was left open to
+> `anon`/`authenticated` (the Supabase default); migration **10** revokes it — a separate
+> file on purpose, so migration 8 stays a faithful record. See
+> `docs/RISIKO-rpc-execute-terbuka.md`. Migration 10 must NOT be reverted (that reopens the
+> hole).
 >
 > **Do NOT run `supabase db push` against this project until the ledger and repo are
-> reconciled.** No repo file-name timestamp exists in the ledger, so the CLI would
-> treat all seven repo migrations (plus migrations 8 and 9) as unapplied and try to run
-> them all — re-running the now-**seven** live tables, which fail as "already exists". Run
-> any further migration one-by-one via a reviewed path, not `db push`.
+> reconciled.** No repo file-name timestamp exists in the ledger, so the CLI would treat
+> all **10** repo migrations as unapplied and try to run them all — re-creating the seven
+> live tables + re-defining the live functions, failing as "already exists". Run any
+> further migration one-by-one via a reviewed path (`apply_migration`), not `db push`.
 
 ## Data-quality screen (`/quality`)
 

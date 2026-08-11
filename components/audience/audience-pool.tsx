@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Lock, AlertTriangle, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { ProfileSearch } from "@/components/audience/profile-search";
 import {
   SEGMENT_NULL,
   AUDIENCE_UNITS,
@@ -214,8 +215,17 @@ export function AudiencePool() {
 
       <QualityBanner />
 
-      {/* Filters. No segment builder, no export, no edit — evaluation only. */}
-      <div className="flex flex-wrap items-center gap-3">
+      {/* Find ONE person (search.performed). Above the filters, visually separate. */}
+      <ProfileSearch />
+
+      {/* Filter the LIST (list.viewed). Distinct from the single-person search above:
+          this browses a paged, audited-as-a-list view. No segment builder, no export,
+          no edit — evaluation only. */}
+      <div className="space-y-2">
+        <p className="font-display text-[12px] font-bold uppercase tracking-wide text-ink-faint">
+          Saring daftar
+        </p>
+        <div className="flex flex-wrap items-center gap-3">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" />
           <input
@@ -268,6 +278,7 @@ export function AudiencePool() {
           <option value="has">Pernah membayar</option>
           <option value="none">Belum membayar</option>
         </select>
+        </div>
       </div>
 
       {/* Table */}
