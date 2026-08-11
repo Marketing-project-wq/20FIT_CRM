@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { Lock, AlertTriangle, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -51,29 +52,42 @@ function Empty() {
   return <span className="font-body text-[13px] italic text-ink-faint">belum terisi</span>;
 }
 
-/** The honest data-quality banner. These are the problems the team needs to SEE. */
+/**
+ * The honest data-quality banner. These are the problems the team needs to SEE.
+ *
+ * It used to carry the figures inline (0%, 7,03%, 98,65%, 1.112 profil…). Those are
+ * gone ON PURPOSE: hardcoded numbers in a component are a snapshot of one afternoon
+ * that keeps rendering with total confidence long after the data has moved. The
+ * numbers now live on /quality, which recomputes them per request. This banner keeps
+ * only the qualitative warnings — statements that stay true regardless of the count —
+ * and points at the screen that owns the arithmetic.
+ *
+ * Styling note: the tint comes from `.tint-amber` in globals.css. The earlier
+ * `amber-500` utilities silently produced NOTHING — tailwind.config.ts maps `amber`
+ * to a bare `var(--amber)`, which removes the numeric scale and blocks opacity
+ * modifiers, so this callout rendered untinted and the icon rendered uncoloured.
+ */
 function QualityBanner() {
   return (
-    <div className="rounded-card border border-amber-500/40 bg-amber-500/[0.06] p-5">
+    <div className="tint-amber rounded-card p-5">
       <div className="flex items-center gap-2">
-        <AlertTriangle className="h-4 w-4 text-amber-500" />
+        <AlertTriangle className="h-4 w-4" aria-hidden />
         <h2 className="font-display text-[15px] font-bold uppercase tracking-wide text-ink">
           Data apa adanya dari sistem lama — belum diremediasi
         </h2>
       </div>
       <ul className="mt-3 space-y-1.5 font-body text-[13px] leading-relaxed text-ink-soft">
         <li>
-          <span className="font-semibold text-ink">Gender, tanggal lahir, alamat: 0% terisi.</span>{" "}
-          Ketiganya kosong untuk seluruh 82.253 profil — ditampilkan sebagai “belum terisi”, tidak
-          disembunyikan.
+          <span className="font-semibold text-ink">Gender, tanggal lahir, dan alamat kosong</span>{" "}
+          untuk seluruh pool — ditampilkan sebagai “belum terisi”, tidak disembunyikan.
         </li>
         <li>
-          <span className="font-semibold text-ink">Kota: hanya 7,03% terisi</span> (5.786 dari
-          82.253). Sisanya kosong.
+          <span className="font-semibold text-ink">Kota hanya terisi sebagian kecil.</span>{" "}
+          Penargetan per kota belum bisa dipertanggungjawabkan.
         </li>
         <li>
-          <span className="font-semibold text-ink">Lifetime value: 98,65% bernilai nol.</span> Hanya
-          1.112 profil (1,35%) yang pernah membayar. “Rp 0” ditampilkan apa adanya.
+          <span className="font-semibold text-ink">Hampir semua lifetime value bernilai nol.</span>{" "}
+          “Rp 0” ditampilkan apa adanya, bukan disamarkan sebagai data hilang.
         </li>
         <li>
           <span className="font-semibold text-ink">Segment terbalik.</span> Kohort tanpa segment
@@ -81,10 +95,17 @@ function QualityBanner() {
         </li>
         <li>
           <span className="font-semibold text-ink">“Terakhir aktif” sengaja tidak ditampilkan.</span>{" "}
-          Kolom <span className="font-mono text-[12px]">last_activity_at</span> adalah artefak impor
-          (99,62% identik dengan <span className="font-mono text-[12px]">first_seen_at</span>).
+          Kolom <span className="font-mono text-[12px]">last_activity_at</span> adalah artefak impor,
+          bukan jejak aktivitas.
         </li>
       </ul>
+      <p className="mt-3 font-body text-[13px] text-ink-soft">
+        Angka pastinya dihitung langsung dari database di{" "}
+        <Link href="/quality" className="font-semibold text-ink underline underline-offset-2">
+          Quality
+        </Link>
+        .
+      </p>
     </div>
   );
 }
@@ -255,12 +276,12 @@ export function AudiencePool() {
               <th className="px-4 py-3 font-bold">Nama</th>
               <th className="px-4 py-3 font-bold">
                 <span className="inline-flex items-center gap-1.5">
-                  Telepon {masked && <Lock className="h-3 w-3 text-amber-500" />}
+                  Telepon {masked && <Lock className="h-3 w-3 text-amber" />}
                 </span>
               </th>
               <th className="px-4 py-3 font-bold">
                 <span className="inline-flex items-center gap-1.5">
-                  Email {masked && <Lock className="h-3 w-3 text-amber-500" />}
+                  Email {masked && <Lock className="h-3 w-3 text-amber" />}
                 </span>
               </th>
               <th className="px-4 py-3 font-bold">Kota</th>

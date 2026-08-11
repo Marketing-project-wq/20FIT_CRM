@@ -48,6 +48,41 @@ Full spec: `PRD — 20FIT Audience Data & CRM System v1.1`.
 > the six live tables (which fail as "already exists") **and** applying the held
 > migration 3. Run any further migration one-by-one via a reviewed path, not `db push`.
 
+## Data-quality screen (`/quality`)
+
+Live aggregates over `master_customer`, `customer_orphan`, `customer_excluded` and
+the `crm_*` satellites. **No migration, no schema change** — every figure is a
+PostgREST `count` with `head: true`, so no customer row is ever read into the
+process and there is nothing to mask. Deliberate, so this screen never becomes a
+reason to touch the diverged migration ledger above.
+
+The cost of that choice is stated on the screen itself: PostgREST has no
+column-to-column comparison and no regex, so two findings (`last_activity_at` =
+`first_seen_at`, and strict identifier validation) **cannot** be recomputed live.
+They sit in `VERIFIED_ARTIFACTS` in `lib/crm/quality-types.ts`, dated, labelled as
+manual verification. Making them live requires a SQL view — not a looser filter that
+quietly reports a different number under the same label.
+
+Two related things changed:
+
+- The audience banner **no longer hardcodes** the quality figures. Numbers written
+  into a component keep rendering confidently long after the data has moved; the
+  banner now carries only the qualitative warnings and links to `/quality`.
+- That banner was also **invisible**. It used `amber-500` utilities, but
+  `tailwind.config.ts` maps `amber` to a bare `var(--amber)`, which removes the
+  numeric scale and blocks opacity modifiers — so `border-amber-500/40`,
+  `bg-amber-500/[0.06]` and `text-amber-500` emitted no CSS at all. Tinted surfaces
+  must use the `.tint-*` classes from `globals.css`. **Any `<colour>-<number>` class
+  in this codebase is dead CSS**; the flat token classes (`text-amber`, `bg-red`) and
+  the `.tint-*` utilities are the only working options.
+
+`/quality` is gated on `profile.view_list`, the same action `canSeeNav("/quality")`
+already resolves to, and writes an audit row per view. The audit action is
+`list.viewed` with `metadata.view = "quality"` — **not** a new `quality.viewed` —
+because migration 8 purges on an exact allowlist, and a new action would be neither
+purged nor compliance-protected, accumulating silently forever. Renaming it means
+editing migration 8's allowlist first.
+
 ## Stack
 
 - Next.js 14 (App Router) + TypeScript (strict)
@@ -132,6 +167,16 @@ tokens (20FIT Design System v1.0, mirrored in PRD §18). **Hard-coded hex outsid
 classes (`bg-red`, `text-ink`, `rounded-card`, `.glass`) that resolve to CSS
 variables, so one `[data-theme="dark"]` switch re-tints the whole surface.
 
+**No `<colour>-<number>` classes, and no opacity modifier on a flat colour token.**
+`tailwind.config.ts` maps `red / blue / amber / green` to a bare `var(--…)` (and
+`ink / glass` to named sub-keys only). That removes the numeric scale *and* blocks
+opacity modifiers, so `text-amber-500`, `bg-red-500`, `border-amber-500/40` and
+`bg-amber-500/[0.06]` emit **no CSS at all** — not the wrong colour, no rule at all,
+no error. Use the flat token classes (`text-amber`, `bg-red`, `text-ink-soft`) or the
+`.tint-*` utilities from `globals.css` for tinted surfaces. The hex rule above catches
+hex; it does not catch these vanishing classes, so `lib/design/tailwind-tokens.test.ts`
+scans the source and fails if the pattern reappears.
+
 Brand logos live in `public/brand/` — currently **placeholders**; see
 `public/brand/README.md` to install the official assets.
 
@@ -139,7 +184,9 @@ Brand logos live in `public/brand/` — currently **placeholders**; see
 
 ```
 app/
-  (app)/            authenticated shell + dashboard + placeholder screens
+  (app)/            authenticated shell + dashboard + audience + quality + placeholders
+  api/audience/     read-only audience pool (RBAC + server-side masking + audit)
+  api/quality/      read-only data-quality aggregates (RBAC + audit, counts only)
   login/            dark login screen + sign-in server action
   logout/           sign-out route
   health/           liveness + Supabase reachability
@@ -151,6 +198,8 @@ components/
   brand/            BrandLogo
   dashboard/        stat card + dashboard content
 lib/
+  crm/              normalize / mask / audience read layer / quality aggregates
+  auth/             RBAC matrix, role resolution, server guards
   supabase/         client / server / admin / middleware helpers
   theme.ts          theme cookie helpers
 middleware.ts       auth gate
