@@ -6,6 +6,8 @@ import {
   ECOSYSTEM_UNITS,
   ECOSYSTEM_PRODUCTS,
   ECOSYSTEM_PRODUCTS_BY_UNIT,
+  ENGAGEMENT_SAFE_COLUMNS,
+  ENGAGEMENT_FORBIDDEN_COLUMNS,
 } from "./engagement-constants";
 
 // A fixed "now" so the test never depends on the wall clock.
@@ -74,5 +76,33 @@ describe("ecosystem vocabulary (verified 11 Agu 2026)", () => {
     expect(isEcosystemProduct("Transaksi Arena")).toBe(true);
     expect(isEcosystemProduct("Ghost Product")).toBe(false);
     expect(isEcosystemProduct(null)).toBe(false);
+  });
+});
+
+describe("customer_engagement safe-column guard (Sprint 3O)", () => {
+  it("safe list is exactly the six non-sensitive columns", () => {
+    expect([...ENGAGEMENT_SAFE_COLUMNS]).toEqual([
+      "unit",
+      "product",
+      "engagement_count",
+      "first_seen_at",
+      "last_seen_at",
+      "source",
+    ]);
+  });
+
+  it("NEVER reads raw_value / source_row_id / period (possible Fase-0 sensitive payload)", () => {
+    // This is the guard: if someone adds a forbidden column to the safe list six months
+    // from now, this test goes red before the SELECT ships.
+    for (const forbidden of ENGAGEMENT_FORBIDDEN_COLUMNS) {
+      expect(ENGAGEMENT_SAFE_COLUMNS as readonly string[]).not.toContain(forbidden);
+    }
+    expect(ENGAGEMENT_FORBIDDEN_COLUMNS).toContain("raw_value");
+  });
+
+  it("safe and forbidden lists do not overlap", () => {
+    const safe = new Set<string>(ENGAGEMENT_SAFE_COLUMNS);
+    const overlap = ENGAGEMENT_FORBIDDEN_COLUMNS.filter((c) => safe.has(c));
+    expect(overlap).toEqual([]);
   });
 });

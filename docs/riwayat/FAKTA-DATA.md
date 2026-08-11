@@ -132,7 +132,28 @@ dengan `ON DELETE SET NULL` (`confdeltype='n'`, bukan cascade).
 | `crm_purge_audit_log` | ya | `record` | `postgres`, `service_role` |
 | `crm_audit_log_no_mutate` | tidak | **`trigger`** | terbuka — **inert**: PostgREST tak bisa mengekspos fungsi trigger sebagai RPC, dan ia `SECURITY INVOKER` |
 
-**101** fungsi `SECURITY DEFINER` di luar `crm_*` masih anon-executable — T-03.
+**102** fungsi `SECURITY DEFINER` di luar `crm_*` masih anon-executable — T-03 (diukur ulang
+11 Agu, Sprint 3O; naik dari 101).
+
+## Paparan data sensitif — tabel RLS OFF, 11 Agustus 2026 (Sprint 3O)
+
+Sapuan skema `public`: tabel **RLS OFF** yang memuat data pribadi sensitif. **Hitungan saja**
+— nol nilai diambil. Milik tim lain; lihat `docs/ESKALASI-paparan-data-sensitif.md` (T-15).
+
+| Tabel | RLS | Baris | Kolom sensitif (terisi) |
+|---|---|---:|---|
+| `cf_hyrox_participants` | OFF | 1.038 | NIK **1.030** (812 berbeda), tgl_lahir 1.037, gol_darah 1.038, kontak_darurat 1.035, no_kontak_darurat 1.036 |
+| `clinic_assessments` | OFF | 149 | `diagnosis` (jsonb) 107 |
+| `clinic_screenings` | OFF | 131 | blood_type 41, health_medications 20, health_surgeries 26, health_* (jsonb), last_menstrual_period 0 |
+| `cf_user` | OFF | 4 | `password` (bernama polos, bukan `_hash`) 4 |
+| `rb_registrations` | OFF | 9 | `password_hash` 9 (ter-hash) |
+| `events` | OFF | 17 | `timeline_share_token` 2 |
+| `staff_password_resets` | OFF | 0 | kosong |
+
+`staging_20fit_data` (T-02): **88.536**, RLS OFF (tak berubah). Tabel RLS **ON** yang juga
+menyimpan sensitif (mis. `rb_staff`, `talent_accounts`, `uob_users` — NIK/KTP; `my20fit_*`,
+`clinic_patients`, `youngstars_health_forms` — kesehatan/DOB/darurat) **tidak** terbaca anon
+(tolak-default). Diukur `relrowsecurity`, bukan tiap policy — lihat "tidak bisa diverifikasi".
 
 ## Pemakaian nyata `crm_audit_log`
 

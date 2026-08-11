@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   ECOSYSTEM_UNITS,
+  ENGAGEMENT_SAFE_COLUMNS,
   classifyLastSeen,
   type EcosystemUnit,
   type LastSeenClass,
@@ -24,7 +25,9 @@ import type { EcosystemQuality, EcosystemUnitSpread } from "./quality-types";
  * unit, product, engagement_count and the two timestamps + source leave the database.
  */
 
-const SAFE_COLUMNS = "unit, product, engagement_count, first_seen_at, last_seen_at, source";
+// Built from the single tested source of the safe list (engagement-constants.ts) so the
+// forbidden columns can't slip into the SELECT without the guard test going red.
+const SAFE_COLUMNS = ENGAGEMENT_SAFE_COLUMNS.join(", ");
 
 /** One ecosystem touchpoint for a single profile, already classified (K-19). */
 export interface EngagementRow {

@@ -110,8 +110,17 @@ kelengkapan karena ada di prompt.
    dapat dibaca anon key hari ini. Angkat ke pemilik data (kelas T-02/T-03). Ini benar
    walau ingestion tak pernah terjadi.
 4. **Recency yang jujur hanya bisa dari `my20fit_user_activity`** (`last_active_at` nyata),
-   bukan dari kolom cap-muat. Tapi cakupannya 44/82.253 — belum layak jadi filter. Kriteria
-   waktu tetap absen (K-19) sampai sumber recency asli mencakup porsi pool yang berarti.
+   bukan dari kolom cap-muat. Tapi cakupannya **44/82.253** — belum layak jadi filter.
+   Kriteria waktu tetap absen (K-19) sampai sumber recency asli mencakup porsi pool yang
+   berarti. **Apa yang dibutuhkan agar 44 naik** (diukur ulang 11 Agu, Sprint 3O):
+   - Kuncinya **email**. Pencocokan **wajib** lewat `normalize.ts` (**K-06** — normalisasi
+     hanya di satu tempat), **bukan** perbandingan string mentah: 44 itu hasil `lower()` naif
+     di SQL; email nyata perlu trim/normalisasi kanonik yang sama seperti telepon (K-05/K-06),
+     dan angkanya bisa berubah setelah dinormalisasi benar. Selama pencocokan tak lewat jalur
+     itu, "44" adalah batas bawah kasar, bukan angka final.
+   - Naiknya cakupan **bukan** soal ingestion melainkan soal **resolusi identitas**: berapa
+     banyak dari 175 pengguna aktif yang emailnya (setelah dinormalisasi) memetakan ke
+     `master_customer`. Sisanya butuh keputusan Fase 0 yang sama (buat profil baru / buang).
 5. **Konsumsi selektif, bukan borongan.** Kalau satu sumber di-ingest kelak, ingest hanya
    kolom yang berguna dan **aman** (mis. `registered_at` HYROX sebagai satu titik engagement
    event), **bukan** seluruh tabel dengan NIK-nya.

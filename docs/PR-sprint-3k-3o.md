@@ -1,5 +1,23 @@
-# PR: Sprint 3K + 3L + 3M + 3N → main
+# PR: Sprint 3K + 3L + 3M + 3N + 3O → main
 
+> ## 🔐 3O: SIKLUS INI TIDAK MENAMBAH PAPARAN APA PUN — IA MENGUKURNYA
+>
+> Seluruh sprint di PR ini **baca-saja, nol perubahan skema**, dan satu-satunya tabel baru
+> yang disentuh (`customer_engagement`, 3N) **sudah RLS ON**. 3O tidak membangun fitur; ia
+> menutup lubang perhatian: temuan terberat proyek ini — **NIK + data kesehatan ±1.100 orang
+> terbaca `anon` tanpa login** — sebelumnya terkubur di poin 5 laporan 3N. 3O **mengukurnya
+> tepat** (sapuan seluruh skema `public`: tabel RLS OFF × kolom sensitif, **hitungan saja,
+> nol nilai diambil**) dan **mengangkatnya** ke `docs/ESKALASI-paparan-data-sensitif.md`
+> (dua halaman, untuk pengambil keputusan), ke T-15, dan ke **puncak** `docs/riwayat/README.md`.
+> Terberat: `cf_hyrox_participants` (RLS OFF) — NIK 1.030, tgl lahir, golongan darah, kontak
+> darurat; plus diagnosa medis (`clinic_*` RLS OFF) dan `cf_user.password` bernama polos.
+> **Bukan kebocoran CRM:** `master_customer`/`crm_*`/`customer_engagement` semua RLS ON, dan
+> pemeriksaan lapisan baca CRM (3O) menemukan **nol** kolom sensitif keluar dari server —
+> `customer_engagement` kini dijaga **test kolom aman** agar `raw_value` tak bisa diselipkan.
+> Perbaikan RLS sendiri milik pemilik data (menyalakan RLS tanpa policy memutus aplikasi tim
+> lain) — **larangan sprint: jangan sentuh tabelnya**.
+> **Validasi deploy tercepat:** buka `/settings/diagnostik` (3L) sekali — seluruh lapisan baca terperiksa.
+>
 > ## 🌐 3N: PROFIL BUKAN SATU BARIS — TAPI KOLOM WAKTUNYA CAP MUAT UNTUK KE-EMPAT KALINYA
 >
 > `customer_engagement` (90.419 baris, EKSISTING) menunjukkan di mana seorang pelanggan
@@ -75,8 +93,9 @@
 >
 > **Branch:** `claude/lanjutkan-pekerjaan-mno804`
 > **Base:** `main` @ `36a2291` (PR #6 — 3I + 3J + dokumentasi `docs/riwayat/` sudah ter-merge)
-> **Isi branch di atas base:** `5b6bcc2` (3K — gap monitoring + jejak kegagalan) · `73173de` (3L — status terhitung + `/settings/diagnostik`) · `c3dc5ea` (3M — segment builder) · commit 3N (ekosistem `customer_engagement`).
-> **Perubahan skema/DB/migrasi: NOL** di 3K, 3L, 3M, dan 3N. Semua baca-saja; nol tulis ke data pelanggan/suppression/consent; tulis satu-satunya = self-audit `list.viewed`/`crm_audit_log` (diagnostik `view=diagnostik`, segment `view=segment_builder`), bukan aksi baru. 3N: `customer_engagement` dibaca di tempat, nol ingestion.
+> **Catatan status:** 3K + 3L + 3M **sudah ter-merge ke `main` lewat PR #7** (`origin/main` @ `e366347`).
+> Yang belum ter-merge di branch ini: **3N** (`354a4f0`, ekosistem `customer_engagement`) + **3O** (paparan sensitif). 3N menumpuk bersih di atas main baru (parent-nya `c3dc5ea` = 3M, kini di main) — tanpa rebase.
+> **Perubahan skema/DB/migrasi: NOL** di 3K, 3L, 3M, 3N, dan 3O. Semua baca-saja; nol tulis ke data pelanggan/suppression/consent; tulis satu-satunya = self-audit `list.viewed`/`crm_audit_log` (diagnostik `view=diagnostik`, segment `view=segment_builder`), bukan aksi baru. 3N: `customer_engagement` dibaca di tempat, nol ingestion. 3O: hitungan saja, nol tabel tim lain disentuh.
 > **JANGAN merge / buka PR ke `main` tanpa izin eksplisit.**
 >
 > > Catatan konteks: 3G + 3H (jalur tulis suppression) **sudah di main lewat PR #5**. Bagian
@@ -186,6 +205,21 @@
 > INSERT ke `crm_*`, nol tabel/view/RPC baru, nol `setval`. Tulis satu-satunya tetap audit
 > `list.viewed` per perhitungan segment (button-triggered). Detail profil **tidak** menulis
 > audit kedua. Kolom sumber sensitif (`raw_value`, NIK/kesehatan di tabel lain) tak dibaca.
+
+### Sprint 3O (ukur paparan data sensitif, angkat, jangan sentuh)
+| Perubahan | Sifat |
+|---|---|
+| Sapuan seluruh skema `public`: tabel **RLS OFF × kolom sensitif** (NIK/kesehatan/DOB/darurat/kredensial). **Hitungan saja, nol nilai diambil.** T-02/T-03 diukur ulang (88.536 RLS OFF; **102** fungsi anon-exec, naik dari 101) | Pengukuran |
+| `docs/ESKALASI-paparan-data-sensitif.md` — 2 halaman untuk pengambil keputusan: apa terpapar (per keparahan + jumlah **orang**), bagaimana (anon key di bundel JS), apa yang TIDAK (CRM RLS ON), kenapa bukan tugas CRM, urutan remediasi + siapa memutuskan, akibat bila didiamkan | Dokumen |
+| T-15 di `TEMUAN.md` + **puncak** `docs/riwayat/README.md` (peringatan keamanan aktif) + blok paparan di `FAKTA-DATA.md` | Dokumen (riwayat) |
+| **Pemeriksaan lapisan baca CRM sendiri:** setiap `.select()` ditelusuri — **nol** kolom sensitif keluar dari server; `date_of_birth` hanya muncul sebagai `count` di `/quality` (bukan nilai); audit `metadata`/log kegagalan PII-free | Verifikasi |
+| Daftar kolom aman `customer_engagement` dipindah ke konstanta teruji (`ENGAGEMENT_SAFE_COLUMNS`/`ENGAGEMENT_FORBIDDEN_COLUMNS`); `select` dibangun darinya | Kode |
+| Test: 262 → **265** (+3 penjaga kolom aman: `raw_value`/`source_row_id`/`period` tak boleh masuk `select`) | **Pagar** (test) |
+
+> **Nol perubahan skema/DB di 3O.** Nol RLS dinyalakan, nol policy ditulis, nol tabel tim
+> lain disentuh (hanya `count(*)`/`count(distinct)` untuk mengukur). Nol nilai NIK/kesehatan/
+> kontak darurat masuk berkas atau laporan mana pun. Satu perubahan kode: refactor daftar
+> kolom aman jadi konstanta teruji — tak mengubah kolom yang dibaca, hanya menjaganya.
 
 > **Nol perubahan skema/DB/migrasi di 3L.** Diagnostik baca-saja; satu-satunya tulis =
 > self-audit `list.viewed`/`crm_audit_log` (`view=diagnostik`). **Bukti nol-inflasi audit:**

@@ -40,10 +40,27 @@ kontrolnya tidak ditembus, melainkan **dilewati**.
 
 ### T-03 · 101 fungsi `SECURITY DEFINER` anon-executable di luar `crm_*` — MILIK TIM LAIN
 **Ditemukan 11 Agu.** Pola auto-grant yang sama tersebar di sistem arena, clinic, shop,
-rb, my20fit, rc, uob, talent. Angkanya **naik** tiap tim lain men-deploy (99 → 101 dalam
-satu sesi), yang justru membuktikan polanya sistemik. Di luar lingkup sprint mana pun di
-sini; perlu diangkat ke pemilik proyek Supabase.
+rb, my20fit, rc, uob, talent. Angkanya **naik** tiap tim lain men-deploy (99 → 101 →
+**102** dalam beberapa sesi), yang justru membuktikan polanya sistemik. Di luar lingkup
+sprint mana pun di sini; perlu diangkat ke pemilik proyek Supabase.
 → `docs/RISIKO-rpc-execute-terbuka.md`
+
+### T-15 · NIK + data kesehatan ±1.100 orang terpapar anon (RLS OFF di tabel sumber) — MILIK TIM LAIN
+**Ditemukan 11 Agu (Sprint 3O), diangkat dari poin 5 laporan 3N.** Sapuan seluruh skema
+`public`: beberapa tabel sumber **RLS OFF** memuat data pribadi paling sensitif, terbaca
+siapa pun dengan anon key tanpa login. Terberat: **`cf_hyrox_participants`** (1.038 baris) —
+**NIK 1.030** (812 berbeda), tgl lahir 1.037, golongan darah 1.038, kontak darurat ~1.035.
+Ditambah data medis RLS OFF: **`clinic_assessments`** (diagnosa 107), **`clinic_screenings`**
+(riwayat operasi/obat/kondisi, 131 baris), dan **`cf_user`** (`password` — bernama polos, 4).
+Total ±1.100 orang; NIK + kesehatan = kategori paling ketat UU 27/2022.
+
+**Kelas berbeda dari T-02** (nama/telepon/email): ini identitas kependudukan + kesehatan.
+**Bukan** kebocoran kontrol CRM — `master_customer`/`crm_*`/`customer_engagement` semua
+**RLS ON** dan lapisan baca CRM tak menyentuh kolom sensitif (diperiksa 3O; test penjaga
+kolom aman `customer_engagement` ditambahkan). Perbaikannya milik pemilik data: menyalakan
+RLS **tanpa policy** memutus aplikasi tim lain yang membacanya lewat anon key — itulah kenapa
+belum dikerjakan. Sprint ini **mengukur dan mengangkat**, tidak menyentuh.
+→ `docs/ESKALASI-paparan-data-sensitif.md`
 
 ---
 

@@ -13,6 +13,27 @@
  * has `event` and `membership` where master_customer.first_unit has `20fit_data`.
  */
 
+/**
+ * The ONLY columns the app is allowed to read out of customer_engagement. The server read
+ * layer (engagement.ts) builds its SELECT from this list, so the safe set has one source.
+ * `raw_value`, `source_row_id` and `period` are DELIBERATELY excluded: raw_value can carry
+ * arbitrary source payload (possibly NIK / birth date / other Fase-0 sensitive data) and
+ * source_row_id is an external key. A guard test (engagement-constants.test.ts) enforces
+ * that none of ENGAGEMENT_FORBIDDEN_COLUMNS ever appears here — so nobody adds `raw_value`
+ * to the select six months from now without a test going red.
+ */
+export const ENGAGEMENT_SAFE_COLUMNS = [
+  "unit",
+  "product",
+  "engagement_count",
+  "first_seen_at",
+  "last_seen_at",
+  "source",
+] as const;
+
+/** Columns that must NEVER leave the server. Enforced against the safe list by a test. */
+export const ENGAGEMENT_FORBIDDEN_COLUMNS = ["raw_value", "source_row_id", "period"] as const;
+
 /** The six units present in customer_engagement (verified 11 Agu 2026). Distinct from
  *  AUDIENCE_UNITS on purpose — see the module header. */
 export const ECOSYSTEM_UNITS = ["arena", "clinic", "event", "gym", "membership", "shop"] as const;
