@@ -127,3 +127,7 @@ mana yang aman terbuka dan mana yang berbahaya butuh pengetahuan tiap sistem —
 
 Semua di atas keputusan pemilik project. Dokumen ini hanya menaruh pola, angka, cara
 mengukurnya, dan contoh yang sudah diperbaiki di atas meja.
+
+---
+
+> **Konteks lintas-sprint:** temuan `docs/riwayat/TEMUAN.md` **T-01** (crm_purge, ditutup) & **T-03** (101 fungsi tim lain); keputusan **K-15** (pagar EXECUTE).

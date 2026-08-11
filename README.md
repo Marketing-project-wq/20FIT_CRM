@@ -9,6 +9,19 @@ segmentation and marketing automation for the Marketing Division.
 
 Full spec: `PRD — 20FIT Audience Data & CRM System v1.1`.
 
+> ## 📚 Project history — read before changing a "warning" comment
+>
+> `docs/riwayat/` records why this system is the way it is: every sprint's prompt,
+> the decisions taken (`KEPUTUSAN.md`) and **what would reverse each one**, the
+> findings and self-corrections (`TEMUAN.md`), the database facts with dates
+> (`FAKTA-DATA.md`), and the sprint/commit/ledger timeline (`LINIMASA.md`).
+>
+> **Open it before you touch anything whose code comment reads like a warning** — a
+> canon (`normalize.ts`), a `revoke`, a `NODE_ENV=production` prefix, an "exact match
+> only". The reason the warning exists is a decision in `KEPUTUSAN.md`; changing the
+> code without reading it is how a rule gets broken silently instead of on purpose.
+> The two big warning blocks below each map to a decision there (K-18, ledger).
+
 > ## ⚠️ MANDATORY DEPLOY ORDER — RBAC fails closed
 >
 > 1. **Run the `crm_*` migrations** (`supabase/migrations/`).

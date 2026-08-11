@@ -100,3 +100,7 @@ karena purge belum jalan, layar audit sudah memberi tahu pembaca bahwa ketiadaan
 lama belum berlaku hari ini.
 
 **JANGAN pasang cron sekarang.** Memo ini bahan keputusan; pelaksanaannya milik tim.
+
+---
+
+> **Konteks lintas-sprint:** temuan `docs/riwayat/TEMUAN.md` **T-12** (kebisingan audit; penjadwalan purge masih terbuka).

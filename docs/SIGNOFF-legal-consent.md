@@ -41,3 +41,7 @@ memverifikasi bentuk & aturan, bukan mengisi dasar hukum.
    penanggung jawab, sebelum rutin penghapusan dibangun.
 2. Legal memberikan **daftar `basis` final** (atau menyatakan dua nilai ini memang
    final) — supaya perubahan CHECK, bila perlu, direncanakan sebagai migrasi sadar.
+
+---
+
+> **Konteks lintas-sprint:** keputusan `docs/riwayat/KEPUTUSAN.md` **K-12** (migrasi 3 dijalankan apa adanya; syarat legal masih terbuka).

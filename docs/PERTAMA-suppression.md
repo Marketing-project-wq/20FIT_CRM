@@ -124,3 +124,7 @@ from crm_audit_log where action='suppression.lifted' order by id desc limit 5;
 > Menyuppress orang yang salah lalu mencabutnya meninggalkan **dua** baris audit
 > (`added` lalu `lifted`) — itu benar. Jejak kesalahan-dan-koreksi memang harus terlihat.
 > Yang tak boleh: menghapus supaya "bersih". Bersih yang menghapus bukti bukan bersih.
+
+---
+
+> **Konteks lintas-sprint:** keputusan `docs/riwayat/KEPUTUSAN.md` **K-13/K-14**; atomik K-3 diverifikasi (probe rollback) — `docs/riwayat/sprint-3h/03-tinjauan.md`.

@@ -75,3 +75,7 @@ mengarang `explicit_opt_in`.
 2. Bangun **satu** kanal peristiwa opt-in nyata.
 3. Migrasi terpisah: fungsi Postgres `crm_record_consent` (atomik consent + audit).
 4. Baru jalur tulis di aplikasi, memanggil fungsi itu — bukan dua `INSERT` terpisah.
+
+---
+
+> **Konteks lintas-sprint:** keputusan `docs/riwayat/KEPUTUSAN.md` **K-13** (jalur tulis pertama = suppression, bukan consent) & **K-14** (atomik dengan audit).

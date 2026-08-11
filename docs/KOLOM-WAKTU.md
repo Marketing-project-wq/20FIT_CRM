@@ -56,3 +56,7 @@ yang ditinjau, bukan sprint ini. Dicatat di sini sebagai usulan.
   sebut apa adanya (“diimpor pada …”), jangan berpura-pura itu recency.
 - Segmen berbasis **transaksi** hanya mungkin untuk 1.075 baris `live_txn_ingest`, dan
   itu bukan basis yang cukup untuk kampanye seluruh pool.
+
+---
+
+> **Konteks lintas-sprint:** keputusan `docs/riwayat/KEPUTUSAN.md` **K-19**; temuan `docs/riwayat/TEMUAN.md` **T-08, T-09, T-11**.

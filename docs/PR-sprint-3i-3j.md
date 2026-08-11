@@ -210,3 +210,8 @@ Log Railway: deploy hijau, `/health` (`env: configured`, `supabase: reachable`),
   bisa setelah deploy oleh sesi login — sama seperti celah verifikasi sebelumnya. Yang bisa
   tanpa deploy sudah: tipe, lint, seluruh test, build produksi, dan kecocokan desain dengan
   indeks nyata (`pg_indexes`).
+- **Perbarui `docs/riwayat/` sebagai bagian dari siklus ini** (dan tiap siklus berikutnya):
+  `LINIMASA.md` (baris sprint + status merge), `KEPUTUSAN.md`/`TEMUAN.md` bila ada yang baru,
+  `FAKTA-DATA.md` bila angka DB bergerak (bertanggal), `sprint-3j/02-laporan.md` +
+  `03-tinjauan.md`, dan simpan transkrip ke `transkrip/` sebelum sesi ditutup. Folder yang
+  tak diperbarui menyimpang diam-diam dari kode — persis pola aturan-ganda yang dijaga proyek ini.
