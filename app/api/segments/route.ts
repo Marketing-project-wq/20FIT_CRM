@@ -111,6 +111,9 @@ export async function POST(request: NextRequest) {
         has_email: criteria.hasEmail,
         eco_unit: criteria.ecoUnit,
         eco_product: criteria.ecoProduct,
+        src_hyrox: criteria.srcHyrox,
+        src_my20fit: criteria.srcMy20fit,
+        src_recency: criteria.srcRecency,
       },
       // AND/OR tree structure (closed-list fields/values; city leaf capped at 60 in
       // validateFilterTree, K-17). Null when the flat criteria path was used.

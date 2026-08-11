@@ -229,6 +229,16 @@ V-6 tertutup **membalik** kecurigaan 3K bahwa detail profil rusak — ia jalan; 
 konsisten dengan kejadian transient, bukan cacat deterministik. Penyebab pastinya tetap
 butuh log Railway jendela 08:01–08:58 UTC — belum terjawab.
 
+**Pembaruan 11 Agu 15:07 UTC (Sprint 3R) — bobot diturunkan, TIDAK ditutup:** audit kini
+**77 baris, `max(id)` 81, gap tetap `4, 37, 38, 39`.** Tiga puluh empat operasi teraudit
+BARU sejak 3K — termasuk pembukaan detail profil (`profile.viewed`) — dan **nol gap baru**.
+Hipotesis 3K "detail profil rusak" **praktis gugur**: rute yang dicurigai kini berjalan
+puluhan kali tanpa meninggalkan lubang. Statusnya jadi **episode historis terbatas** (satu
+jendela 08:01–08:58 UTC, 11 Agu), **bukan** cacat aktif. **Tetap terbuka**, bukan tertutup:
+penyebab pasti ketiga gap itu tak pernah terbukti (butuh log Railway jendela itu), dan menutup
+temuan yang belum terjawab hanya karena berhenti muncul adalah persis pola yang S-06/S-07
+peringatkan. Gap tetap dipantau (`docs/PASCA-MERGE-monitoring-revert.md`, K-21).
+
 ### S-08 · Ukuran lebih sempit dari klaim: `relrowsecurity` dipakai untuk klaim "terlindungi"
 **Sprint 3O → dikoreksi 3Q.** Inventaris 3O mengukur **`relrowsecurity`** (RLS on/off) lalu
 menyimpulkan `master_customer`/`customer_engagement` "aman" dan menulisnya di dokumen

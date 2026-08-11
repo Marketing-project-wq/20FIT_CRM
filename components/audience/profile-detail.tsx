@@ -50,10 +50,32 @@ interface ProfileEngagement {
   hasFutureAnomaly: boolean;
 }
 
+interface HyroxSensitive {
+  nik: string | null;
+  tglLahir: string | null;
+  golDarah: string | null;
+  kontakDarurat: string | null;
+  noKontakDarurat: string | null;
+}
+
+interface ProfileEnrichment {
+  matchable: boolean;
+  hyrox: {
+    matched: boolean;
+    rows: { eventName: string | null; kategori: string | null; namaTim: string | null; posisi: string | null; registeredAt: string | null }[];
+    hasSensitive: boolean;
+    sensitive: HyroxSensitive | null;
+    revealed: boolean;
+  };
+  my20fit: { matched: boolean; isPlusMember: boolean | null; onboardingCompleted: boolean | null; createdAt: string | null };
+  activity: { matched: boolean; firstSeenAt: string | null; lastActiveAt: string | null; pingCount: number | null };
+}
+
 interface ApiResult {
   profile: Profile;
   canViewHealth: boolean;
   engagement: ProfileEngagement | null;
+  enrichment: ProfileEnrichment | null;
 }
 
 const idr = new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 });
@@ -208,6 +230,123 @@ function Field({ label, children, mono }: { label: string; children: React.React
       <span className="font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">{label}</span>
       <span className={mono ? "font-mono text-[13px] text-ink" : "font-body text-[14px] text-ink"}>{children}</span>
     </div>
+  );
+}
+
+/** A matched/unmatched source row: matched shows a check + detail; unmatched reads a plain
+ *  "no data for this profile" — NEVER a blank that reads as "never participated". */
+function SourceLine({ label, matched, children }: { label: string; matched: boolean; children?: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1 border-t border-glass-border py-3 first:border-t-0 first:pt-0">
+      <span className="font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">{label}</span>
+      {matched ? (
+        <span className="font-body text-[14px] text-ink">{children}</span>
+      ) : (
+        <span className="font-body text-[13px] italic text-ink-faint">tidak ada data {label} untuk profil ini</span>
+      )}
+    </div>
+  );
+}
+
+function EnrichmentSection({ id, enrichment, canViewHealth }: { id: string; enrichment: ProfileEnrichment | null; canViewHealth: boolean }) {
+  const [revealed, setRevealed] = useState<HyroxSensitive | null>(null);
+  const [revealing, setRevealing] = useState(false);
+  const [revealError, setRevealError] = useState<string | null>(null);
+
+  async function reveal() {
+    setRevealError(null);
+    setRevealing(true);
+    try {
+      const res = await fetch(`/api/audience/${id}/identity`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setRevealError(data?.message ?? `Gagal membuka (HTTP ${res.status}).`);
+        return;
+      }
+      setRevealed(data.sensitive as HyroxSensitive);
+    } catch {
+      setRevealError("Gagal terhubung ke server.");
+    } finally {
+      setRevealing(false);
+    }
+  }
+
+  return (
+    <section className="glass shadow-glass p-6 lg:col-span-2">
+      <div className="flex items-center gap-2">
+        <Network className="h-4 w-4 text-ink-soft" aria-hidden />
+        <h2 className="font-display text-[16px] font-extrabold uppercase tracking-wide text-ink">Sumber ekosistem (pencocokan email)</h2>
+      </div>
+
+      {enrichment === null ? (
+        <div className="mt-4 rounded-sm border border-dashed border-glass-border px-4 py-6 text-center">
+          <Badge tone="amber">Gagal dimuat</Badge>
+          <p className="mx-auto mt-2 max-w-xl font-body text-[13px] text-ink-soft">Data sumber ekosistem gagal dimuat. Sisa profil tetap tampil.</p>
+        </div>
+      ) : !enrichment.matchable ? (
+        <p className="mt-4 font-body text-[13px] italic text-ink-faint">Profil ini tak punya email untuk dicocokkan ke sumber ekosistem.</p>
+      ) : (
+        <>
+          <div className="mt-2">
+            <SourceLine label="Hyrox" matched={enrichment.hyrox.matched}>
+              {enrichment.hyrox.rows.map((r, i) => (
+                <span key={i} className="block">
+                  {r.eventName ?? "—"}{r.kategori ? ` · ${r.kategori}` : ""}{r.namaTim ? ` · tim ${r.namaTim}` : ""}
+                  {r.registeredAt ? <span className="font-mono text-[12px] text-ink-faint"> · daftar {formatDateOnly(r.registeredAt)}</span> : null}
+                </span>
+              ))}
+            </SourceLine>
+            <SourceLine label="my20fit" matched={enrichment.my20fit.matched}>
+              {enrichment.my20fit.isPlusMember ? "Plus member" : "Pengguna"}{enrichment.my20fit.onboardingCompleted ? " · onboarding selesai" : ""}
+            </SourceLine>
+            <SourceLine label="Aktivitas nyata (my20fit)" matched={enrichment.activity.matched}>
+              {enrichment.activity.pingCount != null ? `${nf.format(enrichment.activity.pingCount)} kunjungan` : ""}
+              {enrichment.activity.lastActiveAt ? (
+                <span className="font-mono text-[12px] text-ink-faint"> · terakhir aktif {formatDateOnly(enrichment.activity.lastActiveAt)}</span>
+              ) : null}
+            </SourceLine>
+          </div>
+
+          {/* Sensitive Hyrox identity — gated + masked, reveal audited. */}
+          {enrichment.hyrox.hasSensitive && canViewHealth && (
+            <div className="mt-4 rounded-sm border border-glass-border/70 p-4">
+              <div className="flex items-center gap-2">
+                <Lock className="h-3.5 w-3.5 text-ink-soft" aria-hidden />
+                <h3 className="font-display text-[12px] font-bold uppercase tracking-wide text-ink">Field identitas Hyrox (sensitif)</h3>
+              </div>
+              <p className="mt-1 font-body text-[12px] text-ink-soft">
+                NIK, tanggal lahir, golongan darah, kontak darurat. Tersamar sampai dibuka; <strong>tiap pembukaan tercatat</strong> (audit).
+              </p>
+              {revealed ? (
+                <div className="mt-3">
+                  <Field label="NIK" mono>{revealed.nik ?? <Empty />}</Field>
+                  <Field label="Tanggal lahir" mono>{revealed.tglLahir ?? <Empty />}</Field>
+                  <Field label="Golongan darah" mono>{revealed.golDarah ?? <Empty />}</Field>
+                  <Field label="Kontak darurat" mono>{[revealed.kontakDarurat, revealed.noKontakDarurat].filter(Boolean).join(" · ") || <Empty />}</Field>
+                </div>
+              ) : (
+                <div className="mt-3">
+                  <Button size="sm" variant="outline" onClick={reveal} disabled={revealing}>
+                    <Lock className="h-3.5 w-3.5" /> {revealing ? "Membuka…" : "Buka field identitas (tercatat)"}
+                  </Button>
+                  {revealError && <p className="mt-2 font-body text-[13px] text-red">{revealError}</p>}
+                </div>
+              )}
+            </div>
+          )}
+          {enrichment.hyrox.hasSensitive && !canViewHealth && (
+            <p className="mt-4 font-body text-[12px] italic text-ink-faint">
+              Field identitas sensitif (NIK dll.) ada tapi digerbangi — butuh peran <span className="font-mono">profile.view_health</span>.
+            </p>
+          )}
+
+          <p className="mt-3 font-body text-[12px] leading-relaxed text-ink-soft">
+            Dicocokkan lewat <strong>email ternormalisasi</strong> (K-06), bukan nama. Sumber ini tidak disalin ke{" "}
+            <span className="font-mono">master_customer</span> — dibaca &amp; digabung saat tampil. Data medis clinic tidak dibawa (butuh dasar hukum).
+          </p>
+        </>
+      )}
+    </section>
   );
 }
 
@@ -419,6 +558,10 @@ export function ProfileDetail({ id, canEditConsent }: { id: string; canEditConse
         {/* Ekosistem 20FIT — read-only over customer_engagement, keyed by customer_id.
             No second audit row (profile.viewed above already covers this view). */}
         <EcosystemSection engagement={data.engagement} />
+
+        {/* Sumber ekosistem tak-tercocok (Hyrox / my20fit) — matched by normalised email.
+            Sensitive Hyrox identity fields are gated + masked; reveal is separately audited. */}
+        <EnrichmentSection id={id} enrichment={data.enrichment} canViewHealth={data.canViewHealth} />
 
         {/* Health flags — structural gate, but no source exists. */}
         {data.canViewHealth && (

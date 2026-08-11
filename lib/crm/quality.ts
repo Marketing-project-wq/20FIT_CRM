@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { QualitySnapshot } from "./quality-types";
 import { fetchEcosystemQuality } from "./engagement";
+import { fetchEnrichmentCoverage } from "./enrichment";
 import { KNOWN_TYPO_DOMAINS } from "./email-typo";
 
 /**
@@ -54,6 +55,7 @@ export async function fetchQualitySnapshot(admin: SupabaseClient): Promise<Quali
   // Ecosystem aggregates (customer_engagement) run concurrently with the master_customer
   // counts — same posture: parameter-free, head:true, not audited (Sprint 3N).
   const ecosystemPromise = fetchEcosystemQuality(admin);
+  const enrichmentCoveragePromise = fetchEnrichmentCoverage(admin);
   const [
     total,
     fullName,
@@ -120,11 +122,13 @@ export async function fetchQualitySnapshot(admin: SupabaseClient): Promise<Quali
   ]);
 
   const ecosystem = await ecosystemPromise;
+  const enrichmentCoverage = await enrichmentCoveragePromise;
 
   return {
     total,
     computedAt: new Date().toISOString(),
     ecosystem,
+    enrichmentCoverage,
 
     fillRates: [
       { key: "full_name", label: "Nama", column: "full_name", filled: fullName },

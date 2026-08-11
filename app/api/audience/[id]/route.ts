@@ -10,6 +10,7 @@ import {
 } from "@/lib/auth/roles";
 import { fetchProfileById, isUuid } from "@/lib/crm/audience";
 import { fetchProfileEngagement, type ProfileEngagement } from "@/lib/crm/engagement";
+import { fetchProfileEnrichment, type ProfileEnrichment } from "@/lib/crm/enrichment";
 import { logApiFailure } from "@/lib/crm/failure-log";
 
 export const dynamic = "force-dynamic";
@@ -114,8 +115,23 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
     engagement = null;
   }
 
+  // Enrichment from unmatched ecosystem sources (Hyrox / my20fit), matched by normalised
+  // email server-side. Non-fatal, NON-audited (part of the same profile.viewed view). Sensitive
+  // Hyrox fields are fetched ONLY for a view_health caller and ALWAYS masked here (reveal:false)
+  // — the unmasked reveal is a separate, audited endpoint (POST .../identity).
+  let enrichment: ProfileEnrichment | null = null;
+  try {
+    enrichment = await fetchProfileEnrichment(admin, profile.customer_id, {
+      canViewHealth,
+      reveal: false,
+    });
+  } catch (e) {
+    logApiFailure("/audience/[id]", "enrichment_query_failed", { code: (e as { code?: string })?.code });
+    enrichment = null;
+  }
+
   return NextResponse.json(
-    { profile, canViewHealth, engagement },
+    { profile, canViewHealth, engagement, enrichment },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

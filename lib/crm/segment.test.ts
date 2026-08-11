@@ -55,6 +55,12 @@ describe("parseCriteria", () => {
     expect(bad.ecoUnit).toBeNull();
     expect(bad.ecoProduct).toBeNull();
   });
+  it("coerces enrichment-source flags to real booleans (3R)", () => {
+    expect(parseCriteria({ srcHyrox: true, srcMy20fit: 1, srcRecency: "yes" })).toMatchObject({
+      srcHyrox: true, srcMy20fit: false, srcRecency: false,
+    });
+    expect(parseCriteria({}).srcHyrox).toBe(false);
+  });
 });
 
 describe("activeCriteriaCount", () => {
@@ -66,8 +72,9 @@ describe("activeCriteriaCount", () => {
       activeCriteriaCount({
         unit: "gym", segment: "new", city: "Jakarta", revenue: "has", hasPhone: true, hasEmail: true,
         ecoUnit: "clinic", ecoProduct: "Transaksi Clinic",
+        srcHyrox: true, srcMy20fit: true, srcRecency: true,
       }),
-    ).toBe(8);
+    ).toBe(11);
   });
   it("revenue='all' and blank city do not count", () => {
     expect(activeCriteriaCount({ ...EMPTY_CRITERIA, revenue: "all", city: "  " })).toBe(0);

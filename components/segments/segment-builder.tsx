@@ -64,8 +64,16 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total }: { cityFillPct
       const res = await fetch("/api/segments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // Master fields come from the AND/OR tree; ecosystem stays a separate top-level AND.
-        body: JSON.stringify({ tree: rowsToTree(rows), ecoUnit: c.ecoUnit, ecoProduct: c.ecoProduct }),
+        // Master fields come from the AND/OR tree; ecosystem + source presence stay
+        // separate top-level ANDs (cross-table OR isn't expressible in one query).
+        body: JSON.stringify({
+          tree: rowsToTree(rows),
+          ecoUnit: c.ecoUnit,
+          ecoProduct: c.ecoProduct,
+          srcHyrox: c.srcHyrox,
+          srcMy20fit: c.srcMy20fit,
+          srcRecency: c.srcRecency,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -149,6 +157,27 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total }: { cityFillPct
               keduanya sekaligus. Karena tiap produk hanya milik satu unit, kombinasi lintas-unit berjumlah 0.
             </p>
           )}
+
+          {/* Unmatched-source presence (Sprint 3R) — cocok lewat email ternormalisasi. */}
+          <div className="mt-3 flex flex-col gap-2 border-t border-glass-border/60 pt-3">
+            <label className="inline-flex cursor-pointer items-center gap-2 font-body text-[13px] text-ink">
+              <input type="checkbox" checked={c.srcHyrox} onChange={(e) => set("srcHyrox", e.target.checked)} className="accent-red" />
+              Peserta Hyrox (152 profil)
+            </label>
+            <label className="inline-flex cursor-pointer items-center gap-2 font-body text-[13px] text-ink">
+              <input type="checkbox" checked={c.srcMy20fit} onChange={(e) => set("srcMy20fit", e.target.checked)} className="accent-red" />
+              Pengguna my20fit (169 profil)
+            </label>
+            <label className="inline-flex cursor-pointer items-center gap-2 font-body text-[13px] text-ink">
+              <input type="checkbox" checked={c.srcRecency} onChange={(e) => set("srcRecency", e.target.checked)} className="accent-red" />
+              Punya aktivitas nyata (my20fit_user_activity — hanya 44 profil)
+            </label>
+            <p className="font-body text-[11px] leading-relaxed text-ink-faint">
+              Cocok lewat email ternormalisasi (K-06). “Aktivitas nyata” adalah presensi, <strong>bukan</strong>
+              {" "}kriteria waktu: <span className="font-mono">last_active_at</span> nyata tapi hanya untuk 44/82.253 —
+              menjadikannya filter waktu akan terlihat presisi sambil menyembunyikan 99,9% pool (K-19).
+            </p>
+          </div>
         </div>
 
         {/* City warning — in place, not a footnote (93% empty). */}

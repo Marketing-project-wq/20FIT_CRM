@@ -9,6 +9,46 @@
 
 Semua angka di bawah diverifikasi langsung ke database **11 Agustus 2026**.
 
+## Pembaruan Sprint 3R (11 Agu 2026) — pelengkapan profil: DIBANGUN
+
+TUGAS 2 yang ditahan di 3P kini dibangun. Lapisan baca `lib/crm/enrichment.ts` (server-only)
+mencocokkan `cf_hyrox_participants`, `my20fit_profile`, `my20fit_user_activity` ke profil
+lewat **email ternormalisasi** (`normalizeEmail`, K-06) — **nol tulis** ke `master_customer`/
+`crm_*`, digabung saat tampil. `rc_team_members` **tidak** dicocokkan (berkunci nama).
+
+**Cakupan nyata (diukur ulang, cocok = PROFIL master berbeda):**
+
+| Sumber | Baris | Cocok (profil) | Tak tersambung |
+|---|---:|---:|---|
+| `cf_hyrox_participants` | 1.038 | **152** | 886 baris tak tersambung (288 baris cocok = 152 orang; satu email s/d 8×) |
+| `my20fit_profile` | 886 | **169** | 717 |
+| `my20fit_user_activity` | 175 | **44** | 131 |
+
+**131 aktivitas tak-cocok = orangnya memang belum ada di `master_customer`, BUKAN normalisasi
+gagal.** Diverifikasi: ke-131 email (setelah `lower(trim)`) **tidak muncul sama sekali** di
+`master_customer.email_normalized` maupun `email`. Jadi menaikkan cakupan butuh **orang-orang
+itu masuk master dulu** (resolusi identitas / ingestion Fase 0), bukan perbaikan pencocokan.
+
+**Field sensitif** (NIK/tgl lahir/gol darah/kontak darurat, dari Hyrox): digerbangi
+`profile.view_health`, tersamar default, dibuka lewat aksi teraudit (`profile.viewed`,
+`metadata.fields`, **nilai tak masuk metadata**). Data medis `clinic_*` dan health/cycle
+`my20fit_profile` **tidak dibawa** (butuh dasar hukum; `crm_consent` kosong).
+
+**Filter:** "Peserta Hyrox" / "Pengguna my20fit" / "Punya aktivitas nyata" jadi kriteria
+segmen (presensi, AND dengan kriteria lain). Cakupan tampil di `/quality` (blok baru, live).
+
+### Syarat meninjau ulang penolakan kriteria WAKTU (K-19)
+
+`my20fit_user_activity.last_active_at` **nyata** (bukan cap muat) — satu-satunya recency asli
+di ekosistem. Tapi ia dipakai sebagai **presensi**, bukan kriteria waktu, karena cakupannya
+**44/82.253 (0,05%)**. Kriteria "aktif dalam N hari" akan terlihat presisi sambil
+menyembunyikan 99,95% pool. **Kapan ditinjau ulang:** bila cakupan recency asli naik ke porsi
+pool yang berarti (usulan ambang: **≥ 10% profil** punya `last_active_at` nyata) — yang
+sendiri menuntut lebih banyak pengguna app masuk `master_customer`. Sampai itu, presensi ya,
+tanggal tidak.
+
+---
+
 ## Pembaruan Sprint 3P (11 Agu 2026) — pelengkapan profil: diukur, DITAHAN dari build
 
 TUGAS 2 Sprint 3P meminta melengkapi profil dari sumber ini. Investigasi + pengukuran

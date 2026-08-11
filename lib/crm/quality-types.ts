@@ -62,6 +62,15 @@ export interface EcosystemQuality {
   computedAt: string;
 }
 
+/** Enrichment source coverage (Sprint 3R) — how many profiles each unmatched source reaches
+ *  via normalised-email match. Low coverage is itself a data-quality finding. */
+export interface EnrichmentSourceCoverage {
+  key: string;
+  label: string;
+  sourceRows: number;
+  matchedProfiles: number;
+}
+
 export interface QualitySnapshot {
   /** Rows in master_customer — the denominator for every percentage below. */
   total: number;
@@ -73,6 +82,8 @@ export interface QualitySnapshot {
   satellites: SatelliteCoverage[];
   /** Ecosystem (customer_engagement) live aggregates — Sprint 3N. */
   ecosystem: EcosystemQuality;
+  /** Enrichment source coverage (Hyrox / my20fit) — Sprint 3R, computed live. */
+  enrichmentCoverage: EnrichmentSourceCoverage[];
   /** ISO timestamp the snapshot was computed. Never cached. */
   computedAt: string;
 }

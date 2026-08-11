@@ -353,6 +353,28 @@ export function QualityDashboard() {
           </Panel>
 
           <Panel
+            title="Cakupan sumber ekosistem tak-tercocok (Sprint 3R)"
+            caption="Sumber lain (Hyrox, my20fit) dikaitkan ke profil lewat email ternormalisasi (K-06). Tingkat kecocokan RENDAH — jauh lebih banyak baris sumber yang tak punya profil master. Itu temuan kualitas data, bukan detail implementasi: menampilkan jumlah peserta tanpa menyebut yang tak tersambung membuat orang menyimpulkan itulah seluruh peserta. “Cocok” di sini = profil master berbeda (satu email bisa banyak baris sumber). rc_team_members dikecualikan (berkunci nama)."
+          >
+            <div className="space-y-3.5">
+              {data.enrichmentCoverage.map((s) => (
+                <div key={s.key} className="flex flex-wrap items-start justify-between gap-3 border-t border-glass-border py-3.5 first:border-t-0 first:pt-0">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-body text-[14px] font-semibold text-ink">{s.label}</p>
+                    <p className="mt-1 font-body text-[12px] text-ink-soft">
+                      {formatCount(s.matchedProfiles)} profil cocok dari {formatCount(s.sourceRows)} baris sumber
+                      {" · "}{formatCount(Math.max(s.sourceRows - s.matchedProfiles, 0))} tak tersambung ke master
+                    </p>
+                  </div>
+                  <Badge tone={s.matchedProfiles === 0 ? "neutral" : "amber"}>
+                    {formatCount(s.matchedProfiles)}/{formatCount(s.sourceRows)}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          </Panel>
+
+          <Panel
             title="Temuan yang tidak bisa dihitung live"
             caption={`Hal-hal berikut sudah diverifikasi langsung ke database pada ${ARTIFACTS_VERIFIED_ON}, tetapi tidak bisa dihitung ulang lewat API baca yang dipakai halaman ini (tidak ada perbandingan antar-kolom maupun regex). Angkanya statis dan sengaja diberi tanggal — jangan dibaca sebagai angka hari ini.`}
           >
