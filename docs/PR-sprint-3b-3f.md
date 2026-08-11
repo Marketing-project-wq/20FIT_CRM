@@ -1,6 +1,12 @@
 # PR: Sprint 3B + 3C + 3D + 3E + 3F → main
 
-> Deskripsi peninjau, bukan daftar commit. Baca ini lima menit sebelum menekan merge.
+> **STATUS (per Sprint 3G): SUDAH TER-MERGE.** PR #4 menggabungkan 3B–3F ke `main`
+> (`eff733c`) di luar sesi ini. Dokumen di bawah ditulis sebagai catatan peninjau
+> **pra-merge** dan dipertahankan apa adanya sebagai rekam jejak; §6 (peta request
+> pertama) ditambahkan pasca-merge. Untuk ringkasan keputusan pasca-merge, lihat
+> `docs/RINGKASAN-keputusan-merge.md`; untuk tinjauan diff, `docs/TINJAUAN-pra-merge.md`.
+>
+> Deskripsi peninjau, bukan daftar commit.
 >
 > **Branch:** `claude/lanjutkan-pekerjaan-mno804`
 > **Base:** `main` @ `4bac312` (Sprint 3A — sudah live & dipakai orang)
@@ -133,3 +139,36 @@ Postgres — keputusan tersendiri), nol sentuh tabel di luar `crm_*`.
 
 > **JANGAN merge / buka PR ke `main` tanpa izin eksplisit.** Push ke `main` memicu deploy
 > Railway ke sistem yang sedang dipakai.
+
+---
+
+## 6. Request pertama setelah deploy — peta kegagalan (Sprint 3G)
+
+> Ditambahkan pasca-merge (3G). PR #4 sudah menggabungkan 3B–3F ke `main` (`eff733c`);
+> bagian ini memetakan apa yang terjadi pada request PERTAMA tiap rute setelah deploy.
+
+### Urutan deploy — TIDAK ADA yang perlu diurutkan (kebalikan dari 3A)
+
+Peringatan urutan keras di README milik **Sprint 3A**: RBAC fail-closed, jadi kode tak
+boleh mendahului migrasi + seed peran (kalau tidak, semua orang terkunci). **Di sini
+kebalikannya, dan aman:** migrasi 3 (`crm_consent`) **sudah dijalankan lebih dulu**
+(3F, 2026-08-11, ledger `20260811072232`), `crm_user_role` sudah ter-seed sejak 3A.
+Jadi saat kode ini deploy, **tabel yang dibacanya sudah ada dan RBAC sudah hidup**.
+**Tidak ada langkah pengurutan untuk sprint ini.** Jangan salah menerapkan peringatan
+3A di README ke deploy ini.
+
+### Tabel per rute (jalur TIDAK bahagia)
+
+| Rute | `crm_consent` hilang (skenario revert-drop) | service-role key hilang/salah | Sesi aktif saat deploy | Audit gagal ditulis |
+|---|---|---|---|---|
+| `/` + `/api/dashboard` | **Seluruh kartu → “—”** (bukan crash). `fetchContactableCount` melempar → `Promise.all` di `fetchDashboardStats` gagal → route 500 → klien tampilkan “—”. **Kopling:** ukuran audiens ikut “—”, bukan hanya “Bisa dihubungi”. Hanya relevan bila tabel di-drop saat kode live. | `getCurrentUserRole` → null → **403 fail-closed** (kartu “—”). Tak sampai query. | Lanjut jalan; navigasi berikutnya dapat kartu baru. Bundel klien lama sesaat abaikan field `contactable` — tak berbahaya. | Tak ada audit di rute ini (agregat tanpa parameter) — tak ada yang gagal. |
+| `/audience` + `/api/audience` | Tak menyentuh `crm_consent` — tak terpengaruh. | 403 fail-closed. | Lanjut; nama jadi tautan pada muat ulang. | **503** — menolak menyajikan baca tak-teraudit (aturan 3E). |
+| `/audience/[id]` + `/api/audience/[id]` | Tak terpengaruh. | 403 fail-closed. | Lanjut. | **503** (baris individual). |
+| `/quality` + `/api/quality` | Tak terpengaruh. | 403 fail-closed. | Lanjut. | Tak ada audit (agregat) — tak ada yang gagal. |
+| `/settings` + `/api/audit` | Tak terpengaruh. | 403 fail-closed. | Lanjut. | **503** (baris individual + filter). |
+| `/consent` + `/api/consent` | **500 `query_failed`** → klien “Gagal memuat”. Gagal anggun, bukan meledak; tak menyentuh app lain. | 403 fail-closed. | Lanjut; muncul di nav untuk peran `consent.edit`. | **503** (baris individual + filter). |
+
+Prinsip yang berlaku di seluruh tabel: **arah gagal selalu aman** — menolak (403/500/503)
+atau menampilkan “—”, tidak pernah membocorkan data atau menyajikan baca tak-teraudit.
+Missing service key selalu berujung 403 fail-closed karena `getCurrentUserRole` menelan
+errornya dan mengembalikan `null` sebelum query mana pun berjalan.

@@ -264,11 +264,6 @@ export function isPermitted(role: unknown, action: Action, ctx: AccessContext = 
 
 // ── DERIVED HELPERS (used by guards, the audience read layer, and nav) ───────────
 
-/** Any valid, in-scope role at all? Used for "dashboard is visible to everyone valid". */
-export function hasAnyRole(role: unknown): boolean {
-  return isRole(role);
-}
-
 /** May the role open the profile list (masked or not)? */
 export function canViewProfileList(role: unknown, ctx: AccessContext = {}): boolean {
   return isPermitted(role, "profile.view_list", ctx);

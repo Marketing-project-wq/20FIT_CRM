@@ -12,7 +12,8 @@ import {
 } from "@/lib/crm/audience-constants";
 
 // Row shape mirrors lib/crm/audience.ts AudienceRow (phone/email already masked
-// server-side when `masked`). We never receive customer_id — not a display column.
+// server-side when `masked`). customer_id IS received (Sprint 3C) — used only as the
+// link target for the profile detail, never rendered as a display column.
 interface Row {
   customer_id: string;
   full_name: string | null;
