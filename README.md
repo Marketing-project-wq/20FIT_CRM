@@ -45,11 +45,22 @@ Full spec: `PRD — 20FIT Audience Data & CRM System v1.1`.
 > (Migration 8, `…090000_create_crm_purge_audit_log`, was added later and is applied too:
 > ledger `20260811034942`.)
 >
+> **Migration 9 (Sprint 3H) — first WRITE path:** `…100000_create_crm_record_suppression`
+> creates two `SECURITY DEFINER` functions (`crm_record_suppression`, `crm_lift_suppression`)
+> — no new table. Applied 2026-08-11, ledger version `20260811081711`
+> (`create_crm_record_suppression`; again the stamp ≠ file-name timestamp — the eighth time).
+> It was applied **twice** under the same name: the first apply left Supabase's default
+> `EXECUTE` grant to `anon`/`authenticated` in place (a `revoke … from public` does not
+> remove explicit role grants), so a second apply of the corrected `revoke … from public,
+> anon, authenticated` closed it. Both functions now grant `EXECUTE` to `service_role`
+> only. The repo file is the canonical full definition; re-running it on a fresh DB
+> yields the same end state in one pass.
+>
 > **Do NOT run `supabase db push` against this project until the ledger and repo are
 > reconciled.** No repo file-name timestamp exists in the ledger, so the CLI would
-> treat all seven repo migrations (plus migration 8) as unapplied and try to run them
-> all — re-running the now-**seven** live tables, which fail as "already exists". Run any
-> further migration one-by-one via a reviewed path, not `db push`.
+> treat all seven repo migrations (plus migrations 8 and 9) as unapplied and try to run
+> them all — re-running the now-**seven** live tables, which fail as "already exists". Run
+> any further migration one-by-one via a reviewed path, not `db push`.
 
 ## Data-quality screen (`/quality`)
 

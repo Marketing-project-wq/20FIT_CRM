@@ -20,6 +20,13 @@ describe("classifyAction (single source)", () => {
       expect(classifyAction(a)).toBe("compliance");
     }
   });
+  it("the exact suppression write-path actions are compliance (never purged)", () => {
+    // Migrasi 9 menulis persis dua nama aksi ini. Permintaan berhenti dihubungi =
+    // bukti hukum → tidak boleh ikut terpangkas setelah 90 hari. Dikonfirmasi di sini
+    // (bukan diasumsikan); paritas dengan denylist SQL migrasi 8 dijamin parity.test.
+    expect(classifyAction("suppression.added")).toBe("compliance");
+    expect(classifyAction("suppression.lifted")).toBe("compliance");
+  });
   it("anything else is 'other'", () => {
     expect(classifyAction("test.trigger_check")).toBe("other");
     expect(classifyAction("whatever.new")).toBe("other");

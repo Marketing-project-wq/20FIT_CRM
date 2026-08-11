@@ -130,3 +130,38 @@ Yang harus terlihat:
 > **Claude tidak membuat akun atau baris `crm_user_role` ini.** Membuat/mengubah baris
 > peran memberi atau mencabut akses akun manusia di produksi — itu keputusan tim.
 > Setelah selesai menguji, tim boleh menonaktifkan akun uji itu.
+
+---
+
+## Sisa verifikasi produksi (Sprint 3H) — dua halaman yang belum pernah dibuka
+
+Per `crm_audit_log` 11 Agu 2026: `/audience` (30 buka) dan `/consent` (1 buka, `id=32`)
+**sudah terbukti jalan di produksi**. Dua layar berikut **belum pernah dibuka satu kali
+pun** — masing-masing butuh satu orang membuka satu halaman:
+
+### V-6. Detail profil menulis `profile.viewed` PERTAMA
+Buka `/audience`, klik satu nama. Lalu:
+```sql
+select id, actor_email, action, target_id, occurred_at
+from crm_audit_log where action = 'profile.viewed'
+order by id desc limit 1;
+```
+Harus muncul **satu** baris `profile.viewed` dengan `target_id` = UUID profil (cocokkan
+dengan URL `/audience/<uuid>`). Hari ini jumlahnya **0** — ini akan jadi yang pertama.
+
+### V-7. Layar audit `/settings` menulis `list.viewed`/`crm_audit_log`
+Buka `/settings` (peran `audit.view`: super_admin / crm_manager). Lalu:
+```sql
+select id, actor_email, action, target_table, occurred_at
+from crm_audit_log where action='list.viewed' and target_table='crm_audit_log'
+order by id desc limit 1;
+```
+Harus muncul **satu** baris, aktor = email Anda, tepat setelah membuka `/settings`.
+
+### Yang TIDAK bisa dibuktikan dari audit log — jangan salah hitung
+`/` (dashboard) dan `/quality` **sengaja tidak menulis audit** (aturan Sprint 3E:
+agregat tanpa parameter tidak diaudit). Karena itu **nol baris audit dari keduanya
+BUKAN bukti mereka berjalan** — justru itu perilaku yang benar. Menghitung "nol baris"
+sebagai keberhasilan membalik artinya. Satu-satunya bukti kedua layar itu jalan adalah
+**log Railway** (request 200 ke `/api/dashboard` dan `/api/quality`) atau **seseorang
+yang benar-benar melihat layarnya**. Pisahkan dua hal ini saat melapor.
