@@ -1,6 +1,16 @@
-# PR: Sprint 3G + 3H → main
+# PR: Sprint 3G + 3H + 3I → main
 
-> ## ⛔ INI SPRINT PERTAMA YANG MENULIS DATA
+> ## 🔒 SIKLUS INI MEMPERBAIKI LUBANG KEAMANAN YANG SUDAH LIVE
+>
+> **Argumen terkuat untuk mendaratkan siklus ini, bukan menundanya lagi:** migrasi 10
+> menutup `crm_purge_audit_log` — fungsi `SECURITY DEFINER` yang menonaktifkan trigger
+> append-only lalu menghapus baris audit — yang `EXECUTE`-nya **terbuka ke `anon`** sejak
+> ia dibuat (Sprint 3A). Siapa pun pemegang anon key bisa memanggilnya tanpa login, tanpa
+> peran. **Migrasi 10 sudah diterapkan ke database dan berlaku TERLEPAS dari apakah kode
+> ini di-merge** — perbaikan keamanannya tidak menunggu deploy. Yang menunggu merge adalah
+> jalur tulis suppression (3H) yang tidak melindungi siapa pun selama masih di branch.
+>
+> ## ⛔ INI SIKLUS PERTAMA YANG MENULIS DATA
 >
 > Semua sprint sebelumnya **baca-saja**: satu-satunya tulis adalah baris audit
 > append-only. Untuk semuanya, `git revert` cukup — kembalikan kode, selesai.
@@ -13,8 +23,8 @@
 >
 > **Branch:** `claude/lanjutkan-pekerjaan-mno804`
 > **Base:** `main` @ `eff733c` (PR #4 — 3B–3F, sudah live & dipakai)
-> **Isi branch di atas base:** `9a7b296` + `ef0ea89` (3G, pembersihan + rencana revert/monitoring) · `c63280a` + `15cb3f7` (3H, jalur tulis suppression) · commit dokumen ini
-> **⚠️ 3H MENGUBAH SKEMA PRODUKSI** (migrasi 9 — dua fungsi, bukan tabel) **DAN menulis data pelanggan** (baris suppression). Dua hal berbeda dengan aturan revert berbeda — §4.
+> **Isi branch di atas base:** `9a7b296` + `ef0ea89` (3G) · `c63280a` + `15cb3f7` + `a0035d9` (3H) · commit-commit 3I (migrasi 10 + pagar + dokumen)
+> **⚠️ MENGUBAH SKEMA PRODUKSI:** migrasi 9 (dua fungsi tulis) **dan** migrasi 10 (cabut EXECUTE terbuka). **MENULIS data pelanggan:** baris suppression (3H). Aturan revert berbeda per hal — §4.
 > **JANGAN merge / buka PR ke `main` tanpa izin eksplisit.**
 
 ## 1. Yang berubah, per bagian
@@ -38,12 +48,22 @@
 | `lib/crm/suppression-input.ts` (murni, konsumen runtime **pertama** `normalize.ts`) + `lib/crm/suppression-write.ts` (server, bungkus RPC, **tak menulis audit sendiri**) | Kode |
 | Test: 179 → **194** (+13 input, +1 seam D-2 kontabilitas, +1 aksi suppression = kepatuhan) | **Pagar** (test) |
 
+### Sprint 3I (tutup pintu RPC yang terbuka, lalu daratkan)
+| Perubahan | Sifat |
+|---|---|
+| **Migrasi 10** — `revoke all on crm_purge_audit_log(boolean) from public, anon, authenticated` + grant `service_role`. Menutup lubang `anon`-callable yang LIVE sejak 3A. `proacl` sesudahnya: `{postgres, service_role}`. `dry_run` masih bekerja lewat service role | **MENGUBAH SKEMA PRODUKSI (keamanan)** |
+| `lib/crm/migration-execute-guard.test.ts` — pagar: setiap fungsi `crm_*` di migrasi wajib mencabut EXECUTE dari public/anon/authenticated di **berkas yang sama** (kecuali fungsi trigger & allowlist lintas-berkas). Dibuktikan menggigit | **Pagar** (test) |
+| `docs/RISIKO-rpc-execute-terbuka.md` — pola auto-grant, contoh yang sudah diperbaiki, **101** fungsi non-`crm_*` yang masih terbuka (cara mengukurnya sendiri), sisanya keputusan pemilik project | Dokumen |
+| README ledger diluruskan: 10 berkas repo → **11** entri ledger (migrasi 9 apply ganda), migrasi 10 ditambahkan, peringatan `db push` dibetulkan | Dokumen |
+| Sapuan `crm_*`: 4 objek, semua fungsi `SECURITY DEFINER` kini terkunci; fungsi trigger `crm_audit_log_no_mutate` dinilai aman (tak bisa dipanggil via RPC) | Verifikasi |
+| Test: 194 → **202** (+8 pagar EXECUTE) | **Pagar** (test) |
+
 ## 2. Yang TIDAK berubah (batas keras sprint ini)
 - **Nol jalur tulis consent.** `crm_consent` masih baca-saja — belum ada kanal opt-in nyata untuk ditunjuk. Nol `INSERT` ke `crm_consent`.
 - **Nol DELETE dari `crm_suppression`.** Pencabutan = `status='lifted'`. Sticky by design (D-4).
 - **Nol backfill.** `legacy_import` ada di kosakata DB tetapi **tidak** ditawarkan aplikasi — mengisi massal butuh keputusan tim, bukan sprint ini.
 - **Normalisasi tidak di SQL** (D-2). Fungsi hanya **menolak** yang belum ternormalisasi; normalisasi selalu di `lib/crm/normalize.ts`.
-- **Nol migrasi lain** selain migrasi 9. **Nol `supabase db push`.** Nol sentuh tabel di luar `crm_*`. `crm_user_role` tak disentuh. RLS tabel lama tak dinyalakan. `railway.json` (`NODE_ENV=production`) utuh.
+- **Hanya migrasi 9 (3H) + migrasi 10 (3I)**, nol migrasi lain. **Nol `supabase db push`.** Nol sentuh objek di luar `crm_*` (101 fungsi tim lain yang terbuka **tidak** disentuh — keputusan pemilik project, `docs/RISIKO-rpc-execute-terbuka.md`). `crm_user_role` tak disentuh. RLS tabel lama tak dinyalakan. `railway.json` (`NODE_ENV=production`) utuh.
 
 ## 3. Bukti atomik (K-3) — dijalankan, bukan diklaim
 Migrasi 9 diverifikasi lewat probe **dalam transaksi yang di-ROLLBACK** (nol residu di produksi — `crm_suppression` tetap 0 baris, audit tetap 35):
@@ -56,6 +76,13 @@ Migrasi 9 diverifikasi lewat probe **dalam transaksi yang di-ROLLBACK** (nol res
 ## 4. Rencana revert — TIGA TINGKAT, jangan campur
 
 Sprint ini memisahkan tiga hal yang dulu satu. Perlakukan berbeda:
+
+### Tingkat 0 — MIGRASI 10 (JANGAN direvert)
+Migrasi 10 mencabut `EXECUTE` terbuka dari `crm_purge_audit_log`. **Ia bukan bagian dari
+revert siklus ini.** Mengembalikan grant terbuka = **membuka kembali lubang keamanan** yang
+sudah live sejak 3A. Migrasi 10 berlaku di database terlepas dari merge kode; kalau kode
+di-revert, migrasi 10 **tetap tinggal** — itu benar. Jangan `grant execute ... to anon`
+atau `to public` untuk fungsi itu, dengan alasan apa pun.
 
 ### Tingkat 1 — KODE (bisa dikembalikan, aman)
 `git revert` commit 3H (atau revert merge PR-nya). Aplikasi kembali baca-saja: tombol
