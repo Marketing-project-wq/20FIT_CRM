@@ -5,6 +5,8 @@ import {
   type ConsentRow,
   type Identity,
 } from "./contactability";
+import { prepareIdentity } from "./suppression-input";
+import { normalizePhoneID } from "./normalize";
 
 const marketingActive: ConsentRow = { channel: "whatsapp", purpose: "marketing", status: "active" };
 const marketingWithdrawn: ConsentRow = { channel: "whatsapp", purpose: "marketing", status: "withdrawn" };
@@ -53,5 +55,32 @@ describe("isContactableForMarketing", () => {
     expect(
       isContactableForMarketing([transactionalActive, marketingWithdrawn, marketingActive], [phone], new Set()),
     ).toBe(true);
+  });
+});
+
+/**
+ * The D-2 seam: the WRITE path (prepareIdentity) and the READ path (master_customer's
+ * phone_normalized fed to suppressionKey) MUST produce the same canon, or a suppression
+ * fails to match silently and a person who asked to stop is still contactable. This test
+ * ties the two modules together so a future canon drift breaks a test, not a promise.
+ */
+describe("write-canon matches contactability lookup (D-2, no silent mismatch)", () => {
+  it("a phone suppressed via the write path blocks the same profile's normalized identity", () => {
+    // Operator types a messy number on /consent; the write path normalizes it.
+    const prepared = prepareIdentity("phone", "0812-3456-789");
+    expect(prepared.ok).toBe(true);
+    if (!prepared.ok) return;
+
+    // The active-suppression set the dashboard builds is keyed the same way.
+    const suppSet = new Set([suppressionKey(prepared.identityKind, prepared.identityKey)]);
+
+    // master_customer stores the SAME person under the SAME canon (+62 form here).
+    const profilePhone = normalizePhoneID("+62 812 3456 789");
+    const identities: Identity[] = [{ kind: "phone", key: profilePhone! }];
+
+    // Even with an active marketing consent, suppression wins — BECAUSE the keys match.
+    expect(isContactableForMarketing([marketingActive], identities, suppSet)).toBe(false);
+    // Sanity: the two paths really did produce the identical key.
+    expect(profilePhone).toBe(prepared.identityKey);
   });
 });

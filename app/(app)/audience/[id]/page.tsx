@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { getCurrentUserRole } from "@/lib/auth/current-role";
-import { canViewProfileList, resolveGrant } from "@/lib/auth/roles";
+import { canViewProfileList, isPermitted, resolveGrant } from "@/lib/auth/roles";
 import { Badge } from "@/components/ui/badge";
 import { ProfileDetail } from "@/components/audience/profile-detail";
 
@@ -34,5 +34,9 @@ export default async function ProfileDetailPage({ params }: { params: { id: stri
     );
   }
 
-  return <ProfileDetail id={params.id} />;
+  // Whether this role may record a suppression from the profile. The API re-checks
+  // consent.edit server-side; this only decides whether to render the entry point.
+  const canEditConsent = isPermitted(role, "consent.edit");
+
+  return <ProfileDetail id={params.id} canEditConsent={canEditConsent} />;
 }
