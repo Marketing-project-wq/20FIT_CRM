@@ -123,6 +123,18 @@ export const VERIFIED_ARTIFACTS = [
     detail:
       "master_customer datang sebagai DUA muatan batch, bukan satu impor dan bukan pipeline berkelanjutan: 20fit_data_import 81.178 baris (semua created_at 2026-04-20) dan live_txn_ingest 1.075 baris (semua created_at 2026-07-31 — satu instan, bukan sepekan). first_seen_at baris live_txn_ingest membentang Feb–Agu 2026 (tanggal transaksi yang di-backfill), tetapi keduanya DIMUAT sekali jalan. Jadi kartu “Profil terakhir bertambah: 31 Juli” = tanggal muatan batch terakhir, BUKAN pipeline yang telat — nama “live_txn_ingest” untuk sumber yang hanya berjalan sekali adalah label yang menyesatkan.",
   },
+  {
+    key: "first_seen_is_load_stamp",
+    label: "“first_seen_at” adalah cap muat untuk 98,7% pool",
+    detail:
+      "first_seen_at hanya membawa informasi nyata pada 1.075 baris live_txn_ingest (162 hari berbeda, Feb–Agu 2026). Untuk 81.178 baris 20fit_data_import (98,69%) ia satu instan (2026-04-20), yakni cap waktu muat — bukan “pertama terlihat”. Ini membuat temuan Sprint 2 (“last_activity_at 99,62% sama dengan first_seen_at”) jadi tautologi: keduanya cap muat yang sama, bukan bukti aktivitas tak terekam. Konsekuensinya: segmentasi berbasis recency TIDAK bisa jujur dengan data hari ini. Rinciannya di docs/KOLOM-WAKTU.md.",
+  },
+  {
+    key: "first_seen_after_created",
+    label: "14 baris “pertama terlihat” setelah dibuat (kontradiksi logis)",
+    detail:
+      "14 baris punya first_seen_at LEBIH BARU dari created_at (selisih terbesar 7 hari 11 jam), semuanya di live_txn_ingest. Sebuah baris yang “pertama terlihat” setelah barisnya sendiri dibuat adalah kontradiksi, bukan sekadar data kotor. Seperti LTV negatif, ia tak muncul di filter layar mana pun — PostgREST tak punya perbandingan antar-kolom (pelajaran Sprint 3B), jadi diangkat di sini sebagai temuan terverifikasi, bukan filter yang dipaksakan. Diverifikasi 11 Agustus 2026.",
+  },
   // NOTE: `phone_canonical_gap` sengaja DIHAPUS di Sprint 3B (2026-08-11). Temuan itu
   // sudah DIPERBAIKI — normalizePhoneID() kini menghasilkan `62…` tanpa `+`, cocok
   // dengan master_customer. Temuan yang sudah ditutup tidak boleh terus tampil di layar

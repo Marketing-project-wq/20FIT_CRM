@@ -1,0 +1,75 @@
+import { describe, it, expect } from "vitest";
+import {
+  classifyAction,
+  matchesRule,
+  matchesAny,
+  toPostgrestOr,
+  retentionRatio,
+  OPERATIONAL_RULES,
+  COMPLIANCE_RULES,
+} from "./retention-policy";
+
+describe("classifyAction (single source)", () => {
+  it("operational = the purge allowlist", () => {
+    for (const a of ["profile.viewed", "list.viewed", "search.run", "login.ok"]) {
+      expect(classifyAction(a)).toBe("operational");
+    }
+  });
+  it("compliance = the permanently-excluded categories", () => {
+    for (const a of ["consent.x", "suppression.x", "role.granted", "profile.deleted", "export.x", "retention.x"]) {
+      expect(classifyAction(a)).toBe("compliance");
+    }
+  });
+  it("anything else is 'other'", () => {
+    expect(classifyAction("test.trigger_check")).toBe("other");
+    expect(classifyAction("whatever.new")).toBe("other");
+  });
+  it("does not confuse profile.deleted (compliance) with profile.viewed (operational)", () => {
+    expect(classifyAction("profile.viewed")).toBe("operational");
+    expect(classifyAction("profile.deleted")).toBe("compliance");
+  });
+});
+
+describe("matchesRule / matchesAny", () => {
+  it("exact matches only the exact string", () => {
+    expect(matchesRule({ kind: "exact", value: "list.viewed" }, "list.viewed")).toBe(true);
+    expect(matchesRule({ kind: "exact", value: "list.viewed" }, "list.viewedx")).toBe(false);
+  });
+  it("prefix matches by startsWith", () => {
+    expect(matchesRule({ kind: "prefix", value: "role." }, "role.granted")).toBe(true);
+    expect(matchesRule({ kind: "prefix", value: "role." }, "roles.granted")).toBe(false);
+  });
+  it("matchesAny is an OR over rules", () => {
+    expect(matchesAny(OPERATIONAL_RULES, "search.foo")).toBe(true);
+    expect(matchesAny(OPERATIONAL_RULES, "role.granted")).toBe(false);
+  });
+});
+
+describe("toPostgrestOr derivation", () => {
+  it("derives the exact strings /api/audit passes to .or()", () => {
+    expect(toPostgrestOr(OPERATIONAL_RULES)).toBe(
+      "action.eq.profile.viewed,action.eq.list.viewed,action.like.search.*,action.like.login.*",
+    );
+    expect(toPostgrestOr(COMPLIANCE_RULES)).toBe(
+      "action.like.consent.*,action.like.suppression.*,action.like.role.*,action.eq.profile.deleted,action.like.export.*,action.like.retention.*",
+    );
+  });
+});
+
+describe("retentionRatio", () => {
+  it("counts by class over a given set of actions", () => {
+    const actions = [
+      "list.viewed", "list.viewed", "profile.viewed", // 3 operational
+      "role.granted", "retention.purge_executed", // 2 compliance
+      "test.trigger_check", // 1 other
+    ];
+    expect(retentionRatio(actions)).toEqual({ compliance: 2, operational: 3, other: 1, total: 6 });
+  });
+  it("handles an empty set", () => {
+    expect(retentionRatio([])).toEqual({ compliance: 0, operational: 0, other: 0, total: 0 });
+  });
+  it("compliance + operational + other always equals total", () => {
+    const r = retentionRatio(["a.b", "list.viewed", "role.x", "search.y", "z"]);
+    expect(r.compliance + r.operational + r.other).toBe(r.total);
+  });
+});

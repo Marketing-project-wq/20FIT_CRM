@@ -230,7 +230,7 @@ components/
   quality/          data-quality dashboard
   settings/         roles panel + audit-log panel
 lib/
-  crm/              normalize / mask / audience + profile / quality / audit-log / dashboard
+  crm/              normalize / mask / audience+profile / quality / audit-log / dashboard / retention-policy
   auth/             RBAC matrix, role resolution, server guards
   supabase/         client / server / admin / middleware helpers
   theme.ts          theme cookie helpers

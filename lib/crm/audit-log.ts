@@ -4,6 +4,7 @@ import {
   AUDIT_DEFAULT_PAGE_SIZE,
   AUDIT_MAX_PAGE_SIZE,
 } from "./audit-log-constants";
+import { COMPLIANCE_OR, OPERATIONAL_OR } from "./retention-policy";
 
 /**
  * Audit-log read layer — READ-ONLY over crm_audit_log. Server-only; the service-role
@@ -64,12 +65,8 @@ export interface AuditLogResult {
   counts: AuditCounts;
 }
 
-// PostgREST `.or()` patterns — MIRROR migration 8 / classifyAction exactly. `*` is the
-// PostgREST like wildcard (becomes SQL `%`).
-const COMPLIANCE_OR =
-  "action.like.consent.*,action.like.suppression.*,action.like.role.*,action.eq.profile.deleted,action.like.export.*,action.like.retention.*";
-const OPERATIONAL_OR =
-  "action.eq.profile.viewed,action.eq.list.viewed,action.like.search.*,action.like.login.*";
+// PostgREST `.or()` patterns are DERIVED from the single retention-policy source —
+// never retyped, so the category filter can never disagree with classifyAction.
 
 export function clampAuditPageSize(n: number): number {
   if (!Number.isFinite(n) || n < 1) return AUDIT_DEFAULT_PAGE_SIZE;

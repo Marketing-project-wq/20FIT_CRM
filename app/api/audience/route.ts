@@ -10,6 +10,7 @@ import {
   SEGMENT_NULL,
   type RevenueFilter,
 } from "@/lib/crm/audience";
+import { capFilterValue } from "@/lib/crm/audience-constants";
 
 export const dynamic = "force-dynamic";
 
@@ -103,8 +104,7 @@ export async function GET(request: NextRequest) {
   // filter values as user-typed, not curated. If the team judges the residual risk too
   // high, flipping to a marker-only record is a one-line change (store the length, drop
   // the value). NEVER put a customer's name/phone/email here deliberately.
-  const FILTER_VALUE_MAX = 60;
-  const cap = (v: string | null): string | null => (v == null ? null : v.slice(0, FILTER_VALUE_MAX));
+  const cappedCity = capFilterValue(city); // free-text, length-capped (pure fn; see note above)
   const { error: auditError } = await admin.from("crm_audit_log").insert({
     actor_id: userId,
     actor_email: userEmail,
@@ -120,10 +120,10 @@ export async function GET(request: NextRequest) {
       total: result.total,
       masked,
       filters: {
-        unit: cap(unit),
-        segment: segment === SEGMENT_NULL ? "(null cohort)" : cap(segment),
-        city: cap(city), // free-text, length-capped (see note above)
-        city_len: city ? city.length : 0, // original length, so truncation is visible
+        unit: capFilterValue(unit).value,
+        segment: segment === SEGMENT_NULL ? "(null cohort)" : capFilterValue(segment).value,
+        city: cappedCity.value,
+        city_len: cappedCity.length, // original length, so truncation is visible
         revenue,
       },
     },

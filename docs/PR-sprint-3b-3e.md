@@ -1,10 +1,10 @@
-# PR: Sprint 3B + 3C + 3D → main
+# PR: Sprint 3B + 3C + 3D + 3E → main
 
 > Deskripsi peninjau, bukan daftar commit. Baca ini lima menit sebelum menekan merge.
 >
 > **Branch:** `claude/lanjutkan-pekerjaan-mno804`
 > **Base:** `main` @ `4bac312` (Sprint 3A — sudah live & dipakai orang)
-> **Isi branch (3 commit di atas base):** `bf736b0` (3B) · `322377f` (3C) · commit landing 3D (tip)
+> **Isi branch (4 commit di atas base):** `bf736b0` (3B) · `322377f` (3C) · `68dd66f` (3D) · commit landing 3E (tip)
 > **Merentang produksi yang SEDANG DIPAKAI:** `crm_audit_log` menunjukkan `tifany@20fit.id`
 > membuka audience pool berkali-kali (11 Agu 2026). Regresi mengenai layar nyata.
 
@@ -38,6 +38,20 @@ Kode pendukung: matriks RBAC & normalizer telepon (3B: kanon `62…`), lapisan b
   `profile.viewed`) — **append-only, memang tujuannya**, bukan data pelanggan.
 - `railway.json` (`NODE_ENV=production`) utuh.
 
+## 2b. Yang ditambahkan Sprint 3E (utang + kejujuran waktu)
+
+| Perubahan 3E | Sifat |
+|---|---|
+| Sumber retensi tunggal `lib/crm/retention-policy.ts` — `classifyAction` + filter `.or()` `/api/audit` diturunkan darinya, nol daftar diketik ulang | **Pagar** (perilaku sama, satu sumber) |
+| Test paritas migrasi 8 ⇄ TypeScript (gagal keras bila daftar menyimpang) | **Pagar** (test) |
+| `first_seen_at` di **detail profil** kini berlabel sadar-sumber (nyata hanya untuk `live_txn_ingest`; selain itu "cap muat, bukan pertama terlihat") | **MENGUBAH TAMPILAN** |
+| `/quality` — tiga temuan waktu baru (`first_seen_at` cap muat 98,7%; 14 baris `first_seen_at > created_at`; batch bukan feed) | **MENGUBAH TAMPILAN** |
+| `docs/KOLOM-WAKTU.md` — apa yang tiap kolom waktu ukur, boleh/dilarang; segmentasi recency tak bisa jujur hari ini | Dokumen |
+| Utang test 3D dibayar: `capFilterValue` + predikat retensi + rasio jadi fungsi murni ber-test (146 → 170) | **Pagar** (test) |
+
+Nol migrasi/skema/DDL di 3E juga (usulan perluasan komentar `crm_profile_behavior` hanya
+dicatat di `docs/KOLOM-WAKTU.md`, tidak dijalankan).
+
 ## 3. Risiko — dipimpin yang terbesar
 
 1. **[TERBESAR] Endpoint belum pernah dieksekusi terhadap Supabase dari sini.** Proxy
@@ -47,6 +61,10 @@ Kode pendukung: matriks RBAC & normalizer telepon (3B: kanon `62…`), lapisan b
    SQL setara, (c) unit test masking/klasifikasi. **Mitigasi wajib:** jalankan
    `scripts/verify-live.mjs` + `docs/CEKLIS-verifikasi-live.md` dengan kredensial
    sebelum merge (lihat §5).
+   - **Diperbesar oleh 3E:** sprint ini kembali **mengubah `/quality` dan detail profil**
+     — dua layar yang **masih** belum pernah dieksekusi terhadap Supabase. Perubahannya
+     hanya label/temuan (bukan query baru yang berisiko), tetapi keduanya tetap masuk
+     cakupan verify-live yang wajib dijalankan sebelum merge.
 2. **`/audience` berubah perilaku di layar yang dipakai orang.** Nama jadi tautan; tiap
    buka profil menulis `profile.viewed`. Fungsional kecil, tapi live.
 3. **Volume audit naik.** `profile.viewed` + `list.viewed` (termasuk pembukaan
@@ -61,8 +79,8 @@ Kode pendukung: matriks RBAC & normalizer telepon (3B: kanon `62…`), lapisan b
 
 ## 4. Rencana revert
 
-- Branch = **3 commit** di atas `4bac312`. Karena **nol migrasi / nol perubahan skema /
-  nol tulis data pelanggan**, revert adalah **kode saja — tanpa rollback DB.**
+- Branch = **4 commit** di atas `4bac312` (3B, 3C, 3D, 3E). Karena **nol migrasi / nol
+  perubahan skema / nol tulis data pelanggan**, revert adalah **kode saja — tanpa rollback DB.**
 - **Revert penuh:** kembalikan `main` ke `4bac312` (revert merge commit-nya). Produksi
   kembali ke Sprint 3A: audience pool (list, tanpa nama-bisa-diklik), `/settings/roles`
   stub lama, tanpa `/quality`, tanpa dashboard-terisi, tanpa detail profil, tanpa layar

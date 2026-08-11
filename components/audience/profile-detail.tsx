@@ -172,15 +172,35 @@ export function ProfileDetail({ id }: { id: string }) {
           </div>
         </section>
 
-        {/* Jejak waktu */}
+        {/* Jejak waktu — first_seen_at is only real for live_txn_ingest rows; for
+            everything else it is a batch-load stamp, so the label is source-aware and
+            never says a bare "pertama terlihat". See docs/KOLOM-WAKTU.md. */}
         <section className="glass shadow-glass p-6">
           <h2 className="font-display text-[16px] font-extrabold uppercase tracking-wide text-ink">Jejak waktu</h2>
           <div className="mt-4">
-            <Field label="Pertama terlihat" mono>{formatTs(p.first_seen_at)}</Field>
-            <Field label="Dibuat" mono>{formatTs(p.created_at)}</Field>
+            <Field label="Dibuat (cap waktu muat batch)" mono>{formatTs(p.created_at)}</Field>
+            {p.source === "live_txn_ingest" ? (
+              <Field label="Pertama terlihat" mono>
+                {formatTs(p.first_seen_at)}{" "}
+                <span className="font-body text-[12px] italic text-ink-faint">· dari transaksi (nyata)</span>
+              </Field>
+            ) : (
+              <Field label="First-seen" mono>
+                {formatTs(p.first_seen_at)}{" "}
+                <span className="font-body text-[12px] italic text-ink-faint">
+                  · cap waktu muat, BUKAN “pertama terlihat”
+                </span>
+              </Field>
+            )}
             <Field label="Diperbarui" mono>{formatTs(p.updated_at)}</Field>
             {/* last_activity_at sengaja TIDAK ditampilkan (artefak impor, aturan sejak 3A). */}
           </div>
+          <p className="mt-3 font-body text-[12px] leading-relaxed text-ink-soft">
+            “First-seen” hanya bermakna pada baris <span className="font-mono">live_txn_ingest</span>;
+            untuk <span className="font-mono">20fit_data_import</span> (98,7% pool) ia sama dengan waktu
+            muat. Segmentasi berbasis recency tidak bisa jujur dengan data ini —{" "}
+            <span className="font-mono">docs/KOLOM-WAKTU.md</span>.
+          </p>
         </section>
 
         {/* Kurasi & duplikat */}
