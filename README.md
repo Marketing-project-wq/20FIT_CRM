@@ -26,27 +26,30 @@ Full spec: `PRD — 20FIT Audience Data & CRM System v1.1`.
 
 > ## ⚠️ Migration ledger diverged — do NOT run `supabase db push`
 >
-> Six of the seven Sprint 2 migrations were applied to `cpvzwqptzcxnwzfzgrmt` on
-> 2026-08-10 via the Supabase MCP `apply_migration` (one per review gate). That path
-> stamps its **own** ledger version, which does **not** match the repo file-name
-> timestamps. Migration 3 (`crm_consent`) was deliberately **skipped** (awaiting
-> legal sign-off) and is absent from the ledger.
+> All seven Sprint 2 migrations were applied to `cpvzwqptzcxnwzfzgrmt` via the Supabase
+> MCP `apply_migration` (one per review gate). Six went in on 2026-08-10; migration 3
+> (`crm_consent`) was held for legal sign-off and applied on **2026-08-11 (Sprint 3F)**
+> once legal cleared it. That path stamps its **own** ledger version, which does **not**
+> match the repo file-name timestamps.
 >
 > | Repo file (prefix) | Ledger version | Ledger name |
 > |---|---|---|
 > | `…074534_create_crm_user_role` | `20260810125856` | `create_crm_user_role` |
 > | `…074535_create_crm_audit_log` | `20260810131751` | `create_crm_audit_log` |
-> | `…074536_create_crm_consent` | **— skipped (held for legal)** | — |
+> | `…074536_create_crm_consent` | `20260811072232` | `create_crm_consent` |
 > | `…074537_create_crm_suppression` | `20260810132715` | `create_crm_suppression` |
 > | `…074538_create_crm_profile_demographic` | `20260810133334` | `create_crm_profile_demographic` |
 > | `…074539_create_crm_profile_behavior` | `20260810133751` | `create_crm_profile_behavior` |
 > | `…074540_create_crm_profile_scores` | `20260810134736` | `create_crm_profile_scores` |
 >
+> (Migration 8, `…090000_create_crm_purge_audit_log`, was added later and is applied too:
+> ledger `20260811034942`.)
+>
 > **Do NOT run `supabase db push` against this project until the ledger and repo are
 > reconciled.** No repo file-name timestamp exists in the ledger, so the CLI would
-> treat all seven repo migrations as unapplied and try to run them all — re-running
-> the six live tables (which fail as "already exists") **and** applying the held
-> migration 3. Run any further migration one-by-one via a reviewed path, not `db push`.
+> treat all seven repo migrations (plus migration 8) as unapplied and try to run them
+> all — re-running the now-**seven** live tables, which fail as "already exists". Run any
+> further migration one-by-one via a reviewed path, not `db push`.
 
 ## Data-quality screen (`/quality`)
 

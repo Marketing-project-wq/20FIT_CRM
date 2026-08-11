@@ -5,6 +5,7 @@ import { StatCard } from "./stat-card";
 
 interface DashboardStats {
   audienceSize: number;
+  contactable: number;
   lastProfileAt: string | null;
 }
 
@@ -80,9 +81,10 @@ export function DashboardContent() {
     state === "ready" ? value : state === "loading" ? LOADING : DASH;
 
   const audienceValue = sourced(stats ? formatCount(stats.audienceSize) : DASH);
-  // "Bisa dihubungi" is a measured 0 (a legal fact: no consent register), but only
-  // once we're past the gate. Denied/error -> — like the other sourced cards.
-  const contactableValue = state === "ready" ? "0" : state === "loading" ? LOADING : DASH;
+  // "Bisa dihubungi" is now DERIVED from the contactability rule over crm_consent +
+  // crm_suppression (0 today because consent is empty — a MEASURED 0, not a written
+  // one). Denied/error -> — like the other sourced cards.
+  const contactableValue = sourced(stats ? formatCount(stats.contactable) : DASH);
   const freshnessValue = sourced(stats ? formatDate(stats.lastProfileAt) : DASH);
 
   return (
@@ -115,10 +117,12 @@ export function DashboardContent() {
           value={audienceValue}
           hint="master_customer (baca saja)"
         />
+        {/* Now DERIVED (not hardcoded): active marketing consent AND not suppressed.
+            0 today because crm_consent is empty — measured, fail-closed. */}
         <StatCard
           label="Bisa dihubungi"
           value={contactableValue}
-          hint="0 — register consent belum ada, belum ada dasar hukum kontak"
+          hint="dihitung dari consent aktif − suppression; 0 karena register consent masih kosong"
         />
         {/* Hard em-dash: there is no workflow table at all. A 0 here would read as
             "checked, none active" — but it has never been checked, because there is

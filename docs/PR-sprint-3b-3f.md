@@ -1,12 +1,15 @@
-# PR: Sprint 3B + 3C + 3D + 3E → main
+# PR: Sprint 3B + 3C + 3D + 3E + 3F → main
 
 > Deskripsi peninjau, bukan daftar commit. Baca ini lima menit sebelum menekan merge.
 >
 > **Branch:** `claude/lanjutkan-pekerjaan-mno804`
 > **Base:** `main` @ `4bac312` (Sprint 3A — sudah live & dipakai orang)
-> **Isi branch (4 commit di atas base):** `bf736b0` (3B) · `322377f` (3C) · `68dd66f` (3D) · commit landing 3E (tip)
+> **Isi branch (5 commit di atas base):** `bf736b0` (3B) · `322377f` (3C) · `68dd66f` (3D) · `9c44c00` (3E) · commit landing 3F (tip)
 > **Merentang produksi yang SEDANG DIPAKAI:** `crm_audit_log` menunjukkan `tifany@20fit.id`
 > membuka audience pool berkali-kali (11 Agu 2026). Regresi mengenai layar nyata.
+>
+> **⚠️ 3F MENGUBAH SKEMA PRODUKSI.** Migrasi 3 `crm_consent` dijalankan (Fase 2 dibuka).
+> Ini yang PERTAMA membuat revert **tidak lagi cukup dengan mengembalikan kode** — lihat §4.
 
 ## 1. Apa yang benar-benar ter-deploy, per layar
 
@@ -52,19 +55,33 @@ Kode pendukung: matriks RBAC & normalizer telepon (3B: kanon `62…`), lapisan b
 Nol migrasi/skema/DDL di 3E juga (usulan perluasan komentar `crm_profile_behavior` hanya
 dicatat di `docs/KOLOM-WAKTU.md`, tidak dijalankan).
 
+## 2c. Yang ditambahkan Sprint 3F (Consent Register — Fase 2 dibuka)
+
+| Perubahan 3F | Sifat |
+|---|---|
+| **Migrasi 3 `crm_consent` DIJALANKAN** (RLS ON, 0 policy, 4 CHECK, UNIQUE, FK `on delete set null`, 0 baris) | **MENGUBAH SKEMA PRODUKSI** |
+| `/consent` — layar baca-saja: register consent + suppression (0/0 baris), makna-nol, hierarki "suppression menang", kosakata `basis` sementara | **BARU (ganti ComingSoon)** |
+| `/api/consent` — service role, gate `consent.edit`, paginasi, audit `list.viewed` `target_table=crm_consent` | **BARU** |
+| "Bisa dihubungi" di dashboard kini **diturunkan** dari `isContactableForMarketing` (consent aktif − suppression), 0 **terukur** bukan hardcode | **MENGUBAH TAMPILAN** |
+| `lib/crm/contactability.ts` — aturan murni + test (suppression menang, fail-closed) | **Pagar** (test) |
+| `docs/SIGNOFF-legal-consent.md`, `docs/RENCANA-jalur-tulis-consent.md` | Dokumen |
+
+**Nol backfill** (nol `INSERT` ke `crm_consent`), **nol jalur tulis** (K-3 butuh fungsi
+Postgres — keputusan tersendiri), nol sentuh tabel di luar `crm_*`.
+
 ## 3. Risiko — dipimpin yang terbesar
 
-1. **[TERBESAR] Endpoint belum pernah dieksekusi terhadap Supabase dari sini.** Proxy
-   sandbox mem-block host Supabase (CONNECT 403), jadi `/api/quality`, `/api/dashboard`,
-   `/api/audit`, `/api/audience/[id]` **konstruksi query PostgREST-nya** diverifikasi
-   hanya lewat (a) inspeksi query-string yang dibangun offline, (b) kecocokan nilai via
-   SQL setara, (c) unit test masking/klasifikasi. **Mitigasi wajib:** jalankan
-   `scripts/verify-live.mjs` + `docs/CEKLIS-verifikasi-live.md` dengan kredensial
-   sebelum merge (lihat §5).
-   - **Diperbesar oleh 3E:** sprint ini kembali **mengubah `/quality` dan detail profil**
-     — dua layar yang **masih** belum pernah dieksekusi terhadap Supabase. Perubahannya
-     hanya label/temuan (bukan query baru yang berisiko), tetapi keduanya tetap masuk
-     cakupan verify-live yang wajib dijalankan sebelum merge.
+1. **[TERBESAR, DAN KINI LEBIH BESAR] Lima sprint kode belum pernah dieksekusi terhadap
+   Supabase — dan sekarang ada tabel baru yang HANYA disentuh oleh kode yang belum pernah
+   jalan.** Proxy sandbox mem-block host Supabase (CONNECT 403), jadi `/api/quality`,
+   `/api/dashboard`, `/api/audit`, `/api/audience/[id]`, dan kini **`/api/consent`**
+   (query ke tabel `crm_consent` yang baru) diverifikasi hanya lewat (a) inspeksi
+   query-string offline, (b) kecocokan nilai via SQL setara, (c) unit test. Kartu "Bisa
+   dihubungi" kini menjalankan lapisan baca consent+suppression yang belum pernah
+   dieksekusi lewat `supabase-js`. **Mitigasi wajib:** jalankan `scripts/verify-live.mjs`
+   + `docs/CEKLIS-verifikasi-live.md` dengan kredensial sebelum merge (lihat §5).
+   - **Diperbesar oleh 3E:** juga **mengubah `/quality` dan detail profil**.
+   - **Diperbesar oleh 3F:** `/consent` dan dashboard "Bisa dihubungi" baru.
 2. **`/audience` berubah perilaku di layar yang dipakai orang.** Nama jadi tautan; tiap
    buka profil menulis `profile.viewed`. Fungsional kecil, tapi live.
 3. **Volume audit naik.** `profile.viewed` + `list.viewed` (termasuk pembukaan
@@ -77,18 +94,30 @@ dicatat di `docs/KOLOM-WAKTU.md`, tidak dijalankan).
    layar **menolak** (bukan bocor) — arah gagal yang aman, tapi bisa mengunci semua
    orang bila env hilang. Cek `/health` setelah deploy.
 
-## 4. Rencana revert
+## 4. Rencana revert — TIDAK LAGI CUKUP DENGAN MENGEMBALIKAN KODE
 
-- Branch = **4 commit** di atas `4bac312` (3B, 3C, 3D, 3E). Karena **nol migrasi / nol
-  perubahan skema / nol tulis data pelanggan**, revert adalah **kode saja — tanpa rollback DB.**
-- **Revert penuh:** kembalikan `main` ke `4bac312` (revert merge commit-nya). Produksi
-  kembali ke Sprint 3A: audience pool (list, tanpa nama-bisa-diklik), `/settings/roles`
-  stub lama, tanpa `/quality`, tanpa dashboard-terisi, tanpa detail profil, tanpa layar
-  audit. Aman dan lengkap.
-- **Baris audit yang sudah tertulis** (`list.viewed`, `profile.viewed`) tetap ada —
-  append-only, tak berbahaya, dan justru bukti sah bahwa fitur sempat berjalan.
-- **Revert sebagian tidak disarankan:** ketiga commit saling menumpuk (3D butuh layar
-  audit 3C; 3C butuh lapisan baca 3B). All-or-nothing ke `4bac312` paling bersih.
+- Branch = **5 commit** di atas `4bac312` (3B, 3C, 3D, 3E, 3F). Sampai 3E, revert = kode
+  saja. **3F mengubahnya:** tabel `crm_consent` sudah dibuat di database dan **tetap ada
+  setelah kode di-revert**. Merevert `main` ke `4bac312` mengembalikan seluruh aplikasi
+  ke Sprint 3A, tetapi **tabel `crm_consent` tetap tinggal di produksi.**
+- **Menghapus tabelnya (opsional, dari blok ROLLBACK migrasi 3):**
+  ```sql
+  drop table if exists public.crm_consent;
+  ```
+  - **AMAN selama nol baris.** Hari ini tabel kosong (nol backfill, nol jalur tulis),
+    jadi drop ini tidak menghapus catatan apa pun.
+  - **TIDAK aman begitu ada ≥ 1 baris consent.** Sebuah baris consent adalah **catatan
+    hukum** (dasar pemrosesan). Meng-`drop` tabel yang berisi baris consent = menghapus
+    bukti dasar hukum — jangan lakukan tanpa proses retensi/legal. Kalau register sudah
+    terisi, revert kode saja (biarkan tabel), atau tangani datanya lewat jalur legal.
+  - Ledger `apply_migration` juga mencatat versinya; men-drop tabel tidak otomatis
+    menghapus baris ledger — bereskan bila memang membatalkan sepenuhnya.
+- **Revert penuh (kode):** kembalikan `main` ke `4bac312`. Produksi kembali ke Sprint 3A
+  (audience list tanpa nama-bisa-diklik, `/settings/roles` stub lama, tanpa /quality,
+  detail profil, layar audit, /consent). Tabel `crm_consent` tertinggal — lihat di atas.
+- **Baris audit yang sudah tertulis** tetap ada (append-only, tak berbahaya).
+- **Revert sebagian tidak disarankan:** kelima commit menumpuk. All-or-nothing ke
+  `4bac312` (plus keputusan drop-tabel di atas) paling bersih.
 
 ## 5. Prasyarat merge (jangan merge sebelum ini)
 
