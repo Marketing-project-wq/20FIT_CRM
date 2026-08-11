@@ -10,6 +10,7 @@ import {
   SEGMENT_NULL,
   type RevenueFilter,
 } from "@/lib/crm/audience";
+import { capFilterValue } from "@/lib/crm/audience-constants";
 
 export const dynamic = "force-dynamic";
 
@@ -89,6 +90,21 @@ export async function GET(request: NextRequest) {
   }
 
   // 5. Mandatory audit. An unlogged read is not served.
+  //
+  // FREE-TEXT FILTER VALUES (Sprint 3D decision): the `city` filter is the only
+  // free-text input a user can type; unit/segment/revenue are bounded to known vocab.
+  // We keep the typed VALUE (not just "a city filter was used"), because the audit's
+  // job is to answer "what was searched", and a targeted city search is a real
+  // "whose data" signal an investigator needs — dropping it to a yes/no marker would
+  // make two very different reads indistinguishable. The cost: an operator could paste
+  // a customer name/phone into the box, and it lands in an append-only store. We bound
+  // that three ways: (a) HARD length cap here, so a pasted record can't land whole;
+  // (b) list.viewed is an operational category, purged after 90 days (once purge is
+  // scheduled — see docs/KEPUTUSAN-penjadwalan-purge.md); (c) the audit screen labels
+  // filter values as user-typed, not curated. If the team judges the residual risk too
+  // high, flipping to a marker-only record is a one-line change (store the length, drop
+  // the value). NEVER put a customer's name/phone/email here deliberately.
+  const cappedCity = capFilterValue(city); // free-text, length-capped (pure fn; see note above)
   const { error: auditError } = await admin.from("crm_audit_log").insert({
     actor_id: userId,
     actor_email: userEmail,
@@ -97,8 +113,6 @@ export async function GET(request: NextRequest) {
     summary: `Audience pool dibuka (hal ${result.page}, ${result.rows.length} baris ditampilkan${
       masked ? ", kontak disamarkan" : ""
     }).`,
-    // NON-PII only: page + the filter values used (aggregate context, no individual
-    // customer identity). Never put a customer's name/phone/email here.
     metadata: {
       page: result.page,
       page_size: result.pageSize,
@@ -106,9 +120,10 @@ export async function GET(request: NextRequest) {
       total: result.total,
       masked,
       filters: {
-        unit: unit ?? null,
-        segment: segment === SEGMENT_NULL ? "(null cohort)" : segment ?? null,
-        city: city ?? null,
+        unit: capFilterValue(unit).value,
+        segment: segment === SEGMENT_NULL ? "(null cohort)" : capFilterValue(segment).value,
+        city: cappedCity.value,
+        city_len: cappedCity.length, // original length, so truncation is visible
         revenue,
       },
     },
