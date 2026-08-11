@@ -7,7 +7,7 @@ import { DashboardContent } from "@/components/dashboard/dashboard-content";
  */
 export default function DevShellPreview() {
   return (
-    <AppShell userEmail="marketing@20fit.id" activePath="/">
+    <AppShell userEmail="marketing@20fit.id" activePath="/" showAllNav>
       <DashboardContent />
     </AppShell>
   );

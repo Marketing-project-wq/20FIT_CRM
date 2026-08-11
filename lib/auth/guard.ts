@@ -1,60 +1,62 @@
 import "server-only";
 import { getCurrentUserRole } from "./current-role";
 import {
-  canAccess,
-  canRequestExport,
-  canSendMessages,
-  type Level,
-  type Resource,
+  isPermitted,
+  resolveGrant,
+  shouldMaskContact,
+  type AccessContext,
+  type Action,
+  type Decision,
   type Role,
 } from "./roles";
 
 /**
  * Server-side RBAC guards. FAIL-CLOSED: no role, unknown role, and an unscoped
- * unit_manager are all denied. Enforcement lives HERE (server), never in the UI —
- * hiding a menu is cosmetic.
+ * unit_manager (own_unit -> needs_scope) are all denied. Enforcement lives HERE
+ * (server), never in the UI — hiding a menu is cosmetic.
  *
- * Ready infrastructure: there are no protected CRM server actions or route handlers
- * yet this sprint (the CRM screens are placeholders, ingestion is Sprint 3), so
- * these are not wired into a mutation path yet. Wrap each real server action /
- * route handler with the matching require* call as they are built.
+ * Ready infrastructure: most CRM mutation paths do not exist yet this sprint. The
+ * one live consumer is the audience read layer (route handler), which calls
+ * requireAction("profile.view_list") and contactMaskedForCurrentUser(). Wrap each new
+ * server action / route handler with the matching require* call as they are built.
  *
- * NOTE: unit-scope is not wired (scope table deferred), so scope-required roles are
- * denied by design until that table exists.
+ * NOTE: unit-scope is not wired (scope table deferred), so own_unit grants resolve to
+ * needs_scope = denied by design until that table exists. Never pass hasUnitScope:true
+ * to loosen this.
  */
 export class ForbiddenError extends Error {
-  constructor(message = "Forbidden") {
+  /** The resolved decision that caused the denial, for a precise caller-facing message. */
+  readonly decision: Decision;
+  constructor(decision: Decision = "deny", message = "Forbidden") {
     super(message);
     this.name = "ForbiddenError";
+    this.decision = decision;
   }
 }
 
-/** Assert at least `min` on `resource`, else throw ForbiddenError. Returns the role. */
-export async function requireAccess(
-  resource: Resource,
-  min: Exclude<Level, "none">,
-): Promise<Role> {
+/** Assert the current user may perform `action` now, else throw. Returns the role. */
+export async function requireAction(action: Action, ctx: AccessContext = {}): Promise<Role> {
   const role = await getCurrentUserRole();
-  if (!canAccess(role, resource, min)) throw new ForbiddenError();
+  if (!isPermitted(role, action, ctx)) {
+    throw new ForbiddenError(resolveGrant(role, action, ctx));
+  }
   return role as Role;
 }
 
 /** Non-throwing form for conditional rendering / branching. */
-export async function hasAccess(
-  resource: Resource,
-  min: Exclude<Level, "none">,
-): Promise<boolean> {
-  return canAccess(await getCurrentUserRole(), resource, min);
+export async function hasAction(action: Action, ctx: AccessContext = {}): Promise<boolean> {
+  return isPermitted(await getCurrentUserRole(), action, ctx);
 }
 
-export async function requireSendMessages(): Promise<Role> {
-  const role = await getCurrentUserRole();
-  if (!canSendMessages(role)) throw new ForbiddenError();
-  return role as Role;
+/** Resolve the current user's decision for an action (allow, masked, needs_scope, deny, ...). */
+export async function decisionForCurrentUser(
+  action: Action,
+  ctx: AccessContext = {},
+): Promise<Decision> {
+  return resolveGrant(await getCurrentUserRole(), action, ctx);
 }
 
-export async function requireExportRequest(): Promise<Role> {
-  const role = await getCurrentUserRole();
-  if (!canRequestExport(role)) throw new ForbiddenError();
-  return role as Role;
+/** Should the current user see phone/email masked in the profile list? Fail-closed. */
+export async function contactMaskedForCurrentUser(ctx: AccessContext = {}): Promise<boolean> {
+  return shouldMaskContact(await getCurrentUserRole(), ctx);
 }

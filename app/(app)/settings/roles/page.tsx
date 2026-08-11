@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { getCurrentUserRole } from "@/lib/auth/current-role";
-import { canAccess } from "@/lib/auth/roles";
+import { isPermitted } from "@/lib/auth/roles";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Badge } from "@/components/ui/badge";
 
@@ -63,8 +63,9 @@ function Panel({ children }: { children: React.ReactNode }) {
 export default async function RolesPage() {
   const role = await getCurrentUserRole();
 
-  // Fail closed: only a role with roles:view (or higher) may see this list.
-  if (!canAccess(role, "roles", "view")) {
+  // Fail closed: only a role that may view the audit log (super_admin, crm_manager)
+  // may see the RBAC list — role management lives on the same governance surface.
+  if (!isPermitted(role, "audit.view")) {
     return (
       <div>
         <Heading />
@@ -139,7 +140,7 @@ export default async function RolesPage() {
       </div>
 
       <p className="mt-4 font-mono text-[11px] text-ink-faint">
-        Read-only. Matriks izin: lib/auth/roles.ts (NEEDS PRD 17 CONFIRMATION).
+        Read-only. Matriks izin: lib/auth/roles.ts (PRD 17.2, disetujui Jeff 2026-08-10).
       </p>
     </div>
   );
