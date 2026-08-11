@@ -1,5 +1,18 @@
 # Ceklis verifikasi live — dijalankan manusia dengan sesi login
 
+> ## 🩺 CARA TERMUDAH KINI: buka `/settings/diagnostik` (Sprint 3L)
+>
+> Berkas ini **jalur cadangan**, bukan jalur utama lagi. Cara tercepat memvalidasi deploy:
+> **login lalu buka `/settings/diagnostik`** (gerbang `audit.view`). Halaman itu menghitung
+> status tiap rute **dari `crm_audit_log`** (tak bisa basi), menjalankan pemeriksaan lapisan
+> baca saat dibuka (LULUS/GAGAL + waktu — yang skrip ini lakukan tapi butuh terminal),
+> menampilkan kesehatan gap, dan memberi **satu tautan** untuk menutup V-6. Buka satu
+> halaman → seluruh lapisan baca terperiksa.
+>
+> **Skrip + ceklis ini tetap ada** untuk kasus **"aplikasinya sendiri tak bisa dibuka"** —
+> saat itulah pemeriksaan dari luar aplikasi jadi satu-satunya cara. Selama app hidup,
+> `/settings/diagnostik` lebih cepat dan tak bisa lupa diperbarui.
+
 RBAC dan audit hanya **nyata di balik sesi login**. Skrip `scripts/verify-live.mjs`
 memverifikasi lapisan baca (konstruksi query PostgREST), tetapi tidak bisa membuktikan
 bahwa gerbang peran, masking di UI, dan penulisan audit benar-benar terjadi saat orang
@@ -23,31 +36,22 @@ select count(*) as audit_before from crm_audit_log;
 
 ---
 
-## ⭐ MULAI DARI SINI — dua verifikasi yang sudah menunggu dua sprint
+## ⭐ Status verifikasi (kini dihitung di `/settings/diagnostik`, bukan diketik di sini)
 
-Per `crm_audit_log` (11 Agu 2026): `/audience` dan `/consent` **sudah terbukti jalan di
-produksi**. Dua layar berikut **belum pernah dibuka satu kali pun** — masing-masing hanya
-butuh **satu orang membuka satu halaman**. Prioritas tertinggi; detail penuh di V-6/V-7
-bawah, ringkasnya:
+Snapshot 11 Agu 2026 13:39 UTC — **tapi jangan percaya angka di dokumen; buka
+`/settings/diagnostik` untuk yang terkini** (itu inti Sprint 3L):
 
-1. **Detail profil menulis `profile.viewed` PERTAMA.** Buka `/audience`, klik satu nama.
-   ```sql
-   select id, actor_email, action, target_id, occurred_at
-   from crm_audit_log where action='profile.viewed' order by id desc limit 1;
-   -- Harus muncul 1 baris, target_id = UUID profil. Hari ini jumlahnya 0.
-   ```
-2. **Layar audit `/settings` menulis `list.viewed`/`crm_audit_log`.** Buka `/settings`
-   (peran `audit.view`).
-   ```sql
-   select id, actor_email, action, target_table, occurred_at
-   from crm_audit_log where action='list.viewed' and target_table='crm_audit_log'
-   order by id desc limit 1;
-   -- Harus muncul 1 baris, aktor = email Anda, tepat setelah membuka /settings.
-   ```
-
-> **Jangan salah hitung `/` dan `/quality`.** Keduanya **sengaja tidak menulis audit**
-> (aturan 3E). **Nol baris dari keduanya BUKAN bukti mereka jalan** — buktinya hanya log
-> Railway atau mata yang melihat layarnya. (Diulang di §akhir.)
+- ✅ **V-7 — `/settings` terbukti** (`list.viewed`/`crm_audit_log`, `id` 44–47).
+- ✅ **V-6 — `/audience/[id]` TERBUKTI** (baru). `profile.viewed` **`id=51`**, `target_id`
+  terisi, `tifany@20fit.id`, 13:38:31 UTC — profil detail **berhasil** dibuka di produksi.
+  Ini **membalik** hipotesis 3K "detail profil rusak": ia jalan. Gap `37,38,39` **tidak
+  bertambah** dari sesi 13:37–13:39 (list, 4× search, 1 profil, semua sukses) — jadi gap itu
+  **tunggal & tak berulang**, konsisten dengan kejadian transient/dibatalkan, bukan cacat
+  deterministik. (Pola ini persis kenapa status tak boleh diketik manual — lihat TEMUAN S-07.)
+- ✅ **`/api/search` terbukti** — `search.performed` (`id` 49,50,53,54).
+- **Tak dapat dibuktikan dari audit:** `/` dan `/quality` **sengaja tak menulis audit**
+  (K-07). Nol baris di sana adalah perilaku **benar**, bukan kekurangan bukti — jangan
+  disatukan dengan "belum terbukti". Bukti keduanya hanya log Railway atau mata orang.
 
 ---
 

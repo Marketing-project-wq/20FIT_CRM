@@ -14,6 +14,7 @@ import {
   type IdentityKind,
 } from "@/lib/crm/suppression-input";
 import { recordSuppression } from "@/lib/crm/suppression-write";
+import { logApiFailure } from "@/lib/crm/failure-log";
 
 export const dynamic = "force-dynamic";
 
@@ -114,7 +115,8 @@ export async function POST(request: NextRequest) {
         .maybeSingle();
       if (res.error) throw res.error;
       row = res.data as Record<string, string | null> | null;
-    } catch {
+    } catch (e) {
+      logApiFailure("/suppression", "profile_lookup_failed", { code: (e as { code?: string })?.code });
       return NextResponse.json({ error: "query_failed" }, { status: 500 });
     }
     if (!row) return NextResponse.json({ error: "not_found" }, { status: 404 });
@@ -170,7 +172,8 @@ export async function POST(request: NextRequest) {
         .maybeSingle();
       if (res.error) throw res.error;
       existingStatus = (res.data as { status: string } | null)?.status ?? null;
-    } catch {
+    } catch (e) {
+      logApiFailure("/suppression", "dry_run_query_failed", { code: (e as { code?: string })?.code });
       return NextResponse.json({ error: "query_failed" }, { status: 500 });
     }
     const willDo =
@@ -201,8 +204,11 @@ export async function POST(request: NextRequest) {
       actorId: userId,
       actorEmail: userEmail,
     });
-  } catch {
-    // The RPC is atomic — a failure leaves NO half-row (suppression without audit).
+  } catch (e) {
+    // The RPC is atomic — a failure leaves NO half-row (suppression without audit). But the
+    // rollback DID consume a crm_audit_log sequence number (a gap) — log the code so a
+    // write failure is traceable, not silent.
+    logApiFailure("/suppression", "rpc_write_failed", { code: (e as { code?: string })?.code });
     return NextResponse.json(
       { error: "write_failed", message: "Gagal mencatat suppression. Tidak ada baris separuh jadi." },
       { status: 500 },

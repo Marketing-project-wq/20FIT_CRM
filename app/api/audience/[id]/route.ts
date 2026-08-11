@@ -9,6 +9,7 @@ import {
   resolveGrant,
 } from "@/lib/auth/roles";
 import { fetchProfileById, isUuid } from "@/lib/crm/audience";
+import { logApiFailure } from "@/lib/crm/failure-log";
 
 export const dynamic = "force-dynamic";
 
@@ -64,7 +65,8 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
   let profile;
   try {
     profile = await fetchProfileById(admin, id, masked);
-  } catch {
+  } catch (e) {
+    logApiFailure("/audience/[id]", "profile_query_failed", { code: (e as { code?: string })?.code });
     return NextResponse.json({ error: "query_failed" }, { status: 500 });
   }
   if (!profile) {
@@ -83,6 +85,11 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
     metadata: { view: "profile_detail", masked },
   });
   if (auditError) {
+    // The audit write took a sequence number then failed → a hole in crm_audit_log.id.
+    // This is the ONLY route whose audit row carries a non-null target_id, and the one
+    // most consistent with the observed gap. Log the DB error CODE (no PII) so the next
+    // occurrence is diagnosable instead of vanishing.
+    logApiFailure("/audience/[id]", "audit_write_failed", { code: auditError.code });
     return NextResponse.json(
       { error: "audit_failed", message: "Pembacaan ditolak: gagal mencatat audit (akuntabilitas)." },
       { status: 503 },

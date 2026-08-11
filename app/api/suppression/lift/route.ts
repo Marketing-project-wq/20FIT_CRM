@@ -6,6 +6,7 @@ import { isPermitted, resolveGrant } from "@/lib/auth/roles";
 import { isUuid } from "@/lib/crm/audience";
 import { isIdentityKind, clampDetail, LIFTED_REASON_MAX } from "@/lib/crm/suppression-input";
 import { liftSuppression } from "@/lib/crm/suppression-write";
+import { logApiFailure } from "@/lib/crm/failure-log";
 
 export const dynamic = "force-dynamic";
 
@@ -78,7 +79,8 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
     if (res.error) throw res.error;
     row = res.data as typeof row;
-  } catch {
+  } catch (e) {
+    logApiFailure("/suppression/lift", "lookup_failed", { code: (e as { code?: string })?.code });
     return NextResponse.json({ error: "query_failed" }, { status: 500 });
   }
   if (!row) return NextResponse.json({ error: "not_found" }, { status: 404 });
@@ -101,7 +103,8 @@ export async function POST(request: NextRequest) {
       actorId: userId,
       actorEmail: userEmail,
     });
-  } catch {
+  } catch (e) {
+    logApiFailure("/suppression/lift", "rpc_write_failed", { code: (e as { code?: string })?.code });
     return NextResponse.json(
       { error: "write_failed", message: "Gagal mencabut suppression. Tidak ada perubahan separuh jadi." },
       { status: 500 },

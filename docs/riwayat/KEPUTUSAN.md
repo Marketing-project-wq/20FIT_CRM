@@ -151,3 +151,32 @@ Sprint 2. Segmentasi berbasis recency **tidak mungkin jujur** dengan data hari i
 LTV negatif (1 baris) dan `first_seen_at > created_at` (14 baris) ditampilkan di
 `/quality`. Remediasi data milik tim pemilik data.
 **Membalikkan:** keputusan tim.
+
+## K-21 · Gap id `crm_audit_log` adalah SINYAL, bukan cacat kosmetik
+**Sprint 3K.** `crm_audit_log.id` memakai sequence. Sebuah `INSERT` yang gagal atau
+di-rollback tetap **mengambil** nomornya lalu tak meninggalkan baris — jadi lubang di
+urutan id adalah **satu-satunya jejak** operasi teraudit yang gagal (barisnya yang
+seharusnya mencatatnya justru yang tak pernah mendarat). Ditemukan lewat gap `37,38,39`
+(di samping `id=4` yang sah dari uji purge 3A), di jendela pemakaian nyata `tifany@20fit.id`
+11 Agu 2026, dengan `profile.viewed` tetap 0.
+**Konsekuensi yang mengikat:** **JANGAN PERNAH** menjalankan `setval`/`ALTER SEQUENCE …
+RESTART`/mengisi ulang `crm_audit_log_id_seq`, dan jangan "merapikan" gap — itu menghapus
+satu-satunya bukti yang tersisa. Gap ditampilkan di layar audit `/settings` (banner
+"tidak lengkap") dan dipantau lewat SQL di `docs/PASCA-MERGE-monitoring-revert.md`.
+Kegagalan route kini juga meninggalkan jejak PII-free di log Railway
+(`lib/crm/failure-log.ts`), supaya gap berikutnya bisa ditelusuri, bukan hanya dihitung.
+**Membalikkan:** tidak ada.
+
+## K-22 · Status verifikasi DIHITUNG dari data, dokumen tidak lagi memegang status
+**Sprint 3L.** Status "terbukti/belum terbukti" tiap rute diturunkan dari `crm_audit_log`
+(`lib/crm/verification-status.ts`), bukan diketik ke markdown. Alasannya adalah kegagalan
+yang sudah terjadi **dua kali**: bukti hidup di tabel yang bergerak sendiri, status hidup
+di dokumen yang harus diperbarui manusia — jadi status basi (`/consent` terbukti di `id=32`
+tapi terbaca "belum" satu sprint; `/settings` terbukti di `id` 44–47, baru ketahuan saat
+dicek ulang; V-6 tertutup di `id=51` tanpa ada yang tahu sampai dihitung). → TEMUAN **S-07**.
+**Tiga kategori, dan yang ketiga tak boleh disatukan dengan kedua:** `proven`,
+`unproven`, dan **`not_auditable`** (`/`, `/quality` sengaja tak menulis audit — K-07; nol
+baris di sana **benar**, bukan kurang bukti). Menyatukan `not_auditable` ke `unproven`
+membalik aturan Sprint 3E. Ditampilkan di `/settings/diagnostik`; ceklis + skrip jadi
+jalur cadangan (untuk saat aplikasi tak bisa dibuka).
+**Membalikkan:** tidak ada — kembali ke status-diketik-tangan mengembalikan bug basi ini.

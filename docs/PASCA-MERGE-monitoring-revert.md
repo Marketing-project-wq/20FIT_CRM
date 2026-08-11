@@ -51,6 +51,29 @@ group by 1,2,3 order by 4 desc;
 - `list.viewed` / `crm_consent` — saat peran `consent.edit` membuka `/consent`.
 - `list.viewed` / `crm_audit_log` — saat mereka membuka `/settings`.
 
+### Deteksi GAP id — jejak satu-satunya operasi teraudit yang GAGAL (Sprint 3K)
+`crm_audit_log.id` memakai sequence. Sebuah `INSERT` yang gagal atau di-rollback tetap
+**mengambil** nomornya lalu tak meninggalkan baris — jadi lubang di urutan id adalah
+satu-satunya jejak operasi teraudit yang gagal. Jalankan berkala; **jangan pernah**
+mengisi ulang / mengatur ulang sequence (menghapus bukti — lihat KEPUTUSAN K-21).
+```sql
+-- Berapa banyak id hilang, dan yang mana. id=4 SAH (baris sintetis dihapus uji purge 3A).
+with b as (select min(id) mn, max(id) mx, count(*) c from crm_audit_log)
+select mx as max_id, c as row_count, (mx - mn + 1) - c as missing_total,
+       (select array_agg(g order by g)
+          from generate_series((select mn from b),(select mx from b)) g
+          where g not in (select id from crm_audit_log)
+            and g <> 4) as unexplained_missing_ids   -- id=4 dikecualikan (known-legit)
+from b;
+```
+- `unexplained_missing_ids` **kosong** = tak ada operasi teraudit yang gagal tak terjelaskan.
+- Ada isinya = tiap id adalah **satu** operasi teraudit yang gagal; barisnya tak pernah
+  mendarat. Sejak 3K, `[api …] audit_write_failed` / `…_write_failed` di **log Railway**
+  membawa kode galat DB-nya (bebas PII) — telusuri di sana. Per 11 Agu 2026, gap yang
+  diketahui: `4` (sah), `37,38,39` (tak dikenal, tidak bertambah).
+- Layar audit `/settings` kini menampilkan hitungan ini di atas daftar (banner
+  "Daftar ini tidak lengkap").
+
 ### Baris audit yang TIDAK BOLEH muncul (pelanggaran aturan 3E)
 - **Nol** baris baru dari membuka `/` (dashboard) atau `/quality` — keduanya agregat tanpa
   parameter, tidak diaudit. Kalau muncul baris audit dari dua layar itu, aturan 3E bocor.
