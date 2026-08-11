@@ -1,5 +1,16 @@
-# PR: Sprint 3K + 3L → main
+# PR: Sprint 3K + 3L + 3M → main
 
+> ## 📊 3M: LAYAR PERTAMA YANG MENUNJUKKAN BERAPA BANYAK ORANG YANG TIDAK BOLEH DIHUBUNGI
+>
+> Segment builder (`/segments`) menampilkan tiap definisi dengan **dua** angka
+> berdampingan (PRD §18.8): **cocok kriteria** dan **boleh dihubungi**. Angka kedua **0**
+> untuk definisi apa pun — sebuah segmen berisi 40.000 orang yang **tak satu pun** boleh
+> dikirimi pesan, karena `crm_consent` kosong dan suppression menang. **Itu temuan, bukan
+> fitur, dan bukan bug:** ia membuat konsekuensi "nol consent" terlihat sebagai angka, bukan
+> catatan kaki. Builder **tidak menyimpan apa pun** (nol tabel/nama/simpan/ekspor/kirim/daftar
+> orang) — penyimpanan adalah keputusan tersendiri (`docs/RENCANA-simpan-segmen.md`), karena
+> aksi `segment.*` jatuh di antara allowlist & denylist migrasi 8 (kali **ketiga** pola ini).
+>
 > ## 🩺 3L: SIKLUS INI MEMASANG INSTRUMENNYA SEKALIGUS MEMBUAT PEMAKAIANNYA SATU KLIK
 >
 > 3K memberi produksi sebuah instrumen (pemantauan gap + jejak kegagalan), tapi **selama ia
@@ -125,6 +136,21 @@
 | `lib/crm/diagnostic.ts` — pemanggil lapisan baca; **membuktikan nol audit ditulis** untuk rute yang diperiksa (test spy: nol write op) | Kode + **Pagar** |
 | CEKLIS + `verify-live.mjs` jadi **jalur cadangan** ("app tak bisa dibuka"); status manual dipensiunkan → K-22, temuan S-07 | Dokumen |
 | Test: 227 → **238** (+7 status, +4 diagnostik nol-tulis) | **Pagar** (test) |
+
+### Sprint 3M (segment builder — menghitung, tak menyimpan)
+| Perubahan | Sifat |
+|---|---|
+| `/segments` — ganti ComingSoon. Gate `segment.build` (super_admin/crm_manager/crm_operator/analyst; unit_manager own_unit → fail-closed; data_steward deny) | **BARU** |
+| Kriteria: unit, segment (+ kohort NULL), kota (peringatan fill% **live** di tempat), revenue (punya/tanpa/**negatif** T-10), punya-telepon, punya-email. **Nol kriteria waktu** (K-19, dijelaskan di UI) | — |
+| **Jumlah berpasangan** (PRD §18.8): cocok + boleh-dihubungi. Boleh-dihubungi **0** untuk semua definisi (consent kosong) — diturunkan dari `isContactableForMarketing`, bukan aturan kedua. Tautan ke `/consent` | **BARU** |
+| Audit `list.viewed`/`master_customer` `view=segment_builder` (**bukan** `segment.*` — jatuh antara allowlist/denylist). Kota di-cap (K-17). **Nol baris orang ditampilkan** | — |
+| Nol simpan/ekspor/kirim/daftar. `docs/RENCANA-simpan-segmen.md` (bentuk tabel = kriteria bukan `customer_id`; `segment.*` usulan operasional; urutan consent→simpan→kirim) | Dokumen |
+| `lib/crm/segment.ts` (murni + test) + `lib/crm/segment-read.ts` (server) | Kode + **Pagar** |
+| Test: 238 → **249** (+11 kriteria: closed-list, cap kota, nol jalur waktu, hitung kriteria aktif) | **Pagar** (test) |
+
+> **Nol perubahan skema/DB di 3M.** Baca-saja atas `master_customer` + `crm_consent` +
+> `crm_suppression`; satu-satunya tulis = audit `list.viewed` per perhitungan (button-triggered,
+> bukan live). Nol daftar orang dikeluarkan.
 
 > **Nol perubahan skema/DB/migrasi di 3L.** Diagnostik baca-saja; satu-satunya tulis =
 > self-audit `list.viewed`/`crm_audit_log` (`view=diagnostik`). **Bukti nol-inflasi audit:**
