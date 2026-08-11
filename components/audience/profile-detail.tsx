@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Lock, HeartPulse, Ban } from "lucide-react";
+import { ArrowLeft, Lock, HeartPulse, Ban, Network, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SuppressionForm } from "@/components/consent/suppression-form";
+import { formatDisplayName, nameNeedsTidy } from "@/lib/crm/display-name";
+import { detectEmailTypo } from "@/lib/crm/email-typo";
 
 interface Profile {
   customer_id: string;
@@ -28,9 +30,30 @@ interface Profile {
   masked: boolean;
 }
 
+type LastSeenClass = "real_activity" | "load_stamp" | "future_anomaly" | "missing";
+
+interface EngagementRow {
+  unit: string;
+  product: string;
+  engagementCount: number | null;
+  firstSeenAt: string | null;
+  lastSeenAt: string | null;
+  source: string | null;
+  lastSeenClass: LastSeenClass;
+}
+
+interface ProfileEngagement {
+  rows: EngagementRow[];
+  totalRows: number;
+  units: string[];
+  hasRealActivity: boolean;
+  hasFutureAnomaly: boolean;
+}
+
 interface ApiResult {
   profile: Profile;
   canViewHealth: boolean;
+  engagement: ProfileEngagement | null;
 }
 
 const idr = new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 });
@@ -44,8 +67,139 @@ function formatTs(iso: string | null): string {
   }).format(d);
 }
 
+function formatDateOnly(iso: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return new Intl.DateTimeFormat("id-ID", {
+    day: "2-digit", month: "long", year: "numeric", timeZone: "Asia/Jakarta",
+  }).format(d);
+}
+
 function Empty() {
   return <span className="font-body text-[13px] italic text-ink-faint">belum terisi</span>;
+}
+
+const nf = new Intl.NumberFormat("id-ID");
+
+/**
+ * Render one ecosystem row's last_seen_at strictly by its classification (K-19). A load
+ * stamp is shown as "tidak terekam" — never a date, never a bare em-dash that reads as
+ * "no engagement". Only a real-activity row shows a date. A future date is an anomaly.
+ */
+function LastSeen({ row }: { row: EngagementRow }) {
+  switch (row.lastSeenClass) {
+    case "real_activity":
+      return (
+        <span className="font-mono text-[13px] text-ink">
+          {formatDateOnly(row.lastSeenAt)}{" "}
+          <span className="font-body text-[12px] italic text-ink-faint">· aktivitas nyata</span>
+        </span>
+      );
+    case "future_anomaly":
+      return (
+        <span className="inline-flex items-center gap-1 font-mono text-[13px] text-ink">
+          <AlertTriangle className="h-3.5 w-3.5 text-red" aria-hidden />
+          {formatDateOnly(row.lastSeenAt)}{" "}
+          <span className="font-body text-[12px] italic text-red">· anomali: tanggal di masa depan</span>
+        </span>
+      );
+    case "missing":
+      return <span className="font-body text-[13px] italic text-ink-faint">tidak ada</span>;
+    default: // load_stamp
+      return (
+        <span
+          className="font-body text-[13px] italic text-ink-faint"
+          title="last_seen_at = first_seen_at → cap waktu muat, bukan aktivitas (K-19)"
+        >
+          tidak terekam
+        </span>
+      );
+  }
+}
+
+function EcosystemSection({ engagement }: { engagement: ProfileEngagement | null }) {
+  return (
+    <section className="glass shadow-glass p-6 lg:col-span-2">
+      <div className="flex items-center gap-2">
+        <Network className="h-4 w-4 text-ink-soft" aria-hidden />
+        <h2 className="font-display text-[16px] font-extrabold uppercase tracking-wide text-ink">Ekosistem 20FIT</h2>
+      </div>
+
+      {engagement === null ? (
+        <div className="mt-4 rounded-sm border border-dashed border-glass-border px-4 py-6 text-center">
+          <Badge tone="amber">Gagal dimuat</Badge>
+          <p className="mx-auto mt-2 max-w-xl font-body text-[13px] leading-relaxed text-ink-soft">
+            Data ekosistem gagal dimuat untuk profil ini. Sisa profil tetap tampil — bagian ini
+            dibaca terpisah dan tidak menahan pembukaan profil.
+          </p>
+        </div>
+      ) : engagement.totalRows === 0 ? (
+        <div className="mt-4 rounded-sm border border-dashed border-glass-border px-4 py-6 text-center">
+          <Badge tone="neutral">Tidak muncul di ekosistem</Badge>
+          <p className="mx-auto mt-2 max-w-xl font-body text-[13px] leading-relaxed text-ink-soft">
+            Profil ini tidak punya satu pun baris di <span className="font-mono text-[12px]">customer_engagement</span>
+            {" "}(arena, clinic, event, gym, membership, shop). Ini kosong yang jujur — bukan “tidak aktif”,
+            melainkan tidak tercatat di sumber ekosistem mana pun.
+          </p>
+        </div>
+      ) : (
+        <>
+          {/* When NO row carries a real activity date, say so up front — not "inactive". */}
+          {!engagement.hasRealActivity && (
+            <div className="tint-blue mt-4 rounded-sm px-3 py-2">
+              <p className="font-body text-[12px] leading-relaxed text-ink">
+                Semua {nf.format(engagement.totalRows)} titik ekosistem profil ini <strong>cap waktu muat</strong>
+                {" "}(<span className="font-mono">last_seen_at = first_seen_at</span>). Riwayat aktivitasnya
+                <strong> belum terekam</strong> — itu bukan sama dengan “tidak aktif” (K-19).
+              </p>
+            </div>
+          )}
+          {engagement.hasFutureAnomaly && (
+            <div className="tint-red mt-3 rounded-sm px-3 py-2">
+              <p className="font-body text-[12px] leading-relaxed text-ink">
+                Setidaknya satu baris punya <span className="font-mono">last_seen_at</span> di masa depan —
+                cacat data, ditampilkan apa adanya (K-20).
+              </p>
+            </div>
+          )}
+
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full border-collapse text-left">
+              <thead>
+                <tr className="border-b border-glass-border">
+                  <th className="py-2 pr-4 font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">Unit</th>
+                  <th className="py-2 pr-4 font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">Produk</th>
+                  <th className="py-2 pr-4 font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">Jumlah</th>
+                  <th className="py-2 font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">Terakhir</th>
+                </tr>
+              </thead>
+              <tbody>
+                {engagement.rows.map((r, i) => (
+                  <tr key={`${r.unit}-${r.product}-${i}`} className="border-b border-glass-border/60">
+                    <td className="py-2.5 pr-4 font-body text-[13px] text-ink">{r.unit}</td>
+                    <td className="py-2.5 pr-4 font-body text-[13px] text-ink">{r.product}</td>
+                    <td className="py-2.5 pr-4 font-mono text-[13px] text-ink">
+                      {r.engagementCount != null ? nf.format(r.engagementCount) : "—"}
+                    </td>
+                    <td className="py-2.5"><LastSeen row={r} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="mt-3 font-body text-[12px] leading-relaxed text-ink-soft">
+            “Terakhir” hanya menunjukkan tanggal bila baris membawa aktivitas nyata
+            (<span className="font-mono">last_seen_at &gt; first_seen_at</span>) — di data ini hampir seluruhnya
+            berasal dari <span className="font-mono">live_txn_sync</span> (Transaksi Arena / Transaksi Clinic).
+            Selebihnya cap waktu muat, ditandai “tidak terekam”. Dibaca-saja, tanpa <span className="font-mono">raw_value</span> /
+            NIK / data sensitif lain (Fase 0). Tautan ke profil lewat <span className="font-mono">customer_id</span>, bukan telepon/email.
+          </p>
+        </>
+      )}
+    </section>
+  );
 }
 
 function Field({ label, children, mono }: { label: string; children: React.ReactNode; mono?: boolean }) {
@@ -128,6 +282,7 @@ export function ProfileDetail({ id, canEditConsent }: { id: string; canEditConse
   }
 
   const p = data.profile;
+  const emailTypo = detectEmailTypo(p.masked ? null : p.email);
 
   return (
     <div className="space-y-6">
@@ -136,8 +291,15 @@ export function ProfileDetail({ id, canEditConsent }: { id: string; canEditConse
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-display text-[32px] font-black uppercase leading-none text-ink">
-            {p.full_name ? p.full_name : "Tanpa nama"}
+            {formatDisplayName(p.full_name) ?? "Tanpa nama"}
           </h1>
+          {/* Original name kept visible when tidying changed it — search still runs over the
+              SOURCE column (search-read.ts), so the raw name stays findable. */}
+          {nameNeedsTidy(p.full_name) && (
+            <p className="mt-1 font-body text-[12px] text-ink-faint">
+              Nama asli (dari sumber): <span className="font-mono">{p.full_name}</span>
+            </p>
+          )}
           <p className="mt-2 font-mono text-[12px] text-ink-faint">{p.customer_id}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -174,7 +336,22 @@ export function ProfileDetail({ id, canEditConsent }: { id: string; canEditConse
           <h2 className="font-display text-[16px] font-extrabold uppercase tracking-wide text-ink">Kontak</h2>
           <div className="mt-4">
             <Field label="Telepon" mono>{p.phone ? p.phone : <Empty />}</Field>
-            <Field label="Email" mono>{p.email ? p.email : <Empty />}</Field>
+            <Field label="Email" mono>
+              {p.email ? p.email : <Empty />}
+              {/* Typo FLAG only — never an auto-fix. Runs on the real email, so it is shown
+                  only to roles that see it unmasked (a masked role can't correct it anyway). */}
+              {!p.masked && emailTypo.suspect && (
+                <span className="mt-1 flex items-center gap-1.5">
+                  <Badge tone="amber" className="gap-1">
+                    <AlertTriangle className="h-3 w-3" /> Mungkin salah ketik
+                  </Badge>
+                  <span className="font-body text-[12px] text-ink-soft">
+                    saran: <span className="font-mono text-ink">{emailTypo.suggestion}</span>{" "}
+                    ({emailTypo.confidence === "high" ? "keyakinan tinggi" : "keyakinan sedang"}) — perlu konfirmasi manusia, tidak diperbaiki otomatis
+                  </span>
+                </span>
+              )}
+            </Field>
             <Field label="Kota">{p.city ? p.city : <Empty />}</Field>
           </div>
         </section>
@@ -238,6 +415,10 @@ export function ProfileDetail({ id, canEditConsent }: { id: string; canEditConse
             <Field label="Alasan duplikat">{p.duplicate_reason ? p.duplicate_reason : <Empty />}</Field>
           </div>
         </section>
+
+        {/* Ekosistem 20FIT — read-only over customer_engagement, keyed by customer_id.
+            No second audit row (profile.viewed above already covers this view). */}
+        <EcosystemSection engagement={data.engagement} />
 
         {/* Health flags — structural gate, but no source exists. */}
         {data.canViewHealth && (

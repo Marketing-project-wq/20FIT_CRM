@@ -142,9 +142,12 @@ mereproduksi kegagalan aslinya, `NODE_ENV=development npm run build`.
 dihapus dua kali. → `README.md`
 
 ## K-19 · Kolom waktu tidak dipakai sebagai sinyal
-**Sprint 3E.** `created_at` adalah cap waktu muat (satu instan per sumber).
+**Sprint 3E; diperluas 3N.** `created_at` adalah cap waktu muat (satu instan per sumber).
 `first_seen_at` juga cap muat untuk 98,7% pool. `last_activity_at` dilarang sejak
-Sprint 2. Segmentasi berbasis recency **tidak mungkin jujur** dengan data hari ini.
+Sprint 2. **Sprint 3N** menambah yang keempat: `customer_engagement.last_seen_at` cap
+muat untuk **99,51%** baris (T-14). Empat kolom waktu, empat kali cap muat — ini properti
+sumber, bukan kejutan per-kolom. Segmentasi berbasis recency **tidak mungkin jujur** dengan
+data hari ini, termasuk di segment builder ekosistem (tak ada kotak waktu di sana).
 **Membalikkan:** setelah ada ingestion berkelanjutan. → `docs/KOLOM-WAKTU.md`
 
 ## K-20 · Data anomali dibuat terlihat, bukan diperbaiki
@@ -180,3 +183,17 @@ baris di sana **benar**, bukan kurang bukti). Menyatukan `not_auditable` ke `unp
 membalik aturan Sprint 3E. Ditampilkan di `/settings/diagnostik`; ceklis + skrip jadi
 jalur cadangan (untuk saat aplikasi tak bisa dibuka).
 **Membalikkan:** tidak ada — kembali ke status-diketik-tangan mengembalikan bug basi ini.
+
+## K-23 · Klaim keamanan tabel = RLS **dan** policy **dan** grant, bukan salah satunya
+**Sprint 3Q.** Sebuah tabel bisa **RLS ON dan tetap terbuka lebar** lewat policy permisif
+(`master_customer`/`customer_engagement`: `authenticated_full_access`, `ALL`/`USING true` →
+887 akun baca+tulis, T-17). Sebaliknya RLS ON + **0 policy** = tolak-default (pola `crm_*`,
+benar). Maka **klaim "tabel X terlindungi" hanya sah bila menyebut ketiganya**:
+`relrowsecurity` (RLS on/off), **policy** yang berlaku (peran/`cmd`/`permissive`/`USING`/
+`WITH CHECK`), dan **grant** tabel (`role_table_grants` — RLS tak berlaku bila `SELECT` tak
+di-grant, dan sebaliknya). Menyebut `relrowsecurity` saja adalah ukuran yang lebih sempit
+daripada klaimnya — itu yang membuat dokumen eskalasi 3O keliru (S-08). Kueri klasifikasi
+tiga-tingkat (anon-open / login-open / terkunci) ada di
+`docs/PASCA-MERGE-monitoring-revert.md`, dapat dijalankan ulang kapan saja — policy bisa
+berubah tanpa memberi tahu tim ini (proyek dipakai bersama).
+**Membalikkan:** tidak ada.

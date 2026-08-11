@@ -83,7 +83,47 @@ Tidak ada indeks atas `city` — filter kota adalah seq scan.
 | `customer_orphan` | 32 | tak bisa dikaitkan ke satu profil master |
 | `customer_excluded` | 6.361 | alasan pengecualian belum ditinjau ulang |
 | `staging_20fit_data` | **88.536** | RLS **OFF** — lihat T-02 |
-| `customer_engagement` | 90.419 | belum dipakai |
+| `customer_engagement` | 90.419 | **dipakai sejak 3N** — lihat blok di bawah |
+
+## `customer_engagement` — 11 Agustus 2026 (Sprint 3N)
+
+Tabel EKSISTING, dibaca di tempat (nol ingestion, nol salin ke `crm_*`). Dikaitkan ke
+profil lewat `customer_id`.
+
+| Fakta | Nilai |
+|---|---:|
+| Baris | 90.419 |
+| Baris `customer_id` NULL | 0 |
+| Baris yatim (tak ada di `master_customer`) | 0 |
+| Profil master berbeda tercakup | 82.089 / 82.253 (**99,80%**) |
+| Unit berbeda | 6 (`arena`, `clinic`, `event`, `gym`, `membership`, `shop`) |
+| Produk berbeda | 25 |
+| `last_seen_at = first_seen_at` (**cap muat**) | 89.974 (**99,51%**) |
+| `last_seen_at > first_seen_at`, ≤ hari ini (**aktivitas nyata**) | 444 (0,49%) |
+| `last_seen_at` di masa depan (anomali) | 1 (2026-12-05) |
+| Sumber | 2 — `20fit_data_import` (89.051, 0 nyata), `live_txn_sync` (1.368, 444 nyata) |
+
+Aktivitas nyata **hanya** di dua produk `live_txn_sync`: Transaksi Clinic (274) + Transaksi
+Arena (170). Sebaran didominasi `membership/Fitco User` = 67.828 baris (75%). Kolom
+`raw_value`/`source_row_id`/`period` **tidak** dibaca aplikasi (potensi data sumber sensitif).
+→ T-14, K-19. Sumber aktivitas lain yang BELUM masuk sini: `docs/SUMBER-AKTIVITAS.md`.
+
+## Kerapian data & pelengkapan — 11 Agustus 2026 (Sprint 3P)
+
+**Nama** (`master_customer.full_name`): 30.307 campur-aduk, 23.415 huruf kecil semua, 3.525
+kapital semua, **281 mengandung angka** (ditandai `/quality`), 34–38 spasi ganda/tepi.
+Dirapikan di tampilan (`lib/crm/display-name.ts`), data tak disentuh.
+
+**Email typo** (domain): `gmaol.com` **986** (SEMUA impor 20 Apr satu instan → sistematis,
+T-16), `gmail.con` 204, `gmai.com` 82, `gamil.com` 49. Ditandai, tak dikoreksi.
+
+**Pencocokan enrichment** (via `normalizeEmail`, K-06): Hyrox **152 profil** (288 baris —
+satu email s/d 8×), `my20fit_profile` **169**, `my20fit_user_activity` **44** (recency asli),
+`rc_team_members` **0** (nama-saja, tak dicocokkan). NIK **bukan** kunci (master tak punya
+kolomnya). Detail + rencana: `docs/SUMBER-AKTIVITAS.md`.
+
+**Consent** (`crm_consent`): **0 baris** — backfill DITAHAN (SIGNOFF 3P). Peta `basis`→`purpose`
+di `lib/crm/consent-policy.ts` (`legacy_import_unverified`→marketing **⛔** sampai flag legal dibalik).
 
 ## Tabel `crm_*` — 11 Agustus 2026
 
@@ -109,7 +149,33 @@ dengan `ON DELETE SET NULL` (`confdeltype='n'`, bukan cascade).
 | `crm_purge_audit_log` | ya | `record` | `postgres`, `service_role` |
 | `crm_audit_log_no_mutate` | tidak | **`trigger`** | terbuka — **inert**: PostgREST tak bisa mengekspos fungsi trigger sebagai RPC, dan ia `SECURITY INVOKER` |
 
-**101** fungsi `SECURITY DEFINER` di luar `crm_*` masih anon-executable — T-03.
+**102** fungsi `SECURITY DEFINER` di luar `crm_*` masih anon-executable — T-03 (diukur ulang
+11 Agu, Sprint 3O; naik dari 101).
+
+## Paparan data sensitif — tabel RLS OFF, 11 Agustus 2026 (Sprint 3O)
+
+Sapuan skema `public`: tabel **RLS OFF** yang memuat data pribadi sensitif. **Hitungan saja**
+— nol nilai diambil. Milik tim lain; lihat `docs/ESKALASI-paparan-data-sensitif.md` (T-15).
+
+| Tabel | RLS | Baris | Kolom sensitif (terisi) |
+|---|---|---:|---|
+| `cf_hyrox_participants` | OFF | 1.038 | NIK **1.030** (812 berbeda), tgl_lahir 1.037, gol_darah 1.038, kontak_darurat 1.035, no_kontak_darurat 1.036 |
+| `clinic_assessments` | OFF | 149 | `diagnosis` (jsonb) 107 |
+| `clinic_screenings` | OFF | 131 | blood_type 41, health_medications 20, health_surgeries 26, health_* (jsonb), last_menstrual_period 0 |
+| `cf_user` | OFF | 4 | `password` (bernama polos, bukan `_hash`) 4 |
+| `rb_registrations` | OFF | 9 | `password_hash` 9 (ter-hash) |
+| `events` | OFF | 17 | `timeline_share_token` 2 |
+| `staff_password_resets` | OFF | 0 | kosong |
+
+`staging_20fit_data` (T-02): **88.536**, RLS OFF (tak berubah).
+
+> **KOREKSI 3Q (T-17, K-23):** blok di atas mengukur `relrowsecurity` **saja**. Itu tak
+> cukup — RLS ON **tidak** berarti tolak-default: `master_customer`/`customer_engagement` RLS
+> ON tapi policy `authenticated_full_access` (`ALL`/`USING true`) → **baca+tulis untuk 887
+> akun**. Klasifikasi benar (RLS × policy × grant): **199 anon-open, 43 login-open, 141
+> terkunci**; hanya `crm_*` yang benar-benar terkunci. Kueri: `docs/PASCA-MERGE-monitoring-revert.md`.
+> Tabel RLS-ON lain di atas (`rb_staff`, `talent_accounts`, dll.) **perlu dicek policy-nya
+> satu per satu** sebelum disebut "tidak terbaca anon" — belum dilakukan (lihat "tidak bisa diverifikasi").
 
 ## Pemakaian nyata `crm_audit_log`
 

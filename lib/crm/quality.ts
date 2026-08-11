@@ -1,6 +1,8 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { QualitySnapshot } from "./quality-types";
+import { fetchEcosystemQuality } from "./engagement";
+import { KNOWN_TYPO_DOMAINS } from "./email-typo";
 
 /**
  * Data-quality snapshot — READ-ONLY aggregates over the EXISTING tables.
@@ -49,6 +51,9 @@ function notNull(column: string): Filter {
 }
 
 export async function fetchQualitySnapshot(admin: SupabaseClient): Promise<QualitySnapshot> {
+  // Ecosystem aggregates (customer_engagement) run concurrently with the master_customer
+  // counts — same posture: parameter-free, head:true, not audited (Sprint 3N).
+  const ecosystemPromise = fetchEcosystemQuality(admin);
   const [
     total,
     fullName,
@@ -63,7 +68,9 @@ export async function fetchQualitySnapshot(admin: SupabaseClient): Promise<Quali
     ltvPositive,
     phoneNot62,
     emailNoAt,
+    emailKnownTypo,
     ltvNegative,
+    nameWithDigits,
     flaggedDuplicate,
     merged,
     orphan,
@@ -90,7 +97,19 @@ export async function fetchQualitySnapshot(admin: SupabaseClient): Promise<Quali
     countRows(admin, "master_customer", (q) =>
       q.not("email_normalized", "is", null).not("email_normalized", "like", "%@%.%"),
     ),
+    // Emails whose domain is a KNOWN typo (systematic import corruption, e.g. gmaol.com
+    // = 986 rows). Countable live via OR of "ends with @domain" (edit-distance detection
+    // is per-profile only). Flagged, NEVER auto-corrected — docs/RENCANA-koreksi-kontak.md.
+    countRows(admin, "master_customer", (q) =>
+      q.or(Object.keys(KNOWN_TYPO_DOMAINS).map((d) => `email_normalized.like.%@${d}`).join(",")),
+    ),
     countRows(admin, "master_customer", (q) => q.lt("lifetime_value", 0)),
+    // Names containing a digit — almost certainly junk. PostgREST has no regex, so this is
+    // the OR of ten digit-contains patterns (expressible, unlike a column regex). Flagged,
+    // not fixed: master_customer is read-only and tidying happens at display (K-19 sibling).
+    countRows(admin, "master_customer", (q) =>
+      q.or("0123456789".split("").map((d) => `full_name.like.%${d}%`).join(",")),
+    ),
     countRows(admin, "master_customer", (q) => q.is("is_potential_duplicate", true)),
     countRows(admin, "master_customer", (q) => q.is("is_merged", true)),
     countRows(admin, "customer_orphan"),
@@ -100,9 +119,12 @@ export async function fetchQualitySnapshot(admin: SupabaseClient): Promise<Quali
     countRows(admin, "crm_profile_scores"),
   ]);
 
+  const ecosystem = await ecosystemPromise;
+
   return {
     total,
     computedAt: new Date().toISOString(),
+    ecosystem,
 
     fillRates: [
       { key: "full_name", label: "Nama", column: "full_name", filled: fullName },
@@ -162,6 +184,13 @@ export async function fetchQualitySnapshot(admin: SupabaseClient): Promise<Quali
         definition:
           "email_normalized IS NOT NULL AND NOT LIKE '%@%.%'. Ini uji bentuk paling longgar; nol di sini TIDAK berarti semua email valid atau terkirim.",
       },
+      {
+        key: "email_known_typo_domain",
+        label: "Domain email salah ketik (daftar dikenal)",
+        count: emailKnownTypo,
+        definition:
+          "email_normalized berakhir pada domain typo yang dikenal (gmaol.com, gmail.con, gmai.com, …). gmaol.com sendiri = 986 baris, SEMUANYA dari impor 20 April 2026 satu instan — kerusakan sistematis, bukan 986 salah ketik independen. DITANDAI, bukan diperbaiki otomatis: mengubah email atas tebakan bisa mengirim data pribadi ke orang lain (docs/RENCANA-koreksi-kontak.md).",
+      },
     ],
 
     anomalies: [
@@ -171,6 +200,13 @@ export async function fetchQualitySnapshot(admin: SupabaseClient): Promise<Quali
         count: ltvNegative,
         definition:
           "lifetime_value < 0. Baris ini TIDAK TERLIHAT di filter revenue halaman Audience — “punya revenue” menyaring > 0 dan “tanpa revenue” menyaring 0/NULL, jadi nilai negatif jatuh di luar keduanya dan hanya muncul saat filter “Semua”. Diangkat di sini justru karena di sana ia menghilang.",
+      },
+      {
+        key: "name_with_digits",
+        label: "Nama mengandung angka",
+        count: nameWithDigits,
+        definition:
+          "full_name mengandung minimal satu digit 0–9. Kemungkinan besar data sampah (mis. nomor antrean ikut ke kolom nama). DITANDAI, bukan diperbaiki: master_customer read-only, dan perapian nama terjadi di lapisan tampilan (lib/crm/display-name.ts), bukan dengan menebak nama yang benar.",
       },
     ],
 

@@ -47,16 +47,27 @@ describe("parseCriteria", () => {
     expect(Object.keys(c)).not.toContain("created_at");
     expect(Object.keys(c)).not.toContain("last_activity_at");
   });
+  it("keeps closed-list ecosystem unit/product, rejects unknown (3N)", () => {
+    const c = parseCriteria({ ecoUnit: "membership", ecoProduct: "Fitco User" });
+    expect(c.ecoUnit).toBe("membership");
+    expect(c.ecoProduct).toBe("Fitco User");
+    const bad = parseCriteria({ ecoUnit: "20fit_data", ecoProduct: "Ghost" });
+    expect(bad.ecoUnit).toBeNull();
+    expect(bad.ecoProduct).toBeNull();
+  });
 });
 
 describe("activeCriteriaCount", () => {
   it("empty = 0 (whole pool)", () => {
     expect(activeCriteriaCount(EMPTY_CRITERIA)).toBe(0);
   });
-  it("counts each narrowing criterion", () => {
+  it("counts each narrowing criterion (incl. ecosystem, 3N)", () => {
     expect(
-      activeCriteriaCount({ unit: "gym", segment: "new", city: "Jakarta", revenue: "has", hasPhone: true, hasEmail: true }),
-    ).toBe(6);
+      activeCriteriaCount({
+        unit: "gym", segment: "new", city: "Jakarta", revenue: "has", hasPhone: true, hasEmail: true,
+        ecoUnit: "clinic", ecoProduct: "Transaksi Clinic",
+      }),
+    ).toBe(8);
   });
   it("revenue='all' and blank city do not count", () => {
     expect(activeCriteriaCount({ ...EMPTY_CRITERIA, revenue: "all", city: "  " })).toBe(0);

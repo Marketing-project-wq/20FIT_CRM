@@ -7,6 +7,7 @@ import { Search, UserSearch, Lock, ArrowRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SEARCH_KINDS, type SearchKind } from "@/lib/crm/search";
+import { formatDisplayName } from "@/lib/crm/display-name";
 
 interface Hit {
   customer_id: string;
@@ -168,7 +169,7 @@ export function ProfileSearch() {
                   className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 transition-colors hover:bg-glass"
                 >
                   <span className="flex flex-col">
-                    <span className="font-semibold text-ink">{r.full_name ? r.full_name : "(tanpa nama)"}</span>
+                    <span className="font-semibold text-ink">{formatDisplayName(r.full_name) ?? "(tanpa nama)"}</span>
                     <span className="font-mono text-[12px] text-ink-soft">
                       {[r.phone, r.email, r.city].filter(Boolean).join(" · ") || "—"}
                     </span>

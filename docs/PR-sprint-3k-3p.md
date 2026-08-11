@@ -1,5 +1,65 @@
-# PR: Sprint 3K + 3L + 3M → main
+# PR: Sprint 3K + 3L + 3M + 3N + 3O + 3P → main
 
+> ## 🧩 3P: CONSENT DICATAT (BUKAN DIASUMSIKAN), FILTER AND/OR, DATA DIRAPIKAN DI TAMPILAN
+>
+> Lima pekerjaan; **empat selesai, satu (pelengkapan profil sensitif) ditahan sadar** karena
+> butuh penanganan NIK/kesehatan yang tak boleh dikebut.
+> - **Consent (T1):** pemilik produk menyatakan semua data ber-consent untuk marketing+CS.
+>   Pernyataan **diterima tapi dicatat, bukan ditanam** (K-03): peta `basis`→`purpose` di
+>   satu modul teruji (`consent-policy.ts`), keputusan legal diisolasi ke **satu flag**
+>   (`legacy→marketing` = `false` sampai dicatat resmi). **Backfill DITAHAN** — pertanyaan
+>   cakupan-sumber & legacy-marketing belum terjawab tertulis (`SIGNOFF-legal-consent.md`).
+> - **Filter AND/OR (T3):** pohon predikat (grup AND/OR, maks 2 tingkat/12 kondisi), **fungsi
+>   murni** pohon→PostgREST + **dibacakan kembali dalam kalimat** ("(punya email ATAU punya
+>   telepon) DAN unit arena"). Bentuk tak-terungkap **ditolak di validasi**, bukan
+>   disederhanakan diam-diam. Jumlah berpasangan tetap; nol kriteria waktu (K-19).
+> - **Nama (T4):** 30.307 nama campur-aduk dirapikan **di tampilan** (`display-name.ts` —
+>   `dr.`/`H.`/`A.M.`/`bin`/`Nur-Aini`/`D'Souza`), **nama asli tetap terlihat & tetap
+>   dicari** atas kolom sumber. Nama berangka (281) ditandai `/quality`. Nol UPDATE.
+> - **Email typo (T5):** **`gmaol.com` = 986 baris, SEMUA impor 20 Apr satu instan →
+>   kerusakan SISTEMATIS** (T-16), bukan 986 salah ketik. Deteksi+tanda+hitungan; **nol
+>   koreksi otomatis** (`RENCANA-koreksi-kontak.md`).
+> - **Pelengkapan profil (T2 — DITAHAN):** cocok diukur sendiri — Hyrox **152 profil** (bukan
+>   288 baris), my20fit_profile 169, activity 44, rc_team_members **0** (nama-saja). NIK
+>   **bukan** kunci. Build gerbang-`view_health`+masking+audit-buka direncanakan, tak dikebut.
+> - Test **265 → 306**. Semua baca-saja; **nol perubahan skema** (backfill migrasi ditahan).
+>
+> ## 🔐 3O: SIKLUS INI TIDAK MENAMBAH PAPARAN APA PUN — IA MENGUKURNYA
+>
+> Seluruh sprint di PR ini **baca-saja, nol perubahan skema** pada jalur aplikasi. 3O tidak membangun fitur; ia
+> menutup lubang perhatian: temuan terberat proyek ini — **NIK + data kesehatan ±1.100 orang
+> terbaca `anon` tanpa login** — sebelumnya terkubur di poin 5 laporan 3N. 3O **mengukurnya
+> tepat** (sapuan seluruh skema `public`: tabel RLS OFF × kolom sensitif, **hitungan saja,
+> nol nilai diambil**) dan **mengangkatnya** ke `docs/ESKALASI-paparan-data-sensitif.md`
+> (dua halaman, untuk pengambil keputusan), ke T-15, dan ke **puncak** `docs/riwayat/README.md`.
+> Terberat: `cf_hyrox_participants` (RLS OFF) — NIK 1.030, tgl lahir, golongan darah, kontak
+> darurat; plus diagnosa medis (`clinic_*` RLS OFF) dan `cf_user.password` bernama polos.
+> **Pemeriksaan lapisan baca CRM (3O)** menemukan **nol** kolom sensitif keluar dari server;
+> `customer_engagement` kini dijaga **test kolom aman** agar `raw_value` tak bisa diselipkan.
+> **KOREKSI 3Q:** klaim 3O bahwa `master_customer`/`customer_engagement` "aman karena RLS ON"
+> **keliru** — keduanya punya policy `authenticated_full_access` (baca+tulis untuk 887 akun,
+> T-17). Hanya `crm_*` yang benar-benar terkunci. Dokumen eskalasi sudah dikoreksi (S-08, K-23).
+> Perbaikan RLS sendiri milik pemilik data (menyalakan RLS tanpa policy memutus aplikasi tim
+> lain) — **larangan sprint: jangan sentuh tabelnya**.
+> **Validasi deploy tercepat:** buka `/settings/diagnostik` (3L) sekali — seluruh lapisan baca terperiksa.
+>
+> ## 🌐 3N: PROFIL BUKAN SATU BARIS — TAPI KOLOM WAKTUNYA CAP MUAT UNTUK KE-EMPAT KALINYA
+>
+> `customer_engagement` (90.419 baris, EKSISTING) menunjukkan di mana seorang pelanggan
+> muncul di ekosistem 20FIT: arena, clinic, event, gym, membership, shop — dibaca **di
+> tempat**, nol ingestion, nol salin ke `crm_*`, dikaitkan lewat `customer_id` (0 baris
+> yatim). Ia menambah bagian **"Ekosistem 20FIT"** di detail profil, kriteria **unit +
+> produk** di segment builder, dan blok kualitas ekosistem di `/quality`.
+> **Temuan yang mengikat keputusan:** `last_seen_at` ternyata **cap waktu muat untuk 99,51%
+> baris** (`= first_seen_at`). Aktivitas nyata hanya **444 baris (0,49%)**, semuanya di
+> `live_txn_sync` (Transaksi Clinic + Transaksi Arena). Ini **kali keempat** sebuah kolom
+> waktu ternyata cap muat (setelah `created_at`, `first_seen_at`, `last_activity_at`) —
+> **pola, bukan kejutan** (T-14). Karena itu **tidak ada kriteria waktu** untuk ekosistem
+> (K-19), dan setiap baris `last_seen_at` ditampilkan sesuai kelasnya: "aktivitas nyata"
+> (tanggal), "tidak terekam" (cap muat — **bukan** em-dash, bukan "tidak aktif"), atau
+> "anomali" (1 baris tanggal masa depan). Sumber aktivitas yang **belum** terwakili (HYROX,
+> my20fit, race-timing) dipetakan tanpa dibangun: `docs/SUMBER-AKTIVITAS.md`.
+>
 > ## 📊 3M: LAYAR PERTAMA YANG MENUNJUKKAN BERAPA BANYAK ORANG YANG TIDAK BOLEH DIHUBUNGI
 >
 > Segment builder (`/segments`) menampilkan tiap definisi dengan **dua** angka
@@ -58,8 +118,9 @@
 >
 > **Branch:** `claude/lanjutkan-pekerjaan-mno804`
 > **Base:** `main` @ `36a2291` (PR #6 — 3I + 3J + dokumentasi `docs/riwayat/` sudah ter-merge)
-> **Isi branch di atas base:** `5b6bcc2` (3K — gap monitoring + jejak kegagalan, di-rebase) · commit 3L (status terhitung + `/settings/diagnostik`).
-> **Perubahan skema/DB/migrasi: NOL** di 3K & 3L. Diagnostik **baca-saja**; nol tulis ke data pelanggan/suppression/consent; satu-satunya tulis = self-audit `list.viewed`/`crm_audit_log` (`view=diagnostik`), bukan aksi baru.
+> **Catatan status:** 3K + 3L + 3M **sudah ter-merge ke `main` lewat PR #7** (`origin/main` @ `e366347`).
+> Yang belum ter-merge di branch ini: **3N** (`354a4f0`, ekosistem `customer_engagement`) + **3O** (paparan sensitif). 3N menumpuk bersih di atas main baru (parent-nya `c3dc5ea` = 3M, kini di main) — tanpa rebase.
+> **Perubahan skema/DB/migrasi: NOL** di 3K, 3L, 3M, 3N, dan 3O. Semua baca-saja; nol tulis ke data pelanggan/suppression/consent; tulis satu-satunya = self-audit `list.viewed`/`crm_audit_log` (diagnostik `view=diagnostik`, segment `view=segment_builder`), bukan aksi baru. 3N: `customer_engagement` dibaca di tempat, nol ingestion. 3O: hitungan saja, nol tabel tim lain disentuh.
 > **JANGAN merge / buka PR ke `main` tanpa izin eksplisit.**
 >
 > > Catatan konteks: 3G + 3H (jalur tulis suppression) **sudah di main lewat PR #5**. Bagian
@@ -151,6 +212,39 @@
 > **Nol perubahan skema/DB di 3M.** Baca-saja atas `master_customer` + `crm_consent` +
 > `crm_suppression`; satu-satunya tulis = audit `list.viewed` per perhitungan (button-triggered,
 > bukan live). Nol daftar orang dikeluarkan.
+
+### Sprint 3N (ekosistem 20FIT — baca `customer_engagement`, nol ingestion)
+| Perubahan | Sifat |
+|---|---|
+| `lib/crm/engagement.ts` (server-only) — baca per-profil + agregat + resolusi id ekosistem. Kolom aman saja (**tanpa** `raw_value`/`source_row_id`/`period`). Kait lewat `customer_id` | **BARU — BACA SAJA** |
+| `lib/crm/engagement-constants.ts` (murni + test) — kosakata 6 unit / 25 produk (kosakata SENDIRI, beda dari `AUDIENCE_UNITS`) + `classifyLastSeen` (real/cap-muat/anomali/missing) | Kode + **Pagar** |
+| Detail profil: bagian **"Ekosistem 20FIT"** — tabel unit/produk/jumlah/terakhir; `last_seen_at` per baris diklasifikasi (cap-muat = "tidak terekam", **bukan** em-dash). **Nol audit kedua** (`profile.viewed` sudah mencakup) | **MENGUBAH TAMPILAN** |
+| Segment builder: kriteria **unit + produk ekosistem** (closed-list). Jumlah berpasangan tetap (boleh-dihubungi tetap **0**). Distinct-id via paginasi kolom `customer_id`; intersect di memori (andalkan 0-yatim untuk jalur cepat) | **MENGUBAH TAMPILAN + BACA** |
+| `/quality`: blok ekosistem — total baris, sebaran per-unit (live), baris tanggal-masa-depan (live). **Nol audit** (agregat tanpa parameter, K-07) | **MENGUBAH TAMPILAN** |
+| `VERIFIED_ARTIFACTS` +2: `ecosystem_last_seen_load_stamp` (99,51% cap muat — antar-kolom, tak bisa live) + `ecosystem_coverage` (99,80% cakupan — count distinct) — bertanggal | Dokumen (di kode) |
+| `docs/SUMBER-AKTIVITAS.md` — 4 sumber (HYROX 1.038, my20fit_profile 886, my20fit_user_activity 175, rc_team_members 1.545; rc_participant_photos **kosong**) dipetakan: kunci identitas (email/nama, **bukan** `customer_id`), waktu nyata?, keputusan pra-ingestion. **Nol ingestion dibangun** | Dokumen |
+| T-14 (cap muat ke-4) + K-19 diperluas + `FAKTA-DATA.md` blok `customer_engagement` | Dokumen (riwayat) |
+| Test: 249 → **262** (+12 `classifyLastSeen`/kosakata ekosistem; +1 kriteria ekosistem closed-list) | **Pagar** (test) |
+
+> **Nol perubahan skema/DB/migrasi di 3N.** `customer_engagement` dibaca di tempat — nol
+> INSERT ke `crm_*`, nol tabel/view/RPC baru, nol `setval`. Tulis satu-satunya tetap audit
+> `list.viewed` per perhitungan segment (button-triggered). Detail profil **tidak** menulis
+> audit kedua. Kolom sumber sensitif (`raw_value`, NIK/kesehatan di tabel lain) tak dibaca.
+
+### Sprint 3O (ukur paparan data sensitif, angkat, jangan sentuh)
+| Perubahan | Sifat |
+|---|---|
+| Sapuan seluruh skema `public`: tabel **RLS OFF × kolom sensitif** (NIK/kesehatan/DOB/darurat/kredensial). **Hitungan saja, nol nilai diambil.** T-02/T-03 diukur ulang (88.536 RLS OFF; **102** fungsi anon-exec, naik dari 101) | Pengukuran |
+| `docs/ESKALASI-paparan-data-sensitif.md` — 2 halaman untuk pengambil keputusan: apa terpapar (per keparahan + jumlah **orang**), bagaimana (anon key di bundel JS), apa yang TIDAK (CRM RLS ON), kenapa bukan tugas CRM, urutan remediasi + siapa memutuskan, akibat bila didiamkan | Dokumen |
+| T-15 di `TEMUAN.md` + **puncak** `docs/riwayat/README.md` (peringatan keamanan aktif) + blok paparan di `FAKTA-DATA.md` | Dokumen (riwayat) |
+| **Pemeriksaan lapisan baca CRM sendiri:** setiap `.select()` ditelusuri — **nol** kolom sensitif keluar dari server; `date_of_birth` hanya muncul sebagai `count` di `/quality` (bukan nilai); audit `metadata`/log kegagalan PII-free | Verifikasi |
+| Daftar kolom aman `customer_engagement` dipindah ke konstanta teruji (`ENGAGEMENT_SAFE_COLUMNS`/`ENGAGEMENT_FORBIDDEN_COLUMNS`); `select` dibangun darinya | Kode |
+| Test: 262 → **265** (+3 penjaga kolom aman: `raw_value`/`source_row_id`/`period` tak boleh masuk `select`) | **Pagar** (test) |
+
+> **Nol perubahan skema/DB di 3O.** Nol RLS dinyalakan, nol policy ditulis, nol tabel tim
+> lain disentuh (hanya `count(*)`/`count(distinct)` untuk mengukur). Nol nilai NIK/kesehatan/
+> kontak darurat masuk berkas atau laporan mana pun. Satu perubahan kode: refactor daftar
+> kolom aman jadi konstanta teruji — tak mengubah kolom yang dibaca, hanya menjaganya.
 
 > **Nol perubahan skema/DB/migrasi di 3L.** Diagnostik baca-saja; satu-satunya tulis =
 > self-audit `list.viewed`/`crm_audit_log` (`view=diagnostik`). **Bukti nol-inflasi audit:**

@@ -40,10 +40,44 @@ kontrolnya tidak ditembus, melainkan **dilewati**.
 
 ### T-03 · 101 fungsi `SECURITY DEFINER` anon-executable di luar `crm_*` — MILIK TIM LAIN
 **Ditemukan 11 Agu.** Pola auto-grant yang sama tersebar di sistem arena, clinic, shop,
-rb, my20fit, rc, uob, talent. Angkanya **naik** tiap tim lain men-deploy (99 → 101 dalam
-satu sesi), yang justru membuktikan polanya sistemik. Di luar lingkup sprint mana pun di
-sini; perlu diangkat ke pemilik proyek Supabase.
+rb, my20fit, rc, uob, talent. Angkanya **naik** tiap tim lain men-deploy (99 → 101 →
+**102** dalam beberapa sesi), yang justru membuktikan polanya sistemik. Di luar lingkup
+sprint mana pun di sini; perlu diangkat ke pemilik proyek Supabase.
 → `docs/RISIKO-rpc-execute-terbuka.md`
+
+### T-15 · NIK + data kesehatan ±1.100 orang terpapar anon (RLS OFF di tabel sumber) — MILIK TIM LAIN
+**Ditemukan 11 Agu (Sprint 3O), diangkat dari poin 5 laporan 3N.** Sapuan seluruh skema
+`public`: beberapa tabel sumber **RLS OFF** memuat data pribadi paling sensitif, terbaca
+siapa pun dengan anon key tanpa login. Terberat: **`cf_hyrox_participants`** (1.038 baris) —
+**NIK 1.030** (812 berbeda), tgl lahir 1.037, golongan darah 1.038, kontak darurat ~1.035.
+Ditambah data medis RLS OFF: **`clinic_assessments`** (diagnosa 107), **`clinic_screenings`**
+(riwayat operasi/obat/kondisi, 131 baris), dan **`cf_user`** (`password` — bernama polos, 4).
+Total ±1.100 orang; NIK + kesehatan = kategori paling ketat UU 27/2022.
+
+**Kelas berbeda dari T-02** (nama/telepon/email): ini identitas kependudukan + kesehatan.
+**Bukan** kebocoran kontrol CRM — `master_customer`/`crm_*`/`customer_engagement` semua
+**RLS ON** dan lapisan baca CRM tak menyentuh kolom sensitif (diperiksa 3O; test penjaga
+kolom aman `customer_engagement` ditambahkan). Perbaikannya milik pemilik data: menyalakan
+RLS **tanpa policy** memutus aplikasi tim lain yang membacanya lewat anon key — itulah kenapa
+belum dikerjakan. Sprint ini **mengukur dan mengangkat**, tidak menyentuh.
+→ `docs/ESKALASI-paparan-data-sensitif.md`
+
+### T-17 · `master_customer` + `customer_engagement` terbuka BACA+TULIS untuk 887 akun login — MILIK TIM LAIN
+**Ditemukan 11 Agu (Sprint 3Q).** Keduanya **RLS ON** tapi punya policy
+`authenticated_full_access` (`PERMISSIVE · roles {authenticated} · cmd ALL · USING true`).
+Artinya **setiap dari 887 akun `auth.users`** yang bisa login punya akses **BACA dan TULIS**
+(`ALL` mencakup `UPDATE`/`DELETE`) ke seluruh **82.253 profil** (dan 90.419 baris engagement),
+**tanpa masking, tanpa audit, melewati RBAC**. Anon key + sesi login = jalan langsung ke
+PostgREST; keduanya ada di tiap bundel JS.
+
+Klasifikasi ulang 383 tabel `public` (RLS × policy × grant, bukan RLS saja): **199 terbuka
+`anon`**, **43 terbuka siapa pun yang login** (incl. `master_customer`, `customer_engagement`),
+**141 terkunci**. Seluruh `crm_*` **terkunci** (RLS ON + 0 policy) — pola itu benar; yang
+gagal adalah dua tabel utama produk yang punya policy permisif. **Bukan menembus, melewati:**
+masking (K-02), read-only `master_customer`, jejak `list.viewed` semua di jalur aplikasi;
+database tidak menegakkannya. Perbaikan (menyempitkan policy) **akan memutus aplikasi tim
+lain** yang mengandalkannya → keputusan pemilik data + owner Supabase, bukan sepihak.
+→ `docs/ESKALASI-paparan-data-sensitif.md`, K-23. Silang-rujuk T-02.
 
 ---
 
@@ -111,6 +145,41 @@ Baris audit `id=18` menyimpan `filters.city = "tifany"` — ketikan pengguna, ap
 Jaminan "metadata bebas PII" bersifat **perilaku, bukan struktur**. Diredam cap panjang
 dan pemangkasan 90 hari. → K-17
 
+### T-16 · `gmaol.com` (986 baris) adalah kerusakan impor SISTEMATIS, bukan 986 salah ketik — DATA, tidak diremediasi
+**Ditemukan 11 Agu (Sprint 3P).** 986 baris `master_customer` berdomain email `@gmaol.com`.
+**Seluruhnya `source='20fit_data_import'`, seluruhnya `created_at = 2026-04-20` pada satu
+instan, satu `first_seen_at`.** 986 salah ketik independen tidak mendarat di satu instan —
+ini **kerusakan sistematis** saat impor 20 April (find/replace meleset atau pemetaan kolom
+salah). Implikasi lebih besar: **kolom lain di muatan yang sama mungkin rusak serupa** —
+perlu diselidiki pemilik data. Domain typo lain (lebih kecil, mungkin salah ketik nyata):
+`gmail.con` 204, `gmai.com` 82, `gamil.com` 49. **DITANDAI, tidak diperbaiki** — mengubah
+email atas tebakan bisa mengirim data pribadi ke orang lain. Deteksi (`lib/crm/email-typo.ts`)
++ tanda per profil + hitungan `/quality`; jalur koreksi ber-audit direncanakan di
+`docs/RENCANA-koreksi-kontak.md` (belum dibangun). → K-20 (anomali ditampilkan, bukan ditebak)
+
+### T-15b · Nama campur-aduk (30.307) & bergelar — dirapikan di TAMPILAN, bukan di data
+**Sprint 3P.** 30.307 nama tak-rapi, 23.415 huruf kecil semua, 3.525 kapital semua, 281
+mengandung angka (kemungkinan sampah). `master_customer` read-only → dirapikan lewat fungsi
+murni `lib/crm/display-name.ts` **saat menampilkan** (gelar `dr.`/`H.`/`S.Pd`, inisial
+`A.M.`, partikel `bin`/`van`, tanda hubung/apostrof, spasi ganda). **Nama asli tetap
+terlihat** di detail profil dan **pencarian tetap atas kolom sumber** — perapian tak boleh
+membuat nama hilang. Nama berangka **ditandai** di `/quality` (bukan diperbaiki). → K-20
+
+### T-14 · `last_seen_at` ekosistem adalah cap muat untuk 99,51% baris — DATA, tidak diremediasi
+**Ditemukan 11 Agu (Sprint 3N).** `customer_engagement` (90.419 baris): **89.974 (99,51%)**
+punya `last_seen_at = first_seen_at` — cap waktu muat, bukan aktivitas. Hanya **444 baris
+(0,49%)** membawa aktivitas nyata (`last_seen_at > first_seen_at`, ≤ hari ini), **semuanya**
+dari sumber `live_txn_sync` dan terpusat di dua produk: Transaksi Clinic (274) dan Transaksi
+Arena (170). Plus **1 baris tanggal-masa-depan** (2026-12-05).
+
+Ini **kali keempat** sebuah kolom waktu ternyata cap muat — setelah `created_at` (T-09),
+`first_seen_at` (T-08), dan `last_activity_at` (Sprint 2). Empat kali bukan kebetulan; ini
+**properti sumbernya**, bukan temuan per-kolom. Konsekuensi mengikat: **tidak ada kriteria
+waktu** untuk ekosistem di segment builder — recency di atas kolom 99,51% cap muat sama tak
+jujurnya seperti di `master_customer`. Perbandingan antar-kolom tak bisa dihitung live lewat
+PostgREST → masuk `VERIFIED_ARTIFACTS` bertanggal (`ecosystem_last_seen_load_stamp`), sejajar
+T-11. Baris masa-depan dihitung live di `/quality` (bandingkan ke literal waktu). → K-19
+
 ---
 
 ## Kesalahan sendiri
@@ -159,3 +228,18 @@ V-6 tertutup **membalik** kecurigaan 3K bahwa detail profil rusak — ia jalan; 
 `37,38,39` tunggal & tak berulang (sesi 13:37–13:39 sukses penuh, gap tak bertambah),
 konsisten dengan kejadian transient, bukan cacat deterministik. Penyebab pastinya tetap
 butuh log Railway jendela 08:01–08:58 UTC — belum terjawab.
+
+### S-08 · Ukuran lebih sempit dari klaim: `relrowsecurity` dipakai untuk klaim "terlindungi"
+**Sprint 3O → dikoreksi 3Q.** Inventaris 3O mengukur **`relrowsecurity`** (RLS on/off) lalu
+menyimpulkan `master_customer`/`customer_engagement` "aman" dan menulisnya di dokumen
+**eskalasi** — yang dibaca pengambil keputusan. Ternyata keduanya RLS ON **tapi** punya
+policy `authenticated_full_access` (`ALL`/`USING true`) → terbuka baca+tulis untuk 887 akun
+(T-17). **Ukuran (RLS) lebih sempit daripada klaim (terlindungi).**
+
+Yang membuat ini pola, bukan kelalaian tunggal: **kehati-hatiannya sudah ditulis** — poin 8
+laporan 3O menyatakan persis *"saya mengukur `relrowsecurity`, bukan tiap policy — tabel RLS
+ON secara teoretis bisa punya policy permisif."* Keraguan itu benar, ditulis, lalu **tidak
+ditindaklanjuti**. Ini **kali kedua** jawabannya sudah ada di tempat yang sudah dilihat
+(bandingkan S-07: bukti ada di `crm_audit_log`, terlewat). **Perbaikan pola:** klaim keamanan
+tabel kini **wajib** menyebut RLS **dan** policy **dan** grant (K-23), dan kueri klasifikasinya
+masuk monitoring supaya bisa dijalankan ulang, bukan diandalkan pada ingatan.

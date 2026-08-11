@@ -9,6 +9,7 @@ import {
   resolveGrant,
 } from "@/lib/auth/roles";
 import { fetchProfileById, isUuid } from "@/lib/crm/audience";
+import { fetchProfileEngagement, type ProfileEngagement } from "@/lib/crm/engagement";
 import { logApiFailure } from "@/lib/crm/failure-log";
 
 export const dynamic = "force-dynamic";
@@ -99,8 +100,22 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
   // Health section is gated structurally, even though there is no source to show.
   const canViewHealth = isPermitted(role, "profile.view_health");
 
+  // Ecosystem touchpoints (customer_engagement), keyed by customer_id. NON-fatal and
+  // NON-audited: the mandatory profile.viewed row above already accounts for opening
+  // this profile — the ecosystem read is part of the same view, NOT a separate action,
+  // so it writes no second audit row. If it fails, degrade to null and still serve the
+  // profile (the section renders its own soft error). It carries no contact PII (only
+  // unit/product/counts/dates), so it is returned regardless of masking.
+  let engagement: ProfileEngagement | null = null;
+  try {
+    engagement = await fetchProfileEngagement(admin, profile.customer_id);
+  } catch (e) {
+    logApiFailure("/audience/[id]", "engagement_query_failed", { code: (e as { code?: string })?.code });
+    engagement = null;
+  }
+
   return NextResponse.json(
-    { profile, canViewHealth },
+    { profile, canViewHealth, engagement },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

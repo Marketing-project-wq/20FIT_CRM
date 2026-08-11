@@ -15,11 +15,16 @@ export { SEGMENT_NULL, AUDIENCE_MAX_PAGE_SIZE, AUDIENCE_DEFAULT_PAGE_SIZE };
  * (82,253 rows). Sprint 3A: evaluation, not operations.
  *
  * Hard rules encoded here (PRD 17.1):
- *   - Reads run ONLY through the service-role admin client, server-side. The anon key
- *     must never touch this data — so this module is `server-only` and takes the admin
- *     client as a parameter (the caller, a route handler, owns auth + role checks).
+ *   - This module's reads run through the service-role admin client, server-side, and it is
+ *     `server-only` + takes the admin client as a parameter (the caller, a route handler,
+ *     owns auth + role checks). NOTE (Sprint 3Q, T-17): this is NOT the only path to
+ *     master_customer — the table has a permissive `authenticated_full_access` policy
+ *     (ALL/USING true), so any of 887 login accounts can read/write it directly via
+ *     PostgREST, bypassing this module, its masking, and its audit. Masking + RBAC here
+ *     protect the APP path only; the DB does not enforce read-only. See
+ *     docs/ESKALASI-paparan-data-sensitif.md and K-23.
  *   - Masking is applied HERE, server-side, before rows are returned. A masked caller
- *     never receives the real phone/email.
+ *     never receives the real phone/email — on the app path.
  *   - NO write path. NO export. This module only SELECTs.
  *
  * It deliberately does NOT read `master_customer` into any crm_* table — ingestion is

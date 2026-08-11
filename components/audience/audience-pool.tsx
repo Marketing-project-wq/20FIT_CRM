@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Lock, AlertTriangle, Search } from "lucide-react";
+import { formatDisplayName } from "@/lib/crm/display-name";
 import { Badge } from "@/components/ui/badge";
 import { ProfileSearch } from "@/components/audience/profile-search";
 import {
@@ -332,7 +333,7 @@ export function AudiencePool() {
                       href={`/audience/${r.customer_id}`}
                       className="font-semibold text-ink underline decoration-glass-border underline-offset-2 hover:decoration-red"
                     >
-                      {r.full_name ? r.full_name : "(tanpa nama)"}
+                      {formatDisplayName(r.full_name) ?? "(tanpa nama)"}
                     </Link>
                   </td>
                   <td className="px-4 py-3 font-mono text-[13px]">{r.phone ? r.phone : <Empty />}</td>
