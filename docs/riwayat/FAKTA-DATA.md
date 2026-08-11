@@ -108,6 +108,23 @@ Arena (170). Sebaran didominasi `membership/Fitco User` = 67.828 baris (75%). Ko
 `raw_value`/`source_row_id`/`period` **tidak** dibaca aplikasi (potensi data sumber sensitif).
 → T-14, K-19. Sumber aktivitas lain yang BELUM masuk sini: `docs/SUMBER-AKTIVITAS.md`.
 
+## Kerapian data & pelengkapan — 11 Agustus 2026 (Sprint 3P)
+
+**Nama** (`master_customer.full_name`): 30.307 campur-aduk, 23.415 huruf kecil semua, 3.525
+kapital semua, **281 mengandung angka** (ditandai `/quality`), 34–38 spasi ganda/tepi.
+Dirapikan di tampilan (`lib/crm/display-name.ts`), data tak disentuh.
+
+**Email typo** (domain): `gmaol.com` **986** (SEMUA impor 20 Apr satu instan → sistematis,
+T-16), `gmail.con` 204, `gmai.com` 82, `gamil.com` 49. Ditandai, tak dikoreksi.
+
+**Pencocokan enrichment** (via `normalizeEmail`, K-06): Hyrox **152 profil** (288 baris —
+satu email s/d 8×), `my20fit_profile` **169**, `my20fit_user_activity` **44** (recency asli),
+`rc_team_members` **0** (nama-saja, tak dicocokkan). NIK **bukan** kunci (master tak punya
+kolomnya). Detail + rencana: `docs/SUMBER-AKTIVITAS.md`.
+
+**Consent** (`crm_consent`): **0 baris** — backfill DITAHAN (SIGNOFF 3P). Peta `basis`→`purpose`
+di `lib/crm/consent-policy.ts` (`legacy_import_unverified`→marketing **⛔** sampai flag legal dibalik).
+
 ## Tabel `crm_*` — 11 Agustus 2026
 
 | Tabel | Baris | RLS | Policy |

@@ -9,6 +9,34 @@
 
 Semua angka di bawah diverifikasi langsung ke database **11 Agustus 2026**.
 
+## Pembaruan Sprint 3P (11 Agu 2026) — pelengkapan profil: diukur, DITAHAN dari build
+
+TUGAS 2 Sprint 3P meminta melengkapi profil dari sumber ini. Investigasi + pengukuran
+selesai; **pembangunannya ditahan** ke follow-up karena butuh penanganan data sensitif yang
+tak boleh dikebut di akhir sprint besar (gerbang `profile.view_health` + masking + **aksi
+buka teraudit** untuk NIK). Yang diukur ulang (via `normalizeEmail` = trim+lower, K-06):
+
+| Sumber | Cocok (PROFIL berbeda) | Baris cocok | Catatan penting |
+|---|---:|---:|---|
+| `cf_hyrox_participants` | **152 profil** | 288 baris | **288 = baris, bukan orang.** Satu email mendaftar sampai 8× (relay/multi-event). Angka enrichment jujur per profil = **152**, bukan 288 |
+| `my20fit_profile` | **169 profil** | — | cocok email ternormalisasi |
+| `my20fit_user_activity` | **44 profil** | — | satu-satunya recency asli (`last_active_at` s/d hari ini) |
+| `rc_team_members` | **0 (tak bisa)** | — | hanya berkunci **nama** — TIDAK dicocokkan (salah cocok = riwayat orang lain menempel) |
+
+**NIK bukan kunci pencocokan.** `master_customer` tak punya kolom NIK — NIK hanya data yang
+menempel **setelah** profil tercocok lewat email, bukan jembatan. Membangun pencocokan
+berbasis NIK adalah kekeliruan mahal yang **tidak** dilakukan.
+
+**Rencana build (follow-up):** lapisan baca enrichment (server-only, cocok via `normalizeEmail`,
+**nol tulis** ke `master_customer`/`crm_*` — gabung saat tampil seperti `customer_engagement`).
+Field non-sensitif (partisipasi event Hyrox + `registered_at`, status my20fit, `last_active_at`
+nyata) boleh tampil. Field sensitif (NIK/tgl lahir/gol darah/kontak darurat) **digerbangi
+`profile.view_health`** (super_admin, crm_manager), **disamarkan default**, dibuka lewat aksi
+eksplisit yang **setiap pembukaannya diaudit**. Tingkat kecocokan tampil **di layar** ("tidak
+ada data Hyrox untuk profil ini" bukan seolah tak pernah ikut). Aksi-audit-buka-NIK perlu
+keputusan kelas retensi (denylist, K-09) — itu yang membuatnya keputusan tersendiri, bukan
+tempelan layar.
+
 ## Kenapa keempat sumber ini tidak ada di `customer_engagement`
 
 `customer_engagement` dikaitkan ke profil lewat **`customer_id` (uuid)** — 0 baris yatim,

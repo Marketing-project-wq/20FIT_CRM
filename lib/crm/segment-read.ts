@@ -38,21 +38,28 @@ interface ConsentDbRow {
  *  the contactable candidate query so they can never diverge. The builder types are
  *  awkward to type generically, so `any` mirrors the existing read layers. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function applyCriteria(q: any, c: SegmentCriteria): any {
+function applyCriteria(q: any, c: SegmentCriteria, masterFilterExpr?: string | null): any {
   let out = q;
-  if (c.unit) out = out.eq("first_unit", c.unit);
-  if (c.segment === SEGMENT_NULL) out = out.is("segment", null);
-  else if (c.segment) out = out.eq("segment", c.segment);
-  if (c.city && c.city.trim() !== "") {
-    // Escape PostgREST like wildcards so a city value can't inject a pattern.
-    const esc = c.city.replace(/[%_\\]/g, (m) => `\\${m}`);
-    out = out.ilike("city", `%${esc}%`);
+  // AND/OR tree (Sprint 3P): when a validated master filter expression is supplied it
+  // REPLACES the flat master fields entirely, applied as one PostgREST logic string. The
+  // flat fields are only used when there is no tree (backward compatible).
+  if (masterFilterExpr) {
+    out = out.or(masterFilterExpr);
+  } else {
+    if (c.unit) out = out.eq("first_unit", c.unit);
+    if (c.segment === SEGMENT_NULL) out = out.is("segment", null);
+    else if (c.segment) out = out.eq("segment", c.segment);
+    if (c.city && c.city.trim() !== "") {
+      // Escape PostgREST like wildcards so a city value can't inject a pattern.
+      const esc = c.city.replace(/[%_\\]/g, (m) => `\\${m}`);
+      out = out.ilike("city", `%${esc}%`);
+    }
+    if (c.revenue === "has") out = out.gt("lifetime_value", 0);
+    else if (c.revenue === "none") out = out.or("lifetime_value.is.null,lifetime_value.eq.0");
+    else if (c.revenue === "negative") out = out.lt("lifetime_value", 0);
+    if (c.hasPhone) out = out.not("phone_normalized", "is", null);
+    if (c.hasEmail) out = out.not("email_normalized", "is", null);
   }
-  if (c.revenue === "has") out = out.gt("lifetime_value", 0);
-  else if (c.revenue === "none") out = out.or("lifetime_value.is.null,lifetime_value.eq.0");
-  else if (c.revenue === "negative") out = out.lt("lifetime_value", 0);
-  if (c.hasPhone) out = out.not("phone_normalized", "is", null);
-  if (c.hasEmail) out = out.not("email_normalized", "is", null);
   // NOTE: ecosystem criteria (ecoUnit/ecoProduct) are NOT applied here — they live in
   // customer_engagement, a different table. They are resolved to a customer_id set and
   // intersected separately (see computeSegment). applyCriteria only touches master_customer.
@@ -60,8 +67,10 @@ function applyCriteria(q: any, c: SegmentCriteria): any {
 }
 
 /** Whether any MASTER (master_customer) criterion narrows the pool — ecosystem criteria
- *  excluded, since those are resolved against a different table. */
-function hasMasterCriteria(c: SegmentCriteria): boolean {
+ *  excluded, since those are resolved against a different table. A validated tree expression
+ *  also counts as narrowing. */
+function hasMasterCriteria(c: SegmentCriteria, masterFilterExpr?: string | null): boolean {
+  if (masterFilterExpr) return true;
   return Boolean(
     c.unit ||
       c.segment ||
@@ -80,6 +89,7 @@ async function countMasterWithinIds(
   admin: SupabaseClient,
   criteria: SegmentCriteria,
   ids: string[],
+  masterFilterExpr?: string | null,
 ): Promise<number> {
   let total = 0;
   for (let i = 0; i < ids.length; i += IN_CHUNK) {
@@ -90,6 +100,7 @@ async function countMasterWithinIds(
         .select("customer_id", { count: "exact", head: true })
         .in("customer_id", chunk),
       criteria,
+      masterFilterExpr,
     );
     if (res.error) throw res.error;
     total += res.count ?? 0;
@@ -100,6 +111,7 @@ async function countMasterWithinIds(
 export async function computeSegment(
   admin: SupabaseClient,
   criteria: SegmentCriteria,
+  masterFilterExpr: string | null = null,
 ): Promise<SegmentCounts> {
   // Ecosystem presence (Sprint 3N): resolve ecoUnit/ecoProduct to the DISTINCT set of
   // customer_ids that have such a customer_engagement row. Done first so both the matched
@@ -119,17 +131,18 @@ export async function computeSegment(
     const matchedRes = await applyCriteria(
       admin.from("master_customer").select("customer_id", { count: "exact", head: true }),
       criteria,
+      masterFilterExpr,
     );
     if (matchedRes.error) throw matchedRes.error;
     matched = matchedRes.count ?? 0;
   } else if (ecoIds.size === 0) {
     matched = 0;
-  } else if (!hasMasterCriteria(criteria)) {
+  } else if (!hasMasterCriteria(criteria, masterFilterExpr)) {
     // Every customer_engagement.customer_id exists in master_customer (0 orphan, verified
     // 11 Agu 2026), so with no master narrowing the matched count IS the distinct eco set.
     matched = ecoIds.size;
   } else {
-    matched = await countMasterWithinIds(admin, criteria, Array.from(ecoIds));
+    matched = await countMasterWithinIds(admin, criteria, Array.from(ecoIds), masterFilterExpr);
   }
 
   // 2. Contactable — RUN the rule, don't trust a column. Start from active marketing
@@ -173,6 +186,7 @@ export async function computeSegment(
   const profRes = await applyCriteria(
     admin.from("master_customer").select("customer_id, phone_normalized, email_normalized").in("customer_id", ids),
     criteria,
+    masterFilterExpr,
   );
   if (profRes.error) throw profRes.error;
 

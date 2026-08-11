@@ -128,6 +128,26 @@ Baris audit `id=18` menyimpan `filters.city = "tifany"` — ketikan pengguna, ap
 Jaminan "metadata bebas PII" bersifat **perilaku, bukan struktur**. Diredam cap panjang
 dan pemangkasan 90 hari. → K-17
 
+### T-16 · `gmaol.com` (986 baris) adalah kerusakan impor SISTEMATIS, bukan 986 salah ketik — DATA, tidak diremediasi
+**Ditemukan 11 Agu (Sprint 3P).** 986 baris `master_customer` berdomain email `@gmaol.com`.
+**Seluruhnya `source='20fit_data_import'`, seluruhnya `created_at = 2026-04-20` pada satu
+instan, satu `first_seen_at`.** 986 salah ketik independen tidak mendarat di satu instan —
+ini **kerusakan sistematis** saat impor 20 April (find/replace meleset atau pemetaan kolom
+salah). Implikasi lebih besar: **kolom lain di muatan yang sama mungkin rusak serupa** —
+perlu diselidiki pemilik data. Domain typo lain (lebih kecil, mungkin salah ketik nyata):
+`gmail.con` 204, `gmai.com` 82, `gamil.com` 49. **DITANDAI, tidak diperbaiki** — mengubah
+email atas tebakan bisa mengirim data pribadi ke orang lain. Deteksi (`lib/crm/email-typo.ts`)
++ tanda per profil + hitungan `/quality`; jalur koreksi ber-audit direncanakan di
+`docs/RENCANA-koreksi-kontak.md` (belum dibangun). → K-20 (anomali ditampilkan, bukan ditebak)
+
+### T-15b · Nama campur-aduk (30.307) & bergelar — dirapikan di TAMPILAN, bukan di data
+**Sprint 3P.** 30.307 nama tak-rapi, 23.415 huruf kecil semua, 3.525 kapital semua, 281
+mengandung angka (kemungkinan sampah). `master_customer` read-only → dirapikan lewat fungsi
+murni `lib/crm/display-name.ts` **saat menampilkan** (gelar `dr.`/`H.`/`S.Pd`, inisial
+`A.M.`, partikel `bin`/`van`, tanda hubung/apostrof, spasi ganda). **Nama asli tetap
+terlihat** di detail profil dan **pencarian tetap atas kolom sumber** — perapian tak boleh
+membuat nama hilang. Nama berangka **ditandai** di `/quality` (bukan diperbaiki). → K-20
+
 ### T-14 · `last_seen_at` ekosistem adalah cap muat untuk 99,51% baris — DATA, tidak diremediasi
 **Ditemukan 11 Agu (Sprint 3N).** `customer_engagement` (90.419 baris): **89.974 (99,51%)**
 punya `last_seen_at = first_seen_at` — cap waktu muat, bukan aktivitas. Hanya **444 baris

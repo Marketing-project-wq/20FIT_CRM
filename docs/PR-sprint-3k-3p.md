@@ -1,5 +1,29 @@
-# PR: Sprint 3K + 3L + 3M + 3N + 3O → main
+# PR: Sprint 3K + 3L + 3M + 3N + 3O + 3P → main
 
+> ## 🧩 3P: CONSENT DICATAT (BUKAN DIASUMSIKAN), FILTER AND/OR, DATA DIRAPIKAN DI TAMPILAN
+>
+> Lima pekerjaan; **empat selesai, satu (pelengkapan profil sensitif) ditahan sadar** karena
+> butuh penanganan NIK/kesehatan yang tak boleh dikebut.
+> - **Consent (T1):** pemilik produk menyatakan semua data ber-consent untuk marketing+CS.
+>   Pernyataan **diterima tapi dicatat, bukan ditanam** (K-03): peta `basis`→`purpose` di
+>   satu modul teruji (`consent-policy.ts`), keputusan legal diisolasi ke **satu flag**
+>   (`legacy→marketing` = `false` sampai dicatat resmi). **Backfill DITAHAN** — pertanyaan
+>   cakupan-sumber & legacy-marketing belum terjawab tertulis (`SIGNOFF-legal-consent.md`).
+> - **Filter AND/OR (T3):** pohon predikat (grup AND/OR, maks 2 tingkat/12 kondisi), **fungsi
+>   murni** pohon→PostgREST + **dibacakan kembali dalam kalimat** ("(punya email ATAU punya
+>   telepon) DAN unit arena"). Bentuk tak-terungkap **ditolak di validasi**, bukan
+>   disederhanakan diam-diam. Jumlah berpasangan tetap; nol kriteria waktu (K-19).
+> - **Nama (T4):** 30.307 nama campur-aduk dirapikan **di tampilan** (`display-name.ts` —
+>   `dr.`/`H.`/`A.M.`/`bin`/`Nur-Aini`/`D'Souza`), **nama asli tetap terlihat & tetap
+>   dicari** atas kolom sumber. Nama berangka (281) ditandai `/quality`. Nol UPDATE.
+> - **Email typo (T5):** **`gmaol.com` = 986 baris, SEMUA impor 20 Apr satu instan →
+>   kerusakan SISTEMATIS** (T-16), bukan 986 salah ketik. Deteksi+tanda+hitungan; **nol
+>   koreksi otomatis** (`RENCANA-koreksi-kontak.md`).
+> - **Pelengkapan profil (T2 — DITAHAN):** cocok diukur sendiri — Hyrox **152 profil** (bukan
+>   288 baris), my20fit_profile 169, activity 44, rc_team_members **0** (nama-saja). NIK
+>   **bukan** kunci. Build gerbang-`view_health`+masking+audit-buka direncanakan, tak dikebut.
+> - Test **265 → 306**. Semua baca-saja; **nol perubahan skema** (backfill migrasi ditahan).
+>
 > ## 🔐 3O: SIKLUS INI TIDAK MENAMBAH PAPARAN APA PUN — IA MENGUKURNYA
 >
 > Seluruh sprint di PR ini **baca-saja, nol perubahan skema**, dan satu-satunya tabel baru

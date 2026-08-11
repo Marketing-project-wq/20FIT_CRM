@@ -5,6 +5,7 @@ import { getCurrentUserRole } from "@/lib/auth/current-role";
 import { isPermitted, resolveGrant } from "@/lib/auth/roles";
 import { parseCriteria } from "@/lib/crm/segment";
 import { computeSegment } from "@/lib/crm/segment-read";
+import { validateFilterTree, filterTreeToExpr, type FilterNode } from "@/lib/crm/filter-tree";
 import { logApiFailure } from "@/lib/crm/failure-log";
 
 export const dynamic = "force-dynamic";
@@ -61,11 +62,31 @@ export async function POST(request: NextRequest) {
   }
 
   const criteria = parseCriteria(body);
+
+  // AND/OR filter tree (Sprint 3P). When present it REPLACES the flat master fields. It is
+  // validated here; an inexpressible form (too deep, too many, unsafe value, empty group) is
+  // REJECTED with 400 — never silently simplified into something that means something else.
+  const rawTree = (body as { tree?: unknown } | null)?.tree;
+  let masterFilterExpr: string | null = null;
+  let treeForAudit: unknown = null;
+  if (rawTree != null) {
+    const tree = rawTree as FilterNode;
+    const valid = validateFilterTree(tree);
+    if (!valid.ok) {
+      return NextResponse.json(
+        { error: "bad_filter", message: `Filter ditolak: ${valid.error}.` },
+        { status: 400 },
+      );
+    }
+    masterFilterExpr = filterTreeToExpr(tree);
+    treeForAudit = tree;
+  }
+
   const admin = createAdminClient();
 
   let counts;
   try {
-    counts = await computeSegment(admin, criteria);
+    counts = await computeSegment(admin, criteria, masterFilterExpr);
   } catch (e) {
     logApiFailure("/segments", "compute_failed", { code: (e as { code?: string })?.code });
     return NextResponse.json({ error: "query_failed" }, { status: 500 });
@@ -91,6 +112,9 @@ export async function POST(request: NextRequest) {
         eco_unit: criteria.ecoUnit,
         eco_product: criteria.ecoProduct,
       },
+      // AND/OR tree structure (closed-list fields/values; city leaf capped at 60 in
+      // validateFilterTree, K-17). Null when the flat criteria path was used.
+      filter_tree: treeForAudit,
       matched: counts.matched,
       contactable: counts.contactable,
     },

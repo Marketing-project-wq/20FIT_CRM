@@ -6,6 +6,8 @@ import { ArrowLeft, Lock, HeartPulse, Ban, Network, AlertTriangle } from "lucide
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SuppressionForm } from "@/components/consent/suppression-form";
+import { formatDisplayName, nameNeedsTidy } from "@/lib/crm/display-name";
+import { detectEmailTypo } from "@/lib/crm/email-typo";
 
 interface Profile {
   customer_id: string;
@@ -280,6 +282,7 @@ export function ProfileDetail({ id, canEditConsent }: { id: string; canEditConse
   }
 
   const p = data.profile;
+  const emailTypo = detectEmailTypo(p.masked ? null : p.email);
 
   return (
     <div className="space-y-6">
@@ -288,8 +291,15 @@ export function ProfileDetail({ id, canEditConsent }: { id: string; canEditConse
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-display text-[32px] font-black uppercase leading-none text-ink">
-            {p.full_name ? p.full_name : "Tanpa nama"}
+            {formatDisplayName(p.full_name) ?? "Tanpa nama"}
           </h1>
+          {/* Original name kept visible when tidying changed it — search still runs over the
+              SOURCE column (search-read.ts), so the raw name stays findable. */}
+          {nameNeedsTidy(p.full_name) && (
+            <p className="mt-1 font-body text-[12px] text-ink-faint">
+              Nama asli (dari sumber): <span className="font-mono">{p.full_name}</span>
+            </p>
+          )}
           <p className="mt-2 font-mono text-[12px] text-ink-faint">{p.customer_id}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -326,7 +336,22 @@ export function ProfileDetail({ id, canEditConsent }: { id: string; canEditConse
           <h2 className="font-display text-[16px] font-extrabold uppercase tracking-wide text-ink">Kontak</h2>
           <div className="mt-4">
             <Field label="Telepon" mono>{p.phone ? p.phone : <Empty />}</Field>
-            <Field label="Email" mono>{p.email ? p.email : <Empty />}</Field>
+            <Field label="Email" mono>
+              {p.email ? p.email : <Empty />}
+              {/* Typo FLAG only — never an auto-fix. Runs on the real email, so it is shown
+                  only to roles that see it unmasked (a masked role can't correct it anyway). */}
+              {!p.masked && emailTypo.suspect && (
+                <span className="mt-1 flex items-center gap-1.5">
+                  <Badge tone="amber" className="gap-1">
+                    <AlertTriangle className="h-3 w-3" /> Mungkin salah ketik
+                  </Badge>
+                  <span className="font-body text-[12px] text-ink-soft">
+                    saran: <span className="font-mono text-ink">{emailTypo.suggestion}</span>{" "}
+                    ({emailTypo.confidence === "high" ? "keyakinan tinggi" : "keyakinan sedang"}) — perlu konfirmasi manusia, tidak diperbaiki otomatis
+                  </span>
+                </span>
+              )}
+            </Field>
             <Field label="Kota">{p.city ? p.city : <Empty />}</Field>
           </div>
         </section>

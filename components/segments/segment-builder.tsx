@@ -2,15 +2,11 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Filter, Clock, MapPin, Users, Send, Network } from "lucide-react";
+import { Filter, Clock, Users, Send, Network } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  AUDIENCE_UNITS,
-  AUDIENCE_SEGMENTS,
-  SEGMENT_NULL,
-} from "@/lib/crm/audience-constants";
 import { ECOSYSTEM_UNITS, ECOSYSTEM_PRODUCTS_BY_UNIT } from "@/lib/crm/engagement-constants";
-import { EMPTY_CRITERIA, type SegmentCriteria, type RevenueCriterion } from "@/lib/crm/segment";
+import { EMPTY_CRITERIA, type SegmentCriteria } from "@/lib/crm/segment";
+import { FilterTreeBuilder, rowsToTree, type Row } from "@/components/segments/filter-tree-builder";
 
 interface Counts {
   matched: number;
@@ -46,6 +42,7 @@ function TimeBanned() {
 
 export function SegmentBuilder({ cityFillPct, cityFilled, total }: { cityFillPct: number; cityFilled: number; total: number }) {
   const [c, setC] = useState<SegmentCriteria>(EMPTY_CRITERIA);
+  const [rows, setRows] = useState<Row[]>([]);
   const [counts, setCounts] = useState<Counts | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +52,11 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total }: { cityFillPct
     setCounts(null); // criteria changed -> stale result, recompute explicitly
   }
 
+  function setRowsAndClear(r: Row[]) {
+    setRows(r);
+    setCounts(null); // filter changed -> stale result
+  }
+
   async function compute() {
     setError(null);
     setLoading(true);
@@ -62,7 +64,8 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total }: { cityFillPct
       const res = await fetch("/api/segments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(c),
+        // Master fields come from the AND/OR tree; ecosystem stays a separate top-level AND.
+        body: JSON.stringify({ tree: rowsToTree(rows), ecoUnit: c.ecoUnit, ecoProduct: c.ecoProduct }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -100,60 +103,8 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total }: { cityFillPct
           <h2 className="font-display text-[15px] font-bold uppercase tracking-wide text-ink">Kriteria</h2>
         </div>
 
-        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <label className="flex flex-col gap-1">
-            <span className="font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">Unit</span>
-            <select className={selectCls} value={c.unit ?? ""} onChange={(e) => set("unit", e.target.value || null)}>
-              <option value="">Semua unit</option>
-              {AUDIENCE_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
-            </select>
-          </label>
-
-          <label className="flex flex-col gap-1">
-            <span className="font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">Segment</span>
-            <select className={selectCls} value={c.segment ?? ""} onChange={(e) => set("segment", e.target.value || null)}>
-              <option value="">Semua segment</option>
-              {AUDIENCE_SEGMENTS.map((s) => <option key={s} value={s}>{s}</option>)}
-              <option value={SEGMENT_NULL}>(tanpa segment — kohort NULL)</option>
-            </select>
-          </label>
-
-          <label className="flex flex-col gap-1">
-            <span className="font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">Revenue</span>
-            <select
-              className={selectCls}
-              value={c.revenue}
-              onChange={(e) => set("revenue", e.target.value as RevenueCriterion)}
-            >
-              <option value="all">Semua</option>
-              <option value="has">Punya (&gt; 0)</option>
-              <option value="none">Tanpa (0 / kosong)</option>
-              <option value="negative">Negatif (1 baris anomali — T-10)</option>
-            </select>
-          </label>
-
-          <label className="flex flex-col gap-1 sm:col-span-2 lg:col-span-1">
-            <span className="inline-flex items-center gap-1.5 font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">
-              <MapPin className="h-3 w-3" /> Kota
-            </span>
-            <input
-              className={`${selectCls} placeholder:text-ink-faint`}
-              value={c.city ?? ""}
-              onChange={(e) => set("city", e.target.value || null)}
-              placeholder="mis. Jakarta"
-            />
-          </label>
-
-          <div className="flex flex-col justify-end gap-2">
-            <label className="inline-flex cursor-pointer items-center gap-2 font-body text-[13px] text-ink">
-              <input type="checkbox" checked={c.hasPhone} onChange={(e) => set("hasPhone", e.target.checked)} className="accent-red" />
-              Punya telepon
-            </label>
-            <label className="inline-flex cursor-pointer items-center gap-2 font-body text-[13px] text-ink">
-              <input type="checkbox" checked={c.hasEmail} onChange={(e) => set("hasEmail", e.target.checked)} className="accent-red" />
-              Punya email
-            </label>
-          </div>
+        <div className="mt-4">
+          <FilterTreeBuilder rows={rows} setRows={setRowsAndClear} />
         </div>
 
         {/* Ecosystem presence (customer_engagement) — a DIFFERENT table + vocabulary from
