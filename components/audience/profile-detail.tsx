@@ -50,10 +50,43 @@ interface ProfileEngagement {
   hasFutureAnomaly: boolean;
 }
 
+interface HyroxSensitive {
+  nik: string | null;
+  tglLahir: string | null;
+  golDarah: string | null;
+  kontakDarurat: string | null;
+  noKontakDarurat: string | null;
+}
+
+interface NikDerived {
+  valid: boolean;
+  gender: "male" | "female" | null;
+  birthDate: string | null;
+  yearOutOfRange: boolean;
+  provinceCode: string | null;
+  provinceName: string | null;
+  regencyCode: string | null;
+  districtCode: string | null;
+}
+
+interface ProfileEnrichment {
+  matchable: boolean;
+  hyrox: {
+    matched: boolean;
+    rows: { eventName: string | null; kategori: string | null; namaTim: string | null; posisi: string | null; registeredAt: string | null }[];
+    hasSensitive: boolean;
+    sensitive: HyroxSensitive | null;
+    nikDerived: NikDerived | null;
+  };
+  my20fit: { matched: boolean; isPlusMember: boolean | null; onboardingCompleted: boolean | null; createdAt: string | null };
+  activity: { matched: boolean; firstSeenAt: string | null; lastActiveAt: string | null; pingCount: number | null };
+}
+
 interface ApiResult {
   profile: Profile;
   canViewHealth: boolean;
   engagement: ProfileEngagement | null;
+  enrichment: ProfileEnrichment | null;
 }
 
 const idr = new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 });
@@ -208,6 +241,141 @@ function Field({ label, children, mono }: { label: string; children: React.React
       <span className="font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">{label}</span>
       <span className={mono ? "font-mono text-[13px] text-ink" : "font-body text-[14px] text-ink"}>{children}</span>
     </div>
+  );
+}
+
+/** A matched/unmatched source row: matched shows a check + detail; unmatched reads a plain
+ *  "no data for this profile" — NEVER a blank that reads as "never participated". */
+function SourceLine({ label, matched, children }: { label: string; matched: boolean; children?: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1 border-t border-glass-border py-3 first:border-t-0 first:pt-0">
+      <span className="font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">{label}</span>
+      {matched ? (
+        <span className="font-body text-[14px] text-ink">{children}</span>
+      ) : (
+        <span className="font-body text-[13px] italic text-ink-faint">tidak ada data {label} untuk profil ini</span>
+      )}
+    </div>
+  );
+}
+
+/** Show a date as-is (source string) — used for the stored tgl_lahir which may be swapped. */
+function rawDate(v: string | null): string {
+  if (!v) return "—";
+  return v.length >= 10 ? v.slice(0, 10) : v;
+}
+
+function EnrichmentSection({ enrichment, canViewHealth }: { enrichment: ProfileEnrichment | null; canViewHealth: boolean }) {
+  return (
+    <section className="glass shadow-glass p-6 lg:col-span-2">
+      <div className="flex items-center gap-2">
+        <Network className="h-4 w-4 text-ink-soft" aria-hidden />
+        <h2 className="font-display text-[16px] font-extrabold uppercase tracking-wide text-ink">Sumber ekosistem (pencocokan email)</h2>
+      </div>
+
+      {enrichment === null ? (
+        <div className="mt-4 rounded-sm border border-dashed border-glass-border px-4 py-6 text-center">
+          <Badge tone="amber">Gagal dimuat</Badge>
+          <p className="mx-auto mt-2 max-w-xl font-body text-[13px] text-ink-soft">Data sumber ekosistem gagal dimuat. Sisa profil tetap tampil.</p>
+        </div>
+      ) : !enrichment.matchable ? (
+        <p className="mt-4 font-body text-[13px] italic text-ink-faint">Profil ini tak punya email untuk dicocokkan ke sumber ekosistem.</p>
+      ) : (
+        <>
+          <div className="mt-2">
+            <SourceLine label="Hyrox" matched={enrichment.hyrox.matched}>
+              {enrichment.hyrox.rows.map((r, i) => (
+                <span key={i} className="block">
+                  {r.eventName ?? "—"}{r.kategori ? ` · ${r.kategori}` : ""}{r.namaTim ? ` · tim ${r.namaTim}` : ""}
+                  {r.registeredAt ? <span className="font-mono text-[12px] text-ink-faint"> · daftar {formatDateOnly(r.registeredAt)}</span> : null}
+                </span>
+              ))}
+            </SourceLine>
+            <SourceLine label="my20fit" matched={enrichment.my20fit.matched}>
+              {enrichment.my20fit.isPlusMember ? "Plus member" : "Pengguna"}{enrichment.my20fit.onboardingCompleted ? " · onboarding selesai" : ""}
+            </SourceLine>
+            <SourceLine label="Aktivitas nyata (my20fit)" matched={enrichment.activity.matched}>
+              {enrichment.activity.pingCount != null ? `${nf.format(enrichment.activity.pingCount)} kunjungan` : ""}
+              {enrichment.activity.lastActiveAt ? (
+                <span className="font-mono text-[12px] text-ink-faint"> · terakhir aktif {formatDateOnly(enrichment.activity.lastActiveAt)}</span>
+              ) : null}
+            </SourceLine>
+          </div>
+
+          {/* Sensitive Hyrox identity — shown directly to a view_health caller (Sprint 3S),
+              plus fields DERIVED from the NIK. Provenance is labelled; when the stored
+              tgl_lahir disagrees with the NIK, BOTH are shown (the 321 day-month swap). */}
+          {enrichment.hyrox.hasSensitive && canViewHealth && enrichment.hyrox.sensitive && (
+            <div className="mt-4 rounded-sm border border-glass-border/70 p-4">
+              <div className="flex items-center gap-2">
+                <Lock className="h-3.5 w-3.5 text-ink-soft" aria-hidden />
+                <h3 className="font-display text-[12px] font-bold uppercase tracking-wide text-ink">Field identitas Hyrox (sensitif)</h3>
+              </div>
+              <div className="mt-3">
+                <Field label="NIK" mono>{enrichment.hyrox.sensitive.nik ?? <Empty />}</Field>
+                <Field label="Golongan darah" mono>{enrichment.hyrox.sensitive.golDarah ?? <Empty />}</Field>
+                <Field label="Kontak darurat" mono>
+                  {[enrichment.hyrox.sensitive.kontakDarurat, enrichment.hyrox.sensitive.noKontakDarurat].filter(Boolean).join(" · ") || <Empty />}
+                </Field>
+
+                {/* Gender — derived from NIK (most reliable derivation). */}
+                {enrichment.hyrox.nikDerived?.valid && enrichment.hyrox.nikDerived.gender && (
+                  <Field label="Gender (dari NIK)">
+                    {enrichment.hyrox.nikDerived.gender === "female" ? "Perempuan" : "Laki-laki"}
+                  </Field>
+                )}
+
+                {/* Birth date — stored vs NIK-derived; show BOTH when they disagree. */}
+                <Field label="Tanggal lahir" mono>
+                  {(() => {
+                    const stored = enrichment.hyrox.sensitive.tglLahir;
+                    const derived = enrichment.hyrox.nikDerived?.valid ? enrichment.hyrox.nikDerived.birthDate : null;
+                    const storedShort = stored ? rawDate(stored) : null;
+                    const disagree = storedShort && derived && storedShort !== derived;
+                    if (!stored && !derived) return <Empty />;
+                    if (disagree) {
+                      return (
+                        <span className="flex flex-col gap-0.5">
+                          <span>tersimpan: {storedShort}</span>
+                          <span>dari NIK: {derived}</span>
+                          <span className="font-body text-[11px] not-italic text-amber">
+                            berbeda — kemungkinan hari-bulan tertukar saat impor (321 baris, pola T-16); NIK lebih dipercaya
+                          </span>
+                        </span>
+                      );
+                    }
+                    return <span>{derived ?? storedShort}{derived ? <span className="font-body text-[11px] text-ink-faint"> · dari NIK</span> : null}</span>;
+                  })()}
+                </Field>
+                {enrichment.hyrox.nikDerived?.yearOutOfRange && (
+                  <p className="font-body text-[11px] text-amber">Tahun lahir dari NIK di luar rentang wajar — ditandai, tidak dipaksakan.</p>
+                )}
+
+                {/* Registration province — issuance place, NOT current address. */}
+                {enrichment.hyrox.nikDerived?.valid && (
+                  <Field label="Provinsi pendaftaran KTP (dari NIK)">
+                    {enrichment.hyrox.nikDerived.provinceName
+                      ? enrichment.hyrox.nikDerived.provinceName
+                      : <span className="font-mono">kode {enrichment.hyrox.nikDerived.provinceCode} (referensi wilayah belum tersedia)</span>}
+                    <span className="font-body text-[11px] text-ink-faint"> · tempat KTP diterbitkan, bukan domisili sekarang</span>
+                  </Field>
+                )}
+              </div>
+            </div>
+          )}
+          {enrichment.hyrox.hasSensitive && !canViewHealth && (
+            <p className="mt-4 font-body text-[12px] italic text-ink-faint">
+              Field identitas sensitif (NIK dll.) ada tapi digerbangi — butuh peran <span className="font-mono">profile.view_health</span>.
+            </p>
+          )}
+
+          <p className="mt-3 font-body text-[12px] leading-relaxed text-ink-soft">
+            Dicocokkan lewat <strong>email ternormalisasi</strong> (K-06), bukan nama. Sumber ini tidak disalin ke{" "}
+            <span className="font-mono">master_customer</span> — dibaca &amp; digabung saat tampil. Data medis clinic tidak dibawa (butuh dasar hukum).
+          </p>
+        </>
+      )}
+    </section>
   );
 }
 
@@ -419,6 +587,10 @@ export function ProfileDetail({ id, canEditConsent }: { id: string; canEditConse
         {/* Ekosistem 20FIT — read-only over customer_engagement, keyed by customer_id.
             No second audit row (profile.viewed above already covers this view). */}
         <EcosystemSection engagement={data.engagement} />
+
+        {/* Sumber ekosistem tak-tercocok (Hyrox / my20fit) — matched by normalised email.
+            Sensitive Hyrox identity fields are gated + masked; reveal is separately audited. */}
+        <EnrichmentSection enrichment={data.enrichment} canViewHealth={data.canViewHealth} />
 
         {/* Health flags — structural gate, but no source exists. */}
         {data.canViewHealth && (

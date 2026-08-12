@@ -34,7 +34,12 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
     return NextResponse.next({ request });
   }
 
-  const publicPath = pathname === "/login" || pathname.startsWith("/login/");
+  // Public (no session): login + the password-recovery flow (request OTP / reset).
+  const publicPath =
+    pathname === "/login" ||
+    pathname.startsWith("/login/") ||
+    pathname === "/forgot-password" ||
+    pathname === "/reset-password";
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;

@@ -117,10 +117,12 @@ Dirapikan di tampilan (`lib/crm/display-name.ts`), data tak disentuh.
 **Email typo** (domain): `gmaol.com` **986** (SEMUA impor 20 Apr satu instan → sistematis,
 T-16), `gmail.con` 204, `gmai.com` 82, `gamil.com` 49. Ditandai, tak dikoreksi.
 
-**Pencocokan enrichment** (via `normalizeEmail`, K-06): Hyrox **152 profil** (288 baris —
-satu email s/d 8×), `my20fit_profile` **169**, `my20fit_user_activity` **44** (recency asli),
-`rc_team_members` **0** (nama-saja, tak dicocokkan). NIK **bukan** kunci (master tak punya
-kolomnya). Detail + rencana: `docs/SUMBER-AKTIVITAS.md`.
+**Pencocokan enrichment** (via `normalizeEmail`, K-06; **DIBANGUN 3R**): Hyrox **152 profil**
+(288 baris — satu email s/d 8×), `my20fit_profile` **169**, `my20fit_user_activity` **44**
+(recency asli), `rc_team_members` **0** (nama-saja, tak dicocokkan). NIK **bukan** kunci
+(master tak punya kolomnya). **131 aktivitas tak-cocok = memang belum ada di master** (bukan
+gagal normalisasi — diverifikasi absen di `email_normalized` dan `email`). Cakupan tampil live
+di `/quality`. Detail: `docs/SUMBER-AKTIVITAS.md`.
 
 **Consent** (`crm_consent`): **0 baris** — backfill DITAHAN (SIGNOFF 3P). Peta `basis`→`purpose`
 di `lib/crm/consent-policy.ts` (`legacy_import_unverified`→marketing **⛔** sampai flag legal dibalik).

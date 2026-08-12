@@ -8,7 +8,20 @@ import {
 } from "./contactability";
 import { SEGMENT_NULL, type SegmentCriteria } from "./segment";
 import { resolveEcosystemCustomerIds } from "./engagement";
+import { resolveEnrichmentCustomerIds } from "./enrichment";
 import type { EcosystemUnit } from "./engagement-constants";
+
+/** Intersect a list of id sets (AND). Iterates the smallest for speed. Empty input → null. */
+function intersectSets(sets: Set<string>[]): Set<string> | null {
+  if (sets.length === 0) return null;
+  const sorted = [...sets].sort((a, b) => a.size - b.size);
+  const [smallest, ...rest] = sorted;
+  const out = new Set<string>();
+  for (const id of Array.from(smallest)) {
+    if (rest.every((s) => s.has(id))) out.add(id);
+  }
+  return out;
+}
 
 /**
  * Segment computation — READ-ONLY over master_customer + crm_consent + crm_suppression.
@@ -113,21 +126,27 @@ export async function computeSegment(
   criteria: SegmentCriteria,
   masterFilterExpr: string | null = null,
 ): Promise<SegmentCounts> {
-  // Ecosystem presence (Sprint 3N): resolve ecoUnit/ecoProduct to the DISTINCT set of
-  // customer_ids that have such a customer_engagement row. Done first so both the matched
-  // and contactable counts intersect with the SAME set (they can never diverge).
-  const hasEco = Boolean(criteria.ecoUnit || criteria.ecoProduct);
-  const ecoIds = hasEco
-    ? await resolveEcosystemCustomerIds(
-        admin,
-        (criteria.ecoUnit as EcosystemUnit | null) ?? null,
-        criteria.ecoProduct,
-      )
-    : null;
+  // Resolve every id-set constraint to DISTINCT customer_ids, then INTERSECT them (AND):
+  //   - Sprint 3N: ecosystem presence (customer_engagement unit/product)
+  //   - Sprint 3R: unmatched-source presence (Hyrox / my20fit / real-recency), by email
+  // Cross-table OR is not expressible in one PostgREST query, so these stay AND-only
+  // (consistent with the ecosystem criteria; the AND/OR tree covers master columns only).
+  // Every id in these sets is a master_customer.customer_id by construction (eco: 0 orphan;
+  // enrichment: resolved FROM master_customer), so the intersection ⊆ master_customer.
+  const idSets: Set<string>[] = [];
+  if (criteria.ecoUnit || criteria.ecoProduct) {
+    idSets.push(
+      await resolveEcosystemCustomerIds(admin, (criteria.ecoUnit as EcosystemUnit | null) ?? null, criteria.ecoProduct),
+    );
+  }
+  if (criteria.srcHyrox) idSets.push(await resolveEnrichmentCustomerIds(admin, "hyrox"));
+  if (criteria.srcMy20fit) idSets.push(await resolveEnrichmentCustomerIds(admin, "my20fit"));
+  if (criteria.srcRecency) idSets.push(await resolveEnrichmentCustomerIds(admin, "recency"));
+  const restrictIds = intersectSets(idSets);
 
   // 1. Matched — count of master_customer rows meeting the criteria.
   let matched: number;
-  if (!ecoIds) {
+  if (!restrictIds) {
     const matchedRes = await applyCriteria(
       admin.from("master_customer").select("customer_id", { count: "exact", head: true }),
       criteria,
@@ -135,14 +154,13 @@ export async function computeSegment(
     );
     if (matchedRes.error) throw matchedRes.error;
     matched = matchedRes.count ?? 0;
-  } else if (ecoIds.size === 0) {
+  } else if (restrictIds.size === 0) {
     matched = 0;
   } else if (!hasMasterCriteria(criteria, masterFilterExpr)) {
-    // Every customer_engagement.customer_id exists in master_customer (0 orphan, verified
-    // 11 Agu 2026), so with no master narrowing the matched count IS the distinct eco set.
-    matched = ecoIds.size;
+    // No master narrowing → the matched count IS the intersected id set (all ⊆ master).
+    matched = restrictIds.size;
   } else {
-    matched = await countMasterWithinIds(admin, criteria, Array.from(ecoIds), masterFilterExpr);
+    matched = await countMasterWithinIds(admin, criteria, Array.from(restrictIds), masterFilterExpr);
   }
 
   // 2. Contactable — RUN the rule, don't trust a column. Start from active marketing
@@ -181,7 +199,7 @@ export async function computeSegment(
   // ecosystem criterion is set, the candidate set is first intersected with ecoIds so the
   // contactable count respects ecosystem presence exactly like matched does.
   let ids = Array.from(byCustomer.keys());
-  if (ecoIds) ids = ids.filter((id) => ecoIds.has(id));
+  if (restrictIds) ids = ids.filter((id) => restrictIds.has(id));
   if (ids.length === 0) return { matched, contactable: 0 };
   const profRes = await applyCriteria(
     admin.from("master_customer").select("customer_id, phone_normalized, email_normalized").in("customer_id", ids),

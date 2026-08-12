@@ -41,6 +41,16 @@ export interface SegmentCriteria {
    */
   ecoUnit: string | null;
   ecoProduct: string | null;
+  /**
+   * Unmatched-source presence (Sprint 3R), matched by normalised email. Booleans, closed by
+   * construction. `srcRecency` = has a my20fit_user_activity row (real activity — only 44
+   * profiles). Still NO time criterion: last_active_at is real but covers 44/82.253, so a
+   * recency FILTER would look precise while hiding 99,9% of the pool (K-19). The presence
+   * boolean is offered; the date is not.
+   */
+  srcHyrox: boolean;
+  srcMy20fit: boolean;
+  srcRecency: boolean;
 }
 
 export const EMPTY_CRITERIA: SegmentCriteria = {
@@ -52,6 +62,9 @@ export const EMPTY_CRITERIA: SegmentCriteria = {
   hasEmail: false,
   ecoUnit: null,
   ecoProduct: null,
+  srcHyrox: false,
+  srcMy20fit: false,
+  srcRecency: false,
 };
 
 /** How many criteria are actively narrowing the pool (0 = whole pool). */
@@ -65,6 +78,9 @@ export function activeCriteriaCount(c: SegmentCriteria): number {
   if (c.hasEmail) n++;
   if (c.ecoUnit) n++;
   if (c.ecoProduct) n++;
+  if (c.srcHyrox) n++;
+  if (c.srcMy20fit) n++;
+  if (c.srcRecency) n++;
   return n;
 }
 
@@ -95,6 +111,9 @@ export function parseCriteria(raw: unknown): SegmentCriteria {
     hasEmail: o.hasEmail === true,
     ecoUnit,
     ecoProduct,
+    srcHyrox: o.srcHyrox === true,
+    srcMy20fit: o.srcMy20fit === true,
+    srcRecency: o.srcRecency === true,
   };
 }
 
