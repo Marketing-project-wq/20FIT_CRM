@@ -19,8 +19,19 @@ import type { ContactPurpose } from "./contactability";
  *
  * This is the SAME rule as isContactableForPurpose (suppression wins, fail-closed) expressed
  * as set arithmetic. The equality is VERIFIED after the backfill against a direct SQL
- * count(distinct customer_id) (Migrasi 11's mandatory check) — if the two ever disagree, the
- * read path is truncating and must be fixed before any number is trusted.
+ * count(distinct customer_id) (Migrasi 11's mandatory check): both = 82,253, and the WRONG
+ * flat-row interpretation would be 163,252 — the double-count this shape avoids. Confirmed
+ * 2026-08-12.
+ *
+ * PERFORMANCE (measured 2026-08-12, KNOWN follow-up): the UNRESTRICTED count (dashboard, no
+ * .in() narrowing) does a Parallel Seq Scan on crm_consent filtering (purpose,status) — no
+ * index supports it, so it is ~10s per purpose on the 408k-row table (dashboard runs the two
+ * purposes concurrently → ~10s wall). CORRECT but slow. The unique index
+ * (customer_id, channel, purpose) can't serve a (purpose,status) filter. The fix is a small
+ * index, e.g. `create index on public.crm_consent (purpose, status) include (customer_id)` —
+ * deliberately NOT added this cycle (Migrasi 11 is the only schema change allowed), so it is
+ * a scheduled follow-up. The .in()-restricted path (segment with ecosystem/source criteria)
+ * is fast: it probes the unique index by customer_id per chunk.
  */
 
 /** Chunk size for `.in(customer_id, …)` — bounded URL length; each chunk is a head count,

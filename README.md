@@ -56,8 +56,9 @@ Full spec: `PRD — 20FIT Audience Data & CRM System v1.1`.
 > | 8 | `…090000_create_crm_purge_audit_log` | `20260811034942` | `create_crm_purge_audit_log` |
 > | 9 | `…100000_create_crm_record_suppression` | `20260811081711` **+** `20260811081920` | `create_crm_record_suppression` (×2) |
 > | 10 | `…110000_lock_crm_purge_audit_log_execute` | `20260811085420` | `lock_crm_purge_audit_log_execute` |
+> | 11 | `…20260812000000_create_crm_backfill_consent` | `20260812041851` | `create_crm_backfill_consent` |
 >
-> **Count reconciliation: 10 repo files → 11 CRM ledger entries.** The extra entry is
+> **Count reconciliation: 11 repo files → 12 CRM ledger entries.** The extra entry is
 > migration **9**, applied **twice** under the same name (Sprint 3H). The first apply left
 > Supabase's default `EXECUTE` grant to `anon`/`authenticated` in place (a `revoke … from
 > public` does **not** remove explicit per-role grants); the second apply carried the
@@ -74,9 +75,16 @@ Full spec: `PRD — 20FIT Audience Data & CRM System v1.1`.
 >
 > **Do NOT run `supabase db push` against this project until the ledger and repo are
 > reconciled.** No repo file-name timestamp exists in the ledger, so the CLI would treat
-> all **10** repo migrations as unapplied and try to run them all — re-creating the seven
+> all **11** repo migrations as unapplied and try to run them all — re-creating the seven
 > live tables + re-defining the live functions, failing as "already exists". Run any
 > further migration one-by-one via a reviewed path (`apply_migration`), not `db push`.
+>
+> **Migration 11 (`crm_backfill_consent`) applied + run 2026-08-12.** It backfilled 408,119
+> consent rows for the legacy import (marketing + transactional). Unlike a schema migration,
+> its DATA is reversible and cheap to undo: `crm_consent` has **zero triggers**, so
+> `delete from public.crm_consent where source = '20fit_data_import'` removes exactly the
+> backfilled rows and nothing else. This is UNLIKE `crm_suppression` and `crm_audit_log`,
+> which are append-only (triggers block mutation) and cannot be undone.
 
 ## Data-quality screen (`/quality`)
 
