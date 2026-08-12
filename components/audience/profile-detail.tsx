@@ -82,11 +82,30 @@ interface ProfileEnrichment {
   activity: { matched: boolean; firstSeenAt: string | null; lastActiveAt: string | null; pingCount: number | null };
 }
 
+interface MultiSourceRowT {
+  label: string | null;
+  status: string | null;
+  extra: Record<string, unknown>;
+}
+interface MultiSourceResultT {
+  key: string;
+  label: string;
+  matched: boolean;
+  keyUsed: "email" | "phone" | null;
+  count: number;
+  rows: MultiSourceRowT[];
+}
+interface ProfileMultiSourceT {
+  matchable: boolean;
+  sources: MultiSourceResultT[];
+}
+
 interface ApiResult {
   profile: Profile;
   canViewHealth: boolean;
   engagement: ProfileEngagement | null;
   enrichment: ProfileEnrichment | null;
+  multiSource: ProfileMultiSourceT | null;
 }
 
 const idr = new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 });
@@ -263,6 +282,49 @@ function SourceLine({ label, matched, children }: { label: string; matched: bool
 function rawDate(v: string | null): string {
   if (!v) return "—";
   return v.length >= 10 ? v.slice(0, 10) : v;
+}
+
+/** Multi-source completion (TUGAS 3): arena/gym booking sources, matched by email then phone.
+ *  The matched KEY is shown as a confidence cue; unmatched sources say so plainly. */
+function MultiSourceSection({ multiSource }: { multiSource: ProfileMultiSourceT | null }) {
+  const keyLabel = (k: "email" | "phone" | null) =>
+    k === "email" ? "cocok via email" : k === "phone" ? "cocok via telepon (format, keyakinan lebih rendah)" : "";
+  return (
+    <section className="glass shadow-glass p-6 lg:col-span-2">
+      <div className="flex items-center gap-2">
+        <Network className="h-4 w-4 text-ink-soft" aria-hidden />
+        <h2 className="font-display text-[16px] font-extrabold uppercase tracking-wide text-ink">Sumber lain 20FIT (arena / gym)</h2>
+      </div>
+      {multiSource === null ? (
+        <div className="mt-4 rounded-sm border border-dashed border-glass-border px-4 py-6 text-center">
+          <Badge tone="amber">Gagal dimuat</Badge>
+          <p className="mx-auto mt-2 max-w-xl font-body text-[13px] text-ink-soft">Data sumber lain gagal dimuat. Sisa profil tetap tampil.</p>
+        </div>
+      ) : !multiSource.matchable ? (
+        <p className="mt-4 font-body text-[13px] italic text-ink-faint">Profil ini tak punya email atau telepon untuk dicocokkan.</p>
+      ) : (
+        <div className="mt-2">
+          {multiSource.sources.map((s) => (
+            <SourceLine key={s.key} label={s.label} matched={s.matched}>
+              <span>
+                {nf.format(s.count)} baris
+                <span className="font-mono text-[12px] text-ink-faint"> · {keyLabel(s.keyUsed)}</span>
+              </span>
+              {s.rows.slice(0, 3).map((r, i) => (
+                <span key={i} className="block font-body text-[13px] text-ink-soft">
+                  {r.label ?? "—"}{r.status ? ` · ${r.status}` : ""}
+                </span>
+              ))}
+            </SourceLine>
+          ))}
+          <p className="mt-3 font-body text-[11px] leading-relaxed text-ink-faint">
+            Cocok lewat email ternormalisasi dulu, lalu telepon (K-06) — nol cocok-nama-saja. Baca-gabung saat tampil, nol tulis.
+            Sumber klinis (via <span className="font-mono">patient_id</span>, di balik <span className="font-mono">profile.view_health</span>) menyusul — docs/RENCANA-multisumber.md.
+          </p>
+        </div>
+      )}
+    </section>
+  );
 }
 
 function EnrichmentSection({ enrichment, canViewHealth }: { enrichment: ProfileEnrichment | null; canViewHealth: boolean }) {
@@ -591,6 +653,7 @@ export function ProfileDetail({ id, canEditConsent }: { id: string; canEditConse
         {/* Sumber ekosistem tak-tercocok (Hyrox / my20fit) — matched by normalised email.
             Sensitive Hyrox identity fields are gated + masked; reveal is separately audited. */}
         <EnrichmentSection enrichment={data.enrichment} canViewHealth={data.canViewHealth} />
+        <MultiSourceSection multiSource={data.multiSource} />
 
         {/* Health flags — structural gate, but no source exists. */}
         {data.canViewHealth && (

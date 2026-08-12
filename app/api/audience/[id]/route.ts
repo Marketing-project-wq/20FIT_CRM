@@ -11,6 +11,7 @@ import {
 import { fetchProfileById, isUuid } from "@/lib/crm/audience";
 import { fetchProfileEngagement, type ProfileEngagement } from "@/lib/crm/engagement";
 import { fetchProfileEnrichment, type ProfileEnrichment } from "@/lib/crm/enrichment";
+import { fetchProfileMultiSource, type ProfileMultiSource } from "@/lib/crm/multisource";
 import { logApiFailure } from "@/lib/crm/failure-log";
 
 export const dynamic = "force-dynamic";
@@ -101,6 +102,16 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
     enrichment = null;
   }
 
+  // Multi-source completion (TUGAS 3): arena/gym booking sources matched by normalised email
+  // then phone. Non-fatal, read-only, no sensitive fields (clinic chain is separate/deferred).
+  let multiSource: ProfileMultiSource | null = null;
+  try {
+    multiSource = await fetchProfileMultiSource(admin, profile.customer_id);
+  } catch (e) {
+    logApiFailure("/audience/[id]", "multisource_query_failed", { code: (e as { code?: string })?.code });
+    multiSource = null;
+  }
+
   // Which sensitive field KINDS were available to a view_health caller — recorded in the
   // ONE profile.viewed row (K-07), never the values, never a row per field (T2 rule).
   const sensitiveFields: string[] = [];
@@ -137,7 +148,7 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
   }
 
   return NextResponse.json(
-    { profile, canViewHealth, engagement, enrichment },
+    { profile, canViewHealth, engagement, enrichment, multiSource },
     { headers: { "Cache-Control": "no-store" } },
   );
 }
