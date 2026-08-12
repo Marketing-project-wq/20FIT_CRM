@@ -139,6 +139,10 @@ Postgres — keputusan tersendiri), nol sentuh tabel di luar `crm_*`.
 
 > **JANGAN merge / buka PR ke `main` tanpa izin eksplisit.** Push ke `main` memicu deploy
 > Railway ke sistem yang sedang dipakai.
+>
+> **KOREKSI (12 Agu 2026, T-18/K-25):** model "push ke `main` memicu deploy" **tidak sesuai
+> bukti** — produksi terbukti menjalankan kode *branch*, bukan `main`. Yang menahan produksi
+> bukan hanya merge; **setiap push ke branch bisa langsung live**. Lihat `docs/KOREKSI-DEPLOY.md`.
 
 ---
 

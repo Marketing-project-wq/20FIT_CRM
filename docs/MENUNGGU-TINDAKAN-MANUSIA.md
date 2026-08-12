@@ -24,28 +24,38 @@ Diperbarui: 12 Agustus 2026.
   halaman kode tapi email tak pernah datang, mudah disalahartikan sebagai "kode salah". Kode
   alur reset baru tak berguna tanpa ini.
 
-## 3. Merge PR #11
-- **Siapa:** pemilik repo (butuh izin eksplisit; agen tidak merge sendiri).
-- **Langkah:** tinjau PR #11 → merge ke `main` → Railway deploy.
-- **Kalau dibiarkan:** produksi masih pakai `resetPasswordForEmail()` → email dari "UOB
-  Heartbeat Run", berisi tautan bukan kode → **staf yang lupa kata sandi tidak bisa masuk**.
-  Migrasi 11 + 12 sudah berlaku di DB terlepas dari merge; yang menunggu hanya kodenya.
+## 3. Konfirmasi sumber deploy Railway (prasyarat #4)
+- **Siapa:** pemegang akses dashboard Railway.
+- **Langkah:** Railway → service produksi → Settings → Source → Branch. Catat branch yang
+  tertera. Lihat `docs/KOREKSI-DEPLOY.md`.
+- **Kalau dibiarkan:** model deploy tetap tak pasti. **Bukti (T-18) menunjukkan produksi
+  menjalankan kode BRANCH**, bukan `main` — alur email reset baru **sudah live** lewat branch.
+  Tanpa konfirmasi ini, langkah #4 (mengarahkan ke `main`) berisiko memundurkan produksi.
 
-## 4. SPF, DKIM, DMARC di DNS `20fit.id`
+## 4. Merge PR #11 — untuk MELURUSKAN MODEL DEPLOY (bukan lagi memperbaiki reset)
+- **Siapa:** pemilik repo (izin eksplisit; agen tidak merge sendiri). **Prasyarat: #3.**
+- **Langkah:** urutan wajib di `docs/KOREKSI-DEPLOY.md` — merge PR #11 (branch→`main`) **lebih
+  dulu** agar `main` = branch, **baru** arahkan Railway ke `main`. Jangan dibalik.
+- **Kalau dibiarkan:** reset kata sandi **tetap berfungsi** (kodenya sudah live via branch),
+  jadi ini **bukan** penghalang fitur. Yang belum lurus hanyalah model deploy: `main`
+  tertinggal 6 commit, dan mengarahkan Railway ke `main` tanpa merge lebih dulu akan memundurkan
+  produksi ke jalur baca lama + angka contactability salah tanpa error (lihat KOREKSI-DEPLOY §"Kalau dibalik").
+
+## 5. SPF, DKIM, DMARC di DNS `20fit.id`
 - **Siapa:** pemegang DNS `20fit.id`.
 - **Langkah:** tambahkan record dari Mailtrap; mulai DMARC `p=none`; verifikasi via `dig` +
   Gmail "Show original" (SPF/DKIM/DMARC = PASS). Rincian: `docs/SETUP-reset-password.md` §3.
 - **Kalau dibiarkan:** email tetap masuk Spam + spanduk "dangerous" **betapapun rapi isinya**;
   staf tak menemukan emailnya. Propagasi DNS butuh waktu — kerjakan lebih awal.
 
-## 5. Baris suppression pertama
+## 6. Baris suppression pertama
 - **Siapa:** staf CS/operator saat ada permintaan berhenti dihubungi **nyata**.
 - **Langkah:** `/consent` → "Catat permintaan berhenti" (jalur tulis atomik sudah siap sejak
   Sprint 3H). Rincian: `docs/PERTAMA-suppression.md`.
 - **Kalau dibiarkan:** tidak memblokir apa pun — aturan sudah benar (suppression menang). **Jangan
   buat baris uji**: suppression tak bisa dihapus (append-only), baris uji jadi permanen.
 
-## 6. Jawaban legal: `basis` → `explicit_opt_in`
+## 7. Jawaban legal: `basis` → `explicit_opt_in`
 - **Siapa:** legal + pemilik produk.
 - **Langkah:** petakan sumber impor ke bentuk consent-nya; bila ada catatan opt-in per orang,
   putuskan sumber mana naik ke `explicit_opt_in`. Rincian: `docs/SIGNOFF-legal-consent.md`.
