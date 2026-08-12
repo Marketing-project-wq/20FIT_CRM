@@ -19,7 +19,7 @@ describe("bouncesAuthenticated — signed-in users off request pages, NOT off th
     expect(bouncesAuthenticated("/login")).toBe(true);
     expect(bouncesAuthenticated("/forgot-password")).toBe(true);
   });
-  it("does NOT bounce /reset-password (recovery link creates a temp session)", () => {
+  it("does NOT bounce /reset-password (verifyOtp creates a temp session)", () => {
     // Bouncing it would break the reset itself — the single easiest trap in this flow.
     expect(bouncesAuthenticated("/reset-password")).toBe(false);
   });

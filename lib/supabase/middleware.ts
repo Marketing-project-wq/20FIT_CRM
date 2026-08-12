@@ -19,8 +19,9 @@ export function isPublicPath(pathname: string): boolean {
 
 /**
  * Paths an ALREADY-authenticated user is bounced away from to `/`. /login and
- * /forgot-password qualify (a signed-in user needs neither). /reset-password does NOT — the
- * recovery link creates a temporary session, so bouncing it would break the reset itself.
+ * /forgot-password qualify (a signed-in user needs neither). /reset-password does NOT —
+ * submitting the code calls verifyOtp, which creates a temporary session, so bouncing an
+ * authenticated user off /reset-password would break the reset itself.
  */
 export function bouncesAuthenticated(pathname: string): boolean {
   return pathname === "/login" || pathname === "/forgot-password";
@@ -98,8 +99,8 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
   }
 
   // A signed-in user has no reason to sit on the login page — or to REQUEST a reset
-  // (/forgot-password). But NOT /reset-password: the Supabase recovery link establishes a
-  // temporary session when clicked, so bouncing an authenticated user off /reset-password
+  // (/forgot-password). But NOT /reset-password: submitting the code calls verifyOtp, which
+  // establishes a temporary session, so bouncing an authenticated user off /reset-password
   // would break the reset itself. So /reset-password is deliberately absent here.
   if (user && bouncesAuthenticated(pathname)) {
     const url = request.nextUrl.clone();

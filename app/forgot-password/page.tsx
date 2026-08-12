@@ -12,15 +12,14 @@ export const dynamic = "force-dynamic";
 const ERRORS: Record<string, string> = {
   invalid: "Masukkan alamat email yang valid.",
   unavailable:
-    "Tidak dapat mengirim tautan saat ini. Coba lagi sebentar lagi, atau hubungi admin bila berlanjut.",
+    "Tidak dapat mengirim kode saat ini. Coba lagi sebentar lagi, atau hubungi admin bila berlanjut.",
 };
 
 export default function ForgotPasswordPage({
   searchParams,
 }: {
-  searchParams: { sent?: string; error?: string };
+  searchParams: { error?: string };
 }) {
-  const sent = searchParams?.sent === "1";
   const errorMsg = searchParams?.error ? (ERRORS[searchParams.error] ?? null) : null;
 
   return (
@@ -37,44 +36,36 @@ export default function ForgotPasswordPage({
               Lupa kata sandi
             </h1>
             <p className="mt-2 font-body text-[14px] text-ink-soft">
-              Kami kirim tautan untuk mengatur ulang kata sandi Anda
+              Kami kirim kode verifikasi ke email Anda untuk mengatur ulang kata sandi
             </p>
           </div>
         </div>
 
         <div className="glass-strong p-6 shadow-glass-lg">
-          {sent ? (
-            // Uniform message — identical whether or not the email is registered (see actions.ts).
-            <p role="status" className="font-body text-[14px] leading-relaxed text-ink">
-              Bila email tersebut terdaftar, tautan untuk mengatur ulang kata sandi sudah dikirim.
-              Periksa kotak masuk dan folder spam.
-            </p>
-          ) : (
-            <form action={requestPasswordReset} className="flex flex-col gap-4">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  placeholder="nama@20fit.id"
-                  className="font-mono"
-                />
-              </div>
+          <form action={requestPasswordReset} className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                required
+                placeholder="nama@20fit.id"
+                className="font-mono"
+              />
+            </div>
 
-              {errorMsg && (
-                <p role="alert" className="font-body text-[13px] text-red">
-                  {errorMsg}
-                </p>
-              )}
+            {errorMsg && (
+              <p role="alert" className="font-body text-[13px] text-red">
+                {errorMsg}
+              </p>
+            )}
 
-              <Button type="submit" size="lg" className="mt-1 w-full">
-                Kirim tautan reset
-              </Button>
-            </form>
-          )}
+            <Button type="submit" size="lg" className="mt-1 w-full">
+              Kirim kode
+            </Button>
+          </form>
         </div>
 
         <p className="mt-6 text-center font-body text-[12px] text-ink-faint">
