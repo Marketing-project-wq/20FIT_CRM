@@ -12,6 +12,7 @@ import { fetchProfileById, isUuid } from "@/lib/crm/audience";
 import { fetchProfileEngagement, type ProfileEngagement } from "@/lib/crm/engagement";
 import { fetchProfileEnrichment, type ProfileEnrichment } from "@/lib/crm/enrichment";
 import { fetchProfileMultiSource, type ProfileMultiSource } from "@/lib/crm/multisource";
+import { fetchProfileClinic, type ProfileClinic } from "@/lib/crm/clinic-source";
 import { logApiFailure } from "@/lib/crm/failure-log";
 
 export const dynamic = "force-dynamic";
@@ -112,15 +113,33 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
     multiSource = null;
   }
 
+  // Clinic chain (TUGAS 3): the WHOLE section is fetched ONLY for a view_health caller —
+  // fetchProfileClinic returns { gated:false } and touches nothing for any other role.
+  // Matched phone-first (12 vs 106), chained via patient_id, counts only (no clinical content).
+  let clinic: ProfileClinic | null = null;
+  try {
+    clinic = await fetchProfileClinic(admin, profile.customer_id, { canViewHealth });
+  } catch (e) {
+    logApiFailure("/audience/[id]", "clinic_query_failed", { code: (e as { code?: string })?.code });
+    clinic = null;
+  }
+
   // Which sensitive field KINDS were available to a view_health caller — recorded in the
   // ONE profile.viewed row (K-07), never the values, never a row per field (T2 rule).
-  const sensitiveFields: string[] = [];
+  const sensitiveFields = new Set<string>();
   if (canViewHealth && enrichment?.hyrox.hasSensitive && enrichment.hyrox.sensitive) {
     const s = enrichment.hyrox.sensitive;
-    if (s.nik) sensitiveFields.push("nik");
-    if (s.tglLahir) sensitiveFields.push("birthdate");
-    if (s.golDarah) sensitiveFields.push("blood_type");
-    if (s.kontakDarurat || s.noKontakDarurat) sensitiveFields.push("emergency_contact");
+    if (s.nik) sensitiveFields.add("nik");
+    if (s.tglLahir) sensitiveFields.add("birthdate");
+    if (s.golDarah) sensitiveFields.add("blood_type");
+    if (s.kontakDarurat || s.noKontakDarurat) sensitiveFields.add("emergency_contact");
+  }
+  if (canViewHealth && clinic?.matched && clinic.sensitive) {
+    const s = clinic.sensitive;
+    if (s.nik) sensitiveFields.add("nik");
+    if (s.dateOfBirth) sensitiveFields.add("birthdate");
+    if (s.address) sensitiveFields.add("address");
+    if (s.emergencyContactName || s.emergencyContactPhone) sensitiveFields.add("emergency_contact");
   }
 
   // Mandatory audit — individual row. Refuse to serve if it can't be logged.
@@ -136,7 +155,7 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
     metadata: {
       view: "profile_detail",
       masked,
-      ...(sensitiveFields.length > 0 ? { sensitive_fields: sensitiveFields } : {}),
+      ...(sensitiveFields.size > 0 ? { sensitive_fields: Array.from(sensitiveFields) } : {}),
     },
   });
   if (auditError) {
@@ -148,7 +167,7 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
   }
 
   return NextResponse.json(
-    { profile, canViewHealth, engagement, enrichment, multiSource },
+    { profile, canViewHealth, engagement, enrichment, multiSource, clinic },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

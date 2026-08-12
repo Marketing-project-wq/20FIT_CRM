@@ -143,11 +143,22 @@ export function phoneMatchCandidates(normalized62: string | null): string[] {
   ])).filter((v) => v.length > 0);
 }
 
-/** Which match keys to try, in order: email first, phone as fallback. Skips a key the profile
- *  has no value for. Pure so the ordering is locked by a test. */
-export function matchKeyOrder(email: string | null, phone: string | null): MatchKey[] {
-  const out: MatchKey[] = [];
-  if (email) out.push("email");
-  if (phone) out.push("phone");
-  return out;
+/**
+ * Which match keys to try, in order. Skips a key the profile has no value for. The order is
+ * PER SOURCE, not a global constant, because coverage differs by source:
+ *   - arena / gym (prefer 'email'): rows are keyed on email; email is the stronger match.
+ *   - clinic (prefer 'phone'): measured 12 Aug 2026 — of 143 clinic_patients, EMAIL matches
+ *     only 12 profiles but PHONE (via normalizePhoneID) matches 106. Email-first here would
+ *     hide ~9 of every 10 patients from CS — the unit that most needs context when phoning.
+ *     Do NOT "tidy" this back to a uniform email-first order; the numbers are why.
+ * Pure so the ordering is locked by a test.
+ */
+export function matchKeyOrder(
+  email: string | null,
+  phone: string | null,
+  prefer: MatchKey = "email",
+): MatchKey[] {
+  const have: Record<MatchKey, string | null> = { email, phone };
+  const order: MatchKey[] = prefer === "phone" ? ["phone", "email"] : ["email", "phone"];
+  return order.filter((k) => have[k]);
 }

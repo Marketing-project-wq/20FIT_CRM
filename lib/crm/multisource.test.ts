@@ -31,18 +31,26 @@ describe("multisource safe-column allowlist (TUGAS 3 guard)", () => {
   });
 });
 
-describe("matchKeyOrder — email first, phone fallback, skip missing (K-06)", () => {
-  it("email present + phone present → [email, phone]", () => {
+describe("matchKeyOrder — per-source order (K-06), default email-first, clinic phone-first", () => {
+  it("default (arena/gym): email present + phone present → [email, phone]", () => {
     expect(matchKeyOrder("a@b.com", "628123")).toEqual(["email", "phone"]);
   });
-  it("only phone → [phone]", () => {
+  it("prefer=phone (clinic): both present → [phone, email] — 12 vs 106 is why", () => {
+    expect(matchKeyOrder("a@b.com", "628123", "phone")).toEqual(["phone", "email"]);
+  });
+  it("prefer=phone but only email present → [email] (skip missing)", () => {
+    expect(matchKeyOrder("a@b.com", null, "phone")).toEqual(["email"]);
+  });
+  it("only phone → [phone] regardless of preference", () => {
     expect(matchKeyOrder(null, "628123")).toEqual(["phone"]);
+    expect(matchKeyOrder(null, "628123", "phone")).toEqual(["phone"]);
   });
   it("only email → [email]", () => {
     expect(matchKeyOrder("a@b.com", null)).toEqual(["email"]);
   });
   it("neither → [] (unmatchable)", () => {
     expect(matchKeyOrder(null, null)).toEqual([]);
+    expect(matchKeyOrder(null, null, "phone")).toEqual([]);
   });
 });
 

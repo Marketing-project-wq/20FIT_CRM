@@ -100,12 +100,30 @@ interface ProfileMultiSourceT {
   sources: MultiSourceResultT[];
 }
 
+interface ProfileClinicT {
+  gated: boolean;
+  matched: boolean;
+  keyUsed: "email" | "phone" | null;
+  patientCode: string | null;
+  sensitive: {
+    nik: string | null;
+    dateOfBirth: string | null;
+    gender: string | null;
+    address: string | null;
+    emergencyContactName: string | null;
+    emergencyContactPhone: string | null;
+  } | null;
+  counts: { bookings: number; visits: number; assessments: number; screenings: number; transactions: number } | null;
+  latestBooking: { bookingCode: string | null; status: string | null; date: string | null } | null;
+}
+
 interface ApiResult {
   profile: Profile;
   canViewHealth: boolean;
   engagement: ProfileEngagement | null;
   enrichment: ProfileEnrichment | null;
   multiSource: ProfileMultiSourceT | null;
+  clinic: ProfileClinicT | null;
 }
 
 const idr = new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 });
@@ -320,6 +338,71 @@ function MultiSourceSection({ multiSource }: { multiSource: ProfileMultiSourceT 
           <p className="mt-3 font-body text-[11px] leading-relaxed text-ink-faint">
             Cocok lewat email ternormalisasi dulu, lalu telepon (K-06) — nol cocok-nama-saja. Baca-gabung saat tampil, nol tulis.
             Sumber klinis (via <span className="font-mono">patient_id</span>, di balik <span className="font-mono">profile.view_health</span>) menyusul — docs/RENCANA-multisumber.md.
+          </p>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** Clinic chain (TUGAS 3) — rendered ONLY when the server sent a gated result (view_health).
+ *  Identity + engagement COUNTS + latest booking; deliberately NO clinical content. */
+function ClinicSection({ clinic }: { clinic: ProfileClinicT | null }) {
+  if (!clinic || !clinic.gated) return null; // not fetched for non-view_health roles.
+  const keyLabel = clinic.keyUsed === "phone" ? "cocok via telepon" : clinic.keyUsed === "email" ? "cocok via email" : "";
+  return (
+    <section className="glass shadow-glass p-6 lg:col-span-2">
+      <div className="flex items-center gap-2">
+        <HeartPulse className="h-4 w-4 text-ink-soft" aria-hidden />
+        <h2 className="font-display text-[16px] font-extrabold uppercase tracking-wide text-ink">Klinik (sensitif — profile.view_health)</h2>
+      </div>
+      {!clinic.matched ? (
+        <p className="mt-4 font-body text-[13px] italic text-ink-faint">tidak ada data klinik untuk profil ini</p>
+      ) : (
+        <div className="mt-3 space-y-4">
+          <p className="font-mono text-[12px] text-ink-faint">
+            Pasien {clinic.patientCode ?? "—"} · {keyLabel}
+          </p>
+          {clinic.sensitive && (
+            <div className="tint-red rounded-sm p-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field label="NIK" mono>{clinic.sensitive.nik ?? <Empty />}</Field>
+                <Field label="Tanggal lahir" mono>{clinic.sensitive.dateOfBirth ? formatDateOnly(clinic.sensitive.dateOfBirth) : <Empty />}</Field>
+                <Field label="Jenis kelamin">{clinic.sensitive.gender ?? <Empty />}</Field>
+                <Field label="Alamat">{clinic.sensitive.address ?? <Empty />}</Field>
+                <Field label="Kontak darurat">
+                  {[clinic.sensitive.emergencyContactName, clinic.sensitive.emergencyContactPhone].filter(Boolean).join(" · ") || <Empty />}
+                </Field>
+              </div>
+            </div>
+          )}
+          {clinic.counts && (
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+              {[
+                ["Booking", clinic.counts.bookings],
+                ["Kunjungan", clinic.counts.visits],
+                ["Assessment", clinic.counts.assessments],
+                ["Skrining", clinic.counts.screenings],
+                ["Transaksi", clinic.counts.transactions],
+              ].map(([label, n]) => (
+                <div key={label as string} className="rounded-sm border border-glass-border p-3 text-center">
+                  <div className="font-display text-[22px] font-black leading-none text-ink">{nf.format(n as number)}</div>
+                  <div className="mt-1 font-display text-[10px] font-bold uppercase tracking-wide text-ink-faint">{label}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          {clinic.latestBooking && (clinic.latestBooking.bookingCode || clinic.latestBooking.date) && (
+            <p className="font-body text-[13px] text-ink-soft">
+              Booking terakhir: <span className="font-mono text-[12px]">{clinic.latestBooking.bookingCode ?? "—"}</span>
+              {clinic.latestBooking.status ? ` · ${clinic.latestBooking.status}` : ""}
+              {clinic.latestBooking.date ? ` · ${formatDateOnly(clinic.latestBooking.date)}` : ""}
+            </p>
+          )}
+          <p className="font-body text-[11px] leading-relaxed text-ink-faint">
+            Hanya identitas + volume keterlibatan + booking terakhir. Isi klinis (diagnosa, hasil skrining, obat, operasi)
+            <strong> sengaja tidak ditampilkan</strong> — CS mengenali pasien &amp; jadwal, bukan membaca rekam medis. Cocok via
+            telepon dulu (12 vs 106), lewat <span className="font-mono">patient_id</span>, nol tulis.
           </p>
         </div>
       )}
@@ -654,6 +737,7 @@ export function ProfileDetail({ id, canEditConsent }: { id: string; canEditConse
             Sensitive Hyrox identity fields are gated + masked; reveal is separately audited. */}
         <EnrichmentSection enrichment={data.enrichment} canViewHealth={data.canViewHealth} />
         <MultiSourceSection multiSource={data.multiSource} />
+        <ClinicSection clinic={data.clinic} />
 
         {/* Health flags — structural gate, but no source exists. */}
         {data.canViewHealth && (
