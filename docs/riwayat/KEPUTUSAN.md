@@ -228,3 +228,20 @@ setelah tiap percobaan gagal, lalu 408.119 tepat setelah yang berhasil). Untuk f
 menjalankan ulang aman; untuk operasi **non-idempoten non-atomik**, langkah 2 (cek
 `pg_stat_activity`) wajib sebelum memutuskan menjalankan ulang.
 **Membalikkan:** tidak ada — ini pengetahuan operasional, bukan perubahan sistem.
+
+## K-25 · Sumber deploy = pertanyaan empiris, bukan asumsi dari README
+**Migrasi 11/12.** README menyatakan "auto-deploy on `main`" dan "push ke `main` memicu
+deploy" — tapi bukti menunjukkan **kode branch melayani produksi** (aksi audit yang hanya ada
+di branch tertulis oleh produksi; `main` bahkan tak menulis audit reset). → T-18.
+
+**Keputusan:** status deploy **diturunkan dari bukti**, bukan dari klaim dokumen. Diskriminator
+yang sah: **siapa yang menulis baris audit** (`git log -S` pada string aksi → cek apakah commit
+itu ada di `origin/main`). Bukan `recovery_sent_at` (dibersihkan setelah reset, tak
+membedakan jalur), bukan "README bilang begitu".
+
+**Konsekuensi operasional sampai dashboard Railway dikonfirmasi manusia:** perlakukan **setiap
+push ke branch sebagai berpotensi langsung ke produksi**. Gate "jangan merge `main`" bisa jadi
+**tidak melindungi apa pun** — jadi disiplin gate (nol perubahan data tanpa izin, nol setelan
+bersama disentuh) berlaku pada **setiap push**, bukan hanya pada merge. Larangan "jangan merge
+ke `main` tanpa izin" tetap berlaku; ia sekadar bukan satu-satunya pintu ke produksi.
+**Membalikkan:** tidak ada — ini pengetahuan operasional; koreksi dokumen mengikuti bukti.

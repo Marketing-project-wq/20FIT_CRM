@@ -253,3 +253,37 @@ ditindaklanjuti**. Ini **kali kedua** jawabannya sudah ada di tempat yang sudah 
 (bandingkan S-07: bukti ada di `crm_audit_log`, terlewat). **Perbaikan pola:** klaim keamanan
 tabel kini **wajib** menyebut RLS **dan** policy **dan** grant (K-23), dan kueri klasifikasinya
 masuk monitoring supaya bisa dijalankan ulang, bukan diandalkan pada ingatan.
+
+## T-18 · Produksi menjalankan kode BRANCH, bukan `main` — dokumentasi deploy salah
+**Migrasi 11/12 (12 Agu 2026).** Reset kata sandi nyata berhasil di produksi
+(marketing@20fit.id masuk 04:58:21 UTC) dengan tiga baris audit
+`login.password_reset_requested`, `actor_email='system:password-reset'`,
+`metadata.outcome='sent'` (04:48:41 / 04:48:44 / 04:57:35 UTC).
+
+**Bukti (TERBUKTI):** aksi audit itu ditulis HANYA oleh kode branch. `git log -S
+"login.password_reset_requested"` dan `-S "system:password-reset"` → hanya commit branch
+(3T + email-fix); **nol** di `origin/main`. `origin/main` versi `/forgot-password` adalah
+komponen **klien** yang memanggil `resetPasswordForEmail` langsung dan **tak menulis audit
+sama sekali**. Maka reset yang tercatat itu **tidak mungkin** dari kode `main` — ia dari kode
+branch, dijalankan terhadap DB produksi (proyek Supabase yang sama).
+
+**Kesimpulan (TERBUKTI):** kode branch `claude/lanjutkan-pekerjaan-mno804` melayani lalu-lintas
+produksi. Push ke branch sepanjang sesi ini **langsung** masuk produksi.
+
+**Yang masih perlu dikonfirmasi manusia (TAK bisa saya lihat):** setelan sumber di dashboard
+Railway — apakah *service produksi* tersambung ke branch (README salah), atau ini deploy
+**preview PR** dari branch yang menulis ke DB produksi bersama (service produksi tetap `main`).
+Keduanya berarti kode branch berjalan atas data produksi; hanya mekanismenya beda. Cek:
+Railway → project → service produksi → Settings → Source → branch tersambung + Deploy triggers.
+Egress ke `20fitcrm-production.up.railway.app` diblokir proxy, jadi halaman live tak bisa saya
+ambil untuk memastikan dari luar.
+
+**JANGAN pakai `auth.users.recovery_sent_at` sebagai bukti jalur** — ia di-set oleh
+`resetPasswordForEmail` (bukan `generateLink`) TAPI dibersihkan setelah reset berhasil, jadi
+`null` sekarang tak membedakan kedua jalur. Diskriminatornya adalah **siapa yang menulis aksi
+audit** (di atas), bukan `recovery_sent_at`.
+
+**Dampak:** gate "jangan merge ke `main` tanpa izin" selama ~10 sprint **tidak pernah menahan
+produksi** bila produksi memang dari branch — perlindungannya ilusi. → K-25. Dokumen yang
+menyatakan "push ke `main` memicu auto-deploy" (README §Deploy, §MANDATORY DEPLOY ORDER)
+dikoreksi ke keadaan terbukti + butir konfirmasi dashboard.

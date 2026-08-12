@@ -33,9 +33,15 @@ Full spec: `PRD — 20FIT Audience Data & CRM System v1.1`.
 > 1–2, **everyone is locked out of the app.**
 >
 > **Do NOT merge the RBAC branch (`claude/20fit-crm-sprint-2`) into `main` until
-> steps 1–2 are done** — a push to `main` triggers Railway's auto-deploy, and the
+> steps 1–2 are done** — a push to the deployed branch triggers Railway's auto-deploy, and the
 > lockout is immediate. This warning is here, not only in `lib/auth/current-role.ts`,
 > because whoever merges is reading this file, not the auth code.
+>
+> **CORRECTION (2026-08-12, T-18/K-25):** the deployed branch is **not confirmed to be `main`** —
+> evidence shows production serving *feature-branch* code (an audit action present only in the
+> branch was written by production). So "a push to `main`" above may actually be "a push to the
+> connected feature branch." The lockout risk is identical either way; the trigger branch must
+> be confirmed in the Railway dashboard.
 
 > ## ⚠️ Migration ledger diverged — do NOT run `supabase db push`
 >
@@ -154,7 +160,11 @@ reverse it in **both** aggregate endpoints, never leave two answers.
 - Tailwind CSS 3 + shadcn/ui (restyled to the 20FIT design tokens)
 - Supabase Auth via `@supabase/ssr` (cookie-based sessions, no localStorage)
 - Self-hosted fonts via `next/font` (Barlow Condensed, JetBrains Mono, Manrope)
-- Deploy: Railway (source = GitHub, auto-deploy on `main`)
+- Deploy: Railway (source = GitHub). **The connected branch is NOT confirmed to be `main`.**
+  Evidence (2026-08-12, T-18/K-25) shows **branch code serving production**: production wrote
+  an audit action that exists only in the feature branch, never in `main`. Confirm the actual
+  deploy branch in the Railway dashboard (service → Settings → Source); until then, treat
+  every push to the feature branch as potentially live in production.
 
 ## Run locally
 

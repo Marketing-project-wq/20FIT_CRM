@@ -235,3 +235,14 @@ count); interpretasi flat (hitung baris) = 163.252 marketing, sengaja dihindari.
 
 Indeks `crm_consent_purpose_status_customer_idx (purpose, status) include (customer_id)`
 (Migrasi 12): hitung contactable tak-terbatas ~17 dtk → ~2,9 dtk (index-only scan).
+
+**Kinerja terukur (12 Agu 2026), dua query berbeda dua kemacetan berbeda:**
+- Jalur aplikasi (inner-embed semi-join ke master_customer, yang benar-benar dijalankan app):
+  **~2,9 dtk** — sisa biaya **hash join** tumpah ke disk (Batches 4; work_mem instance 2184 kB),
+  bukan lagi scan `crm_consent`.
+- `count(distinct customer_id) from crm_consent` mentah: **~1,3 dtk** — kemacetannya **sort**
+  tumpah ke disk (external merge 3200 kB), memakai indeks (Index Only Scan). **Aplikasi tak bisa
+  menjalankan ini**: supabase-js hanya PostgREST (tak ada `count(distinct)`, tak ada `SET
+  work_mem` per sesi), dan RPC dilarang siklus ini. Jadi ~2,9 dtk = lantai aplikasi sekarang.
+- Perbaikan sub-detik sesungguhnya = **RPC `SECURITY DEFINER`** yang menjalankan `count(distinct)`
+  dengan `set local work_mem` per panggilan — tindak lanjut terjadwal, **belum dibuat**.
