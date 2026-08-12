@@ -153,12 +153,11 @@ purpose×channel (81.637 / 81.615 / 81.637 / 81.615 / 81.615). Distinct customer
 `{postgres, service_role}`. Idempotensi terbukti: panggilan kedua menyisipkan **0** baris
 (baris audit kedua `inserted=0`, memang perilakunya). Versi ledger tercap `20260812041851`.
 
-**Tindak lanjut kinerja (terjadwal, BUKAN siklus ini):** jalur baca contactable tak-terbatas
-(dashboard) memakai seq scan atas `crm_consent` yang difilter `(purpose,status)` — ~10 detik
-per purpose karena tak ada indeks pendukung. Benar tapi lambat. Perbaikannya satu indeks kecil
-(`create index on public.crm_consent (purpose, status) include (customer_id)`), **sengaja tak
-dibuat** karena Migrasi 11 satu-satunya perubahan skema yang diizinkan siklus ini. Angkanya
-tetap benar; hanya lambat sampai indeks ditambahkan.
+**Kinerja (Migrasi 12, 12 Agu 2026):** jalur baca contactable tak-terbatas (dashboard) tadinya
+seq scan atas `crm_consent` difilter `(purpose,status)` (~17 detik). Migrasi 12 menambah indeks
+`crm_consent (purpose, status) include (customer_id)` → index-only scan → **~2,9 detik**
+(terukur). Angka jawaban tak berubah (82.253). Sisa biaya di hash join dengan `master_customer`
+yang tumpah ke disk pada instance kecil, bukan lagi scan `crm_consent`.
 
 ---
 

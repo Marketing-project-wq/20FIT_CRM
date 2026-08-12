@@ -197,3 +197,34 @@ tiga-tingkat (anon-open / login-open / terkunci) ada di
 `docs/PASCA-MERGE-monitoring-revert.md`, dapat dijalankan ulang kapan saja — policy bisa
 berubah tanpa memberi tahu tim ini (proyek dipakai bersama).
 **Membalikkan:** tidak ada.
+
+## K-24 · Operasi besar: batas 60 dtk klien MCP ≠ `statement_timeout` server, dan cara menjalankannya
+**Migrasi 11.** Backfill 408.119 baris consent tak selesai dalam 60 detik. Ada **dua batas
+berbeda** yang mudah tertukar, dan menukarnya membuat orang mengira operasi **gagal padahal
+berhasil** lalu menjalankannya ulang — untuk operasi non-idempoten, itu merusak.
+
+- **Batas klien MCP `execute_sql` = 60 detik.** Saat lewat, klien menyerah — **tetapi backend
+  Postgres TERUS berjalan** (dikonfirmasi: `pg_stat_activity` menunjukkan pid `state=active`,
+  `now()-query_start` naik terus setelah klien putus). Klien putus **bukan** berarti query
+  dibatalkan.
+- **`statement_timeout` server = 2 menit (default proyek ini).** INI yang benar-benar
+  membunuh query panjang → `ERROR: canceling statement due to statement timeout` → rollback.
+
+**Cara menjalankan operasi besar (>60 dtk, ≤ apa pun):**
+1. Naikkan timeout **di sesi yang sama**, sebelum operasinya, dalam satu kiriman:
+   `set statement_timeout = '15min'; select public.fungsi_besar();`
+   SET berlaku untuk sesi itu; backend lanjut sampai selesai walau klien MCP putus di 60 dtk.
+2. **Pastikan lewat `pg_stat_activity`**, jangan lewat `count(*)` (MVCC menyembunyikan baris
+   belum-commit → count 0 tidak membedakan "masih jalan" dari "rollback"):
+   `select pid, state, now()-query_start from pg_stat_activity where query ilike '%nama_fungsi%' and pid<>pg_backend_pid();`
+   `state=active` = masih jalan; baris hilang = selesai/mati.
+3. **Jangan poll `count(*)` berulang saat menunggu** — tiap poll yang time-out juga
+   meninggalkan backend hidup ~2 menit → menjenuhkan pool koneksi instance kecil → poll
+   berikutnya ikut time-out. Diamkan DB (tunggu di luar DB), lalu poll **satu kali**.
+
+**Kenapa aman diulang saat ragu:** fungsi backfill **atomik** (satu transaksi, K-14). Percobaan
+yang time-out/mati **rollback bersih** — 0 baris parsial (diverifikasi: `crm_consent` 0 baris
+setelah tiap percobaan gagal, lalu 408.119 tepat setelah yang berhasil). Untuk fungsi atomik,
+menjalankan ulang aman; untuk operasi **non-idempoten non-atomik**, langkah 2 (cek
+`pg_stat_activity`) wajib sebelum memutuskan menjalankan ulang.
+**Membalikkan:** tidak ada — ini pengetahuan operasional, bukan perubahan sistem.

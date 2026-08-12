@@ -57,8 +57,9 @@ Full spec: `PRD — 20FIT Audience Data & CRM System v1.1`.
 > | 9 | `…100000_create_crm_record_suppression` | `20260811081711` **+** `20260811081920` | `create_crm_record_suppression` (×2) |
 > | 10 | `…110000_lock_crm_purge_audit_log_execute` | `20260811085420` | `lock_crm_purge_audit_log_execute` |
 > | 11 | `…20260812000000_create_crm_backfill_consent` | `20260812041851` | `create_crm_backfill_consent` |
+> | 12 | `…20260812010000_add_crm_consent_contactability_index` | `20260812045411` | `add_crm_consent_contactability_index` |
 >
-> **Count reconciliation: 11 repo files → 12 CRM ledger entries.** The extra entry is
+> **Count reconciliation: 12 repo files → 13 CRM ledger entries.** The extra entry is
 > migration **9**, applied **twice** under the same name (Sprint 3H). The first apply left
 > Supabase's default `EXECUTE` grant to `anon`/`authenticated` in place (a `revoke … from
 > public` does **not** remove explicit per-role grants); the second apply carried the
@@ -75,7 +76,7 @@ Full spec: `PRD — 20FIT Audience Data & CRM System v1.1`.
 >
 > **Do NOT run `supabase db push` against this project until the ledger and repo are
 > reconciled.** No repo file-name timestamp exists in the ledger, so the CLI would treat
-> all **11** repo migrations as unapplied and try to run them all — re-creating the seven
+> all **12** repo migrations as unapplied and try to run them all — re-creating the seven
 > live tables + re-defining the live functions, failing as "already exists". Run any
 > further migration one-by-one via a reviewed path (`apply_migration`), not `db push`.
 >

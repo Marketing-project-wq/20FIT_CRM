@@ -204,3 +204,34 @@ Baris penting:
 - `target_table='crm_audit_log'` = **4** (dulu 0) — `/settings` **kini terbukti jalan di
   produksi** (id 44–47). Berkas ini sebelumnya menulis 0; itu sudah bergerak.
 - `search.performed` = **0** — Sprint 3J belum di-deploy (masih di branch).
+
+---
+
+## `crm_consent` — 12 Agustus 2026 (sesudah Migrasi 11 + 12)
+
+**Total: 408.119 baris.** Ditulis oleh backfill legacy (Migrasi 11, `source='20fit_data_import'`,
+`basis='legacy_import_unverified'`, semua `status='active'`). Diverifikasi `count(*)` eksak.
+
+| purpose | channel | baris |
+|---|---|---|
+| `marketing` | `email` | 81.637 |
+| `marketing` | `whatsapp` | 81.615 |
+| `transactional` | `email` | 81.637 |
+| `transactional` | `whatsapp` | 81.615 |
+| `transactional` | `phone_call` | 81.615 |
+| **Total** | | **408.119** |
+
+**Profil contactable (distinct `customer_id`, `status='active'`):**
+
+| purpose | distinct customer |
+|---|---|
+| `marketing` | **82.253** |
+| `transactional` (layanan) | **82.253** |
+
+= seluruh pool ber-identitas (email ∨ phone = 82.253). Suppression aktif = **0**, jadi
+contactable = distinct consenting. `sms` & `marketing`+`phone_call` sengaja tak diisi.
+`count(distinct customer_id)` langsung = 82.253, cocok jalur baca aplikasi (inner-embed parent
+count); interpretasi flat (hitung baris) = 163.252 marketing, sengaja dihindari.
+
+Indeks `crm_consent_purpose_status_customer_idx (purpose, status) include (customer_id)`
+(Migrasi 12): hitung contactable tak-terbatas ~17 dtk → ~2,9 dtk (index-only scan).

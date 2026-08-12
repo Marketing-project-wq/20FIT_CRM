@@ -23,15 +23,13 @@ import type { ContactPurpose } from "./contactability";
  * flat-row interpretation would be 163,252 — the double-count this shape avoids. Confirmed
  * 2026-08-12.
  *
- * PERFORMANCE (measured 2026-08-12, KNOWN follow-up): the UNRESTRICTED count (dashboard, no
- * .in() narrowing) does a Parallel Seq Scan on crm_consent filtering (purpose,status) — no
- * index supports it, so it is ~10s per purpose on the 408k-row table (dashboard runs the two
- * purposes concurrently → ~10s wall). CORRECT but slow. The unique index
- * (customer_id, channel, purpose) can't serve a (purpose,status) filter. The fix is a small
- * index, e.g. `create index on public.crm_consent (purpose, status) include (customer_id)` —
- * deliberately NOT added this cycle (Migrasi 11 is the only schema change allowed), so it is
- * a scheduled follow-up. The .in()-restricted path (segment with ecosystem/source criteria)
- * is fast: it probes the unique index by customer_id per chunk.
+ * PERFORMANCE: the UNRESTRICTED count (dashboard) used to Parallel Seq Scan crm_consent on
+ * (purpose,status). Migrasi 12 added `crm_consent (purpose, status) include (customer_id)`, so
+ * it is now a pure index-only scan (Heap Fetches 0) — ~17s → ~2.9s on the 408k-row table
+ * (measured 2026-08-12). Still not sub-second: the remaining cost is the hash semi-join with
+ * master_customer spilling to disk on a small instance, not the crm_consent scan. The
+ * .in()-restricted path (segment with ecosystem/source criteria) probes the unique index by
+ * customer_id per chunk.
  */
 
 /** Chunk size for `.in(customer_id, …)` — bounded URL length; each chunk is a head count,
