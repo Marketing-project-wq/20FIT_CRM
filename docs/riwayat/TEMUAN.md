@@ -180,6 +180,22 @@ jujurnya seperti di `master_customer`. Perbandingan antar-kolom tak bisa dihitun
 PostgREST → masuk `VERIFIED_ARTIFACTS` bertanggal (`ecosystem_last_seen_load_stamp`), sejajar
 T-11. Baris masa-depan dihitung live di `/quality` (bandingkan ke literal waktu). → K-19
 
+### T-19 · RFM `staging_20fit_data` praktis tak bisa menyegmentasi — 92% dalam satu keranjang — DATA, tidak diremediasi
+**Ditemukan 12 Agu (Sprint 3Y, diangkat dari laporan).** Sebaran `RFM per paid order`:
+`New User` **81.213 (91,7%)** · `Potensial user` 7.057 · `-` 200 · `Loyal user` 65 ·
+`Campion user` 1. **Satu keranjang memuat 92% pool, dan dua keranjang teratas
+(`Loyal`+`Campion`) hanya berisi 66 orang.** Sebagai dimensi segmentasi ini **menyesatkan**:
+ia tampak seperti sumbu RFM yang berguna, padahal menyaring "New User" = menyaring hampir semua
+orang, dan menyaring "Loyal" = menyaring 65 orang dari 82 ribu. Ini **pola yang sama** dengan
+`segment` terbalik (1.242 NULL justru LTV tertinggi) dan kolom waktu cap-muat: kolom yang ADA
+tapi tak membawa sinyal yang dijanjikan namanya.
+
+**Konsekuensi:** kriteria **tetap disediakan** (menghapusnya = menyembunyikan data yang
+terukur), tetapi layar filter **memperingatkan** sebarannya supaya tak ada yang menyusun
+kampanye di atasnya, dan `RFM per revenue` (0% terisi) tetap tak ditawarkan. **Tidak
+diremediasi** — nilainya milik data impor, bukan untuk "diperbaiki". Disebut di layar segmen;
+angka mentahnya juga di `/quality` (blok cakupan staging) dan `FAKTA-DATA`.
+
 ---
 
 ## Kesalahan sendiri

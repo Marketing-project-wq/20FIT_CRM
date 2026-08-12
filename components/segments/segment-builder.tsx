@@ -240,6 +240,13 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth }
                   <option value="">Semua RFM</option>
                   {STAGING_RFM_VALUES.map((v) => <option key={v} value={v}>{v}</option>)}
                 </select>
+                {c.srcRfm && (
+                  <span className="font-body text-[11px] leading-relaxed text-amber">
+                    RFM hampir tak bisa menyegmentasi: <span className="font-mono">New User</span> = 81.213 (92% pool),
+                    dua keranjang teratas (<span className="font-mono">Loyal</span>+<span className="font-mono">Campion</span>) cuma 66 orang.
+                    Menyaring “New User” ≈ menyaring semua orang; “Loyal” = 65 orang. Jangan susun kampanye di atasnya (T-19).
+                  </span>
+                )}
               </label>
               <label className="flex flex-col gap-1">
                 <span className="font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">Ikut program</span>
