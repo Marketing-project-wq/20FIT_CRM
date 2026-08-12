@@ -13,6 +13,7 @@
  */
 import { SEGMENT_NULL, capFilterValue, FILTER_VALUE_MAX } from "./audience-constants";
 import { isEcosystemUnit, isEcosystemProduct } from "./engagement-constants";
+import { isRfmValue, programByKey } from "./staging-constants";
 
 export type RevenueCriterion = "all" | "has" | "none" | "negative";
 
@@ -64,12 +65,24 @@ export interface SegmentCriteria {
   srcGym: boolean;
   srcClinicPatient: boolean;
   srcClinicTxn: boolean;
+  /**
+   * staging_20fit_data presence (Sprint 3Y), matched by normalised email. `srcRfm` = the RFM
+   * bucket from "RFM per paid order" (closed list, misspelling `Campion user` kept verbatim).
+   * `srcProgram` = a program key from STAGING_PROGRAMS (participation = value present and not
+   * "-"). A program that is CLINICAL (the two "Pasien 20FIT Clinic" columns) is health-inferring
+   * and GATED on profile.view_health at the route (rejected, not silently dropped). Both AND-only,
+   * resolved to customer_id sets and intersected — no cross-table OR (the UI says so).
+   */
+  srcRfm: string | null;
+  srcProgram: string | null;
 }
 
 /** Whether any CLINICAL (health-inferring) source criterion is set — the route gates these on
- *  profile.view_health. Kept as one function so the gate and the UI can't disagree. */
+ *  profile.view_health. Kept as one function so the gate and the UI can't disagree. Includes a
+ *  staging program that is a clinic-patient column (being in it infers health status). */
 export function hasClinicalCriteria(c: SegmentCriteria): boolean {
-  return c.srcClinicPatient || c.srcClinicTxn;
+  const programClinical = c.srcProgram ? programByKey(c.srcProgram)?.clinical === true : false;
+  return c.srcClinicPatient || c.srcClinicTxn || programClinical;
 }
 
 export const EMPTY_CRITERIA: SegmentCriteria = {
@@ -88,6 +101,8 @@ export const EMPTY_CRITERIA: SegmentCriteria = {
   srcGym: false,
   srcClinicPatient: false,
   srcClinicTxn: false,
+  srcRfm: null,
+  srcProgram: null,
 };
 
 /** How many criteria are actively narrowing the pool (0 = whole pool). */
@@ -108,6 +123,8 @@ export function activeCriteriaCount(c: SegmentCriteria): number {
   if (c.srcGym) n++;
   if (c.srcClinicPatient) n++;
   if (c.srcClinicTxn) n++;
+  if (c.srcRfm) n++;
+  if (c.srcProgram) n++;
   return n;
 }
 
@@ -129,6 +146,10 @@ export function parseCriteria(raw: unknown): SegmentCriteria {
   // vocabulary; anything unknown falls back to "any". No free text, no time field.
   const ecoUnit = isEcosystemUnit(o.ecoUnit) ? o.ecoUnit : null;
   const ecoProduct = isEcosystemProduct(o.ecoProduct) ? (o.ecoProduct as string) : null;
+  // staging_20fit_data criteria: RFM is a closed value list; program is a known program key.
+  // Both fall back to null (any) when unknown — no free text, no time field.
+  const srcRfm = isRfmValue(o.srcRfm) ? (o.srcRfm as string) : null;
+  const srcProgram = typeof o.srcProgram === "string" && programByKey(o.srcProgram) ? o.srcProgram : null;
   return {
     unit,
     segment,
@@ -145,6 +166,8 @@ export function parseCriteria(raw: unknown): SegmentCriteria {
     srcGym: o.srcGym === true,
     srcClinicPatient: o.srcClinicPatient === true,
     srcClinicTxn: o.srcClinicTxn === true,
+    srcRfm,
+    srcProgram,
   };
 }
 

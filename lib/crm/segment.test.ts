@@ -28,6 +28,27 @@ describe("multi-source criteria (TUGAS 2)", () => {
   });
 });
 
+describe("staging_20fit_data criteria (Sprint 3Y)", () => {
+  it("keeps a valid RFM value (incl the Campion misspelling) and program key; rejects unknowns", () => {
+    expect(parseCriteria({ srcRfm: "Campion user" }).srcRfm).toBe("Campion user");
+    expect(parseCriteria({ srcRfm: "Loyal user" }).srcRfm).toBe("Loyal user");
+    expect(parseCriteria({ srcRfm: "Champion user" }).srcRfm).toBeNull(); // not stored → not accepted
+    expect(parseCriteria({ srcRfm: "-" }).srcRfm).toBeNull(); // absence, not a bucket
+    expect(parseCriteria({ srcProgram: "fitco_user" }).srcProgram).toBe("fitco_user");
+    expect(parseCriteria({ srcProgram: "not_a_program" }).srcProgram).toBeNull();
+  });
+  it("counts RFM + program as active narrowing", () => {
+    expect(activeCriteriaCount(parseCriteria({ srcRfm: "New User", srcProgram: "fitco_user" }))).toBe(2);
+    expect(activeCriteriaCount(parseCriteria({ srcRfm: "nonsense" }))).toBe(0);
+  });
+  it("treats a clinic-patient program as CLINICAL (the view_health gate); non-clinic is not", () => {
+    expect(hasClinicalCriteria(parseCriteria({ srcProgram: "fitco_user" }))).toBe(false);
+    expect(hasClinicalCriteria(parseCriteria({ srcProgram: "clinic_2024_2025" }))).toBe(true);
+    expect(hasClinicalCriteria(parseCriteria({ srcProgram: "clinic_2025_2026" }))).toBe(true);
+    expect(hasClinicalCriteria(parseCriteria({ srcRfm: "New User" }))).toBe(false);
+  });
+});
+
 describe("isRevenueCriterion", () => {
   it("accepts the four buckets incl. negative (T-10)", () => {
     for (const v of ["all", "has", "none", "negative"]) expect(isRevenueCriterion(v)).toBe(true);
@@ -94,6 +115,7 @@ describe("activeCriteriaCount", () => {
         ecoUnit: "clinic", ecoProduct: "Transaksi Clinic",
         srcHyrox: true, srcMy20fit: true, srcRecency: true,
         srcArena: false, srcGym: false, srcClinicPatient: false, srcClinicTxn: false,
+        srcRfm: null, srcProgram: null,
       }),
     ).toBe(11);
   });

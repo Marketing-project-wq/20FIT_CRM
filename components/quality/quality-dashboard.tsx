@@ -352,6 +352,83 @@ export function QualityDashboard() {
             </div>
           </Panel>
 
+          {data.stagingCoverage && (
+            <Panel
+              title="Cakupan data impor — staging_20fit_data (Sprint 3Y) ★"
+              caption="Impor yang SAMA dengan master_customer, dicocokkan lewat email ternormalisasi (K-06). Cakupan 98,6% (81.079/82.253 profil, count distinct — angka bertanggal 12 Agu 2026 karena tak bisa live via PostgREST) — kontras tajam dengan seluruh sumber lain digabung (922 profil / 1,12%). Inilah sumber yang mengisi tanggal lahir (master_customer: 0), kota, RFM, dan keikutsertaan program. Nol tulis, nol salin."
+            >
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div className="rounded-sm border border-glass-border p-3">
+                    <div className="font-display text-[22px] font-black leading-none text-ink">{formatCount(data.stagingCoverage.rowsTotal)}</div>
+                    <div className="mt-1 font-display text-[10px] font-bold uppercase tracking-wide text-ink-faint">Baris impor</div>
+                  </div>
+                  <div className="rounded-sm border border-glass-border p-3">
+                    <div className="font-display text-[22px] font-black leading-none text-ink">{formatCount(data.stagingCoverage.withEmail)}</div>
+                    <div className="mt-1 font-display text-[10px] font-bold uppercase tracking-wide text-ink-faint">Punya email</div>
+                  </div>
+                  <div className="rounded-sm border border-glass-border p-3">
+                    <div className="font-display text-[22px] font-black leading-none text-ink">{formatCount(data.stagingCoverage.withDob)}</div>
+                    <div className="mt-1 font-display text-[10px] font-bold uppercase tracking-wide text-ink-faint">Punya tgl lahir</div>
+                  </div>
+                </div>
+
+                {/* Birth-date parse outcomes — the sprint headline. Failed = flagged, not dropped. */}
+                <div className="border-t border-glass-border pt-3">
+                  <p className="font-body text-[13px] font-semibold text-ink">Penguraian tanggal lahir</p>
+                  <p className="mt-1 font-body text-[12px] leading-relaxed text-ink-soft">
+                    <strong>{formatCount(data.stagingCoverage.dobParsed)}</strong> berhasil diurai ·{" "}
+                    <strong>{formatCount(data.stagingCoverage.dobUnparseable)}</strong> gagal (ditandai, bukan dibuang) ·{" "}
+                    <strong>{formatCount(data.stagingCoverage.dobAmbiguousDayMonth)}</strong> hari-bulan ambigu (≤12 di dua posisi — tak bisa dipastikan) ·{" "}
+                    <strong>{formatCount(data.stagingCoverage.dobSwapped)}</strong> terbukti tertukar (bulan &gt; 12) ·{" "}
+                    <strong>{formatCount(data.stagingCoverage.dobImplausible)}</strong> umur mustahil (&lt;10 / &gt;100 / masa depan)
+                  </p>
+                  <p className="mt-2 font-body text-[12px] leading-relaxed text-ink-soft">
+                    Silang <span className="font-mono">Umur</span> (as-of snapshot 20 Apr 2026, memvalidasi TAHUN saja — menukar
+                    hari-bulan tak mengubah umur): {formatCount(data.stagingCoverage.umurChecked)} diperiksa ·{" "}
+                    <strong>{formatCount(data.stagingCoverage.umurYearExact)}</strong> sama persis ·{" "}
+                    {formatCount(data.stagingCoverage.umurOffByOne)} beda 1 tahun (drift snapshot, wajar) ·{" "}
+                    <strong>{formatCount(data.stagingCoverage.umurConflict)}</strong> bentrok ≥2 tahun (konflik tahun nyata)
+                  </p>
+                </div>
+
+                {/* RFM spread — misspelling kept; 0 shown (K-08). */}
+                <div className="border-t border-glass-border pt-3">
+                  <p className="font-body text-[13px] font-semibold text-ink">RFM per paid order</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {data.stagingCoverage.rfm.map((r) => (
+                      <span key={r.value} className="rounded-sm border border-glass-border px-2.5 py-1 font-mono text-[12px] text-ink">
+                        {r.value === "-" ? "− (tanpa bucket)" : r.value}: {formatCount(r.count)}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="mt-1.5 font-body text-[11px] text-ink-faint">
+                    Ejaan tersimpan dipertahankan (<span className="font-mono">Campion user</span>), tidak “diperbaiki”. <span className="font-mono">RFM per revenue</span> 0% terisi.
+                  </p>
+                </div>
+
+                {/* Program participation — every column incl. the all-zero Arena/GYM/Paid Shop (K-08). */}
+                <div className="border-t border-glass-border pt-3">
+                  <p className="font-body text-[13px] font-semibold text-ink">Keikutsertaan program</p>
+                  <p className="mt-1 font-body text-[11px] text-ink-faint">
+                    “−” = tidak ikut, NULL = kosong (dibedakan). Arena / GYM / Paid Shop nol terukur — barisnya tetap ditampilkan (K-08).
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {data.stagingCoverage.programs.map((p) => (
+                      <span
+                        key={p.key}
+                        className="rounded-sm border border-glass-border px-2.5 py-1 font-mono text-[12px] text-ink"
+                        title={p.clinical ? "kolom klinis (pasien) — agregat, bukan per-orang" : undefined}
+                      >
+                        {p.label}{p.clinical ? " ⚕" : ""}: {formatCount(p.count)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </Panel>
+          )}
+
           <Panel
             title="Cakupan sumber ekosistem tak-tercocok (Sprint 3R)"
             caption="Sumber lain (Hyrox, my20fit) dikaitkan ke profil lewat email ternormalisasi (K-06). Tingkat kecocokan RENDAH — jauh lebih banyak baris sumber yang tak punya profil master. Itu temuan kualitas data, bukan detail implementasi: menampilkan jumlah peserta tanpa menyebut yang tak tersambung membuat orang menyimpulkan itulah seluruh peserta. “Cocok” di sini = profil master berbeda (satu email bisa banyak baris sumber). rc_team_members dikecualikan (berkunci nama)."

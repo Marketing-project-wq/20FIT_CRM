@@ -10,6 +10,7 @@ import { resolveEcosystemCustomerIds } from "./engagement";
 import { resolveEnrichmentCustomerIds } from "./enrichment";
 import { resolveMultiSourceCustomerIds } from "./multisource";
 import { resolveClinicPatientCustomerIds, resolveClinicTxnCustomerIds } from "./clinic-source";
+import { resolveStagingRfmCustomerIds, resolveStagingProgramCustomerIds } from "./staging";
 import type { EcosystemUnit } from "./engagement-constants";
 
 /** Intersect a list of id sets (AND). Iterates the smallest for speed. Empty input → null. */
@@ -145,6 +146,10 @@ export async function computeSegment(
   if (criteria.srcGym) idSets.push(await resolveMultiSourceCustomerIds(admin, "gym"));
   if (criteria.srcClinicPatient) idSets.push(await resolveClinicPatientCustomerIds(admin));
   if (criteria.srcClinicTxn) idSets.push(await resolveClinicTxnCustomerIds(admin));
+  // staging_20fit_data presence (Sprint 3Y) — RFM bucket / program participation, email-matched,
+  // intersected AND-only. A clinical program is gated on view_health at the route, not here.
+  if (criteria.srcRfm) idSets.push(await resolveStagingRfmCustomerIds(admin, criteria.srcRfm));
+  if (criteria.srcProgram) idSets.push(await resolveStagingProgramCustomerIds(admin, criteria.srcProgram));
   const restrictIds = intersectSets(idSets);
 
   // 1. Matched — count of master_customer rows meeting the criteria.

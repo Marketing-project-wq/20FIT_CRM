@@ -24,22 +24,23 @@ Diperbarui: 12 Agustus 2026.
   halaman kode tapi email tak pernah datang, mudah disalahartikan sebagai "kode salah". Kode
   alur reset baru tak berguna tanpa ini.
 
-## 3. Konfirmasi sumber deploy Railway (prasyarat #4)
+## 3. Konfirmasi sumber deploy Railway — KEBERSIHAN (bukan lagi penghalang, K-27)
 - **Siapa:** pemegang akses dashboard Railway.
 - **Langkah:** Railway → service produksi → Settings → Source → Branch. Catat branch yang
   tertera. Lihat `docs/KOREKSI-DEPLOY.md`.
-- **Kalau dibiarkan:** model deploy tetap tak pasti. **Bukti (T-18) menunjukkan produksi
-  menjalankan kode BRANCH**, bukan `main` — alur email reset baru **sudah live** lewat branch.
-  Tanpa konfirmasi ini, langkah #4 (mengarahkan ke `main`) berisiko memundurkan produksi.
+- **Status:** **diturunkan** dari penghalang. Pemilik produk **memutuskan sadar** produksi
+  men-deploy dari **branch** untuk sekarang (K-27, T-18 **ditutup**). Konfirmasi ini kini hanya
+  merapikan catatan, bukan membuka apa pun. Kerjakan kapan saja.
 
-## 4. Merge PR #11 — untuk MELURUSKAN MODEL DEPLOY (bukan lagi memperbaiki reset)
-- **Siapa:** pemilik repo (izin eksplisit; agen tidak merge sendiri). **Prasyarat: #3.**
-- **Langkah:** urutan wajib di `docs/KOREKSI-DEPLOY.md` — merge PR #11 (branch→`main`) **lebih
-  dulu** agar `main` = branch, **baru** arahkan Railway ke `main`. Jangan dibalik.
-- **Kalau dibiarkan:** reset kata sandi **tetap berfungsi** (kodenya sudah live via branch),
-  jadi ini **bukan** penghalang fitur. Yang belum lurus hanyalah model deploy: `main`
-  tertinggal 6 commit, dan mengarahkan Railway ke `main` tanpa merge lebih dulu akan memundurkan
-  produksi ke jalur baca lama + angka contactability salah tanpa error (lihat KOREKSI-DEPLOY §"Kalau dibalik").
+## 4. Merge PR ke `main` — KEBERSIHAN, dikerjakan saat mengalihkan ke deploy-dari-main (K-27)
+- **Siapa:** pemilik repo (izin eksplisit; agen tidak merge sendiri).
+- **Langkah:** urutan wajib di `docs/KOREKSI-DEPLOY.md` — merge (branch→`main`) **lebih dulu**
+  agar `main` = branch, **baru** arahkan Railway ke `main`. Jangan dibalik.
+- **Status:** **diturunkan** dari penghalang jadi kebersihan (K-27). Fitur **tetap live** lewat
+  branch, jadi ini tak memblokir apa pun. Syarat yang membuatnya perlu: **begitu staf di luar
+  tim pengembang memakai sistem secara rutin**, produksi diarahkan ke `main` — dan hanya saat itu
+  urutan merge-dulu-baru-repoint jadi wajib (mengalihkan lebih dulu memundurkan produksi ke jalur
+  baca lama + angka contactability salah tanpa error; lihat KOREKSI-DEPLOY §"Kalau dibalik").
 
 ## 5. SPF, DKIM, DMARC di DNS `20fit.id`
 - **Siapa:** pemegang DNS `20fit.id`.

@@ -13,6 +13,7 @@ import { fetchProfileEngagement, type ProfileEngagement } from "@/lib/crm/engage
 import { fetchProfileEnrichment, type ProfileEnrichment } from "@/lib/crm/enrichment";
 import { fetchProfileMultiSource, type ProfileMultiSource } from "@/lib/crm/multisource";
 import { fetchProfileClinic, type ProfileClinic } from "@/lib/crm/clinic-source";
+import { fetchProfileImport, type ProfileImport } from "@/lib/crm/staging";
 import { logApiFailure } from "@/lib/crm/failure-log";
 
 export const dynamic = "force-dynamic";
@@ -124,6 +125,17 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
     clinic = null;
   }
 
+  // staging_20fit_data completion (Sprint 3Y): birth date, city, RFM, program participation,
+  // matched by normalised email. Non-fatal, read-only, no copy. Clinic-patient program flags are
+  // server-omitted for non-view_health callers (being a clinic patient infers health status).
+  let importData: ProfileImport | null = null;
+  try {
+    importData = await fetchProfileImport(admin, profile.customer_id, { canViewHealth });
+  } catch (e) {
+    logApiFailure("/audience/[id]", "staging_query_failed", { code: (e as { code?: string })?.code });
+    importData = null;
+  }
+
   // Which sensitive field KINDS were available to a view_health caller — recorded in the
   // ONE profile.viewed row (K-07), never the values, never a row per field (T2 rule).
   const sensitiveFields = new Set<string>();
@@ -167,7 +179,7 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
   }
 
   return NextResponse.json(
-    { profile, canViewHealth, engagement, enrichment, multiSource, clinic },
+    { profile, canViewHealth, engagement, enrichment, multiSource, clinic, importData },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

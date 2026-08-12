@@ -117,6 +117,26 @@ interface ProfileClinicT {
   latestBooking: { bookingCode: string | null; status: string | null; date: string | null } | null;
 }
 
+interface DobParseT {
+  status: "empty" | "unparseable" | "parsed";
+  raw: string | null;
+  iso: string | null;
+  ambiguousDayMonth: boolean;
+  swapped: boolean;
+  plausibility: "ok" | "future" | "too_old" | "too_young" | null;
+}
+interface ProfileImportT {
+  matchable: boolean;
+  matched: boolean;
+  city: string | null;
+  dob: DobParseT | null;
+  age: number | null;
+  umurSnapshot: string | null;
+  rfmPaidOrder: string | null;
+  programs: { key: string; label: string; value: string }[];
+  clinicalWithheld: boolean;
+}
+
 interface ApiResult {
   profile: Profile;
   canViewHealth: boolean;
@@ -124,6 +144,7 @@ interface ApiResult {
   enrichment: ProfileEnrichment | null;
   multiSource: ProfileMultiSourceT | null;
   clinic: ProfileClinicT | null;
+  importData: ProfileImportT | null;
 }
 
 const idr = new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 });
@@ -403,6 +424,137 @@ function ClinicSection({ clinic }: { clinic: ProfileClinicT | null }) {
             Hanya identitas + volume keterlibatan + booking terakhir. Isi klinis (diagnosa, hasil skrining, obat, operasi)
             <strong> sengaja tidak ditampilkan</strong> — CS mengenali pasien &amp; jadwal, bukan membaca rekam medis. Cocok via
             telepon dulu (12 vs 106), lewat <span className="font-mono">patient_id</span>, nol tulis.
+          </p>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** DOB plausibility → short human note. */
+function dobPlausibilityNote(p: DobParseT["plausibility"]): string | null {
+  switch (p) {
+    case "future": return "tanggal di masa depan — mustahil, ditandai";
+    case "too_old": return "umur > 100 — kemungkinan salah, ditandai";
+    case "too_young": return "umur < 10 — kemungkinan salah, ditandai";
+    default: return null;
+  }
+}
+
+/**
+ * Data impor 20FIT (staging_20fit_data, Sprint 3Y). Ungated marketing demographic — birth date,
+ * age (COMPUTED from the date, never the stale Umur snapshot), city, RFM, program participation.
+ * Birth-date PROVENANCE is explicit; when a NIK-derived date (gated) also exists and DISAGREES,
+ * BOTH are shown with their source — never a silent pick (same rule as Sprint 3S). Clinic-patient
+ * program flags are server-omitted for non-view_health callers.
+ */
+function ImportSection({
+  importData,
+  nikDob,
+  canViewHealth,
+}: {
+  importData: ProfileImportT | null;
+  nikDob: string | null;
+  canViewHealth: boolean;
+}) {
+  return (
+    <section className="glass shadow-glass p-6 lg:col-span-2">
+      <div className="flex items-center gap-2">
+        <Network className="h-4 w-4 text-ink-soft" aria-hidden />
+        <h2 className="font-display text-[16px] font-extrabold uppercase tracking-wide text-ink">Data impor 20FIT</h2>
+      </div>
+      {importData === null ? (
+        <div className="mt-4 rounded-sm border border-dashed border-glass-border px-4 py-6 text-center">
+          <Badge tone="amber">Gagal dimuat</Badge>
+          <p className="mx-auto mt-2 max-w-xl font-body text-[13px] text-ink-soft">Data impor gagal dimuat. Sisa profil tetap tampil.</p>
+        </div>
+      ) : !importData.matchable ? (
+        <p className="mt-4 font-body text-[13px] italic text-ink-faint">Profil ini tak punya email untuk dicocokkan ke data impor.</p>
+      ) : !importData.matched ? (
+        <p className="mt-4 font-body text-[13px] italic text-ink-faint">Profil ini tidak ada di data impor <span className="font-mono">staging_20fit_data</span>.</p>
+      ) : (
+        <div className="mt-2">
+          {/* Birth date + provenance. */}
+          <Field label="Tanggal lahir (data impor)" mono>
+            {(() => {
+              const d = importData.dob;
+              if (!d || d.status === "empty") return <Empty />;
+              if (d.status === "unparseable") {
+                return (
+                  <span className="flex flex-col gap-0.5">
+                    <span>{d.raw ?? "—"}</span>
+                    <span className="font-body text-[11px] not-italic text-amber">format tak dikenal — ditandai, tidak diurai</span>
+                  </span>
+                );
+              }
+              const stagingIso = d.iso;
+              const disagree = canViewHealth && nikDob && stagingIso && nikDob !== stagingIso;
+              const plaus = dobPlausibilityNote(d.plausibility);
+              return (
+                <span className="flex flex-col gap-0.5">
+                  <span>
+                    {stagingIso}
+                    {importData.age != null ? <span className="font-body text-[12px] text-ink-faint"> · umur {importData.age} th (dihitung)</span> : null}
+                    <span className="font-body text-[11px] text-ink-faint"> · dari data impor 20FIT</span>
+                  </span>
+                  {disagree && (
+                    <>
+                      <span>dari NIK Hyrox: {nikDob}</span>
+                      <span className="font-body text-[11px] not-italic text-amber">
+                        dua sumber berbeda — ditampilkan keduanya beserta asalnya, tidak dipilih diam-diam
+                      </span>
+                    </>
+                  )}
+                  {d.ambiguousDayMonth && (
+                    <span className="font-body text-[11px] not-italic text-amber">
+                      hari &amp; bulan sama-sama ≤ 12 — urutan tak bisa dipastikan; ditandai, tidak ditebak
+                    </span>
+                  )}
+                  {d.swapped && (
+                    <span className="font-body text-[11px] not-italic text-amber">
+                      tersimpan hari-dulu (bulan &gt; 12) — dibaca ulang dengan benar &amp; ditandai
+                    </span>
+                  )}
+                  {plaus && <span className="font-body text-[11px] not-italic text-amber">{plaus}</span>}
+                </span>
+              );
+            })()}
+          </Field>
+
+          <Field label="Kota (data impor)">{importData.city ? importData.city : <Empty />}</Field>
+
+          <Field label="RFM (per paid order)">
+            {importData.rfmPaidOrder && importData.rfmPaidOrder !== "-" ? (
+              <Badge tone="neutral">{importData.rfmPaidOrder}</Badge>
+            ) : (
+              <span className="font-body text-[13px] italic text-ink-faint">{importData.rfmPaidOrder === "-" ? "− (tanpa bucket)" : "belum terisi"}</span>
+            )}
+          </Field>
+
+          <Field label="Program yang diikuti">
+            {importData.programs.length > 0 ? (
+              <span className="flex flex-wrap gap-1.5">
+                {importData.programs.map((p) => <Badge key={p.key} tone="neutral">{p.label}</Badge>)}
+              </span>
+            ) : (
+              <span className="font-body text-[13px] italic text-ink-faint">tidak tercatat ikut program apa pun di data impor</span>
+            )}
+          </Field>
+
+          {importData.clinicalWithheld && (
+            <p className="mt-2 font-body text-[11px] italic text-ink-faint">
+              Program klinik (pasien 20FIT Clinic) disembunyikan — butuh <span className="font-mono">profile.view_health</span> (menandai pasien = status kesehatan).
+            </p>
+          )}
+          {importData.umurSnapshot && (
+            <p className="mt-2 font-body text-[11px] leading-relaxed text-ink-faint">
+              Kolom <span className="font-mono">Umur</span> ({importData.umurSnapshot}) adalah snapshot 20 Apr 2026 yang sudah basi —
+              dipakai hanya sebagai pemeriksa silang tahun, bukan umur yang ditampilkan.
+            </p>
+          )}
+          <p className="mt-2 font-body text-[11px] leading-relaxed text-ink-faint">
+            Dari <span className="font-mono">staging_20fit_data</span> (impor yang sama dengan master), dicocokkan lewat{" "}
+            <strong>email ternormalisasi</strong> (K-06) — bukan nama. Nol tulis, nol salin: dibaca &amp; digabung saat tampil.
           </p>
         </div>
       )}
@@ -737,6 +889,14 @@ export function ProfileDetail({ id, canEditConsent }: { id: string; canEditConse
             Sensitive Hyrox identity fields are gated + masked; reveal is separately audited. */}
         <EnrichmentSection enrichment={data.enrichment} canViewHealth={data.canViewHealth} />
         <MultiSourceSection multiSource={data.multiSource} />
+        {/* Data impor 20FIT — the same import as master_customer, matched by email. Carries the
+            birth date master_customer lost. Provenance vs the NIK-derived date is shown, not
+            silently reconciled. */}
+        <ImportSection
+          importData={data.importData}
+          nikDob={data.enrichment?.hyrox.nikDerived?.valid ? data.enrichment.hyrox.nikDerived.birthDate : null}
+          canViewHealth={data.canViewHealth}
+        />
         <ClinicSection clinic={data.clinic} />
 
         {/* Health flags — structural gate, but no source exists. */}

@@ -255,6 +255,13 @@ tabel kini **wajib** menyebut RLS **dan** policy **dan** grant (K-23), dan kueri
 masuk monitoring supaya bisa dijalankan ulang, bukan diandalkan pada ingatan.
 
 ## T-18 · Produksi menjalankan kode BRANCH, bukan `main` — dokumentasi deploy salah
+> **DITUTUP (Sprint 3Y, 12 Agu 2026).** Pemilik produk **menerima secara sadar** bahwa produksi
+> men-deploy dari branch untuk sekarang (kecepatan > gate merge; belum ada pengguna eksternal),
+> dengan syarat pembalikan tercatat: begitu staf luar memakai sistem rutin → arahkan ke `main`
+> (merge dulu, repoint kemudian). Lihat **K-27**. Pertanyaan "branch atau main?" kini
+> **diketahui (branch) dan diterima** — bukan lagi kondisi tak disadari. Konfirmasi dashboard
+> Railway turun jadi kebersihan (MENUNGGU #3/#4), bukan penghalang. Detail bukti tetap di bawah.
+
 **Migrasi 11/12 (12 Agu 2026).** Reset kata sandi nyata berhasil di produksi
 (marketing@20fit.id masuk 04:58:21 UTC) dengan tiga baris audit
 `login.password_reset_requested`, `actor_email='system:password-reset'`,

@@ -274,3 +274,28 @@ tak punya granularitas purpose untuk dibedakan.
 "berhenti marketing saja"), keputusan ini **wajib ditinjau ulang di DUA tempat sekaligus** —
 `isContactableForPurpose` DAN `crm_contactable_counts` — atau keduanya diverge diam-diam lagi.
 **Membalikkan:** ubah kedua tempat itu bersama + perbarui test pengunci; jangan satu saja.
+
+## K-27 · Produksi men-deploy dari branch kerja — keputusan sadar pemilik produk (Sprint 3Y)
+**Latar:** K-25 (Sprint 3Y sebelumnya) **menurunkan dari bukti** bahwa produksi Railway
+menjalankan kode **branch**, bukan `main` — dan T-18 mengangkat "sumber deploy mana yang
+benar" sebagai pertanyaan terbuka. Sprint ini pemilik produk **memutuskan dan menerima**
+kondisi itu, bukan sekadar mencatatnya sebagai kejutan.
+
+**Keputusan:** produksi **tetap men-deploy dari branch kerja untuk sekarang.** Belum ada
+pengguna aktif di luar tim pengembang, dan **kecepatan iterasi lebih berharga** daripada
+disiplin gate merge-dulu pada tahap ini. Ini **sah selama tercatat sebagai pilihan sadar** —
+bukan kondisi yang tak disadari selama dua belas sprint (itulah yang T-18/K-25 perbaiki).
+
+**Konsekuensi yang tetap berlaku:** setiap push ke branch **berpotensi langsung ke produksi**
+(K-25). Maka disiplin gate — nol perubahan data tanpa izin, nol setelan bersama disentuh, nol
+tulis ke tabel tim lain — berlaku pada **setiap push**, bukan hanya merge. Larangan "jangan
+merge ke `main` tanpa izin" tetap ada; ia sekadar bukan satu-satunya pintu ke produksi.
+
+**Syarat pembalikan (eksplisit):** begitu **staf di luar tim pengembang memakai sistem ini
+secara rutin**, produksi **diarahkan ke `main`**. Urutannya **wajib**: merge dulu, arahkan
+kemudian (jangan repoint ke `main` yang belum berisi kode yang sedang berjalan — itu
+malah menurunkan versi produksi). Sampai saat itu, "konfirmasi Railway" dan "merge PR" turun
+dari **penghalang** jadi **kebersihan** yang bisa dikerjakan kapan saja.
+
+**Status T-18:** **DITUTUP.** Pertanyaan "produksi deploy dari branch atau main?" kini
+**diketahui (branch) dan diterima (sadar, dengan syarat pembalikan di atas).**

@@ -1,5 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { fetchStagingDashboard } from "./staging";
 
 /**
  * Dashboard KPI stats — READ-ONLY aggregates over master_customer + crm_consent +
@@ -35,6 +36,11 @@ export interface DashboardStats {
   /** Most recent created_at, or null if the table is empty. Data FRESHNESS, not a growth
    *  signal — master_customer arrived as batch loads, not a live feed. */
   lastProfileAt: string | null;
+  /** staging_20fit_data rows carrying a birth date (master_customer has 0 — Sprint 3Y). The
+   *  distinct match to profiles (98,6%) is a dated artifact, referenced in the card hint. */
+  importDob: number;
+  /** RFM ("per paid order") spread incl the "-" absence bucket (0 = measured zero, K-08). */
+  importRfm: { value: string; count: number }[];
 }
 
 interface ContactableCounts {
@@ -56,12 +62,15 @@ export async function fetchDashboardStats(admin: SupabaseClient): Promise<Dashbo
     { count, error: sizeErr },
     { data: fresh, error: freshErr },
     { data: counts, error: rpcErr },
+    staging,
   ] = await Promise.all([
     sizeQ,
     freshQ,
     // Migrasi 13: distinct-then-anti-join with per-txn work_mem; suppression subtracted inside;
     // ALWAYS returns both keys (0 = measured zero, K-08). Segment builder does NOT use this.
     admin.rpc("crm_contactable_counts"),
+    // staging_20fit_data summary (Sprint 3Y): birth-date count + RFM spread. Read-only, no copy.
+    fetchStagingDashboard(admin),
   ]);
   if (sizeErr) throw sizeErr;
   if (freshErr) throw freshErr;
@@ -74,5 +83,7 @@ export async function fetchDashboardStats(admin: SupabaseClient): Promise<Dashbo
     contactableMarketing: c.marketing ?? 0,
     contactableService: c.transactional ?? 0,
     lastProfileAt: (fresh as { created_at: string | null } | null)?.created_at ?? null,
+    importDob: staging.importDob,
+    importRfm: staging.importRfm,
   };
 }

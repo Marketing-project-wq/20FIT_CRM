@@ -246,3 +246,58 @@ Indeks `crm_consent_purpose_status_customer_idx (purpose, status) include (custo
   work_mem` per sesi), dan RPC dilarang siklus ini. Jadi ~2,9 dtk = lantai aplikasi sekarang.
 - Perbaikan sub-detik sesungguhnya = **RPC `SECURITY DEFINER`** yang menjalankan `count(distinct)`
   dengan `set local work_mem` per panggilan — tindak lanjut terjadwal, **belum dibuat**.
+
+---
+
+## staging_20fit_data — sumber impor asli (Sprint 3Y, diukur 12 Agu 2026)
+
+Tabel yang sama dengan impor `master_customer`, **RLS OFF** (T-02). Nol tulis, nol salin —
+dibaca & digabung saat tampil.
+
+**Volume & kecocokan:**
+
+| | Terukur |
+|---|---|
+| Baris | **88.536** |
+| Punya email | **88.445** (88.409 distinct ternormalisasi) |
+| Cocok ke `master_customer` lewat email | **81.079** dari 82.253 profil = **98,62%** |
+| Punya tanggal lahir | **5.467** (`master_customer.date_of_birth` = **0**) |
+| Punya kota | 5.834 · Punya Umur | 5.467 |
+
+`count(distinct join)` tak bisa live via PostgREST → 98,6% diangkat sebagai artefak bertanggal
+(`VERIFIED_ARTIFACTS.staging_email_match`), bukan angka live.
+
+**Tanggal lahir (semua ISO `yyyy-mm-dd`):**
+- 0 baris dengan field bulan > 12 → **tidak ada yang terbukti tertukar** (beda dari
+  `cf_hyrox_participants`: 321 tertukar, T-16).
+- **2.232 punya bulan DAN hari ≤ 12** → urutan tak bisa dipastikan dari nilai → **ditandai
+  ambigu**, tak ditebak. 3.235 tak ambigu (hari > 12 mengunci urutan).
+- Umur silang (as-of snapshot 20 Apr 2026, memvalidasi TAHUN — menukar hari-bulan tak mengubah
+  umur): 4.525 sama persis, 941 beda 1 tahun (drift snapshot, wajar), **0 beda ≥ 2 tahun**
+  (nol konflik tahun nyata). 1 baris Umur non-numerik.
+- Umur tak masuk akal: 13 > 100 th (thn < 1920), 1 di masa depan, 89 < 10 th → **ditandai
+  `implausible`**, bukan dibuang. 5.365 wajar.
+- **Umur dihitung dari tanggal, bukan dari kolom `Umur`** (snapshot basi 20 Apr 2026).
+
+**RFM (`RFM per paid order`), 5 nilai tersimpan — ejaan dipertahankan apa adanya:**
+
+| nilai | jumlah |
+|---|---|
+| New User | 81.213 |
+| Potensial user | 7.057 |
+| `-` (tanpa bucket) | 200 |
+| Loyal user | 65 |
+| `Campion user` (salah eja, **tidak** diperbaiki) | 1 |
+
+`RFM per revenue` = **0% terisi** (semua NULL).
+
+**Keikutsertaan program (`-` = tidak, NULL = kosong — dibedakan). Diukur ulang:**
+
+| kolom | ikut | | kolom | ikut |
+|---|---|---|---|---|
+| Fitco User | 74.914 | | Iwhm 2025 5k/10k/21k | 1.251 / 1.179 / 414 |
+| Mandiri RUNFEST 5K/2.7K/10K | 6.762 / 416 / 686 | | Raya run 2025 5k/10k | 1.014 / 998 |
+| Jhm 2025 5k/10K/HM | 2.555 / 2.082 / 1.431 | | Sportfest Half/Relay/Double/Single | 73 / 24 / 80 / 70 |
+| Jhm 2024 5k/10K/HM | 124 / 160 / 75 | | Training / Physio / Protection | 65 / 7 / 17 |
+| Padel rabel (`Padel rebel`) | 1.358 | | Pasien Clinic 24-25 / 25-26 (klinis) | 100 / 365 |
+| **Arena / GYM / Paid Shop** | **0 / 0 / 0** (nol terukur, K-08 — barisnya tetap ditampilkan) | | | |

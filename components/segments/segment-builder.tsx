@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Filter, Clock, Users, Send, Network } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ECOSYSTEM_UNITS, ECOSYSTEM_PRODUCTS_BY_UNIT } from "@/lib/crm/engagement-constants";
+import { STAGING_RFM_VALUES, STAGING_PROGRAMS } from "@/lib/crm/staging-constants";
 import { EMPTY_CRITERIA, type SegmentCriteria } from "@/lib/crm/segment";
 import { FilterTreeBuilder, rowsToTree, type Row } from "@/components/segments/filter-tree-builder";
 
@@ -82,6 +83,8 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth }
           srcGym: c.srcGym,
           srcClinicPatient: c.srcClinicPatient,
           srcClinicTxn: c.srcClinicTxn,
+          srcRfm: c.srcRfm,
+          srcProgram: c.srcProgram,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -223,6 +226,46 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth }
               Arena/gym cocok lewat <strong>email</strong>; klinik lewat <strong>telepon</strong> dulu (K-06). Semua kondisi
               sumber di-<strong>AND</strong>-kan (irisan himpunan). <strong>OR lintas-tabel tidak tersedia</strong> — PostgREST
               tak bisa mengungkapkannya jujur dalam satu query, jadi tak disediakan pilihannya alih-alih diam-diam ber-AND.
+            </p>
+          </div>
+
+          {/* Data impor 20FIT (staging_20fit_data, Sprint 3Y) — RFM + keikutsertaan program.
+              Cocok lewat email (K-06), 98,6% pool. Program klinik (pasien klinik) digerbangi
+              view_health seperti sumber klinis lain. */}
+          <div className="mt-3 flex flex-col gap-3 border-t border-glass-border/60 pt-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <label className="flex flex-col gap-1">
+                <span className="font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">RFM (per paid order)</span>
+                <select className={selectCls} value={c.srcRfm ?? ""} onChange={(e) => set("srcRfm", e.target.value || null)}>
+                  <option value="">Semua RFM</option>
+                  {STAGING_RFM_VALUES.map((v) => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">Ikut program</span>
+                <select className={selectCls} value={c.srcProgram ?? ""} onChange={(e) => set("srcProgram", e.target.value || null)}>
+                  <option value="">Semua program</option>
+                  <optgroup label="Program (non-klinis)">
+                    {STAGING_PROGRAMS.filter((p) => !p.clinical).map((p) => (
+                      <option key={p.key} value={p.key}>{p.label}</option>
+                    ))}
+                  </optgroup>
+                  {canViewHealth && (
+                    <optgroup label="Klinik (kesehatan · view_health)">
+                      {STAGING_PROGRAMS.filter((p) => p.clinical).map((p) => (
+                        <option key={p.key} value={p.key}>{p.label}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+              </label>
+            </div>
+            <p className="font-body text-[11px] leading-relaxed text-ink-faint">
+              Dari <span className="font-mono">staging_20fit_data</span> — impor yang sama dengan master, cocok{" "}
+              <strong>98,6%</strong> lewat email (K-06). RFM ditampilkan apa adanya termasuk ejaan tersimpan{" "}
+              (<span className="font-mono">Campion user</span>) — tidak “diperbaiki” agar tetap cocok dengan sumber. Program{" "}
+              <strong>pasien klinik</strong> menyimpulkan status kesehatan, jadi {canViewHealth ? "digerbangi" : "disembunyikan —"}{" "}
+              <span className="font-mono">profile.view_health</span>. Di-<strong>AND</strong>-kan dengan kriteria lain.
             </p>
           </div>
         </div>

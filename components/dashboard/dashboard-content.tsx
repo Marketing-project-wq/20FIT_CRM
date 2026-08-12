@@ -8,6 +8,8 @@ interface DashboardStats {
   contactableMarketing: number;
   contactableService: number;
   lastProfileAt: string | null;
+  importDob: number;
+  importRfm: { value: string; count: number }[];
 }
 
 function todayWIB(): string {
@@ -88,6 +90,8 @@ export function DashboardContent() {
   const contactableMarketingValue = sourced(stats ? formatCount(stats.contactableMarketing) : DASH);
   const contactableServiceValue = sourced(stats ? formatCount(stats.contactableService) : DASH);
   const freshnessValue = sourced(stats ? formatDate(stats.lastProfileAt) : DASH);
+  // staging_20fit_data (Sprint 3Y): birth date exists where master_customer had none.
+  const importDobValue = sourced(stats ? formatCount(stats.importDob) : DASH);
 
   return (
     <div className="space-y-8">
@@ -149,7 +153,40 @@ export function DashboardContent() {
           value={freshnessValue}
           hint="tanggal muatan batch terakhir (2 muatan: 20 Apr & 31 Jul 2026) — bukan feed berkelanjutan"
         />
+        {/* Sprint 3Y: staging_20fit_data carries a birth date master_customer never got. This
+            is a SOURCE count (rows with a DOB); the distinct match to profiles (~5.439, 98,6%
+            email) is a dated artifact noted in the hint, not a live claim. */}
+        <StatCard
+          label="Tanggal lahir · data impor"
+          value={importDobValue}
+          hint="baris staging_20fit_data punya tgl lahir (master_customer: 0) · ~98,6% cocok ke profil (12 Agu 2026)"
+        />
       </section>
+
+      {/* RFM spread (staging_20fit_data "per paid order"). A distribution, not a single KPI —
+          shown as a small breakdown. 0 = measured zero (K-08); the stored misspelling
+          "Campion user" is kept verbatim (not "corrected" to Champion). */}
+      {state === "ready" && stats && stats.importRfm.length > 0 && (
+        <section>
+          <h2 className="font-display text-[13px] font-bold uppercase tracking-wide text-ink-soft">
+            Sebaran RFM · data impor 20FIT
+          </h2>
+          <p className="mt-1 font-body text-[12px] text-ink-faint">
+            Dari <span className="font-mono">staging_20fit_data.&quot;RFM per paid order&quot;</span>. “−” = tanpa bucket
+            (bukan kosong). Ejaan tersimpan dipertahankan apa adanya. <span className="font-mono">RFM per revenue</span> 0% terisi.
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            {stats.importRfm.map((r) => (
+              <div key={r.value} className="glass rounded-card p-4">
+                <div className="font-display text-[26px] font-black leading-none text-ink">{formatCount(r.count)}</div>
+                <div className="mt-1 font-display text-[10px] font-bold uppercase tracking-wide text-ink-faint">
+                  {r.value === "-" ? "− (tanpa bucket)" : r.value}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }
