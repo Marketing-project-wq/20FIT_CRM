@@ -375,6 +375,78 @@ export function QualityDashboard() {
           </Panel>
 
           <Panel
+            title="Cakupan sumber lain — arena / gym (TUGAS 3–4)"
+            caption="Dikaitkan lewat email ternormalisasi (K-06). Cakupan RENDAH = identitas antar-sistem 20FIT belum terpadu — temuan kualitas data, bukan bug. DUA sebab dengan gejala sama, dibedakan di angka: bila “punya email” < “baris”, identifier-nya kosong; bila “cocok” < “punya email”, orangnya memang tak ada di master_customer. Baris bernilai nol tetap ditampilkan (0 terukur, bukan tak ada sumber)."
+          >
+            <div className="space-y-3.5">
+              {data.multiSourceCoverage.map((s) => (
+                <div key={s.key} className="flex flex-wrap items-start justify-between gap-3 border-t border-glass-border py-3.5 first:border-t-0 first:pt-0">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-body text-[14px] font-semibold text-ink">{s.label}</p>
+                    <p className="mt-1 font-body text-[12px] text-ink-soft">
+                      {formatCount(s.matchedProfiles)} profil cocok · {formatCount(s.withKey)} punya email · {formatCount(s.sourceRows)} baris
+                    </p>
+                    <p className="mt-0.5 font-body text-[11px] text-ink-faint">
+                      {s.withKey < s.sourceRows
+                        ? `${formatCount(s.sourceRows - s.withKey)} baris tanpa email (identifier kosong)`
+                        : "semua baris punya email"}
+                      {" · "}
+                      {formatCount(Math.max(s.withKey - s.matchedProfiles, 0))} punya email tapi tak ada di master
+                    </p>
+                  </div>
+                  <Badge tone={s.matchedProfiles === 0 ? "neutral" : "amber"}>
+                    {formatCount(s.matchedProfiles)}/{formatCount(s.sourceRows)}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          </Panel>
+
+          {data.clinicCoverage && (
+            <Panel
+              title="Cakupan klinik (TUGAS 3)"
+              caption="Klinik dicocokkan TELEPON dulu (K-06): email hanya menemukan sebagian kecil karena banyak pasien tak punya email — bukan karena mereka tak ada di master. Transaksi tak-tertaut adalah sebab BERBEDA (patient_id NULL dari impor spreadsheet), ditampilkan terpisah agar tak mengaburkan tingkat kecocokan."
+            >
+              <div className="space-y-3.5">
+                <div className="flex flex-wrap items-start justify-between gap-3 border-t border-glass-border py-3.5 first:border-t-0 first:pt-0">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-body text-[14px] font-semibold text-ink">clinic_patients</p>
+                    <p className="mt-1 font-body text-[12px] text-ink-soft">
+                      <strong>{formatCount(data.clinicCoverage.matchedByPhone)}</strong> cocok via telepon ·{" "}
+                      {formatCount(data.clinicCoverage.matchedByEmail)} via email · dari {formatCount(data.clinicCoverage.patientsRows)} pasien
+                    </p>
+                    <p className="mt-0.5 font-body text-[11px] text-ink-faint">
+                      {formatCount(data.clinicCoverage.patientsWithPhone)} punya telepon ·{" "}
+                      {formatCount(data.clinicCoverage.patientsWithEmail)} punya email — itu sebabnya telepon jauh lebih tinggi
+                    </p>
+                  </div>
+                  <Badge tone={data.clinicCoverage.matchedByPhone === 0 ? "neutral" : "amber"}>
+                    {formatCount(data.clinicCoverage.matchedByPhone)}/{formatCount(data.clinicCoverage.patientsRows)}
+                  </Badge>
+                </div>
+                <div className="flex flex-wrap items-start justify-between gap-3 border-t border-glass-border py-3.5">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-body text-[14px] font-semibold text-ink">clinic_transactions — tautan pasien</p>
+                    <p className="mt-1 font-body text-[12px] text-ink-soft">
+                      {formatCount(data.clinicCoverage.transactionsLinked)} tertaut · <strong>{formatCount(data.clinicCoverage.transactionsNullFk)} patient_id NULL</strong> dari {formatCount(data.clinicCoverage.transactionsTotal)}
+                    </p>
+                    <p className="mt-0.5 font-body text-[11px] text-ink-faint">
+                      Sebab berbeda: impor spreadsheet yang tak pernah ditautkan ke pasien — bukan tingkat kecocokan. Yang tertaut valid 100%.
+                    </p>
+                  </div>
+                  <Badge tone={issueTone(data.clinicCoverage.transactionsNullFk)}>
+                    {formatCount(data.clinicCoverage.transactionsNullFk)}
+                  </Badge>
+                </div>
+                <p className="border-t border-glass-border pt-3 font-body text-[11px] text-ink-faint">
+                  Terlalu tipis untuk ditampilkan per-profil (dicatat di sini):{" "}
+                  {data.clinicCoverage.sparse.map((t) => `${t.table} (${formatCount(t.rows)})`).join(" · ")}.
+                </p>
+              </div>
+            </Panel>
+          )}
+
+          <Panel
             title="Temuan yang tidak bisa dihitung live"
             caption={`Hal-hal berikut sudah diverifikasi langsung ke database pada ${ARTIFACTS_VERIFIED_ON}, tetapi tidak bisa dihitung ulang lewat API baca yang dipakai halaman ini (tidak ada perbandingan antar-kolom maupun regex). Angkanya statis dan sengaja diberi tanggal — jangan dibaca sebagai angka hari ini.`}
           >

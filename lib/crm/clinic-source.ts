@@ -7,6 +7,7 @@ import {
   CLINIC_PATIENT_SENSITIVE_COLUMNS,
   CLINIC_BOOKING_SAFE_COLUMNS,
 } from "./clinic-source-constants";
+import type { ClinicCoverage } from "./quality-types";
 
 /**
  * CLINIC chain (TUGAS 3) — READ-ONLY, server-only, service-role client passed in by the route.
@@ -70,6 +71,79 @@ const NO_MATCH: ProfileClinic = {
   gated: true, matched: false, keyUsed: null, patientCode: null,
   sensitive: null, counts: null, latestBooking: null,
 };
+
+// ── COVERAGE (TUGAS 4): clinic reach for /quality. AGGREGATE counts only — no health
+//    content, no per-patient rows — so this is NOT view_health gated (it is a data-quality
+//    figure, and /quality is already gated on profile.view_list). ──────────────────────────
+
+async function count(
+  admin: SupabaseClient,
+  table: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  refine?: (q: any) => any,
+): Promise<number> {
+  let q = admin.from(table).select("*", { count: "exact", head: true });
+  if (refine) q = refine(q);
+  const { count: c, error } = await q;
+  if (error) throw error;
+  return c ?? 0;
+}
+
+/** Distinct master profiles reachable from clinic_patients via one identity column. Emails are
+ *  matched by normalizeEmail; phones by normalizePhoneID (both K-06). Small table (143), so a
+ *  single pull is fine. */
+async function clinicMatched(admin: SupabaseClient, by: "email" | "phone"): Promise<number> {
+  const col = by === "email" ? "email" : "phone";
+  const { data, error } = await admin.from("clinic_patients").select(col).not(col, "is", null);
+  if (error) throw error;
+  const rows = (data ?? []) as unknown as Record<string, string | null>[];
+  const keys = new Set<string>();
+  for (const r of rows) {
+    const k = by === "email" ? normalizeEmail(r[col]) : normalizePhoneID(r[col]);
+    if (k) keys.add(k);
+  }
+  if (keys.size === 0) return 0;
+  const masterCol = by === "email" ? "email_normalized" : "phone_normalized";
+  const ids = new Set<string>();
+  const list = Array.from(keys);
+  const CHUNK = 300;
+  for (let i = 0; i < list.length; i += CHUNK) {
+    const { data: d, error: e } = await admin
+      .from("master_customer")
+      .select("customer_id")
+      .in(masterCol, list.slice(i, i + CHUNK));
+    if (e) throw e;
+    for (const row of (d ?? []) as { customer_id: string }[]) ids.add(row.customer_id);
+  }
+  return ids.size;
+}
+
+export async function fetchClinicCoverage(admin: SupabaseClient): Promise<ClinicCoverage> {
+  const [
+    patientsRows, patientsWithPhone, patientsWithEmail,
+    matchedByEmail, matchedByPhone,
+    transactionsTotal, transactionsLinked,
+    posture, packages,
+  ] = await Promise.all([
+    count(admin, "clinic_patients"),
+    count(admin, "clinic_patients", (q) => q.not("phone", "is", null)),
+    count(admin, "clinic_patients", (q) => q.not("email", "is", null)),
+    clinicMatched(admin, "email"),
+    clinicMatched(admin, "phone"),
+    count(admin, "clinic_transactions"),
+    count(admin, "clinic_transactions", (q) => q.not("patient_id", "is", null)),
+    count(admin, "clinic_posture_scans"),
+    count(admin, "clinic_patient_packages"),
+  ]);
+  return {
+    patientsRows, patientsWithPhone, patientsWithEmail, matchedByEmail, matchedByPhone,
+    transactionsTotal, transactionsLinked, transactionsNullFk: transactionsTotal - transactionsLinked,
+    sparse: [
+      { table: "clinic_posture_scans", rows: posture },
+      { table: "clinic_patient_packages", rows: packages },
+    ],
+  };
+}
 
 async function countByPatient(admin: SupabaseClient, table: string, patientId: string): Promise<number> {
   const { count, error } = await admin

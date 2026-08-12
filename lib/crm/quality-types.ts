@@ -71,6 +71,33 @@ export interface EnrichmentSourceCoverage {
   matchedProfiles: number;
 }
 
+/** Multi-source coverage (TUGAS 4) — arena/gym sources matched by email. `withKey` (rows that
+ *  HAVE the match identifier) lets the reader tell "identifier empty" (withKey < sourceRows)
+ *  from "not in master_customer" (matchedProfiles < withKey) — two causes, one symptom. */
+export interface SourceCoverage {
+  key: string;
+  label: string;
+  sourceRows: number;
+  withKey: number;
+  matchedProfiles: number;
+  keyUsed: "email" | "phone";
+}
+
+/** Clinic coverage (TUGAS 4). Aggregate counts only — no health content, so not view_health
+ *  gated. Shows why email-first fails clinic (12 vs 106) + the clinic_transactions NULL-FK
+ *  finding kept SEPARATE from match rate (different cause). */
+export interface ClinicCoverage {
+  patientsRows: number;
+  patientsWithPhone: number;
+  patientsWithEmail: number;
+  matchedByEmail: number;
+  matchedByPhone: number;
+  transactionsTotal: number;
+  transactionsLinked: number;
+  transactionsNullFk: number;
+  sparse: { table: string; rows: number }[];
+}
+
 export interface QualitySnapshot {
   /** Rows in master_customer — the denominator for every percentage below. */
   total: number;
@@ -84,6 +111,10 @@ export interface QualitySnapshot {
   ecosystem: EcosystemQuality;
   /** Enrichment source coverage (Hyrox / my20fit) — Sprint 3R, computed live. */
   enrichmentCoverage: EnrichmentSourceCoverage[];
+  /** Multi-source coverage (arena/gym) — TUGAS 4, computed live. */
+  multiSourceCoverage: SourceCoverage[];
+  /** Clinic coverage + the clinic_transactions NULL-FK finding — TUGAS 4, computed live. */
+  clinicCoverage: ClinicCoverage | null;
   /** ISO timestamp the snapshot was computed. Never cached. */
   computedAt: string;
 }

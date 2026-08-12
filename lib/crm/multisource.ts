@@ -7,6 +7,7 @@ import {
   type MatchKey,
   type MultiSourceDef,
 } from "./multisource-constants";
+import type { SourceCoverage } from "./quality-types";
 
 /**
  * Multi-source profile completion (TUGAS 3) — READ-ONLY, server-only, service-role client
@@ -137,4 +138,68 @@ export async function fetchProfileMultiSource(
   }
 
   return { matchable: true, sources };
+}
+
+// ── COVERAGE (TUGAS 4): how many profiles each source reaches, for /quality ──────────────
+
+const PAGE = 1000;
+const CEILING = 200_000;
+
+async function rowCount(
+  admin: SupabaseClient,
+  table: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  refine?: (q: any) => any,
+): Promise<number> {
+  let q = admin.from(table).select("*", { count: "exact", head: true });
+  if (refine) q = refine(q);
+  const { count, error } = await q;
+  if (error) throw error;
+  return count ?? 0;
+}
+
+async function emailMatchedProfiles(admin: SupabaseClient, def: MultiSourceDef): Promise<number> {
+  const emails = new Set<string>();
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await admin
+      .from(def.table)
+      .select(def.emailColumn)
+      .not(def.emailColumn, "is", null)
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    const batch = (data ?? []) as unknown as Record<string, unknown>[];
+    for (const r of batch) {
+      const e = normalizeEmail(r[def.emailColumn] as string | null);
+      if (e) emails.add(e);
+    }
+    if (batch.length < PAGE) break;
+    if (emails.size > CEILING) throw new Error("multisource email set exceeded ceiling");
+  }
+  if (emails.size === 0) return 0;
+  const ids = new Set<string>();
+  const list = Array.from(emails);
+  const CHUNK = 300;
+  for (let i = 0; i < list.length; i += CHUNK) {
+    const { data, error } = await admin
+      .from("master_customer")
+      .select("customer_id")
+      .in("email_normalized", list.slice(i, i + CHUNK));
+    if (error) throw error;
+    for (const r of (data ?? []) as { customer_id: string }[]) ids.add(r.customer_id);
+  }
+  return ids.size;
+}
+
+/** Coverage for every arena/gym source (email-matched). Live, per request. */
+export async function fetchMultiSourceCoverage(admin: SupabaseClient): Promise<SourceCoverage[]> {
+  const out: SourceCoverage[] = [];
+  for (const def of MULTISOURCE_DEFS) {
+    const [sourceRows, withKey, matchedProfiles] = await Promise.all([
+      rowCount(admin, def.table),
+      rowCount(admin, def.table, (q) => q.not(def.emailColumn, "is", null)),
+      emailMatchedProfiles(admin, def),
+    ]);
+    out.push({ key: def.key, label: def.label, sourceRows, withKey, matchedProfiles, keyUsed: "email" });
+  }
+  return out;
 }
