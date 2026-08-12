@@ -51,6 +51,25 @@ export interface SegmentCriteria {
   srcHyrox: boolean;
   srcMy20fit: boolean;
   srcRecency: boolean;
+  /**
+   * Multi-source presence (TUGAS 2). `srcArena` / `srcGym` match a profile present in ANY
+   * arena / gym source (email, K-06). `srcClinicPatient` / `srcClinicTxn` are CLINICAL —
+   * matched phone-first — and are GATED on profile.view_health at the route: filtering
+   * "clinic patient" INFERS health status from a count even with no diagnosis on screen, so
+   * the route rejects them for a role without view_health (it does not silently drop them).
+   * All AND-only (resolved to customer_id sets and intersected) — cross-table OR is not
+   * expressible in one PostgREST query, and the UI says so rather than faking an OR.
+   */
+  srcArena: boolean;
+  srcGym: boolean;
+  srcClinicPatient: boolean;
+  srcClinicTxn: boolean;
+}
+
+/** Whether any CLINICAL (health-inferring) source criterion is set — the route gates these on
+ *  profile.view_health. Kept as one function so the gate and the UI can't disagree. */
+export function hasClinicalCriteria(c: SegmentCriteria): boolean {
+  return c.srcClinicPatient || c.srcClinicTxn;
 }
 
 export const EMPTY_CRITERIA: SegmentCriteria = {
@@ -65,6 +84,10 @@ export const EMPTY_CRITERIA: SegmentCriteria = {
   srcHyrox: false,
   srcMy20fit: false,
   srcRecency: false,
+  srcArena: false,
+  srcGym: false,
+  srcClinicPatient: false,
+  srcClinicTxn: false,
 };
 
 /** How many criteria are actively narrowing the pool (0 = whole pool). */
@@ -81,6 +104,10 @@ export function activeCriteriaCount(c: SegmentCriteria): number {
   if (c.srcHyrox) n++;
   if (c.srcMy20fit) n++;
   if (c.srcRecency) n++;
+  if (c.srcArena) n++;
+  if (c.srcGym) n++;
+  if (c.srcClinicPatient) n++;
+  if (c.srcClinicTxn) n++;
   return n;
 }
 
@@ -114,6 +141,10 @@ export function parseCriteria(raw: unknown): SegmentCriteria {
     srcHyrox: o.srcHyrox === true,
     srcMy20fit: o.srcMy20fit === true,
     srcRecency: o.srcRecency === true,
+    srcArena: o.srcArena === true,
+    srcGym: o.srcGym === true,
+    srcClinicPatient: o.srcClinicPatient === true,
+    srcClinicTxn: o.srcClinicTxn === true,
   };
 }
 

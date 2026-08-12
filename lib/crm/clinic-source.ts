@@ -89,10 +89,29 @@ async function count(
   return c ?? 0;
 }
 
-/** Distinct master profiles reachable from clinic_patients via one identity column. Emails are
- *  matched by normalizeEmail; phones by normalizePhoneID (both K-06). Small table (143), so a
- *  single pull is fine. */
-async function clinicMatched(admin: SupabaseClient, by: "email" | "phone"): Promise<number> {
+/** Match a set of already-normalised identity keys to master customer_ids (chunked .in()). */
+async function masterIdsForKeys(
+  admin: SupabaseClient,
+  masterCol: "email_normalized" | "phone_normalized",
+  keys: Set<string>,
+): Promise<Set<string>> {
+  const ids = new Set<string>();
+  if (keys.size === 0) return ids;
+  const list = Array.from(keys);
+  const CHUNK = 300;
+  for (let i = 0; i < list.length; i += CHUNK) {
+    const { data, error } = await admin
+      .from("master_customer")
+      .select("customer_id")
+      .in(masterCol, list.slice(i, i + CHUNK));
+    if (error) throw error;
+    for (const row of (data ?? []) as { customer_id: string }[]) ids.add(row.customer_id);
+  }
+  return ids;
+}
+
+/** Distinct master profiles reachable from clinic_patients via one identity column (K-06). */
+async function clinicMatched(admin: SupabaseClient, by: "email" | "phone"): Promise<Set<string>> {
   const col = by === "email" ? "email" : "phone";
   const { data, error } = await admin.from("clinic_patients").select(col).not(col, "is", null);
   if (error) throw error;
@@ -102,20 +121,54 @@ async function clinicMatched(admin: SupabaseClient, by: "email" | "phone"): Prom
     const k = by === "email" ? normalizeEmail(r[col]) : normalizePhoneID(r[col]);
     if (k) keys.add(k);
   }
-  if (keys.size === 0) return 0;
-  const masterCol = by === "email" ? "email_normalized" : "phone_normalized";
-  const ids = new Set<string>();
-  const list = Array.from(keys);
+  return masterIdsForKeys(admin, by === "email" ? "email_normalized" : "phone_normalized", keys);
+}
+
+/** Segment resolver (TUGAS 2, CLINICAL — route gates on view_health): master customer_ids that
+ *  are clinic patients, matched phone-first ∪ email. */
+export async function resolveClinicPatientCustomerIds(admin: SupabaseClient): Promise<Set<string>> {
+  const [byPhone, byEmail] = await Promise.all([clinicMatched(admin, "phone"), clinicMatched(admin, "email")]);
+  byEmail.forEach((id) => byPhone.add(id));
+  return byPhone;
+}
+
+/** Segment resolver (TUGAS 2, CLINICAL): master customer_ids of clinic patients who have a
+ *  LINKED clinic_transactions row (patient_id present — the 200 valid links, not the 2277 NULL). */
+export async function resolveClinicTxnCustomerIds(admin: SupabaseClient): Promise<Set<string>> {
+  // Distinct linked patient_ids.
+  const { data, error } = await admin
+    .from("clinic_transactions")
+    .select("patient_id")
+    .not("patient_id", "is", null);
+  if (error) throw error;
+  const patientIds = new Set<string>();
+  for (const r of (data ?? []) as { patient_id: string | null }[]) if (r.patient_id) patientIds.add(r.patient_id);
+  if (patientIds.size === 0) return new Set();
+
+  // Their phone/email → master.
+  const phones = new Set<string>();
+  const emails = new Set<string>();
+  const list = Array.from(patientIds);
   const CHUNK = 300;
   for (let i = 0; i < list.length; i += CHUNK) {
-    const { data: d, error: e } = await admin
-      .from("master_customer")
-      .select("customer_id")
-      .in(masterCol, list.slice(i, i + CHUNK));
-    if (e) throw e;
-    for (const row of (d ?? []) as { customer_id: string }[]) ids.add(row.customer_id);
+    const { data: pd, error: pe } = await admin
+      .from("clinic_patients")
+      .select("phone, email")
+      .in("id", list.slice(i, i + CHUNK));
+    if (pe) throw pe;
+    for (const r of (pd ?? []) as unknown as { phone: string | null; email: string | null }[]) {
+      const ph = normalizePhoneID(r.phone);
+      const em = normalizeEmail(r.email);
+      if (ph) phones.add(ph);
+      if (em) emails.add(em);
+    }
   }
-  return ids.size;
+  const [byPhone, byEmail] = await Promise.all([
+    masterIdsForKeys(admin, "phone_normalized", phones),
+    masterIdsForKeys(admin, "email_normalized", emails),
+  ]);
+  byEmail.forEach((id) => byPhone.add(id));
+  return byPhone;
 }
 
 export async function fetchClinicCoverage(admin: SupabaseClient): Promise<ClinicCoverage> {
@@ -136,7 +189,8 @@ export async function fetchClinicCoverage(admin: SupabaseClient): Promise<Clinic
     count(admin, "clinic_patient_packages"),
   ]);
   return {
-    patientsRows, patientsWithPhone, patientsWithEmail, matchedByEmail, matchedByPhone,
+    patientsRows, patientsWithPhone, patientsWithEmail,
+    matchedByEmail: matchedByEmail.size, matchedByPhone: matchedByPhone.size,
     transactionsTotal, transactionsLinked, transactionsNullFk: transactionsTotal - transactionsLinked,
     sparse: [
       { table: "clinic_posture_scans", rows: posture },

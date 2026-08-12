@@ -19,6 +19,10 @@ const selectCls =
 
 const nf = new Intl.NumberFormat("id-ID");
 
+/** Below this many matched profiles a segment practically points at individuals — a warning
+ *  shows (the count is NOT suppressed; this builder never emits a list of people anyway). */
+const SMALL_SEGMENT = 25;
+
 /** The rule this whole screen exists to make visible (PRD §18.8). */
 function TimeBanned() {
   return (
@@ -41,7 +45,7 @@ function TimeBanned() {
   );
 }
 
-export function SegmentBuilder({ cityFillPct, cityFilled, total }: { cityFillPct: number; cityFilled: number; total: number }) {
+export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth }: { cityFillPct: number; cityFilled: number; total: number; canViewHealth: boolean }) {
   const [c, setC] = useState<SegmentCriteria>(EMPTY_CRITERIA);
   const [rows, setRows] = useState<Row[]>([]);
   const [counts, setCounts] = useState<Counts | null>(null);
@@ -74,6 +78,10 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total }: { cityFillPct
           srcHyrox: c.srcHyrox,
           srcMy20fit: c.srcMy20fit,
           srcRecency: c.srcRecency,
+          srcArena: c.srcArena,
+          srcGym: c.srcGym,
+          srcClinicPatient: c.srcClinicPatient,
+          srcClinicTxn: c.srcClinicTxn,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -183,6 +191,40 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total }: { cityFillPct
               menjadikannya filter waktu akan terlihat presisi sambil menyembunyikan 99,9% pool (K-19).
             </p>
           </div>
+
+          {/* Sumber lain (TUGAS 2) — arena/gym (email), klinik (telepon, digerbangi view_health). */}
+          <div className="mt-3 flex flex-col gap-2 border-t border-glass-border/60 pt-3">
+            <label className="inline-flex cursor-pointer items-center gap-2 font-body text-[13px] text-ink">
+              <input type="checkbox" checked={c.srcArena} onChange={(e) => set("srcArena", e.target.checked)} className="accent-red" />
+              Ada di arena (kelas / booking / paket / member)
+            </label>
+            <label className="inline-flex cursor-pointer items-center gap-2 font-body text-[13px] text-ink">
+              <input type="checkbox" checked={c.srcGym} onChange={(e) => set("srcGym", e.target.checked)} className="accent-red" />
+              Ada di gym (kelas / membership)
+            </label>
+            {canViewHealth ? (
+              <>
+                <label className="inline-flex cursor-pointer items-center gap-2 font-body text-[13px] text-ink">
+                  <input type="checkbox" checked={c.srcClinicPatient} onChange={(e) => set("srcClinicPatient", e.target.checked)} className="accent-red" />
+                  Pasien klinik <span className="font-mono text-[11px] text-ink-faint">(kesehatan · view_health)</span>
+                </label>
+                <label className="inline-flex cursor-pointer items-center gap-2 font-body text-[13px] text-ink">
+                  <input type="checkbox" checked={c.srcClinicTxn} onChange={(e) => set("srcClinicTxn", e.target.checked)} className="accent-red" />
+                  Punya transaksi klinik <span className="font-mono text-[11px] text-ink-faint">(kesehatan · view_health)</span>
+                </label>
+              </>
+            ) : (
+              <p className="font-body text-[11px] italic text-ink-faint">
+                Kriteria klinik (pasien / transaksi) disembunyikan — butuh <span className="font-mono">profile.view_health</span>.
+                Menyaring “pasien klinik” = menyimpulkan status kesehatan.
+              </p>
+            )}
+            <p className="font-body text-[11px] leading-relaxed text-ink-faint">
+              Arena/gym cocok lewat <strong>email</strong>; klinik lewat <strong>telepon</strong> dulu (K-06). Semua kondisi
+              sumber di-<strong>AND</strong>-kan (irisan himpunan). <strong>OR lintas-tabel tidak tersedia</strong> — PostgREST
+              tak bisa mengungkapkannya jujur dalam satu query, jadi tak disediakan pilihannya alih-alih diam-diam ber-AND.
+            </p>
+          </div>
         </div>
 
         {/* City warning — in place, not a footnote (93% empty). */}
@@ -205,6 +247,16 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total }: { cityFillPct
       {/* Paired counts — audiens NEVER shown without contactable (PRD §18.8). Marketing and
           service (layanan) are DISTINCT permissions and shown separately (Migrasi 11):
           collapsing them hides the very distinction CS relies on. */}
+      {counts && counts.matched > 0 && counts.matched < SMALL_SEGMENT && (
+        <div className="tint-amber rounded-card px-4 py-3">
+          <p className="font-body text-[12px] leading-relaxed text-ink">
+            <strong>Segmen sangat kecil ({nf.format(counts.matched)} profil).</strong> Di bawah {SMALL_SEGMENT} orang, sebuah
+            segmen praktis menunjuk individu tertentu — sifatnya berubah dari agregat jadi pengungkapan. Angka tetap
+            ditampilkan (0 disembunyikan justru menyembunyikan yang terukur), tapi jangan diperlakukan sebagai agregat
+            anonim. Builder ini tak pernah mengeluarkan daftar orang (itu tugas /audience, tersamar &amp; teraudit).
+          </p>
+        </div>
+      )}
       {counts && (
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="glass rounded-card p-5">

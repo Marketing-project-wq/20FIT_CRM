@@ -158,7 +158,8 @@ async function rowCount(
   return count ?? 0;
 }
 
-async function emailMatchedProfiles(admin: SupabaseClient, def: MultiSourceDef): Promise<number> {
+/** Distinct master customer_ids whose email appears (normalised) in one source table. */
+async function emailMatchedIds(admin: SupabaseClient, def: MultiSourceDef): Promise<Set<string>> {
   const emails = new Set<string>();
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await admin
@@ -175,8 +176,8 @@ async function emailMatchedProfiles(admin: SupabaseClient, def: MultiSourceDef):
     if (batch.length < PAGE) break;
     if (emails.size > CEILING) throw new Error("multisource email set exceeded ceiling");
   }
-  if (emails.size === 0) return 0;
   const ids = new Set<string>();
+  if (emails.size === 0) return ids;
   const list = Array.from(emails);
   const CHUNK = 300;
   for (let i = 0; i < list.length; i += CHUNK) {
@@ -187,19 +188,34 @@ async function emailMatchedProfiles(admin: SupabaseClient, def: MultiSourceDef):
     if (error) throw error;
     for (const r of (data ?? []) as { customer_id: string }[]) ids.add(r.customer_id);
   }
-  return ids.size;
+  return ids;
 }
 
 /** Coverage for every arena/gym source (email-matched). Live, per request. */
 export async function fetchMultiSourceCoverage(admin: SupabaseClient): Promise<SourceCoverage[]> {
   const out: SourceCoverage[] = [];
   for (const def of MULTISOURCE_DEFS) {
-    const [sourceRows, withKey, matchedProfiles] = await Promise.all([
+    const [sourceRows, withKey, matched] = await Promise.all([
       rowCount(admin, def.table),
       rowCount(admin, def.table, (q) => q.not(def.emailColumn, "is", null)),
-      emailMatchedProfiles(admin, def),
+      emailMatchedIds(admin, def),
     ]);
-    out.push({ key: def.key, label: def.label, sourceRows, withKey, matchedProfiles, keyUsed: "email" });
+    out.push({ key: def.key, label: def.label, sourceRows, withKey, matchedProfiles: matched.size, keyUsed: "email" });
+  }
+  return out;
+}
+
+/** Segment resolver (TUGAS 2): master customer_ids present in ANY arena OR gym source (email
+ *  match, K-06). Returns a customer_id set for intersection in computeSegment (AND-only). */
+export async function resolveMultiSourceCustomerIds(
+  admin: SupabaseClient,
+  group: "arena" | "gym",
+): Promise<Set<string>> {
+  const defs = MULTISOURCE_DEFS.filter((d) => d.key.startsWith(group));
+  const out = new Set<string>();
+  for (const def of defs) {
+    const ids = await emailMatchedIds(admin, def);
+    ids.forEach((id) => out.add(id));
   }
   return out;
 }

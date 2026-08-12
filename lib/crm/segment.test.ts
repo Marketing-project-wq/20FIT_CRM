@@ -2,11 +2,31 @@ import { describe, it, expect } from "vitest";
 import {
   parseCriteria,
   activeCriteriaCount,
+  hasClinicalCriteria,
   isRevenueCriterion,
   EMPTY_CRITERIA,
   SEGMENT_NULL,
 } from "./segment";
 import { FILTER_VALUE_MAX } from "./audience-constants";
+
+describe("multi-source criteria (TUGAS 2)", () => {
+  it("parses the new source booleans (default false, true only for === true)", () => {
+    const c = parseCriteria({ srcArena: true, srcGym: true, srcClinicPatient: true, srcClinicTxn: "yes" });
+    expect(c.srcArena).toBe(true);
+    expect(c.srcGym).toBe(true);
+    expect(c.srcClinicPatient).toBe(true);
+    expect(c.srcClinicTxn).toBe(false); // "yes" is not === true → false (closed)
+  });
+  it("hasClinicalCriteria is true iff a clinic criterion is set (the view_health gate)", () => {
+    expect(hasClinicalCriteria(parseCriteria({}))).toBe(false);
+    expect(hasClinicalCriteria(parseCriteria({ srcArena: true }))).toBe(false);
+    expect(hasClinicalCriteria(parseCriteria({ srcClinicPatient: true }))).toBe(true);
+    expect(hasClinicalCriteria(parseCriteria({ srcClinicTxn: true }))).toBe(true);
+  });
+  it("counts the new criteria as active narrowing", () => {
+    expect(activeCriteriaCount(parseCriteria({ srcArena: true, srcClinicTxn: true }))).toBe(2);
+  });
+});
 
 describe("isRevenueCriterion", () => {
   it("accepts the four buckets incl. negative (T-10)", () => {
@@ -73,6 +93,7 @@ describe("activeCriteriaCount", () => {
         unit: "gym", segment: "new", city: "Jakarta", revenue: "has", hasPhone: true, hasEmail: true,
         ecoUnit: "clinic", ecoProduct: "Transaksi Clinic",
         srcHyrox: true, srcMy20fit: true, srcRecency: true,
+        srcArena: false, srcGym: false, srcClinicPatient: false, srcClinicTxn: false,
       }),
     ).toBe(11);
   });

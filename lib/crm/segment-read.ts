@@ -8,6 +8,8 @@ import {
 import { SEGMENT_NULL, type SegmentCriteria } from "./segment";
 import { resolveEcosystemCustomerIds } from "./engagement";
 import { resolveEnrichmentCustomerIds } from "./enrichment";
+import { resolveMultiSourceCustomerIds } from "./multisource";
+import { resolveClinicPatientCustomerIds, resolveClinicTxnCustomerIds } from "./clinic-source";
 import type { EcosystemUnit } from "./engagement-constants";
 
 /** Intersect a list of id sets (AND). Iterates the smallest for speed. Empty input → null. */
@@ -137,6 +139,12 @@ export async function computeSegment(
   if (criteria.srcHyrox) idSets.push(await resolveEnrichmentCustomerIds(admin, "hyrox"));
   if (criteria.srcMy20fit) idSets.push(await resolveEnrichmentCustomerIds(admin, "my20fit"));
   if (criteria.srcRecency) idSets.push(await resolveEnrichmentCustomerIds(admin, "recency"));
+  // Multi-source presence (TUGAS 2) — AND-only, intersected like the sources above. Clinical
+  // ones (clinic patient / txn) are gated on profile.view_health at the route, not here.
+  if (criteria.srcArena) idSets.push(await resolveMultiSourceCustomerIds(admin, "arena"));
+  if (criteria.srcGym) idSets.push(await resolveMultiSourceCustomerIds(admin, "gym"));
+  if (criteria.srcClinicPatient) idSets.push(await resolveClinicPatientCustomerIds(admin));
+  if (criteria.srcClinicTxn) idSets.push(await resolveClinicTxnCustomerIds(admin));
   const restrictIds = intersectSets(idSets);
 
   // 1. Matched — count of master_customer rows meeting the criteria.

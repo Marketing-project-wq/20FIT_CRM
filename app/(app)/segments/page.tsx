@@ -51,6 +51,14 @@ export default async function SegmentsPage() {
     cityFilled = 0;
   }
   const cityFillPct = total > 0 ? (cityFilled / total) * 100 : 0;
+  const canViewHealth = isPermitted(role, "profile.view_health");
 
-  return <SegmentBuilder cityFillPct={cityFillPct} cityFilled={cityFilled} total={total} />;
+  return (
+    <SegmentBuilder
+      cityFillPct={cityFillPct}
+      cityFilled={cityFilled}
+      total={total}
+      canViewHealth={canViewHealth}
+    />
+  );
 }

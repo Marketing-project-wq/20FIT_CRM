@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUserRole } from "@/lib/auth/current-role";
 import { isPermitted, resolveGrant } from "@/lib/auth/roles";
-import { parseCriteria } from "@/lib/crm/segment";
+import { parseCriteria, hasClinicalCriteria } from "@/lib/crm/segment";
 import { computeSegment } from "@/lib/crm/segment-read";
 import { validateFilterTree, filterTreeToExpr, type FilterNode } from "@/lib/crm/filter-tree";
 import { logApiFailure } from "@/lib/crm/failure-log";
@@ -63,6 +63,19 @@ export async function POST(request: NextRequest) {
 
   const criteria = parseCriteria(body);
 
+  // CLINICAL criteria (clinic patient / transaction) INFER health status from a count — they
+  // are gated on profile.view_health and REJECTED (not silently dropped) for a role without it.
+  if (hasClinicalCriteria(criteria) && !isPermitted(role, "profile.view_health")) {
+    return NextResponse.json(
+      {
+        error: "forbidden",
+        decision: resolveGrant(role, "profile.view_health"),
+        message: "Kriteria klinis butuh peran profile.view_health (menyaring pasien = menyimpulkan status kesehatan).",
+      },
+      { status: 403 },
+    );
+  }
+
   // AND/OR filter tree (Sprint 3P). When present it REPLACES the flat master fields. It is
   // validated here; an inexpressible form (too deep, too many, unsafe value, empty group) is
   // REJECTED with 400 — never silently simplified into something that means something else.
@@ -114,6 +127,10 @@ export async function POST(request: NextRequest) {
         src_hyrox: criteria.srcHyrox,
         src_my20fit: criteria.srcMy20fit,
         src_recency: criteria.srcRecency,
+        src_arena: criteria.srcArena,
+        src_gym: criteria.srcGym,
+        src_clinic_patient: criteria.srcClinicPatient,
+        src_clinic_txn: criteria.srcClinicTxn,
       },
       // AND/OR tree structure (closed-list fields/values; city leaf capped at 60 in
       // validateFilterTree, K-17). Null when the flat criteria path was used.
