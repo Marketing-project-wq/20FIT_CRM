@@ -5,7 +5,33 @@
 > Pola mengikuti Sprint 3R (`lib/crm/enrichment.ts`): **nol tulis, gabung saat tampil, cocok
 > lewat identitas ternormalisasi (K-06), kolom aman sebagai konstanta teruji**.
 
-## Yang SUDAH dikerjakan sesi ini
+## STATUS 12 Agu 2026 (pembaruan)
+- **SELESAI:** lapisan baca + tampilan arena/gym (email-first) — commit sebelumnya.
+- **SELESAI:** rantai klinis (TUGAS 3) — `lib/crm/clinic-source.ts`, phone-first (12 vs 106),
+  via `patient_id`, seluruhnya di balik `profile.view_health`, identitas + hitungan + booking
+  terakhir (bukan isi klinis), audit KINDS di baris `profile.viewed` yang ada. Terbukti +
+  teruji + terpasang di profil.
+- **INVESTIGASI SELESAI (TUGAS 2):** `clinic_transactions` 2.277/2.477 baris `patient_id` NULL
+  (impor spreadsheet tak tertaut); 200 tertaut 100% valid. `clinic_posture_scans` (2) +
+  `clinic_patient_packages` (6) terlalu tipis → tak ditampilkan per-profil.
+- **TERSISA:** TUGAS 4 (blok cakupan `/quality`) + TUGAS 5 (filter segmen sumber baru).
+
+### Cakupan terukur (profil distinct tercocokkan) — untuk blok /quality (TUGAS 4)
+| Sumber | Baris | Cocok | Kunci |
+|---|---|---|---|
+| arena_class_bookings | 2.731 | 639 | email |
+| arena_bookings | 247 | 13 | email |
+| arena_package_orders | 63 | 31 | email |
+| gym_class_bookings | 10 | 6 | email |
+| gym_membership_orders | 3 | 0 | email |
+| arena_members | 3 | 0 | email |
+| clinic_patients | 143 | 12 (email) / **106 (telepon)** | telepon dulu |
+| clinic_transactions | 2.477 | 200 tertaut · **2.277 patient_id NULL** | temuan kualitas |
+
+Cakupan rendah = identitas antar-sistem belum terpadu — **temuan kualitas data**, bukan bug.
+Bingkai begitu di layar.
+
+## Yang SUDAH dikerjakan (slice arena/gym awal)
 1. **Ukur ulang jumlah** (tabel hidup, bertumbuh sejak 11 Agu) — selisih di bawah.
 2. **Inspeksi skema nyata** 8 sumber utama → kunci cocok + kolom aman vs sensitif teridentifikasi.
 3. **Temuan keselamatan:** `clinic_patients` menyimpan **`id_number` (NIK), `date_of_birth`,
