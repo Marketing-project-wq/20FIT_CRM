@@ -165,6 +165,18 @@ export const VERIFIED_ARTIFACTS = [
       "14 baris punya first_seen_at LEBIH BARU dari created_at (selisih terbesar 7 hari 11 jam), semuanya di live_txn_ingest. Sebuah baris yang “pertama terlihat” setelah barisnya sendiri dibuat adalah kontradiksi, bukan sekadar data kotor. Seperti LTV negatif, ia tak muncul di filter layar mana pun — PostgREST tak punya perbandingan antar-kolom (pelajaran Sprint 3B), jadi diangkat di sini sebagai temuan terverifikasi, bukan filter yang dipaksakan. Diverifikasi 11 Agustus 2026.",
   },
   {
+    key: "nik_derivation",
+    label: "NIK Hyrox → gender + tanggal lahir (mengisi field yang 0% terisi)",
+    detail:
+      "Dari 1.030 NIK di cf_hyrox_participants, 971 bisa diurai (16 digit valid); 59 panjang salah, tak diurai. Menghasilkan gender (486 perempuan / 484 laki-laki) dan tanggal lahir + provinsi pendaftaran — tiga field yang 0% terisi di master_customer. Aturan abad eksplisit: yy≤11 → 2000-an, selebihnya 1900-an; hasil di luar 1946–2011 DITANDAI, bukan ditebak. Diturunkan saat tampil dari NIK (gerbang profile.view_health), NOL tulis ke master_customer. Kode kab/kec ditampilkan mentah (tak ada tabel referensi Kemendagri). Diverifikasi 11 Agustus 2026.",
+  },
+  {
+    key: "nik_date_swap",
+    label: "321 tanggal lahir tersimpan hari-bulan TERTUKAR (NIK yang benar)",
+    detail:
+      "Dari 967 NIK terurai yang punya tgl_lahir tersimpan: 614 cocok persis, 321 punya HARI dan BULAN tertukar di kolom tersimpan, 32 beda karena hal lain. 321 bukan salah ketik independen — bug parsing DD/MM saat impor (DD dibaca MM), pola SISTEMATIS sama seperti gmaol.com (T-16). Konsekuensi berlawanan dugaan: untuk 321 baris itu, tanggal dari NIK lebih dapat dipercaya daripada kolom tersimpan. Layar menampilkan KEDUANYA beserta asalnya — tak memilih diam-diam. Diverifikasi 11 Agustus 2026.",
+  },
+  {
     key: "ecosystem_last_seen_load_stamp",
     label: "“last_seen_at” ekosistem adalah cap muat untuk 99,51% baris",
     detail:

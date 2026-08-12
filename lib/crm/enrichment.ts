@@ -6,8 +6,8 @@ import {
   HYROX_SENSITIVE_COLUMNS,
   MY20FIT_PROFILE_SAFE_COLUMNS,
   MY20FIT_ACTIVITY_SAFE_COLUMNS,
-  maskSensitive,
 } from "./enrichment-constants";
+import { parseNik, type NikDerived } from "./nik";
 import type { EnrichmentSourceCoverage } from "./quality-types";
 
 /**
@@ -17,9 +17,14 @@ import type { EnrichmentSourceCoverage } from "./quality-types";
  * intentionally NOT read here.
  *
  * ZERO write to master_customer / crm_*. The profile's real email is read server-side ONLY
- * (by customer_id) to compute the match; it never leaves this layer. Sensitive Hyrox fields
- * (NIK/DOB/blood/emergency) are masked here unless the caller is permitted AND explicitly
- * revealing — the reveal's audit row is written by the route, not here.
+ * (by customer_id) to compute the match; it never leaves this layer.
+ *
+ * Sprint 3S: sensitive Hyrox fields (NIK/DOB/blood/emergency) are returned UNMASKED to a
+ * profile.view_health caller (CS staff need them at a glance) and OMITTED entirely for any
+ * other role (K-02 — the value never reaches the browser). The gate is the RBAC role, not a
+ * per-field toggle. From the NIK we also DERIVE gender / birth date / issuance province
+ * (lib/crm/nik.ts) — three fields that are 0% filled in master_customer — computed at display
+ * time, never written.
  */
 
 export interface HyroxParticipation {
@@ -46,9 +51,10 @@ export interface ProfileEnrichment {
     rows: HyroxParticipation[];
     /** Whether any sensitive Hyrox field exists for this profile (presence, not value). */
     hasSensitive: boolean;
-    /** Present ONLY for a profile.view_health caller. Masked by default; real when revealed. */
+    /** Present (UNMASKED) ONLY for a profile.view_health caller; null for any other role. */
     sensitive: HyroxSensitive | null;
-    revealed: boolean;
+    /** Fields derived from the NIK (gender/DOB/province) — present with `sensitive`. */
+    nikDerived: NikDerived | null;
   };
   my20fit: {
     matched: boolean;
@@ -72,11 +78,11 @@ function eqEmail(q: any, col: string, email: string) { // eslint-disable-line @t
 export async function fetchProfileEnrichment(
   admin: SupabaseClient,
   customerId: string,
-  opts: { canViewHealth: boolean; reveal: boolean },
+  opts: { canViewHealth: boolean },
 ): Promise<ProfileEnrichment> {
   const empty: ProfileEnrichment = {
     matchable: false,
-    hyrox: { matched: false, rows: [], hasSensitive: false, sensitive: null, revealed: false },
+    hyrox: { matched: false, rows: [], hasSensitive: false, sensitive: null, nikDerived: null },
     my20fit: { matched: false, isPlusMember: null, onboardingCompleted: null, createdAt: null },
     activity: { matched: false, firstSeenAt: null, lastActiveAt: null, pingCount: null },
   };
@@ -109,9 +115,11 @@ export async function fetchProfileEnrichment(
     registeredAt: (r.registered_at as string) ?? null,
   }));
 
-  // Collapse sensitive fields across rows (first non-null wins). Masked unless revealed.
+  // Collapse sensitive fields across rows (first non-null wins). Returned UNMASKED for a
+  // view_health caller; entirely null (never sent) for any other role.
   let hasSensitive = false;
   let sensitive: HyroxSensitive | null = null;
+  let nikDerived: NikDerived | null = null;
   if (opts.canViewHealth && hyRows.length > 0) {
     const pick = (k: string) => {
       for (const r of hyRows) {
@@ -128,15 +136,8 @@ export async function fetchProfileEnrichment(
       noKontakDarurat: pick("no_kontak_darurat"),
     };
     hasSensitive = Object.values(raw).some((v) => v != null);
-    sensitive = opts.reveal
-      ? raw
-      : {
-          nik: maskSensitive(raw.nik),
-          tglLahir: maskSensitive(raw.tglLahir),
-          golDarah: maskSensitive(raw.golDarah),
-          kontakDarurat: maskSensitive(raw.kontakDarurat),
-          noKontakDarurat: maskSensitive(raw.noKontakDarurat),
-        };
+    sensitive = raw;
+    nikDerived = raw.nik ? parseNik(raw.nik) : null;
   }
 
   // my20fit_profile — presence + membership only (no health/body/cycle).
@@ -159,7 +160,7 @@ export async function fetchProfileEnrichment(
 
   return {
     matchable: true,
-    hyrox: { matched: rows.length > 0, rows, hasSensitive, sensitive, revealed: opts.canViewHealth && opts.reveal },
+    hyrox: { matched: rows.length > 0, rows, hasSensitive, sensitive, nikDerived },
     my20fit: {
       matched: mp != null,
       isPlusMember: (mp?.is_plus_member as boolean) ?? null,

@@ -69,21 +69,6 @@ export const MY20FIT_ACTIVITY_SAFE_COLUMNS = [
   "ping_count",
 ] as const;
 
-// ── Masking (server applies before any sensitive value can leave, K-02) ───────────────
-
-/** Fully mask a sensitive value's PRESENCE without revealing any of it. A gated field is
- *  shown as this placeholder by default even to a permitted viewer; opening it is an
- *  explicit, audited action. We never reveal a partial (e.g. last-4 of a NIK) by default —
- *  a national ID number is not a field to leak a suffix of. */
-export const MASKED_PLACEHOLDER = "•••••••";
-
-/** Given a real value, the default masked form (presence only). Null stays null so the UI
- *  can say "not recorded" rather than showing a mask over nothing. */
-export function maskSensitive(value: string | null | undefined): string | null {
-  if (value == null || String(value).trim() === "") return null;
-  return MASKED_PLACEHOLDER;
-}
-
-/** Which sensitive field kinds a reveal covered — recorded in the audit metadata (the KINDS,
- *  never the values). */
+/** Sensitive field kinds — recorded (the KINDS, never the values) in the profile.viewed
+ *  audit metadata when a view_health caller opens a profile. */
 export type SensitiveKind = "nik" | "birthdate" | "blood_type" | "emergency_contact";

@@ -6,8 +6,6 @@ import {
   MY20FIT_PROFILE_SAFE_COLUMNS,
   MY20FIT_PROFILE_FORBIDDEN_COLUMNS,
   MY20FIT_ACTIVITY_SAFE_COLUMNS,
-  maskSensitive,
-  MASKED_PLACEHOLDER,
 } from "./enrichment-constants";
 
 describe("enrichment safe-column guards (Sprint 3R)", () => {
@@ -40,16 +38,3 @@ describe("enrichment safe-column guards (Sprint 3R)", () => {
   });
 });
 
-describe("maskSensitive", () => {
-  it("replaces any real value with the placeholder (no partial leak)", () => {
-    expect(maskSensitive("3201234567890001")).toBe(MASKED_PLACEHOLDER);
-    expect(maskSensitive("O+")).toBe(MASKED_PLACEHOLDER);
-    // Never reveals a suffix of a national ID.
-    expect(maskSensitive("3201234567890001")).not.toContain("0001");
-  });
-  it("keeps null/blank as null so the UI can say 'not recorded'", () => {
-    expect(maskSensitive(null)).toBeNull();
-    expect(maskSensitive("   ")).toBeNull();
-    expect(maskSensitive(undefined)).toBeNull();
-  });
-});

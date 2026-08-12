@@ -75,38 +75,13 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
-  // Mandatory audit — individual row. Refuse to serve if it can't be logged.
-  const { error: auditError } = await admin.from("crm_audit_log").insert({
-    actor_id: userId,
-    actor_email: userEmail,
-    action: "profile.viewed",
-    target_table: "master_customer",
-    target_id: profile.customer_id,
-    summary: `Profil dibuka${masked ? " (kontak disamarkan)" : ""}.`,
-    // NON-PII: identity is carried by target_id; only view context here.
-    metadata: { view: "profile_detail", masked },
-  });
-  if (auditError) {
-    // The audit write took a sequence number then failed → a hole in crm_audit_log.id.
-    // This is the ONLY route whose audit row carries a non-null target_id, and the one
-    // most consistent with the observed gap. Log the DB error CODE (no PII) so the next
-    // occurrence is diagnosable instead of vanishing.
-    logApiFailure("/audience/[id]", "audit_write_failed", { code: auditError.code });
-    return NextResponse.json(
-      { error: "audit_failed", message: "Pembacaan ditolak: gagal mencatat audit (akuntabilitas)." },
-      { status: 503 },
-    );
-  }
-
-  // Health section is gated structurally, even though there is no source to show.
+  // Health section gate (super_admin, crm_manager). Sprint 3S: a view_health caller sees
+  // sensitive Hyrox fields UNMASKED — the gate is the RBAC role, not a per-field toggle.
   const canViewHealth = isPermitted(role, "profile.view_health");
 
   // Ecosystem touchpoints (customer_engagement), keyed by customer_id. NON-fatal and
-  // NON-audited: the mandatory profile.viewed row above already accounts for opening
-  // this profile — the ecosystem read is part of the same view, NOT a separate action,
-  // so it writes no second audit row. If it fails, degrade to null and still serve the
-  // profile (the section renders its own soft error). It carries no contact PII (only
-  // unit/product/counts/dates), so it is returned regardless of masking.
+  // NON-audited: the mandatory profile.viewed row below accounts for opening this profile —
+  // the ecosystem read is part of the same view, not a separate action.
   let engagement: ProfileEngagement | null = null;
   try {
     engagement = await fetchProfileEngagement(admin, profile.customer_id);
@@ -116,18 +91,49 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
   }
 
   // Enrichment from unmatched ecosystem sources (Hyrox / my20fit), matched by normalised
-  // email server-side. Non-fatal, NON-audited (part of the same profile.viewed view). Sensitive
-  // Hyrox fields are fetched ONLY for a view_health caller and ALWAYS masked here (reveal:false)
-  // — the unmasked reveal is a separate, audited endpoint (POST .../identity).
+  // email server-side. Non-fatal. Sensitive Hyrox fields are fetched + returned UNMASKED
+  // ONLY for a view_health caller; omitted entirely for any other role.
   let enrichment: ProfileEnrichment | null = null;
   try {
-    enrichment = await fetchProfileEnrichment(admin, profile.customer_id, {
-      canViewHealth,
-      reveal: false,
-    });
+    enrichment = await fetchProfileEnrichment(admin, profile.customer_id, { canViewHealth });
   } catch (e) {
     logApiFailure("/audience/[id]", "enrichment_query_failed", { code: (e as { code?: string })?.code });
     enrichment = null;
+  }
+
+  // Which sensitive field KINDS were available to a view_health caller — recorded in the
+  // ONE profile.viewed row (K-07), never the values, never a row per field (T2 rule).
+  const sensitiveFields: string[] = [];
+  if (canViewHealth && enrichment?.hyrox.hasSensitive && enrichment.hyrox.sensitive) {
+    const s = enrichment.hyrox.sensitive;
+    if (s.nik) sensitiveFields.push("nik");
+    if (s.tglLahir) sensitiveFields.push("birthdate");
+    if (s.golDarah) sensitiveFields.push("blood_type");
+    if (s.kontakDarurat || s.noKontakDarurat) sensitiveFields.push("emergency_contact");
+  }
+
+  // Mandatory audit — individual row. Refuse to serve if it can't be logged.
+  const { error: auditError } = await admin.from("crm_audit_log").insert({
+    actor_id: userId,
+    actor_email: userEmail,
+    action: "profile.viewed",
+    target_table: "master_customer",
+    target_id: profile.customer_id,
+    summary: `Profil dibuka${masked ? " (kontak disamarkan)" : ""}.`,
+    // NON-PII: identity is carried by target_id; only view context + the KINDS of sensitive
+    // field shown (never their values, which the metadata rule forbids).
+    metadata: {
+      view: "profile_detail",
+      masked,
+      ...(sensitiveFields.length > 0 ? { sensitive_fields: sensitiveFields } : {}),
+    },
+  });
+  if (auditError) {
+    logApiFailure("/audience/[id]", "audit_write_failed", { code: auditError.code });
+    return NextResponse.json(
+      { error: "audit_failed", message: "Pembacaan ditolak: gagal mencatat audit (akuntabilitas)." },
+      { status: 503 },
+    );
   }
 
   return NextResponse.json(
