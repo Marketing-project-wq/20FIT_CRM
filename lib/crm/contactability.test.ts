@@ -78,6 +78,22 @@ describe("isContactableForPurpose (purpose-aware — Migrasi 11)", () => {
     expect(isContactableForPurpose([marketingActive], [phone], supp, "marketing")).toBe(false);
   });
 
+  it("K-26: phone suppressed + email clear → whole profile out for BOTH purposes (locks the RPC's granularity)", () => {
+    // The RPC crm_contactable_counts (Migrasi 13) excludes a customer if ANY identity is
+    // suppressed, for ALL purposes. This test locks the TS rule to the SAME granularity so
+    // the two can't diverge once the first suppression row lands (the DB can't catch it at 0
+    // rows). crm_suppression is per-identity global (D-3, no purpose column) — a suppressed
+    // phone means "don't contact this person at all", not "don't market".
+    const suppPhoneOnly = new Set([suppressionKey("phone", "628123456789")]);
+    const identities: Identity[] = [phone, email]; // phone suppressed, email NOT
+    const marketingConsent: ConsentRow = { channel: "email", purpose: "marketing", status: "active" };
+    const serviceConsent: ConsentRow = { channel: "email", purpose: "transactional", status: "active" };
+    // Even though the EMAIL identity is clear and there IS active consent on email, the
+    // suppressed PHONE takes the whole profile out — for marketing AND transactional.
+    expect(isContactableForPurpose([marketingConsent], identities, suppPhoneOnly, "marketing")).toBe(false);
+    expect(isContactableForPurpose([serviceConsent], identities, suppPhoneOnly, "transactional")).toBe(false);
+  });
+
   it("the marketing wrapper is exactly isContactableForPurpose(...,'marketing') — no copied logic", () => {
     const cases: { consents: ConsentRow[]; supp: Set<string> }[] = [
       { consents: [marketingActive], supp: new Set() },

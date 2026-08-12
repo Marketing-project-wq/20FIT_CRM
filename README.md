@@ -64,8 +64,9 @@ Full spec: `PRD — 20FIT Audience Data & CRM System v1.1`.
 > | 10 | `…110000_lock_crm_purge_audit_log_execute` | `20260811085420` | `lock_crm_purge_audit_log_execute` |
 > | 11 | `…20260812000000_create_crm_backfill_consent` | `20260812041851` | `create_crm_backfill_consent` |
 > | 12 | `…20260812010000_add_crm_consent_contactability_index` | `20260812045411` | `add_crm_consent_contactability_index` |
+> | 13 | `…20260812020000_create_crm_contactable_counts` | `20260812063419` | `create_crm_contactable_counts` |
 >
-> **Count reconciliation: 12 repo files → 13 CRM ledger entries.** The extra entry is
+> **Count reconciliation: 13 repo files → 14 CRM ledger entries.** The extra entry is
 > migration **9**, applied **twice** under the same name (Sprint 3H). The first apply left
 > Supabase's default `EXECUTE` grant to `anon`/`authenticated` in place (a `revoke … from
 > public` does **not** remove explicit per-role grants); the second apply carried the

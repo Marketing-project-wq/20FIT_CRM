@@ -245,3 +245,32 @@ push ke branch sebagai berpotensi langsung ke produksi**. Gate "jangan merge `ma
 bersama disentuh) berlaku pada **setiap push**, bukan hanya pada merge. Larangan "jangan merge
 ke `main` tanpa izin" tetap berlaku; ia sekadar bukan satu-satunya pintu ke produksi.
 **Membalikkan:** tidak ada — ini pengetahuan operasional; koreksi dokumen mengikuti bukti.
+
+## K-26 · Granularitas suppression: per-identitas cocok → SELURUH profil gugur, SEMUA purpose
+**Migrasi 13.** Saat menulis RPC contactability, pertanyaan yang belum pernah diputuskan
+mengeras: bila SATU identitas seseorang di-suppress, apakah SELURUH pelanggan gugur, atau
+hanya identitas/purpose itu?
+
+**Yang sebenarnya berlaku sekarang (dibaca, bukan diasumsikan):** `isContactableForPurpose`
+(lib/crm/contactability.ts) mengulang SEMUA identitas profil; bila **salah satu** ada di set
+suppression aktif → `return false`, **tanpa memandang purpose**. Jadi: **per-identitas cocok →
+seluruh profil gugur → untuk marketing DAN transactional**. `crm_suppression` sendiri
+**per-identitas global** (D-3: "per identitas, bukan per channel"), **tanpa kolom
+purpose/channel** — jadi suppression memang berarti "jangan hubungi orang ini sama sekali",
+bukan "jangan marketing".
+
+**Keputusan:** granularitas itu **disahkan** — per-identitas cocok, seluruh profil gugur,
+semua purpose. RPC `crm_contactable_counts` (Migrasi 13) memakai anti-join yang **identik**
+maknanya (pelanggan gugur bila salah satu identitasnya tersuppress aktif), jadi RPC dan aturan
+TypeScript **tidak diverge** (K-09). Dikunci oleh test fungsi murni (telepon di-suppress, email
+bersih → tidak contactable untuk marketing DAN transactional) — karena dengan nol baris
+suppression, database tak bisa menangkap divergensi.
+
+**Konsekuensi bisnis yang diterima sadar:** seseorang yang minta "jangan telepon" juga tak akan
+dikirimi email (marketing maupun invoice layanan). Itu sisi ketat; dipilih karena suppression
+tak punya granularitas purpose untuk dibedakan.
+
+**Syarat pembalikan:** bila `crm_suppression` kelak diberi kolom `purpose`/`channel` (mis.
+"berhenti marketing saja"), keputusan ini **wajib ditinjau ulang di DUA tempat sekaligus** —
+`isContactableForPurpose` DAN `crm_contactable_counts` — atau keduanya diverge diam-diam lagi.
+**Membalikkan:** ubah kedua tempat itu bersama + perbarui test pengunci; jangan satu saja.
