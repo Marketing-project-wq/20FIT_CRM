@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   isContactableForMarketing,
+  isContactableForPurpose,
   suppressionKey,
   type ConsentRow,
   type Identity,
@@ -55,6 +56,40 @@ describe("isContactableForMarketing", () => {
     expect(
       isContactableForMarketing([transactionalActive, marketingWithdrawn, marketingActive], [phone], new Set()),
     ).toBe(true);
+  });
+});
+
+describe("isContactableForPurpose (purpose-aware — Migrasi 11)", () => {
+  it("service (transactional): active transactional consent, not suppressed -> contactable", () => {
+    expect(isContactableForPurpose([transactionalActive], [phone], new Set(), "transactional")).toBe(true);
+  });
+
+  it("service: only marketing consent -> NOT contactable for transactional (purpose is the gate)", () => {
+    expect(isContactableForPurpose([marketingActive], [phone], new Set(), "transactional")).toBe(false);
+  });
+
+  it("marketing: only transactional consent -> NOT contactable for marketing", () => {
+    expect(isContactableForPurpose([transactionalActive], [phone], new Set(), "marketing")).toBe(false);
+  });
+
+  it("SUPPRESSION WINS for BOTH purposes (same suppressed identity blocks service too)", () => {
+    const supp = new Set([suppressionKey("phone", "628123456789")]);
+    expect(isContactableForPurpose([transactionalActive], [phone], supp, "transactional")).toBe(false);
+    expect(isContactableForPurpose([marketingActive], [phone], supp, "marketing")).toBe(false);
+  });
+
+  it("the marketing wrapper is exactly isContactableForPurpose(...,'marketing') — no copied logic", () => {
+    const cases: { consents: ConsentRow[]; supp: Set<string> }[] = [
+      { consents: [marketingActive], supp: new Set() },
+      { consents: [transactionalActive], supp: new Set() },
+      { consents: [marketingWithdrawn], supp: new Set() },
+      { consents: [marketingActive], supp: new Set([suppressionKey("phone", "628123456789")]) },
+    ];
+    for (const { consents, supp } of cases) {
+      expect(isContactableForMarketing(consents, [phone], supp)).toBe(
+        isContactableForPurpose(consents, [phone], supp, "marketing"),
+      );
+    }
   });
 });
 

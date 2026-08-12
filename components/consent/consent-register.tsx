@@ -43,8 +43,11 @@ interface ApiResult {
  * Shown WITH its status so nobody reads two placeholder values as a complete list.
  */
 const BASIS_VOCAB: { value: string; note: string }[] = [
-  { value: "legacy_import_unverified", note: "impor lama, belum diverifikasi — bukan dasar untuk kontak" },
-  { value: "explicit_opt_in", note: "opt-in eksplisit tercatat — satu-satunya dasar marketing yang sah" },
+  {
+    value: "legacy_import_unverified",
+    note: "impor lama; sejak keputusan pemilik produk (12 Agu 2026) mengizinkan marketing + transactional (docs/SIGNOFF-legal-consent.md)",
+  },
+  { value: "explicit_opt_in", note: "opt-in eksplisit tercatat — dasar terkuat, mengizinkan semua purpose" },
 ];
 
 function formatTs(iso: string | null): string {
@@ -54,7 +57,7 @@ function formatTs(iso: string | null): string {
   return new Intl.DateTimeFormat("id-ID", { day: "2-digit", month: "short", year: "numeric" }).format(d);
 }
 
-/** The meaning-of-zero banner — the point of the whole screen. */
+/** The meaning-of-zero banner — shown only WHILE the register is empty. */
 function ZeroMeaning() {
   return (
     <div className="tint-red rounded-card p-5">
@@ -69,8 +72,33 @@ function ZeroMeaning() {
         siapa pun</strong>”. Ketiadaan baris consent adalah jawaban <strong>fail-closed</strong> yang
         benar: tanpa baris consent <span className="font-mono text-[12px]">purpose=marketing</span>{" "}
         <span className="font-mono text-[12px]">status=active</span>, seseorang tidak boleh
-        dihubungi untuk marketing. Kartu “Bisa dihubungi” di dashboard kini menghitung dari aturan
+        dihubungi untuk marketing. Kartu “Bisa dihubungi” di dashboard menghitung dari aturan
         ini — hasilnya <strong>0 terukur</strong>, bukan 0 yang ditulis tangan.
+      </p>
+    </div>
+  );
+}
+
+/** Shown once the register is populated — the backfill (Migrasi 11) recorded consent for the
+ *  legacy import, and it is REVERSIBLE. Replaces the zero-meaning banner so the screen never
+ *  contradicts its own data. */
+function BackfilledMeaning() {
+  return (
+    <div className="tint-amber rounded-card p-5">
+      <div className="flex items-center gap-2">
+        <ShieldAlert className="h-4 w-4" aria-hidden />
+        <h2 className="font-display text-[15px] font-bold uppercase tracking-wide text-ink">
+          Consent legacy sudah dibackfill — basis <span className="font-mono">legacy_import_unverified</span>
+        </h2>
+      </div>
+      <p className="mt-3 max-w-3xl font-body text-[13px] leading-relaxed text-ink-soft">
+        Migrasi 11 mencatat consent aktif untuk impor lama atas keputusan pemilik produk
+        (12 Agu 2026): <strong>marketing</strong> + <strong>transactional</strong>, dengan basis{" "}
+        <span className="font-mono text-[12px]">legacy_import_unverified</span> yang jujur menandai
+        “belum diverifikasi per orang”. Suppression tetap <strong>menang</strong> atas consent (K-03).
+        Ini <strong>reversibel</strong>: <span className="font-mono text-[12px]">crm_consent</span> nol
+        trigger, dan menghapus baris <span className="font-mono text-[12px]">source =
+        &apos;20fit_data_import&apos;</span> membatalkannya bersih.
       </p>
     </div>
   );
@@ -200,7 +228,7 @@ export function ConsentRegister() {
         </p>
       </header>
 
-      <ZeroMeaning />
+      {consent && consent.total > 0 ? <BackfilledMeaning /> : <ZeroMeaning />}
       <SuppressionWins />
 
       {/* basis vocabulary + provisional status */}
@@ -239,7 +267,7 @@ export function ConsentRegister() {
         ) : consent && consent.total === 0 ? (
           <EmptyRegister
             what="Register consent"
-            why="Belum ada satu baris pun. Sesuai desain: tidak ada backfill — mem-INSERT 82.253 baris legacy akan mengarang dasar hukum yang tak pernah diverifikasi. Nol adalah jawaban yang benar."
+            why="Belum ada satu baris pun. Backfill legacy (Migrasi 11) sudah disetujui pemilik produk tapi belum dijalankan di lingkungan ini; sampai dijalankan, nol tetap jawaban fail-closed yang benar. Basis yang akan dipakai: legacy_import_unverified (jujur menandai 'belum diverifikasi per orang')."
           />
         ) : consent ? (
           <>

@@ -10,7 +10,8 @@ import { FilterTreeBuilder, rowsToTree, type Row } from "@/components/segments/f
 
 interface Counts {
   matched: number;
-  contactable: number;
+  contactableMarketing: number;
+  contactableService: number;
 }
 
 const selectCls =
@@ -81,7 +82,11 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total }: { cityFillPct
         setCounts(null);
         return;
       }
-      setCounts({ matched: data.matched, contactable: data.contactable });
+      setCounts({
+        matched: data.matched,
+        contactableMarketing: data.contactableMarketing,
+        contactableService: data.contactableService,
+      });
     } catch {
       setError("Gagal terhubung ke server.");
       setCounts(null);
@@ -197,9 +202,11 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total }: { cityFillPct
         </div>
       </section>
 
-      {/* Paired counts — audiens NEVER shown without contactable (PRD §18.8) */}
+      {/* Paired counts — audiens NEVER shown without contactable (PRD §18.8). Marketing and
+          service (layanan) are DISTINCT permissions and shown separately (Migrasi 11):
+          collapsing them hides the very distinction CS relies on. */}
       {counts && (
-        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="glass rounded-card p-5">
             <div className="flex items-center gap-2 text-ink-soft">
               <Users className="h-4 w-4" aria-hidden />
@@ -209,21 +216,38 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total }: { cityFillPct
             <p className="mt-1 font-body text-[12px] text-ink-faint">orang memenuhi definisi ini</p>
           </div>
 
-          <div className={`${counts.contactable === 0 ? "tint-red" : "glass"} rounded-card p-5`}>
+          <div className={`${counts.contactableMarketing === 0 ? "tint-red" : "glass"} rounded-card p-5`}>
             <div className="flex items-center gap-2 text-ink-soft">
               <Send className="h-4 w-4" aria-hidden />
-              <span className="font-display text-[12px] font-bold uppercase tracking-wide">Boleh dihubungi</span>
+              <span className="font-display text-[12px] font-bold uppercase tracking-wide">Boleh dihubungi · marketing</span>
             </div>
-            <p className="mt-2 font-display text-[40px] font-black leading-none text-ink">{nf.format(counts.contactable)}</p>
-            {counts.contactable === 0 ? (
+            <p className="mt-2 font-display text-[40px] font-black leading-none text-ink">{nf.format(counts.contactableMarketing)}</p>
+            {counts.contactableMarketing === 0 ? (
               <p className="mt-2 font-body text-[12px] leading-relaxed text-ink-soft">
-                <strong>Nol dari {nf.format(counts.matched)}.</strong> Bukan bug — <span className="font-mono">crm_consent</span>{" "}
-                kosong, jadi tak seorang pun punya izin marketing aktif, dan suppression menang atas consent (K-03).
-                Segmen sebesar apa pun berjumlah <strong>0 yang boleh dikirimi pesan</strong> sampai ada consent tercatat.{" "}
+                <strong>Nol dari {nf.format(counts.matched)}.</strong> Tak ada consent{" "}
+                <span className="font-mono">marketing</span> aktif (atau suppression menang, K-03).{" "}
                 <Link href="/consent" className="font-semibold text-ink underline underline-offset-2">Buka Consent</Link>.
               </p>
             ) : (
-              <p className="mt-1 font-body text-[12px] text-ink-faint">punya consent marketing aktif &amp; tidak disuppress</p>
+              <p className="mt-1 font-body text-[12px] text-ink-faint">consent marketing aktif &amp; tidak disuppress</p>
+            )}
+          </div>
+
+          <div className={`${counts.contactableService === 0 ? "tint-red" : "glass"} rounded-card p-5`}>
+            <div className="flex items-center gap-2 text-ink-soft">
+              <Send className="h-4 w-4" aria-hidden />
+              <span className="font-display text-[12px] font-bold uppercase tracking-wide">Boleh dihubungi · layanan</span>
+            </div>
+            <p className="mt-2 font-display text-[40px] font-black leading-none text-ink">{nf.format(counts.contactableService)}</p>
+            {counts.contactableService === 0 ? (
+              <p className="mt-2 font-body text-[12px] leading-relaxed text-ink-soft">
+                <strong>Nol dari {nf.format(counts.matched)}.</strong> Tak ada consent{" "}
+                <span className="font-mono">transactional</span> aktif (atau suppression menang, K-03).
+              </p>
+            ) : (
+              <p className="mt-1 font-body text-[12px] text-ink-faint">
+                consent layanan (transactional) aktif &amp; tidak disuppress — untuk CS/operasional
+              </p>
             )}
           </div>
         </section>
