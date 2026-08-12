@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { BrandLogo } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -62,7 +63,15 @@ export default function LoginPage({
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="password">Kata sandi</Label>
+              <div className="flex items-baseline justify-between gap-2">
+                <Label htmlFor="password">Kata sandi</Label>
+                <Link
+                  href="/forgot-password"
+                  className="font-body text-[12px] text-ink-soft underline underline-offset-2 hover:text-ink"
+                >
+                  Lupa kata sandi?
+                </Link>
+              </div>
               <Input id="password" name="password" type="password" autoComplete="current-password" required />
             </div>
 
