@@ -18,14 +18,17 @@ describe("consent basis → purpose policy (Sprint 3P)", () => {
   });
 
   it("legacy_import_unverified marketing tracks the single legal flag", () => {
-    // This is the one open legal decision. The test asserts the map follows the flag,
-    // so if someone flips the flag the behaviour is exactly what the map says.
+    // This is the one legal decision. The test asserts the map follows the flag, so the
+    // behaviour is always exactly what the map says.
     expect(purposePermittedForBasis("legacy_import_unverified", "marketing")).toBe(
       LEGACY_IMPORT_ALLOWS_MARKETING,
     );
-    // Ships closed until legal records the decision.
-    expect(LEGACY_IMPORT_ALLOWS_MARKETING).toBe(false);
-    expect(BASIS_ALLOWED_PURPOSES.legacy_import_unverified).not.toContain("marketing");
+    // Flipped to true on 2026-08-12 — the product owner's on-the-record decision to run
+    // Migrasi 11 (backfill), which writes marketing consent under a legacy basis
+    // (docs/SIGNOFF-legal-consent.md). Legacy now permits BOTH purposes.
+    expect(LEGACY_IMPORT_ALLOWS_MARKETING).toBe(true);
+    expect(BASIS_ALLOWED_PURPOSES.legacy_import_unverified).toContain("marketing");
+    expect(BASIS_ALLOWED_PURPOSES.legacy_import_unverified).toContain("transactional");
   });
 
   it("fails closed on unknown basis/purpose (K-03 discipline)", () => {

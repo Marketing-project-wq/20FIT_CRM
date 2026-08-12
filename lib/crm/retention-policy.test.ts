@@ -21,6 +21,12 @@ describe("classifyAction (single source)", () => {
     // by retention-policy.parity.test.ts.
     expect(classifyAction("search.performed")).toBe("operational");
   });
+  it("the exact password-reset action is operational (Sprint 3T, purged after 90 days)", () => {
+    // app/forgot-password/actions.ts writes exactly this action name. Confirmed (not assumed)
+    // — the fourth time an action name is checked against the allowlist by name, after
+    // quality.viewed / suppression.* / segment.* landed between the lists.
+    expect(classifyAction("login.password_reset_requested")).toBe("operational");
+  });
   it("compliance = the permanently-excluded categories", () => {
     for (const a of ["consent.x", "suppression.x", "role.granted", "profile.deleted", "export.x", "retention.x"]) {
       expect(classifyAction(a)).toBe("compliance");

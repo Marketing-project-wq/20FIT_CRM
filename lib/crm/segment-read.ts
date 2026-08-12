@@ -1,11 +1,10 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  isContactableForMarketing,
-  suppressionKey,
-  type ConsentRow,
-  type Identity,
-} from "./contactability";
+  countContactableForPurpose,
+  fetchSuppressedCustomerIds,
+  type ApplyMaster,
+} from "./contactability-read";
 import { SEGMENT_NULL, type SegmentCriteria } from "./segment";
 import { resolveEcosystemCustomerIds } from "./engagement";
 import { resolveEnrichmentCustomerIds } from "./enrichment";
@@ -25,31 +24,27 @@ function intersectSets(sets: Set<string>[]): Set<string> | null {
 
 /**
  * Segment computation — READ-ONLY over master_customer + crm_consent + crm_suppression.
- * Returns ONLY counts: how many match, and how many of those are contactable. It never
- * returns rows — a segment builder that emits a list of people is an export without a
- * name (Sprint 3M). If someone wants to see the people, that's /audience's job (masked,
- * audited). Server-only; the service-role client is passed in by the route.
+ * Returns ONLY counts: how many match, and how many of those are contactable — for MARKETING
+ * and for SERVICE separately (Migrasi 11). It never returns rows — a segment builder that
+ * emits a list of people is an export without a name (Sprint 3M). If someone wants to see the
+ * people, that's /audience's job (masked, audited). Server-only; the service-role client is
+ * passed in by the route.
  *
- * `contactable` is DERIVED from the existing rule (isContactableForMarketing, K-03), never
- * a second rule. It short-circuits to 0 when crm_consent has no active marketing row —
- * which is every segment today, and the point the screen exists to show.
+ * `contactable*` is DERIVED from the shared rule (countContactableForPurpose over an inner
+ * embed of crm_consent, K-03), never a second rule. It is a head:true count — no rows are
+ * pulled, so the 408k-row backfill can't silently truncate it (the old code SELECTed every
+ * active consent row and .in()-ed 80k ids — that breaks at PostgREST's max-rows cap).
  */
 
 export interface SegmentCounts {
   matched: number;
-  contactable: number;
+  contactableMarketing: number;
+  contactableService: number;
 }
 
-interface ConsentDbRow {
-  customer_id: string | null;
-  channel: string;
-  purpose: string;
-  status: string;
-}
-
-/** Apply the criteria filters to a master_customer query. Shared by the matched-count and
- *  the contactable candidate query so they can never diverge. The builder types are
- *  awkward to type generically, so `any` mirrors the existing read layers. */
+/** Apply the criteria filters to a master_customer query. Shared by the matched-count and the
+ *  contactable inner-embed query so they can never diverge. The builder types are awkward to
+ *  type generically, so `any` mirrors the existing read layers. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function applyCriteria(q: any, c: SegmentCriteria, masterFilterExpr?: string | null): any {
   let out = q;
@@ -163,63 +158,18 @@ export async function computeSegment(
     matched = await countMasterWithinIds(admin, criteria, Array.from(restrictIds), masterFilterExpr);
   }
 
-  // 2. Contactable — RUN the rule, don't trust a column. Start from active marketing
-  //    consent; today that set is empty, so this returns 0 without touching profiles.
-  const { data: consentData, error: consentErr } = await admin
-    .from("crm_consent")
-    .select("customer_id, channel, purpose, status")
-    .eq("purpose", "marketing")
-    .eq("status", "active")
-    .not("customer_id", "is", null);
-  if (consentErr) throw consentErr;
-  const consentRows = (consentData ?? []) as ConsentDbRow[];
-  if (consentRows.length === 0) return { matched, contactable: 0 }; // fail-closed: no consent = 0
+  // 2. Contactable — RUN the rule via the shared inner-embed count, per purpose. Marketing and
+  //    service are separate permissions (shown separately). Suppression is fetched ONCE and
+  //    shared (suppression wins for both). The SAME applyCriteria narrows the parent, so the
+  //    contactable counts respect the exact criteria + tree the matched count used. No rows
+  //    are pulled — head:true throughout, so the backfill cannot truncate this.
+  const applyMaster: ApplyMaster = (q) => applyCriteria(q, criteria, masterFilterExpr);
+  const suppressed = await fetchSuppressedCustomerIds(admin);
 
-  const byCustomer = new Map<string, ConsentRow[]>();
-  for (const r of consentRows) {
-    if (!r.customer_id) continue;
-    const list = byCustomer.get(r.customer_id) ?? [];
-    list.push({ channel: r.channel, purpose: r.purpose, status: r.status });
-    byCustomer.set(r.customer_id, list);
-  }
+  const [contactableMarketing, contactableService] = await Promise.all([
+    countContactableForPurpose(admin, "marketing", applyMaster, restrictIds, suppressed),
+    countContactableForPurpose(admin, "transactional", applyMaster, restrictIds, suppressed),
+  ]);
 
-  // Active suppression keys (suppression WINS, K-03).
-  const { data: suppData, error: suppErr } = await admin
-    .from("crm_suppression")
-    .select("identity_kind, identity_key")
-    .eq("status", "active");
-  if (suppErr) throw suppErr;
-  const suppSet = new Set(
-    (suppData ?? []).map((s: { identity_kind: string; identity_key: string }) =>
-      suppressionKey(s.identity_kind, s.identity_key),
-    ),
-  );
-
-  // Candidate customers who ALSO match the criteria — apply the same filters. When an
-  // ecosystem criterion is set, the candidate set is first intersected with ecoIds so the
-  // contactable count respects ecosystem presence exactly like matched does.
-  let ids = Array.from(byCustomer.keys());
-  if (restrictIds) ids = ids.filter((id) => restrictIds.has(id));
-  if (ids.length === 0) return { matched, contactable: 0 };
-  const profRes = await applyCriteria(
-    admin.from("master_customer").select("customer_id, phone_normalized, email_normalized").in("customer_id", ids),
-    criteria,
-    masterFilterExpr,
-  );
-  if (profRes.error) throw profRes.error;
-
-  let contactable = 0;
-  for (const p of (profRes.data ?? []) as {
-    customer_id: string;
-    phone_normalized: string | null;
-    email_normalized: string | null;
-  }[]) {
-    const identities: Identity[] = [];
-    if (p.phone_normalized) identities.push({ kind: "phone", key: p.phone_normalized });
-    if (p.email_normalized) identities.push({ kind: "email", key: p.email_normalized });
-    if (isContactableForMarketing(byCustomer.get(p.customer_id) ?? [], identities, suppSet)) {
-      contactable++;
-    }
-  }
-  return { matched, contactable };
+  return { matched, contactableMarketing, contactableService };
 }

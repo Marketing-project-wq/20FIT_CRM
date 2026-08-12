@@ -1,103 +1,37 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  isContactableForMarketing,
-  suppressionKey,
-  type ConsentRow,
-  type Identity,
-} from "./contactability";
+  countContactableForPurpose,
+  fetchSuppressedCustomerIds,
+} from "./contactability-read";
 
 /**
- * Dashboard KPI stats — READ-ONLY aggregates over the EXISTING master_customer +
- * crm_consent + crm_suppression. Same posture as lib/crm/quality.ts: server-only,
- * service-role client passed in by the caller (which owns auth + RBAC), no write path.
- * No individual customer row is exposed to the client (only counts), so nothing to
+ * Dashboard KPI stats — READ-ONLY aggregates over master_customer + crm_consent +
+ * crm_suppression. Server-only, service-role client passed in by the caller (which owns auth
+ * + RBAC), no write path. No individual customer row is exposed (only counts), so nothing to
  * mask and no per-view audit.
  *
- * The `—` vs `0` distinction is enforced at the UI, but the SHAPE supports it: a field
- * this layer cannot source is absent from the type. `contactable` is now a MEASURED 0
- * (derived from the contactability rule over the live tables), not a hardcoded literal.
+ * The `—` vs `0` distinction is enforced at the UI, but the SHAPE supports it: a field this
+ * layer cannot source is absent from the type. Both contactable counts are MEASURED (derived
+ * from the contactability rule over the live tables), not hardcoded literals.
+ *
+ * TWO contactable counts, deliberately separate (Migrasi 11): marketing contact and service
+ * (transactional) contact are DIFFERENT permissions — CS phones customers for service, which
+ * is not marketing. Collapsing them into one number would hide exactly the distinction the
+ * backfill was expanded to record.
  */
 export interface DashboardStats {
   /** Rows in master_customer. Real, sourced. */
   audienceSize: number;
-  /** Contactable-for-marketing count, DERIVED from crm_consent + crm_suppression via
-   *  the isContactableForMarketing rule. 0 today because crm_consent is empty — a
-   *  measured 0, not a written one. */
-  contactable: number;
-  /** Most recent created_at, or null if the table is empty. This is data FRESHNESS,
-   *  not a growth signal — master_customer arrived as batch loads, not a live feed. */
+  /** Contactable-for-MARKETING: distinct profiles with an active marketing consent AND not
+   *  suppressed. Derived via a head:true inner-embed count (contactability-read.ts). */
+  contactableMarketing: number;
+  /** Contactable-for-SERVICE (transactional): same rule, purpose='transactional'. This is the
+   *  "boleh dihubungi untuk urusan layanan" CS relies on. */
+  contactableService: number;
+  /** Most recent created_at, or null if the table is empty. This is data FRESHNESS, not a
+   *  growth signal — master_customer arrived as batch loads, not a live feed. */
   lastProfileAt: string | null;
-}
-
-interface ConsentDbRow {
-  customer_id: string | null;
-  channel: string;
-  purpose: string;
-  status: string;
-}
-
-/**
- * Count contactable-for-marketing profiles by RUNNING the rule, not by trusting any
- * single column. Fail-closed and short-circuiting: no active marketing consent -> 0,
- * without even reading suppression or profiles. Today that returns 0 immediately.
- */
-async function fetchContactableCount(admin: SupabaseClient): Promise<number> {
-  // 1. Customers with an ACTIVE MARKETING consent row (the only ones that can qualify).
-  const { data: consentData, error: consentErr } = await admin
-    .from("crm_consent")
-    .select("customer_id, channel, purpose, status")
-    .eq("purpose", "marketing")
-    .eq("status", "active")
-    .not("customer_id", "is", null);
-  if (consentErr) throw consentErr;
-
-  const consentRows = (consentData ?? []) as ConsentDbRow[];
-  if (consentRows.length === 0) return 0; // fail-closed: absence of consent = 0
-
-  const byCustomer = new Map<string, ConsentRow[]>();
-  for (const r of consentRows) {
-    if (!r.customer_id) continue;
-    const list = byCustomer.get(r.customer_id) ?? [];
-    list.push({ channel: r.channel, purpose: r.purpose, status: r.status });
-    byCustomer.set(r.customer_id, list);
-  }
-
-  // 2. Active suppression keys (suppression WINS). identity_key is normalized the same
-  //    way as master_customer.phone_normalized/email_normalized (62… canon, D-2).
-  const { data: suppData, error: suppErr } = await admin
-    .from("crm_suppression")
-    .select("identity_kind, identity_key")
-    .eq("status", "active");
-  if (suppErr) throw suppErr;
-  const suppSet = new Set(
-    (suppData ?? []).map((s: { identity_kind: string; identity_key: string }) =>
-      suppressionKey(s.identity_kind, s.identity_key),
-    ),
-  );
-
-  // 3. Identities of the candidate customers, then apply the rule per profile.
-  const ids = Array.from(byCustomer.keys());
-  const { data: profData, error: profErr } = await admin
-    .from("master_customer")
-    .select("customer_id, phone_normalized, email_normalized")
-    .in("customer_id", ids);
-  if (profErr) throw profErr;
-
-  let count = 0;
-  for (const p of (profData ?? []) as {
-    customer_id: string;
-    phone_normalized: string | null;
-    email_normalized: string | null;
-  }[]) {
-    const identities: Identity[] = [];
-    if (p.phone_normalized) identities.push({ kind: "phone", key: p.phone_normalized });
-    if (p.email_normalized) identities.push({ kind: "email", key: p.email_normalized });
-    if (isContactableForMarketing(byCustomer.get(p.customer_id) ?? [], identities, suppSet)) {
-      count++;
-    }
-  }
-  return count;
 }
 
 export async function fetchDashboardStats(admin: SupabaseClient): Promise<DashboardStats> {
@@ -110,14 +44,28 @@ export async function fetchDashboardStats(admin: SupabaseClient): Promise<Dashbo
     .limit(1)
     .maybeSingle();
 
-  const [{ count, error: sizeErr }, { data: fresh, error: freshErr }, contactable] =
-    await Promise.all([sizeQ, freshQ, fetchContactableCount(admin)]);
+  // Suppression is fetched ONCE and shared across both purpose counts (suppression wins for
+  // both). Today it is 0 rows, so both counts short-circuit to the plain consent count.
+  const suppressed = await fetchSuppressedCustomerIds(admin);
+
+  const [
+    { count, error: sizeErr },
+    { data: fresh, error: freshErr },
+    contactableMarketing,
+    contactableService,
+  ] = await Promise.all([
+    sizeQ,
+    freshQ,
+    countContactableForPurpose(admin, "marketing", undefined, null, suppressed),
+    countContactableForPurpose(admin, "transactional", undefined, null, suppressed),
+  ]);
   if (sizeErr) throw sizeErr;
   if (freshErr) throw freshErr;
 
   return {
     audienceSize: count ?? 0,
-    contactable,
+    contactableMarketing,
+    contactableService,
     lastProfileAt: (fresh as { created_at: string | null } | null)?.created_at ?? null,
   };
 }

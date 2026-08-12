@@ -30,12 +30,14 @@ export const CONSENT_BASES: readonly ConsentBasis[] = ["legacy_import_unverified
 export const CONSENT_PURPOSES: readonly ConsentPurpose[] = ["marketing", "transactional"];
 
 /**
- * THE legal decision, isolated to one boolean. `false` until legal + product owner record
- * (a) which sources are covered and (b) that a legacy import basis permits marketing.
- * Changing this to `true` is a deliberate, on-the-record act (docs/SIGNOFF-legal-consent.md),
- * not a code cleanup.
+ * THE legal decision, isolated to one boolean. Flipped to `true` on 2026-08-12 by the product
+ * owner's on-the-record decision to run Migrasi 11 (backfill consent), which writes active
+ * MARKETING (and transactional) consent for the legacy import under
+ * basis='legacy_import_unverified'. See docs/SIGNOFF-legal-consent.md for the recorded
+ * decision. This is a deliberate, on-the-record act — not a code cleanup — and it is the ONE
+ * place the decision lives, so the whole map below follows it.
  */
-export const LEGACY_IMPORT_ALLOWS_MARKETING = false;
+export const LEGACY_IMPORT_ALLOWS_MARKETING = true;
 
 /**
  * The map itself. Derived from the flag above so the two can never disagree. explicit_opt_in

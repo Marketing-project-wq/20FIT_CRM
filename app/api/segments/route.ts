@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
     actor_email: userEmail,
     action: "list.viewed",
     target_table: "master_customer",
-    summary: `Segment builder dihitung (cocok ${counts.matched}, boleh dihubungi ${counts.contactable}).`,
+    summary: `Segment builder dihitung (cocok ${counts.matched}, marketing ${counts.contactableMarketing}, layanan ${counts.contactableService}).`,
     // NON-PII: closed-list criteria + counts. city is user-typed, length-capped upstream.
     metadata: {
       view: "segment_builder",
@@ -119,7 +119,8 @@ export async function POST(request: NextRequest) {
       // validateFilterTree, K-17). Null when the flat criteria path was used.
       filter_tree: treeForAudit,
       matched: counts.matched,
-      contactable: counts.contactable,
+      contactable_marketing: counts.contactableMarketing,
+      contactable_service: counts.contactableService,
     },
   });
   if (auditError) {
@@ -131,7 +132,11 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json(
-    { matched: counts.matched, contactable: counts.contactable },
+    {
+      matched: counts.matched,
+      contactableMarketing: counts.contactableMarketing,
+      contactableService: counts.contactableService,
+    },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

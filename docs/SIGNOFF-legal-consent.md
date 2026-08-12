@@ -106,4 +106,47 @@ yang benar.
 
 ---
 
+## Pembaruan Migrasi 11 (12 Agustus 2026) — keputusan JALANKAN backfill
+
+**Keputusan pemilik produk (tercatat):** jalankan backfill consent (Migrasi 11), **termasuk
+`purpose='marketing'`**, dan **juga `transactional`** (CS menelepon pelanggan untuk layanan —
+itu bukan marketing dan harus punya dasar tersendiri). Basis tetap **`legacy_import_unverified`**
+untuk semua — pilihan yang jujur karena tak ada catatan opt-in per orang.
+
+**Status tiga pertanyaan, diperbarui:**
+
+1. **Cakupan sumber** — **masih belum dirinci tertulis resmi.** Pemilik produk memilih tetap
+   maju dengan basis `legacy_import_unverified`, yang secara eksplisit menandai "impor lama,
+   belum diverifikasi per orang". Keputusan menerima risiko ini diambil **sadar** dan tercatat
+   di sini; basis yang jujur adalah mitigasinya (bukan `explicit_opt_in`, yang akan berbohong).
+2. **`basis` yang dicatat** — `legacy_import_unverified`. **Terjawab, tak berubah.**
+3. **Legacy → marketing** — **DIPUTUSKAN YA** oleh pemilik produk. Flag
+   `LEGACY_IMPORT_ALLOWS_MARKETING` dibalik ke **`true`** (12 Agu 2026). Ini tindakan tercatat,
+   sesuai janji "membaliknya adalah tindakan tercatat, bukan rapikan kode".
+
+**Peta `basis`→`purpose` sekarang:**
+
+| `basis` | `transactional` | `marketing` |
+|---|---|---|
+| `explicit_opt_in` | ✅ | ✅ |
+| `legacy_import_unverified` | ✅ | ✅ (flag dibalik 12 Agu 2026) |
+
+**Yang ditulis backfill (matriks lima kombinasi, `sms` sengaja tidak diisi):**
+marketing×{email, whatsapp}; transactional×{email, whatsapp, phone_call}. `marketing`+`phone_call`
+tidak diisi (telepon marketing beda sifat dari telepon layanan; tak diminta). `sms` tak dipakai
+20FIT. `basis='legacy_import_unverified'`, `source='20fit_data_import'`, `evidence` menunjuk
+sumber + tanggal impor tanpa PII. Idempoten via unique key `(customer_id, channel, purpose)`,
+satu baris audit `consent.backfilled` (prefiks `consent.%` = denylist kepatuhan, permanen).
+
+**Reversibilitas (fakta yang layak diketahui pengambil keputusan):** `crm_consent` punya **nol
+trigger** (beda dari `crm_suppression`/`crm_audit_log` yang append-only). `delete from
+crm_consent where source = '20fit_data_import'` membatalkan backfill **bersih**, dan `evidence`
++ `source` membuat undo-nya presisi. Keputusan ini jauh lebih murah untuk dibalik daripada
+terlihatnya.
+
+**Suppression tetap menang** (K-13): aturan kontak tunggal (`isContactableForPurpose`) tak
+diubah — suppression di atas consent untuk marketing maupun layanan, tanpa jalan pintas.
+
+---
+
 > **Konteks lintas-sprint:** keputusan `docs/riwayat/KEPUTUSAN.md` **K-12** (migrasi 3 dijalankan apa adanya; syarat legal masih terbuka). Peta `basis`→`purpose`: `lib/crm/consent-policy.ts`. Jalur tulis: `docs/RENCANA-jalur-tulis-consent.md`.

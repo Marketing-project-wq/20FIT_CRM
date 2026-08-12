@@ -3,6 +3,30 @@ import { NextResponse, type NextRequest } from "next/server";
 
 type CookieToSet = { name: string; value: string; options?: CookieOptions };
 
+/**
+ * Paths reachable WITHOUT a session (the auth gate's allowlist): /login (+ subpaths) and the
+ * password-recovery pages. /health and /dev are handled by their own earlier returns. Pure +
+ * exported so a test enforces this list — a future addition can't slip through unnoticed.
+ */
+export function isPublicPath(pathname: string): boolean {
+  return (
+    pathname === "/login" ||
+    pathname.startsWith("/login/") ||
+    pathname === "/forgot-password" ||
+    pathname === "/reset-password"
+  );
+}
+
+/**
+ * Paths an ALREADY-authenticated user is bounced away from to `/`. /login and
+ * /forgot-password qualify (a signed-in user needs neither). /reset-password does NOT —
+ * submitting the code calls verifyOtp, which creates a temporary session, so bouncing an
+ * authenticated user off /reset-password would break the reset itself.
+ */
+export function bouncesAuthenticated(pathname: string): boolean {
+  return pathname === "/login" || pathname === "/forgot-password";
+}
+
 function redirectToLogin(request: NextRequest): NextResponse {
   const url = request.nextUrl.clone();
   url.pathname = "/login";
@@ -11,9 +35,10 @@ function redirectToLogin(request: NextRequest): NextResponse {
 }
 
 /**
- * Refreshes the Supabase auth session and enforces the gate: only /login and
- * /health are reachable without a session. Fails closed — if the project is
- * misconfigured or unreachable, protected paths still go to /login.
+ * Refreshes the Supabase auth session and enforces the gate. Reachable WITHOUT a session:
+ * /login, /health, /dev (dev only), and the password-recovery pages /forgot-password and
+ * /reset-password (a locked-out user has no session but must reach them). Fails closed — if
+ * the project is misconfigured or unreachable, protected paths still go to /login.
  */
 export async function updateSession(request: NextRequest): Promise<NextResponse> {
   const pathname = request.nextUrl.pathname;
@@ -34,12 +59,7 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
     return NextResponse.next({ request });
   }
 
-  // Public (no session): login + the password-recovery flow (request OTP / reset).
-  const publicPath =
-    pathname === "/login" ||
-    pathname.startsWith("/login/") ||
-    pathname === "/forgot-password" ||
-    pathname === "/reset-password";
+  const publicPath = isPublicPath(pathname);
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -78,8 +98,11 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
     return redirectToLogin(request);
   }
 
-  // A signed-in user has no reason to sit on the login page.
-  if (user && pathname === "/login") {
+  // A signed-in user has no reason to sit on the login page — or to REQUEST a reset
+  // (/forgot-password). But NOT /reset-password: submitting the code calls verifyOtp, which
+  // establishes a temporary session, so bouncing an authenticated user off /reset-password
+  // would break the reset itself. So /reset-password is deliberately absent here.
+  if (user && bouncesAuthenticated(pathname)) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     url.search = "";
