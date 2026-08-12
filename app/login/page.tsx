@@ -66,7 +66,7 @@ export default function LoginPage({
               <div className="flex items-baseline justify-between gap-2">
                 <Label htmlFor="password">Kata sandi</Label>
                 <Link
-                  href="/forgot-password"
+                  href={`/forgot-password?redirectedFrom=${encodeURIComponent(redirectedFrom)}`}
                   className="font-body text-[12px] text-ink-soft underline underline-offset-2 hover:text-ink"
                 >
                   Lupa kata sandi?
