@@ -3,6 +3,7 @@ import { getCurrentUserRole } from "@/lib/auth/current-role";
 import { isPermitted, resolveGrant } from "@/lib/auth/roles";
 import { Badge } from "@/components/ui/badge";
 import { ConsentRegister } from "@/components/consent/consent-register";
+import { CoverageNotice } from "@/components/i18n/coverage-notice";
 
 export const metadata: Metadata = { title: "Consent" };
 
@@ -35,5 +36,10 @@ export default async function ConsentPage() {
     );
   }
 
-  return <ConsentRegister />;
+  return (
+    <>
+      <CoverageNotice screen="consent" />
+      <ConsentRegister />
+    </>
+  );
 }

@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getServerDict } from "@/lib/i18n/server";
 import { Badge } from "@/components/ui/badge";
 import { SegmentBuilder } from "@/components/segments/segment-builder";
+import { CoverageNotice } from "@/components/i18n/coverage-notice";
 
 export const metadata: Metadata = { title: "Segments" };
 export const dynamic = "force-dynamic";
@@ -57,12 +58,15 @@ export default async function SegmentsPage() {
   const canExport = grantFor(role, "export.at_or_below_threshold") !== "deny";
 
   return (
-    <SegmentBuilder
-      cityFillPct={cityFillPct}
-      cityFilled={cityFilled}
-      total={total}
-      canViewHealth={canViewHealth}
-      canExport={canExport}
-    />
+    <>
+      <CoverageNotice screen="segments" />
+      <SegmentBuilder
+        cityFillPct={cityFillPct}
+        cityFilled={cityFilled}
+        total={total}
+        canViewHealth={canViewHealth}
+        canExport={canExport}
+      />
+    </>
   );
 }

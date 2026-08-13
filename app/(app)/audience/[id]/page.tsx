@@ -3,6 +3,7 @@ import { getCurrentUserRole } from "@/lib/auth/current-role";
 import { canViewProfileList, isPermitted, resolveGrant } from "@/lib/auth/roles";
 import { Badge } from "@/components/ui/badge";
 import { ProfileDetail } from "@/components/audience/profile-detail";
+import { CoverageNotice } from "@/components/i18n/coverage-notice";
 
 export const metadata: Metadata = { title: "Profil" };
 
@@ -38,5 +39,10 @@ export default async function ProfileDetailPage({ params }: { params: { id: stri
   // consent.edit server-side; this only decides whether to render the entry point.
   const canEditConsent = isPermitted(role, "consent.edit");
 
-  return <ProfileDetail id={params.id} canEditConsent={canEditConsent} />;
+  return (
+    <>
+      <CoverageNotice screen="profile" />
+      <ProfileDetail id={params.id} canEditConsent={canEditConsent} />
+    </>
+  );
 }

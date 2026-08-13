@@ -6,6 +6,7 @@ import { isPermitted, resolveGrant } from "@/lib/auth/roles";
 import { Badge } from "@/components/ui/badge";
 import { RolesPanel } from "@/components/settings/roles-panel";
 import { AuditLogPanel } from "@/components/settings/audit-log-panel";
+import { CoverageNotice } from "@/components/i18n/coverage-notice";
 
 export const metadata: Metadata = { title: "Settings" };
 
@@ -58,6 +59,7 @@ export default async function SettingsPage() {
         </Link>
       </header>
 
+      <CoverageNotice screen="audit" />
       <AuditLogPanel />
       <RolesPanel />
     </div>

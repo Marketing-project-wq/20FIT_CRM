@@ -15,6 +15,12 @@
  */
 
 export const id = {
+  coverage: {
+    // Shown at the top of a screen whose content is still Indonesian-only, when English is chosen.
+    // A LABELLED mix reads as work-in-progress; a silent one reads as breakage.
+    notEnglishYet: "Bagian ini belum tersedia dalam bahasa Inggris — masih ditampilkan dalam bahasa Indonesia.",
+  },
+
   common: {
     appName: "20FIT CRM",
     languageName: "Bahasa Indonesia",

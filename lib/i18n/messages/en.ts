@@ -9,6 +9,10 @@
 import type { Messages } from "./id";
 
 export const en: Messages = {
+  coverage: {
+    notEnglishYet: "This section isn't available in English yet — it's still shown in Indonesian.",
+  },
+
   common: {
     appName: "20FIT CRM",
     languageName: "English",

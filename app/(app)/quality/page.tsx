@@ -3,6 +3,7 @@ import { getCurrentUserRole } from "@/lib/auth/current-role";
 import { canViewProfileList, resolveGrant } from "@/lib/auth/roles";
 import { Badge } from "@/components/ui/badge";
 import { QualityDashboard } from "@/components/quality/quality-dashboard";
+import { CoverageNotice } from "@/components/i18n/coverage-notice";
 
 export const metadata: Metadata = { title: "Quality" };
 
@@ -37,5 +38,10 @@ export default async function QualityPage() {
     );
   }
 
-  return <QualityDashboard />;
+  return (
+    <>
+      <CoverageNotice screen="quality" />
+      <QualityDashboard />
+    </>
+  );
 }
