@@ -88,6 +88,98 @@ export const id = {
     rfmNoBucket: "− (tanpa bucket)",
   },
 
+  // /audience page (Sprint 4D screen 1) — browse pool + single-person search + quality banner.
+  // Sentences with an inline mono token / link / count are split into parts so the exact styling
+  // survives translation. Warnings live under audience.warn.* (guarded).
+  audience: {
+    maskedBadge: "Kontak disamarkan",
+    subtitlePre: "Pool audiens tunggal — ",
+    subtitleMid: " profil dibaca langsung dari ",
+    subtitlePost: " (baca saja).",
+    filterListLabel: "Saring daftar",
+    cityPlaceholder: "Cari kota…",
+    allUnits: "Semua unit",
+    allSegments: "Semua segment",
+    noSegment: "(tanpa segment)",
+    allRevenue: "Semua revenue",
+    hasPaid: "Pernah membayar",
+    notPaid: "Belum membayar",
+    ariaUnit: "Filter unit",
+    ariaSegment: "Filter segment",
+    ariaRevenue: "Filter revenue",
+    thName: "Nama",
+    thPhone: "Telepon",
+    thEmail: "Email",
+    thCity: "Kota",
+    thUnit: "Unit",
+    thSegment: "Segment",
+    thLtv: "Lifetime value",
+    thCreated: "Dibuat",
+    loading: "Memuat…",
+    failed: "Gagal",
+    noMatch: "Tidak ada profil yang cocok dengan filter ini.",
+    noName: "(tanpa nama)",
+    empty: "belum terisi",
+    zeroProfiles: "0 profil",
+    showingPre: "Menampilkan ",
+    showingOf: " dari ",
+    prev: "Sebelumnya",
+    pageLabel: "Hal",
+    next: "Berikutnya",
+    loadFailed: "Gagal memuat",
+    connFailed: "Gagal terhubung ke server.",
+    // Single-person search box.
+    searchTitle: "Cari satu orang",
+    searchFillKeyword: "Isi kata kunci pencarian.",
+    searchFailed: "Gagal mencari",
+    kindName: "Nama",
+    kindPhone: "Telepon",
+    kindEmail: "Email",
+    phName: "min. 3 huruf nama…",
+    phPhone: "nomor lengkap (0812…, +62…, 62…)",
+    phEmail: "alamat email lengkap",
+    searching: "Mencari…",
+    searchBtn: "Cari",
+    resultsSuffix: " hasil",
+    maskedShort: "disamarkan",
+    openProfile: "Buka profil",
+    notFoundName: "Tidak ditemukan. Coba potongan nama lain.",
+    notFoundId: "Tidak ditemukan. Pastikan nomor/email lengkap dan benar.",
+    warn: {
+      // ID: "Untuk menemukan orang yang baru saja menelepon — lalu buka profil & catat permintaan
+      //      berhenti. Telepon & email dicocokkan sama persis (harus lengkap), nama dengan potongan
+      //      kata. Ini mencari SATU orang (search.performed) — berbeda dari menyaring daftar (list.viewed)."
+      // EN below. Nuance at risk: that single-person search and list-browse are DIFFERENT audited
+      // actions — collapsing them hides which one the user is doing (and which audit row it writes).
+      searchIntroA: "Untuk menemukan orang yang baru saja menelepon — lalu buka profil & catat permintaan berhenti dihubungi. Telepon & email dicocokkan sama persis (harus nomor/email lengkap), nama dengan potongan kata. Ini mencari satu orang (tercatat ",
+      searchIntroB: ") — berbeda dari menyaring daftar di bawah (",
+      searchIntroC: ").",
+      // ID: "Terlalu banyak hasil (lebih dari N). Persempit kata kuncinya — pencarian ini sengaja
+      //      tidak menawarkan halaman berikutnya. Untuk menelusuri banyak orang, pakai daftar tersaring."
+      // Nuance at risk: the cap is a DELIBERATE anti-harvest limit, not a technical page limit —
+      // "narrow the query" is the intended path, not "load more".
+      tooManyA: "Terlalu banyak hasil (lebih dari ",
+      tooManyB: "). Persempit kata kuncinya — pencarian ini sengaja tidak menawarkan halaman berikutnya. Untuk menelusuri banyak orang, pakai daftar tersaring di bawah.",
+      // Quality banner — the qualitative warnings that stay true regardless of the count.
+      bannerTitle: "Data apa adanya dari sistem lama — belum diremediasi",
+      // Nuance: "belum terisi" (not filled in) — the field is empty, but shown honestly, not hidden.
+      bannerGender: "Gender, tanggal lahir, dan alamat kosong untuk seluruh pool — ditampilkan sebagai “belum terisi”, tidak disembunyikan.",
+      bannerCity: "Kota hanya terisi sebagian kecil. Penargetan per kota belum bisa dipertanggungjawabkan.",
+      // Nuance: "Rp 0" is a MEASURED value shown as-is, not masked as missing data.
+      bannerLtv: "Hampir semua lifetime value bernilai nol. “Rp 0” ditampilkan apa adanya, bukan disamarkan sebagai data hilang.",
+      // Nuance: the counter-intuitive finding is shown as-is, not "tidied" away.
+      bannerSegment: "Segment terbalik. Kohort tanpa segment (NULL) justru memiliki rata-rata LTV tertinggi — ditampilkan apa adanya, tidak dirapikan.",
+      // Nuance: load-stamp, not activity — the column is an import artefact, its DATE is real but its MEANING isn't activity.
+      bannerLastActiveA: "“Terakhir aktif” sengaja tidak ditampilkan. Kolom ",
+      bannerLastActiveB: " adalah artefak impor, bukan jejak aktivitas.",
+      bannerFooterA: "Angka pastinya dihitung langsung dari database di ",
+      bannerFooterB: ".",
+      // Read-only provenance footer. Nuance: every list open and profile open is audited, and
+      // contact is masked ON THE SERVER for analyst — not hidden in the client.
+      footer: "Baca saja · nol tombol ekspor/edit/hapus · klik nama untuk membuka profil (tercatat sebagai profile.viewed) · setiap pembukaan daftar tercatat (list.viewed) · kontak disamarkan di server untuk peran analyst.",
+    },
+  },
+
   export: {
     // CSV header labels — these ARE user-facing (column titles in the downloaded file), so they
     // follow the language. Stored values under them are never translated.
