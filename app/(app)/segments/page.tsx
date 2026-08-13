@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { getCurrentUserRole } from "@/lib/auth/current-role";
-import { isPermitted, resolveGrant } from "@/lib/auth/roles";
+import { isPermitted, resolveGrant, grantFor } from "@/lib/auth/roles";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Badge } from "@/components/ui/badge";
 import { SegmentBuilder } from "@/components/segments/segment-builder";
@@ -52,6 +52,9 @@ export default async function SegmentsPage() {
   }
   const cityFillPct = total > 0 ? (cityFilled / total) * 100 : 0;
   const canViewHealth = isPermitted(role, "profile.view_health");
+  // Export button is shown to roles that may export OR request one (allow / approval); hidden on
+  // a flat deny (analyst, data_steward). The route re-checks the real grant against the row count.
+  const canExport = grantFor(role, "export.at_or_below_threshold") !== "deny";
 
   return (
     <SegmentBuilder
@@ -59,6 +62,7 @@ export default async function SegmentsPage() {
       cityFilled={cityFilled}
       total={total}
       canViewHealth={canViewHealth}
+      canExport={canExport}
     />
   );
 }

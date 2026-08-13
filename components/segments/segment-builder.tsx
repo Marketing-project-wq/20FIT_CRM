@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Filter, Clock, Users, Send, Network } from "lucide-react";
+import { Filter, Clock, Users, Send, Network, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ECOSYSTEM_UNITS, ECOSYSTEM_PRODUCTS_BY_UNIT } from "@/lib/crm/engagement-constants";
 import { STAGING_RFM_VALUES, STAGING_PROGRAMS } from "@/lib/crm/staging-constants";
@@ -46,21 +46,45 @@ function TimeBanned() {
   );
 }
 
-export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth }: { cityFillPct: number; cityFilled: number; total: number; canViewHealth: boolean }) {
+export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, canExport }: { cityFillPct: number; cityFilled: number; total: number; canViewHealth: boolean; canExport: boolean }) {
   const [c, setC] = useState<SegmentCriteria>(EMPTY_CRITERIA);
   const [rows, setRows] = useState<Row[]>([]);
   const [counts, setCounts] = useState<Counts | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   function set<K extends keyof SegmentCriteria>(k: K, v: SegmentCriteria[K]) {
     setC((prev) => ({ ...prev, [k]: v }));
     setCounts(null); // criteria changed -> stale result, recompute explicitly
+    setExportError(null);
   }
 
   function setRowsAndClear(r: Row[]) {
     setRows(r);
     setCounts(null); // filter changed -> stale result
+    setExportError(null);
+  }
+
+  // The request body — master fields come from the AND/OR tree; ecosystem + source presence stay
+  // separate top-level ANDs (cross-table OR isn't expressible in one query). Shared by compute +
+  // export so the exported file can never describe a different segment than the counts shown.
+  function buildBody() {
+    return {
+      tree: rowsToTree(rows),
+      ecoUnit: c.ecoUnit,
+      ecoProduct: c.ecoProduct,
+      srcHyrox: c.srcHyrox,
+      srcMy20fit: c.srcMy20fit,
+      srcRecency: c.srcRecency,
+      srcArena: c.srcArena,
+      srcGym: c.srcGym,
+      srcClinicPatient: c.srcClinicPatient,
+      srcClinicTxn: c.srcClinicTxn,
+      srcRfm: c.srcRfm,
+      srcProgram: c.srcProgram,
+    };
   }
 
   async function compute() {
@@ -70,22 +94,7 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth }
       const res = await fetch("/api/segments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // Master fields come from the AND/OR tree; ecosystem + source presence stay
-        // separate top-level ANDs (cross-table OR isn't expressible in one query).
-        body: JSON.stringify({
-          tree: rowsToTree(rows),
-          ecoUnit: c.ecoUnit,
-          ecoProduct: c.ecoProduct,
-          srcHyrox: c.srcHyrox,
-          srcMy20fit: c.srcMy20fit,
-          srcRecency: c.srcRecency,
-          srcArena: c.srcArena,
-          srcGym: c.srcGym,
-          srcClinicPatient: c.srcClinicPatient,
-          srcClinicTxn: c.srcClinicTxn,
-          srcRfm: c.srcRfm,
-          srcProgram: c.srcProgram,
-        }),
+        body: JSON.stringify(buildBody()),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -103,6 +112,38 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth }
       setCounts(null);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function exportCsv() {
+    setExportError(null);
+    setExporting(true);
+    try {
+      const res = await fetch("/api/exports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildBody()),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setExportError(data?.message ?? `Gagal mengekspor (HTTP ${res.status}).`);
+        return;
+      }
+      // Streamed CSV → download. The connection stayed alive as pages flowed (no idle timeout).
+      const blob = await res.blob();
+      const name = res.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] ?? "segmen.csv";
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      setExportError("Gagal terhubung ke server.");
+    } finally {
+      setExporting(false);
     }
   }
 
@@ -286,11 +327,27 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth }
           </p>
         </div>
 
-        <div className="mt-4">
+        <div className="mt-4 flex flex-wrap items-center gap-3">
           <Button onClick={compute} disabled={loading}>
             {loading ? "Menghitung…" : "Hitung"}
           </Button>
-          {error && <p className="mt-2 font-body text-[13px] text-red">{error}</p>}
+          {/* Export is a separate, gated action (PRD 17.2). Enabled only after a compute so the
+              file always matches a segment the user has just seen the size of. The server
+              re-checks the grant against the row count and refuses (approval / deny) with a
+              message; suppression is excluded and NIK/clinical are never columns. */}
+          {canExport && (
+            <Button variant="outline" onClick={exportCsv} disabled={exporting || !counts}>
+              <Download className="h-3.5 w-3.5" /> {exporting ? "Mengekspor…" : "Ekspor CSV"}
+            </Button>
+          )}
+          {error && <p className="w-full font-body text-[13px] text-red">{error}</p>}
+          {exportError && <p className="w-full font-body text-[13px] text-red">{exportError}</p>}
+          {canExport && counts && !exportError && (
+            <p className="w-full font-body text-[11px] leading-relaxed text-ink-faint">
+              Ekspor mengalirkan CSV (suppression dikecualikan, tanpa NIK / data klinis). Berkas diakhiri baris{" "}
+              <span className="font-mono">EOF total_baris=…</span> — jika baris itu tak ada, unduhan terpotong &amp; jangan dipakai sebagai data lengkap.
+            </p>
+          )}
         </div>
       </section>
 

@@ -119,18 +119,20 @@ async function countMasterWithinIds(
   return total;
 }
 
-export async function computeSegment(
+/**
+ * Resolve every id-set constraint (ecosystem / enrichment / multi-source / clinic / staging) to
+ * DISTINCT customer_ids and INTERSECT them (AND). Returns null when NO id-set criterion is set
+ * (i.e. only master columns narrow the pool). Shared by computeSegment (counts) and the export
+ * (rows) so the two can never resolve a different audience. Every id is a master_customer
+ * customer_id by construction, so the intersection ⊆ master_customer.
+ *
+ * Cross-table OR is not expressible in one PostgREST query, so these stay AND-only (the AND/OR
+ * tree covers master columns only). The staging resolvers now use the migration-14 RPC (fast).
+ */
+export async function resolveRestrictIds(
   admin: SupabaseClient,
   criteria: SegmentCriteria,
-  masterFilterExpr: string | null = null,
-): Promise<SegmentCounts> {
-  // Resolve every id-set constraint to DISTINCT customer_ids, then INTERSECT them (AND):
-  //   - Sprint 3N: ecosystem presence (customer_engagement unit/product)
-  //   - Sprint 3R: unmatched-source presence (Hyrox / my20fit / real-recency), by email
-  // Cross-table OR is not expressible in one PostgREST query, so these stay AND-only
-  // (consistent with the ecosystem criteria; the AND/OR tree covers master columns only).
-  // Every id in these sets is a master_customer.customer_id by construction (eco: 0 orphan;
-  // enrichment: resolved FROM master_customer), so the intersection ⊆ master_customer.
+): Promise<Set<string> | null> {
   const idSets: Set<string>[] = [];
   if (criteria.ecoUnit || criteria.ecoProduct) {
     idSets.push(
@@ -140,17 +142,27 @@ export async function computeSegment(
   if (criteria.srcHyrox) idSets.push(await resolveEnrichmentCustomerIds(admin, "hyrox"));
   if (criteria.srcMy20fit) idSets.push(await resolveEnrichmentCustomerIds(admin, "my20fit"));
   if (criteria.srcRecency) idSets.push(await resolveEnrichmentCustomerIds(admin, "recency"));
-  // Multi-source presence (TUGAS 2) — AND-only, intersected like the sources above. Clinical
-  // ones (clinic patient / txn) are gated on profile.view_health at the route, not here.
   if (criteria.srcArena) idSets.push(await resolveMultiSourceCustomerIds(admin, "arena"));
   if (criteria.srcGym) idSets.push(await resolveMultiSourceCustomerIds(admin, "gym"));
   if (criteria.srcClinicPatient) idSets.push(await resolveClinicPatientCustomerIds(admin));
   if (criteria.srcClinicTxn) idSets.push(await resolveClinicTxnCustomerIds(admin));
-  // staging_20fit_data presence (Sprint 3Y) — RFM bucket / program participation, email-matched,
-  // intersected AND-only. A clinical program is gated on view_health at the route, not here.
   if (criteria.srcRfm) idSets.push(await resolveStagingRfmCustomerIds(admin, criteria.srcRfm));
   if (criteria.srcProgram) idSets.push(await resolveStagingProgramCustomerIds(admin, criteria.srcProgram));
-  const restrictIds = intersectSets(idSets);
+  return intersectSets(idSets);
+}
+
+/** Apply criteria (or a validated master filter tree) to a master_customer query — exported so
+ *  the export path narrows the parent EXACTLY as the segment count did. */
+export function applyMasterCriteria<T>(q: T, criteria: SegmentCriteria, masterFilterExpr?: string | null): T {
+  return applyCriteria(q, criteria, masterFilterExpr);
+}
+
+export async function computeSegment(
+  admin: SupabaseClient,
+  criteria: SegmentCriteria,
+  masterFilterExpr: string | null = null,
+): Promise<SegmentCounts> {
+  const restrictIds = await resolveRestrictIds(admin, criteria);
 
   // 1. Matched — count of master_customer rows meeting the criteria.
   let matched: number;
