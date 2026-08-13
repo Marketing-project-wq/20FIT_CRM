@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { RolesPanel } from "@/components/settings/roles-panel";
 import { AuditLogPanel } from "@/components/settings/audit-log-panel";
 import { CoverageNotice } from "@/components/i18n/coverage-notice";
+import { getServerDict } from "@/lib/i18n/server";
 
 export const metadata: Metadata = { title: "Settings" };
 
@@ -22,20 +23,21 @@ export const dynamic = "force-dynamic";
  */
 export default async function SettingsPage() {
   const role = await getCurrentUserRole();
+  const { t } = getServerDict();
 
   if (!isPermitted(role, "audit.view")) {
     const decision = resolveGrant(role, "audit.view");
     return (
       <div>
         <h1 className="font-display text-[32px] font-black uppercase leading-none text-ink">
-          Settings
+          {t.audit.settingsTitle}
         </h1>
         <div className="mt-8 flex flex-col items-center justify-center gap-4 rounded-card border border-dashed border-glass-border px-6 py-20 text-center">
-          <Badge tone="red">Akses ditolak</Badge>
+          <Badge tone="red">{t.access.deniedBadge}</Badge>
           <p className="max-w-md font-body text-[14px] leading-relaxed text-ink-soft">
             {decision === "needs_scope"
-              ? "Peran unit_manager dibatasi pada unit yang dikelola, tetapi tabel unit-scope belum ada — akses ditolak (fail-closed)."
-              : "Pengaturan (peran & audit log) hanya untuk super_admin dan crm_manager. Bila RBAC belum di-provision, semua akses ditolak — ini perilaku fail-closed yang benar."}
+              ? t.access.segmentsDeniedScope
+              : t.audit.pageDeniedRole}
           </p>
         </div>
       </div>
@@ -46,16 +48,16 @@ export default async function SettingsPage() {
     <div className="space-y-10">
       <header>
         <h1 className="font-display text-[32px] font-black uppercase leading-none text-ink">
-          Settings
+          {t.audit.settingsTitle}
         </h1>
         <p className="mt-2 font-body text-[14px] text-ink-soft">
-          Tata kelola: peran RBAC dan jejak audit. Keduanya read-only di sprint ini.
+          {t.audit.settingsSubtitle}
         </p>
         <Link
           href="/settings/diagnostik"
           className="mt-4 inline-flex items-center gap-2 rounded-sm border border-glass-border px-4 py-2 font-display text-[12px] font-bold uppercase tracking-wide text-ink-soft transition-colors hover:bg-glass hover:text-ink"
         >
-          <Stethoscope className="h-4 w-4" /> Buka Diagnostik — status verifikasi & pemeriksaan lapisan baca
+          <Stethoscope className="h-4 w-4" /> {t.audit.diagnostikLink}
         </Link>
       </header>
 

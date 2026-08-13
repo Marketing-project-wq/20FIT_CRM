@@ -6,6 +6,7 @@ import { isPermitted, resolveGrant } from "@/lib/auth/roles";
 import { fetchAuditLog, clampAuditPageSize } from "@/lib/crm/audit-log";
 import { AUDIT_DEFAULT_PAGE_SIZE } from "@/lib/crm/audit-log-constants";
 import { logApiFailure } from "@/lib/crm/failure-log";
+import { getServerDict } from "@/lib/i18n/server";
 
 export const dynamic = "force-dynamic";
 
@@ -34,13 +35,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
   }
 
+  const { t } = getServerDict();
   const role = await getCurrentUserRole();
   if (!isPermitted(role, "audit.view")) {
     return NextResponse.json(
       {
         error: "forbidden",
         decision: resolveGrant(role, "audit.view"),
-        message: "Hanya super_admin dan crm_manager yang boleh melihat audit log (PRD 17.2).",
+        message: t.audit.apiRoleDenied,
       },
       { status: 403 },
     );
@@ -97,7 +99,7 @@ export async function GET(request: NextRequest) {
   if (auditError) {
     logApiFailure("/audit", "audit_write_failed", { code: auditError.code });
     return NextResponse.json(
-      { error: "audit_failed", message: "Pembacaan ditolak: gagal mencatat audit (akuntabilitas)." },
+      { error: "audit_failed", message: t.audit.apiAuditFailed },
       { status: 503 },
     );
   }

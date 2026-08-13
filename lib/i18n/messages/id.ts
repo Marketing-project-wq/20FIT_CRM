@@ -537,6 +537,106 @@ export const id = {
     },
   },
 
+  // /settings governance page (Sprint 4E screen 4) — audit log + RBAC roles panel + page chrome.
+  // The marker screen is "audit" but the honest unit is the WHOLE /settings page (roles-panel too).
+  // Audit ACTION NAMES (profile.viewed, list.viewed, …) are identifiers — kept verbatim in mono,
+  // never translated (LARANGAN). Retention-note action lists render the mono tokens inline with
+  // literal ", " separators, so only the prose is a dict key.
+  audit: {
+    settingsTitle: "Settings",
+    settingsSubtitle: "Tata kelola: peran RBAC dan jejak audit. Keduanya read-only di sprint ini.",
+    diagnostikLink: "Buka Diagnostik — status verifikasi & pemeriksaan lapisan baca",
+    pageDeniedRole: "Pengaturan (peran & audit log) hanya untuk super_admin dan crm_manager. Bila RBAC belum di-provision, semua akses ditolak — ini perilaku fail-closed yang benar.",
+    // roles panel
+    rolesTitle: "Peran (RBAC)",
+    rolesSubtitleA: "Read-only. Perubahan peran ditunda sampai alur pemberian peran ber-audit dibangun — mengubah izin tanpa jejak adalah hal yang justru ingin dihindari. Matriks izin: ",
+    rolesSubtitleB: " (PRD 17.2, disetujui Jeff 2026-08-10).",
+    rolesNotProvisioned: "RBAC belum di-provision",
+    rolesNotProvisionedA: "Tabel ",
+    rolesNotProvisionedB: " belum ada. Jalankan migrasi lalu seed super_admin pertama; daftar peran akan muncul di sini.",
+    thUser: "Pengguna",
+    thRole: "Peran",
+    thGranted: "Diberikan",
+    rolesEmpty: "Belum ada peran yang di-assign.",
+    // audit panel
+    auditTitle: "Audit log",
+    auditSubtitle: "Jejak “siapa melakukan apa”. Append-only — tidak ada tombol hapus atau edit karena trigger database menolaknya. Setiap pembukaan halaman ini sendiri tercatat.",
+    catCompliance: "Kepatuhan",
+    catOperational: "Operasional",
+    catAll: "Semua",
+    inRangeLabel: "Dalam rentang ini: ",
+    inRangeCompliance: "Kepatuhan ",
+    inRangeOperational: "Operasional ",
+    inRangeOther: " · Lain ",
+    inRangeTotal: " · total ",
+    filterActionLabel: "Aksi / prefiks",
+    filterActionPlaceholder: "mis. role. atau list.viewed",
+    filterActorLabel: "Email aktor",
+    filterActorPlaceholder: "mis. tifany@",
+    filterFrom: "Dari",
+    filterTo: "Sampai",
+    apply: "Terapkan",
+    reset: "Reset",
+    thTime: "Waktu (WIB)",
+    thActor: "Aktor",
+    thAction: "Aksi",
+    thRetention: "Retensi",
+    thTarget: "Target",
+    thSummary: "Ringkasan",
+    loading: "Memuat…",
+    failed: "Gagal",
+    noMatch: "Tidak ada baris audit yang cocok.",
+    artifactTag: "artefak",
+    systemActor: "sistem",
+    zeroRows: "0 baris",
+    showingPre: "Menampilkan ",
+    showingOf: " dari ",
+    prev: "Sebelumnya",
+    pageLabel: "Hal",
+    next: "Berikutnya",
+    loadFailed: "Gagal memuat",
+    connFailed: "Gagal terhubung ke server.",
+    // RETENTION_LABEL (audit-log-constants). "Operasional"/"Kepatuhan" as retention CLASS labels.
+    retOperational: "Operasional · dipangkas > 90 hari",
+    retCompliance: "Kepatuhan · disimpan permanen",
+    retOther: "Lain · tak masuk allowlist purge",
+    // route messages
+    apiRoleDenied: "Hanya super_admin dan crm_manager yang boleh melihat audit log (PRD 17.2).",
+    apiAuditFailed: "Pembacaan ditolak: gagal mencatat audit (akuntabilitas).",
+    warn: {
+      // RetentionNote. Nuance at risk: an operational row that STOPS APPEARING (purged after 90d)
+      // is not one that has been answered — "absence of old rows doesn't mean nothing happened".
+      // The two retention CLASSES (operational pruned 90d / compliance permanent) must stay distinct.
+      retentionTitle: "Log ini bukan riwayat lengkap",
+      retentionA: "Kebijakan retensi (migrasi 8) memangkas kategori operasional (",
+      retentionB: ") setelah 90 hari; kategori kepatuhan (",
+      retentionC: ") dikecualikan permanen. Ketiadaan baris operasional lama tidak berarti tidak ada yang terjadi. Fungsi purge belum dijadwalkan, jadi sampai hari ini belum ada satu baris pun yang benar-benar terpangkas.",
+      // Nuance: the stored filter value in list.viewed metadata is USER-TYPED, not curated data.
+      retentionNoteA: "Catatan: nilai filter yang tersimpan di ",
+      retentionNoteB: " baris ",
+      retentionNoteC: " (mis. kota) berasal dari ketikan pengguna, bukan data terkurasi — diperlakukan apa adanya dan dibatasi panjangnya.",
+      // GapNote. Nuance at risk: each MISSING id is one FAILED audited operation — the row that
+      // should have recorded it is itself the one that never landed. The sequence is never reset.
+      gapTitleA: "Daftar ini tidak lengkap — ",
+      gapTitleB: " nomor id tanpa baris",
+      gapBodyA: "Sepanjang audit log, rentang id ",
+      gapBodyB: " (",
+      gapBodyC: " nomor) hanya memuat ",
+      gapBodyD: " baris. ",
+      gapBodyE: " nomor tidak punya baris: ",
+      gapBodyF: " sah (artefak uji yang dihapus) dan ",
+      gapBodyG: " tak dikenal.",
+      gapBody2A: "Id memakai sequence: sebuah operasi teraudit yang gagal atau di-rollback tetap mengambil nomornya lalu tak meninggalkan baris. Jadi tiap id yang hilang adalah satu operasi teraudit yang gagal — barisnya yang seharusnya mencatatnya justru yang tak pernah mendarat. ",
+      gapUnexplainedHint: "Yang tak dikenal perlu ditelusuri di log Railway. ",
+      gapBody2B: "Sequence tidak pernah diisi ulang atau diatur ulang — itu menghapus satu-satunya bukti.",
+      // Read-only footer.
+      footer: "Append-only · nol tombol hapus/edit · dibaca via service role server-side · pembukaan halaman ini tercatat (list.viewed).",
+      // ARTIFACT_ROWS (by id). Nuance: a legitimate audit row that is a TEST artifact, not real activity.
+      artifact1: "Artefak uji trigger append-only (Sprint 2B) — bukan aktivitas.",
+      artifact5: "Artefak verifikasi retensi (Sprint 3A) — pemangkasan uji, bukan aktivitas.",
+    },
+  },
+
   export: {
     // CSV header labels — these ARE user-facing (column titles in the downloaded file), so they
     // follow the language. Stored values under them are never translated.
