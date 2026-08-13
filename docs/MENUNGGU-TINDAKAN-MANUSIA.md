@@ -78,3 +78,10 @@ Diperbarui: 13 Agustus 2026.
 - **Kalau dibiarkan:** **bukan penghalang.** RPC sudah **~0,33 dtk hangat** (diukur 13 Agu 2026)
   — cukup untuk resolver dan ekspor. Indeks ini murni optimasi tambahan; kejar hanya bila
   ekspor besar terasa lambat di produksi.
+
+## 9. (OPSIONAL) `ANTHROPIC_API_KEY` untuk asisten segmen AI — set di Railway
+- **Siapa:** pemegang Variables Railway.
+- **Langkah:** set `ANTHROPIC_API_KEY` (server-only, jangan prefix `NEXT_PUBLIC_`) di Railway;
+  opsional `SEGMENT_AI_MODEL` untuk mengganti model. Nama-namanya ada di `.env.example`.
+- **Kalau dibiarkan:** **bukan penghalang.** Tanpa kunci, tombol "Usulkan (AI)" menjawab 503 dan
+  filter manual tetap lengkap (AI mempercepat, bukan menggantikan). Aktifkan bila ingin fitur AI.
