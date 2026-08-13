@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUserRole } from "@/lib/auth/current-role";
 import { isPermitted, resolveGrant } from "@/lib/auth/roles";
 import { proposeSegment, AiUnavailableError } from "@/lib/crm/segment-ai";
+import { getServerDict } from "@/lib/i18n/server";
 import { logApiFailure } from "@/lib/crm/failure-log";
 
 export const dynamic = "force-dynamic";
@@ -57,17 +58,15 @@ export async function POST(request: NextRequest) {
   }
 
   const canViewHealth = isPermitted(role, "profile.view_health");
+  const { lang, t } = getServerDict();
 
   let proposal;
   try {
-    proposal = await proposeSegment(text, { canViewHealth });
+    proposal = await proposeSegment(text, { canViewHealth, lang });
   } catch (e) {
     if (e instanceof AiUnavailableError) {
       logApiFailure("/segments/assist", "ai_unavailable", { code: e.message.slice(0, 40) });
-      return NextResponse.json(
-        { error: "ai_unavailable", message: "Asisten AI sedang tidak tersedia. Pakai filter manual — semua kriteria tetap ada." },
-        { status: 503 },
-      );
+      return NextResponse.json({ error: "ai_unavailable", message: t.ai.unavailable }, { status: 503 });
     }
     logApiFailure("/segments/assist", "assist_failed", {});
     return NextResponse.json({ error: "assist_failed" }, { status: 500 });

@@ -5,8 +5,10 @@ import { usePathname } from "next/navigation";
 import { LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BrandLogo } from "@/components/brand/logo";
-import { NAV_ITEMS } from "./nav";
+import { NAV_ITEMS, navLabel } from "./nav";
 import { ThemeToggle } from "./theme-toggle";
+import { LangSwitcher } from "@/components/i18n/lang-switcher";
+import { useI18n } from "@/components/i18n/lang-provider";
 import type { Theme } from "@/lib/theme";
 
 /**
@@ -28,6 +30,7 @@ export function Sidebar({
 }) {
   const livePath = usePathname();
   const pathname = activePath ?? livePath;
+  const { t } = useI18n();
 
   const allowed = new Set(allowedHrefs);
   const items = NAV_ITEMS.filter((item) => allowed.has(item.href));
@@ -59,13 +62,14 @@ export function Sidebar({
               )}
             >
               <Icon className="h-4 w-4 shrink-0" />
-              <span>{item.label}</span>
+              <span>{navLabel(t, item.href, item.label)}</span>
             </Link>
           );
         })}
       </nav>
 
       <div className="space-y-2 border-t border-glass-border p-3">
+        <LangSwitcher />
         <ThemeToggle initialTheme={initialTheme} />
         <div className="flex items-center justify-between gap-2 px-3">
           <span className="min-w-0 truncate font-mono text-[11px] text-ink-faint" title={userEmail}>
@@ -77,7 +81,7 @@ export function Sidebar({
               className="flex shrink-0 items-center gap-1.5 rounded-sm px-2 py-1 font-display text-[12px] font-bold uppercase tracking-wide text-ink-soft transition-colors hover:bg-glass hover:text-ink"
             >
               <LogOut className="h-3.5 w-3.5" />
-              Keluar
+              {t.nav.signOut}
             </button>
           </form>
         </div>

@@ -4,6 +4,8 @@ import { NAV_ITEMS } from "./nav";
 import { THEME_COOKIE, resolveTheme } from "@/lib/theme";
 import { getCurrentUserRole } from "@/lib/auth/current-role";
 import { canSeeNav } from "@/lib/auth/roles";
+import { getLang } from "@/lib/i18n/server";
+import { LangProvider } from "@/components/i18n/lang-provider";
 
 /**
  * Application chrome: always-dark sidebar + light/dark content surface. The
@@ -39,16 +41,18 @@ export async function AppShell({
       })();
 
   return (
-    <div className="flex min-h-[100dvh]">
-      <Sidebar
-        userEmail={userEmail}
-        initialTheme={theme}
-        activePath={activePath}
-        allowedHrefs={allowedHrefs}
-      />
-      <main className="min-w-0 flex-1">
-        <div className="mx-auto max-w-7xl px-6 py-8 md:px-10">{children}</div>
-      </main>
-    </div>
+    <LangProvider lang={getLang()}>
+      <div className="flex min-h-[100dvh]">
+        <Sidebar
+          userEmail={userEmail}
+          initialTheme={theme}
+          activePath={activePath}
+          allowedHrefs={allowedHrefs}
+        />
+        <main className="min-w-0 flex-1">
+          <div className="mx-auto max-w-7xl px-6 py-8 md:px-10">{children}</div>
+        </main>
+      </div>
+    </LangProvider>
   );
 }

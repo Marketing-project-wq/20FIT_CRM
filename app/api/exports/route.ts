@@ -8,6 +8,7 @@ import { computeSegment } from "@/lib/crm/segment-read";
 import { validateFilterTree, filterTreeToExpr, type FilterNode } from "@/lib/crm/filter-tree";
 import { thresholdAction } from "@/lib/crm/export-constants";
 import { streamSegmentCsv, type ExportContext } from "@/lib/crm/export";
+import { getServerDict } from "@/lib/i18n/server";
 import { logApiFailure } from "@/lib/crm/failure-log";
 
 export const dynamic = "force-dynamic";
@@ -114,10 +115,12 @@ export async function POST(request: NextRequest) {
 
   // Passed the gate → stream the CSV. The audit row is written by the generator AFTER the last
   // data row with the real count (a mid-stream disconnect leaves no "complete" audit).
+  const { t } = getServerDict();
   const ctx: ExportContext = {
     actorId: userId,
     actorEmail: userEmail,
-    criteriaSummary: summarizeCriteria(criteria, masterFilterExpr != null),
+    labels: t.export,
+    criteriaSummary: summarizeCriteria(criteria, masterFilterExpr != null, t.export.provNoCriteria),
     criteriaForAudit: {
       unit: criteria.unit, segment: criteria.segment, city: criteria.city, revenue: criteria.revenue,
       has_phone: criteria.hasPhone, has_email: criteria.hasEmail,
@@ -163,8 +166,10 @@ export async function POST(request: NextRequest) {
   });
 }
 
-/** Short human summary of the active criteria for the file's provenance line. */
-function summarizeCriteria(c: ReturnType<typeof parseCriteria>, hasTree: boolean): string {
+/** Short summary of the active criteria for the file's provenance line. The field descriptors are
+ *  closed-list technical tokens (kept stable across languages); the "no criteria" fallback follows
+ *  the language. */
+function summarizeCriteria(c: ReturnType<typeof parseCriteria>, hasTree: boolean, noneLabel: string): string {
   const parts: string[] = [];
   if (hasTree) parts.push("filter lanjutan (AND/OR)");
   if (c.unit) parts.push(`unit=${c.unit}`);
@@ -184,5 +189,5 @@ function summarizeCriteria(c: ReturnType<typeof parseCriteria>, hasTree: boolean
   if (c.srcClinicTxn) parts.push("transaksi klinik");
   if (c.srcRfm) parts.push(`RFM=${c.srcRfm}`);
   if (c.srcProgram) parts.push(`program=${c.srcProgram}`);
-  return parts.length > 0 ? parts.join(", ") : "seluruh pool (tanpa kriteria)";
+  return parts.length > 0 ? parts.join(", ") : noneLabel;
 }

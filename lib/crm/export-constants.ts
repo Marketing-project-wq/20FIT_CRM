@@ -95,9 +95,10 @@ export function csvRow(values: readonly unknown[]): string {
   return values.map(csvEscape).join(",") + "\r\n";
 }
 
-/** The header row (the EXPORT_COLUMNS labels). */
-export function csvHeader(): string {
-  return csvRow(EXPORT_COLUMNS.map((c) => c.header));
+/** The header row. Defaults to the built-in (Indonesian) labels; pass `headerFor` to localise
+ *  the column titles (Sprint 4B) without changing the column set or order. */
+export function csvHeader(headerFor?: (column: string) => string): string {
+  return csvRow(EXPORT_COLUMNS.map((c) => (headerFor ? headerFor(c.column) : c.header)));
 }
 
 /** The fixed audit action for a completed export. Pinned by a parity test to the denylist. */

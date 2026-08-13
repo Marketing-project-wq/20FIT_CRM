@@ -5,6 +5,7 @@ import { fetchSuppressedCustomerIds } from "./contactability-read";
 import type { SegmentCriteria } from "./segment";
 import { EXPORT_COLUMNS, EXPORT_ACTION, csvHeader, csvRow } from "./export-constants";
 import { logApiFailure } from "./failure-log";
+import type { Dict } from "@/lib/i18n";
 
 /**
  * Segment CSV export — STREAMING row producer (Sprint 4A TUGAS 2). Server-only; the route wires
@@ -43,16 +44,19 @@ export interface ExportContext {
   criteriaForAudit: Record<string, unknown>;
   /** ISO timestamp stamped into the file + audit (the route supplies it). */
   nowIso: string;
+  /** Localised export labels (headers + provenance block) — the file follows the chosen language. */
+  labels: Dict["export"];
 }
 
 /** Provenance block (CSV comment lines) so a file that leaves the system stays traceable. */
 function provenanceLines(ctx: ExportContext): string {
+  const L = ctx.labels;
   const lines = [
-    "# 20FIT CRM — ekspor segmen",
-    `# tanggal: ${ctx.nowIso}`,
-    `# oleh: ${ctx.actorEmail ?? ctx.actorId}`,
-    `# kriteria: ${ctx.criteriaSummary}`,
-    "# suppression dikecualikan · tanpa NIK / data klinis · jumlah baris ada di baris terakhir (EOF)",
+    `# ${L.provTitle}`,
+    `# ${L.provDate}: ${ctx.nowIso}`,
+    `# ${L.provBy}: ${ctx.actorEmail ?? ctx.actorId}`,
+    `# ${L.provCriteria}: ${ctx.criteriaSummary}`,
+    `# ${L.provFooter}`,
   ];
   return lines.map((l) => csvRow([l])).join("");
 }
@@ -70,7 +74,7 @@ export async function* streamSegmentCsv(
   ]);
 
   yield provenanceLines(ctx);
-  yield csvHeader();
+  yield csvHeader((col) => ctx.labels.headers[col as keyof Dict["export"]["headers"]] ?? col);
 
   const selectCols = ["customer_id", ...EXPORT_COLUMNS.map((c) => c.column).filter((c) => c !== "customer_id")].join(",");
   const emit = (row: Record<string, unknown>): string => csvRow(EXPORT_COLUMNS.map((c) => row[c.column]));
@@ -146,5 +150,5 @@ export async function* streamSegmentCsv(
 
   // EOF marker: a complete file always ends here with the count. Missing = truncated. If the
   // audit write failed the file says so, so a downloaded file never hides a missing audit trail.
-  yield csvRow([`# EOF total_baris=${count}${auditOk ? "" : " AUDIT_GAGAL"}`]);
+  yield csvRow([`# EOF ${ctx.labels.eofTotal}=${count}${auditOk ? "" : ` ${ctx.labels.auditFailed}`}`]);
 }

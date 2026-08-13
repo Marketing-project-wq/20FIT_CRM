@@ -3,6 +3,7 @@ import { AUDIENCE_UNITS, AUDIENCE_SEGMENTS } from "./audience-constants";
 import { ECOSYSTEM_UNITS } from "./engagement-constants";
 import { STAGING_RFM_VALUES, STAGING_PROGRAMS } from "./staging-constants";
 import { sanitizeAssistOutput, type AssistProposal } from "./segment-ai-shared";
+import type { Lang } from "@/lib/i18n";
 
 /**
  * AI segment assistant — the SERVER-ONLY LLM call (Sprint 4A TUGAS 3).
@@ -20,10 +21,13 @@ export class AiUnavailableError extends Error {}
 const MAX_INPUT = 500; // free text is capped before it ever reaches the model (cost + abuse)
 const DEFAULT_MODEL = "claude-haiku-4-5-20251001"; // cheap + fine for closed-vocabulary mapping
 
-function buildSystemPrompt(): string {
+function buildSystemPrompt(lang: Lang): string {
   const programs = STAGING_PROGRAMS.map((p) => `${p.key}${p.clinical ? " (KLINIS)" : ""} = "${p.label}"`).join(", ");
+  // One prompt, one vocabulary — the user may write in any language; only the language the model
+  // REPLIES in (notes + unexpressible reasons) follows the user's chosen UI language.
+  const replyLang = lang === "en" ? "English" : "Bahasa Indonesia";
   return [
-    "Anda memetakan deskripsi bebas berbahasa Indonesia menjadi kriteria segmen CRM 20FIT.",
+    `Anda memetakan deskripsi bebas (bahasa apa pun) menjadi kriteria segmen CRM 20FIT. Balas isi "unexpressible" dan "notes" dalam ${replyLang}.`,
     "Keluarkan HANYA satu objek JSON valid, tanpa teks lain, tanpa markdown.",
     "",
     "Skema JSON (semua opsional):",
@@ -66,7 +70,7 @@ function extractJson(text: string): unknown {
 
 export async function proposeSegment(
   rawText: string,
-  opts: { canViewHealth: boolean },
+  opts: { canViewHealth: boolean; lang: Lang },
 ): Promise<AssistProposal> {
   const text = String(rawText ?? "").trim().slice(0, MAX_INPUT);
   if (text === "") throw new AiUnavailableError("empty request");
@@ -87,7 +91,7 @@ export async function proposeSegment(
       body: JSON.stringify({
         model,
         max_tokens: 700,
-        system: buildSystemPrompt(),
+        system: buildSystemPrompt(opts.lang),
         messages: [{ role: "user", content: text }],
       }),
     });

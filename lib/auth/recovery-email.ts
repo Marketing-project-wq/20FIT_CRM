@@ -26,7 +26,36 @@ export interface RecoveryEmailContent {
  * (one of the three spam signals we can fix from here; the other two are sender identity
  * and domain authentication).
  */
-export function buildRecoveryEmail(code: string, validityLabel: string): RecoveryEmailContent {
+export function buildRecoveryEmail(
+  code: string,
+  validityLabel: string,
+  lang: "id" | "en" = "id",
+): RecoveryEmailContent {
+  if (lang === "en") {
+    const subject = "20FIT CRM password reset code";
+    const text = [
+      "Someone requested a password reset for your 20FIT CRM account.",
+      "",
+      `Your verification code: ${code}`,
+      "",
+      `Enter this code on the password reset page. It is valid for ${validityLabel} and can be used only once.`,
+      "",
+      "20FIT CRM is an internal 20FIT tool; accounts are created by an admin. If you didn't request this,",
+      "ignore this email — your password hasn't changed.",
+    ].join("\n");
+    const html = [
+      '<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#1a1a1a;line-height:1.6">',
+      '<h2 style="margin:0 0 12px">Reset your 20FIT CRM password</h2>',
+      "<p>Someone requested a password reset for your <strong>20FIT CRM</strong> account.</p>",
+      "<p>Your verification code:</p>",
+      `<p style="font-size:30px;font-weight:bold;letter-spacing:6px;margin:12px 0">${code}</p>`,
+      `<p>Enter this code on the password reset page. It is valid for <strong>${validityLabel}</strong> and can be used only once.</p>`,
+      '<p style="font-size:13px;color:#666">20FIT CRM is an internal 20FIT tool; accounts are created by an admin. If you didn\'t request this, ignore this email — your password hasn\'t changed.</p>',
+      "</div>",
+    ].join("");
+    return { subject, text, html };
+  }
+
   const subject = "Kode atur ulang kata sandi 20FIT CRM";
 
   const text = [

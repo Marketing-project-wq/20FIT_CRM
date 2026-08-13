@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { normalizeEmail } from "@/lib/crm/normalize";
 import { buildRecoveryEmail } from "@/lib/auth/recovery-email";
 import { sendTransactionalEmail } from "@/lib/email/mailtrap";
+import { getLang } from "@/lib/i18n/server";
 
 /**
  * Recovery-code pipeline: generateLink (generates an OTP, sends NOTHING) → mail the code
@@ -29,6 +30,7 @@ import { sendTransactionalEmail } from "@/lib/email/mailtrap";
  *  the project's expiry is changed, change this label to match. */
 export const RECOVERY_OTP_VALIDITY_MINUTES = 60;
 export const RECOVERY_OTP_VALIDITY_LABEL = "1 jam";
+export const RECOVERY_OTP_VALIDITY_LABEL_EN = "1 hour";
 
 export type RecoveryOutcome = "sent" | "error";
 
@@ -74,7 +76,10 @@ export async function sendRecoveryCode(
         console.error("[recovery] generateLink returned no email_otp");
         outcome = "error";
       } else {
-        const { subject, text, html } = buildRecoveryEmail(code, RECOVERY_OTP_VALIDITY_LABEL);
+        // Email follows the requester's UI language cookie (default Indonesian when unset).
+        const lang = getLang();
+        const validity = lang === "en" ? RECOVERY_OTP_VALIDITY_LABEL_EN : RECOVERY_OTP_VALIDITY_LABEL;
+        const { subject, text, html } = buildRecoveryEmail(code, validity, lang);
         await sendTransactionalEmail({ to: email, subject, text, html });
         outcome = "sent";
       }
