@@ -126,6 +126,8 @@ export const id = {
     prev: "Sebelumnya",
     pageLabel: "Hal",
     next: "Berikutnya",
+    loadMore: "Muat lagi",
+    allLoaded: "Semua sudah dimuat.",
     loadFailed: "Gagal memuat",
     connFailed: "Gagal terhubung ke server.",
     // Single-person search box.

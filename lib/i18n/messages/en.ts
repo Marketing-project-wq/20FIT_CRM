@@ -112,6 +112,8 @@ export const en: Messages = {
     prev: "Previous",
     pageLabel: "Page",
     next: "Next",
+    loadMore: "Load more",
+    allLoaded: "All loaded.",
     loadFailed: "Failed to load",
     connFailed: "Couldn't reach the server.",
     searchTitle: "Find one person",

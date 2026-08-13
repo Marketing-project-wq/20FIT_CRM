@@ -12,8 +12,11 @@ import {
   SEGMENT_NULL,
   AUDIENCE_UNITS,
   AUDIENCE_SEGMENTS,
-  AUDIENCE_DEFAULT_PAGE_SIZE,
 } from "@/lib/crm/audience-constants";
+
+/** Incremental page size (Sprint 5A): show 10, then "Load more" appends the next 10. The server's
+ *  per-request maximum still applies; this only sets how many a single fetch asks for. */
+const AUDIENCE_INCREMENT = 10;
 
 // Row shape mirrors lib/crm/audience.ts AudienceRow (phone/email already masked
 // server-side when `masked`). customer_id IS received (Sprint 3C) — used only as the
@@ -108,76 +111,85 @@ export function AudiencePool() {
   const [revenue, setRevenue] = useState<RevenueFilter>("all");
   const [cityInput, setCityInput] = useState("");
   const [city, setCity] = useState(""); // debounced
-  const [page, setPage] = useState(1);
 
-  const [data, setData] = useState<ApiResult | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Incremental loading (Sprint 5A): accumulate rows in 10-row pages instead of paging in place.
+  // A filter change resets the accumulator to page 1; "Load more" appends the next page. Each fetch
+  // still writes its own list.viewed audit row server-side (K-07) — five "load more" clicks are five
+  // audited reads, which is the intended, honest record.
+  const [rows, setRows] = useState<Row[]>([]);
+  const [total, setTotal] = useState(0);
+  const [masked, setMasked] = useState(false);
+  const [loadedPages, setLoadedPages] = useState(0);
+  const [loading, setLoading] = useState(true); // initial / after-filter-change load
+  const [loadingMore, setLoadingMore] = useState(false); // "Load more" in flight
   const [error, setError] = useState<string | null>(null);
 
-  // Debounce the free-text city filter; reset to page 1 when it changes.
+  // Debounce the free-text city filter. Changing it resets the accumulator (via the load effect).
   useEffect(() => {
-    const t = setTimeout(() => {
-      setCity(cityInput.trim());
-      setPage(1);
-    }, 400);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setCity(cityInput.trim()), 400);
+    return () => clearTimeout(timer);
   }, [cityInput]);
 
   const abortRef = useRef<AbortController | null>(null);
 
-  const load = useCallback(async () => {
-    abortRef.current?.abort();
-    const ac = new AbortController();
-    abortRef.current = ac;
-    setLoading(true);
-    setError(null);
+  /** Fetch one page. append=false replaces the list (page 1 / filter change); append=true adds. */
+  const loadPage = useCallback(
+    async (pageNum: number, append: boolean) => {
+      abortRef.current?.abort();
+      const ac = new AbortController();
+      abortRef.current = ac;
+      if (append) setLoadingMore(true);
+      else setLoading(true);
+      setError(null);
 
-    const params = new URLSearchParams();
-    params.set("page", String(page));
-    params.set("pageSize", String(AUDIENCE_DEFAULT_PAGE_SIZE));
-    if (unit) params.set("unit", unit);
-    if (segment) params.set("segment", segment);
-    if (city) params.set("city", city);
-    if (revenue !== "all") params.set("revenue", revenue);
+      const params = new URLSearchParams();
+      params.set("page", String(pageNum));
+      params.set("pageSize", String(AUDIENCE_INCREMENT));
+      if (unit) params.set("unit", unit);
+      if (segment) params.set("segment", segment);
+      if (city) params.set("city", city);
+      if (revenue !== "all") params.set("revenue", revenue);
 
-    try {
-      const res = await fetch(`/api/audience?${params.toString()}`, {
-        signal: ac.signal,
-        cache: "no-store",
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        setError(body?.message || `${t.audience.loadFailed} (HTTP ${res.status}).`);
-        setData(null);
-        return;
+      try {
+        const res = await fetch(`/api/audience?${params.toString()}`, { signal: ac.signal, cache: "no-store" });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          setError(body?.message || `${t.audience.loadFailed} (HTTP ${res.status}).`);
+          if (!append) setRows([]);
+          return;
+        }
+        const data = (await res.json()) as ApiResult;
+        setTotal(data.total);
+        setMasked(data.masked);
+        setRows((prev) => (append ? [...prev, ...data.rows] : data.rows));
+        setLoadedPages(pageNum);
+      } catch (e) {
+        if ((e as Error).name === "AbortError") return;
+        setError(t.audience.connFailed);
+        if (!append) setRows([]);
+      } finally {
+        if (!ac.signal.aborted) {
+          if (append) setLoadingMore(false);
+          else setLoading(false);
+        }
       }
-      setData((await res.json()) as ApiResult);
-    } catch (e) {
-      if ((e as Error).name === "AbortError") return;
-      setError(t.audience.connFailed);
-      setData(null);
-    } finally {
-      if (!ac.signal.aborted) setLoading(false);
-    }
-  }, [page, unit, segment, city, revenue, t]);
+    },
+    [unit, segment, city, revenue, t],
+  );
 
+  // Initial load + reset to page 1 whenever the filters (and thus loadPage) change.
   useEffect(() => {
-    load();
+    loadPage(1, false);
     return () => abortRef.current?.abort();
-  }, [load]);
+  }, [loadPage]);
 
-  const masked = data?.masked ?? false;
-  const total = data?.total ?? 0;
-  const pageSize = data?.pageSize ?? AUDIENCE_DEFAULT_PAGE_SIZE;
-  const rows = data?.rows ?? [];
-  const firstRow = total === 0 ? 0 : (page - 1) * pageSize + 1;
-  const lastRow = (page - 1) * pageSize + rows.length;
-  const hasNext = page * pageSize < total;
-
-  const onFilterChange = (setter: (v: string) => void) => (v: string) => {
-    setter(v);
-    setPage(1);
+  const loaded = rows.length;
+  const hasMore = loaded < total;
+  const loadMore = () => {
+    if (!loadingMore && !loading && hasMore) loadPage(loadedPages + 1, true);
   };
+
+  const onFilterChange = (setter: (v: string) => void) => (v: string) => setter(v);
 
   return (
     <div className="space-y-6">
@@ -255,10 +267,7 @@ export function AudiencePool() {
           aria-label={t.audience.ariaRevenue}
           className={selectCls}
           value={revenue}
-          onChange={(e) => {
-            setRevenue(e.target.value as RevenueFilter);
-            setPage(1);
-          }}
+          onChange={(e) => setRevenue(e.target.value as RevenueFilter)}
         >
           <option value="all">{t.audience.allRevenue}</option>
           <option value="has">{t.audience.hasPaid}</option>
@@ -351,32 +360,26 @@ export function AudiencePool() {
         </table>
       </div>
 
-      {/* Pagination */}
+      {/* Incremental "Load more" (Sprint 5A) — shows the count loaded of the total, and stops
+          (with a plain "all loaded" note, no dead button) once the whole result set is in view. */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="font-mono text-[12px] text-ink-faint">
           {total === 0
             ? t.audience.zeroProfiles
-            : `${t.audience.showingPre}${formatCount(firstRow, lang)}–${formatCount(lastRow, lang)}${t.audience.showingOf}${formatCount(total, lang)}`}
+            : `${t.audience.showingPre}${formatCount(loaded, lang)}${t.audience.showingOf}${formatCount(total, lang)}`}
         </p>
-        <div className="flex items-center gap-2">
+        {hasMore ? (
           <button
             type="button"
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={loading || page <= 1}
-            className="rounded-sm border border-glass-border px-3 py-1.5 font-display text-[12px] font-bold uppercase tracking-wide text-ink-soft transition-colors hover:bg-glass disabled:cursor-not-allowed disabled:opacity-40"
+            onClick={loadMore}
+            disabled={loading || loadingMore}
+            className="rounded-sm border border-glass-border px-4 py-1.5 font-display text-[12px] font-bold uppercase tracking-wide text-ink-soft transition-colors hover:bg-glass disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {t.audience.prev}
+            {loadingMore ? t.audience.loading : t.audience.loadMore}
           </button>
-          <span className="font-mono text-[12px] text-ink-soft">{t.audience.pageLabel} {formatCount(page, lang)}</span>
-          <button
-            type="button"
-            onClick={() => setPage((p) => p + 1)}
-            disabled={loading || !hasNext}
-            className="rounded-sm border border-glass-border px-3 py-1.5 font-display text-[12px] font-bold uppercase tracking-wide text-ink-soft transition-colors hover:bg-glass disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {t.audience.next}
-          </button>
-        </div>
+        ) : (
+          total > 0 && <span className="font-mono text-[12px] text-ink-faint">{t.audience.allLoaded}</span>
+        )}
       </div>
 
       <p className="font-mono text-[11px] text-ink-faint">{t.audience.warn.footer}</p>
