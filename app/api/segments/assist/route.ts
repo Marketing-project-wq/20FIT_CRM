@@ -38,10 +38,11 @@ export async function POST(request: NextRequest) {
   }
   if (!userId) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
 
+  const { lang, t } = getServerDict();
   const role = await getCurrentUserRole();
   if (!isPermitted(role, "segment.build")) {
     return NextResponse.json(
-      { error: "forbidden", decision: resolveGrant(role, "segment.build"), message: "Butuh peran segment.build." },
+      { error: "forbidden", decision: resolveGrant(role, "segment.build"), message: t.segments.apiAssistRoleDenied },
       { status: 403 },
     );
   }
@@ -50,15 +51,14 @@ export async function POST(request: NextRequest) {
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: "bad_request", message: "Body JSON tidak valid." }, { status: 400 });
+    return NextResponse.json({ error: "bad_request", message: t.segments.apiBadJson }, { status: 400 });
   }
   const text = typeof (body as { text?: unknown })?.text === "string" ? (body as { text: string }).text : "";
   if (text.trim() === "") {
-    return NextResponse.json({ error: "bad_request", message: "Tulis deskripsi segmennya dulu." }, { status: 400 });
+    return NextResponse.json({ error: "bad_request", message: t.segments.apiAssistEmpty }, { status: 400 });
   }
 
   const canViewHealth = isPermitted(role, "profile.view_health");
-  const { lang, t } = getServerDict();
 
   let proposal;
   try {
@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
   if (auditError) {
     logApiFailure("/segments/assist", "audit_write_failed", { code: auditError.code });
     return NextResponse.json(
-      { error: "audit_failed", message: "Usulan ditolak: gagal mencatat audit (akuntabilitas)." },
+      { error: "audit_failed", message: t.segments.apiAssistAuditFailed },
       { status: 503 },
     );
   }

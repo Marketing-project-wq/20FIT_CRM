@@ -25,6 +25,7 @@ export type ScreenId =
 export const BILINGUAL_SCREENS: ReadonlySet<ScreenId> = new Set<ScreenId>([
   "search", // /audience page — pool + single-person search + quality banner (Sprint 4D)
   "consent", // /consent — register + suppression list + record/lift dialogs + write-path API messages (Sprint 4D)
+  "segments", // /segments — builder + AI assistant + AND/OR tree (readback + validator lang-aware) + 2 API routes (Sprint 4E)
 ]);
 
 export function isScreenBilingual(screen: ScreenId): boolean {

@@ -7,6 +7,7 @@ import { parseCriteria, hasClinicalCriteria } from "@/lib/crm/segment";
 import { computeSegment } from "@/lib/crm/segment-read";
 import { validateFilterTree, filterTreeToExpr, type FilterNode } from "@/lib/crm/filter-tree";
 import { logApiFailure } from "@/lib/crm/failure-log";
+import { getServerDict } from "@/lib/i18n/server";
 
 export const dynamic = "force-dynamic";
 
@@ -41,14 +42,14 @@ export async function POST(request: NextRequest) {
   }
   if (!userId) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
 
+  const { lang, t } = getServerDict();
   const role = await getCurrentUserRole();
   if (!isPermitted(role, "segment.build")) {
     return NextResponse.json(
       {
         error: "forbidden",
         decision: resolveGrant(role, "segment.build"),
-        message:
-          "Membangun segmen butuh peran segment.build (super_admin, crm_manager, crm_operator, analyst).",
+        message: t.segments.apiRoleDenied,
       },
       { status: 403 },
     );
@@ -58,7 +59,7 @@ export async function POST(request: NextRequest) {
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: "bad_request", message: "Body JSON tidak valid." }, { status: 400 });
+    return NextResponse.json({ error: "bad_request", message: t.segments.apiBadJson }, { status: 400 });
   }
 
   const criteria = parseCriteria(body);
@@ -70,7 +71,7 @@ export async function POST(request: NextRequest) {
       {
         error: "forbidden",
         decision: resolveGrant(role, "profile.view_health"),
-        message: "Kriteria klinis butuh peran profile.view_health (menyaring pasien = menyimpulkan status kesehatan).",
+        message: t.segments.apiClinicalNeedsHealth,
       },
       { status: 403 },
     );
@@ -84,10 +85,10 @@ export async function POST(request: NextRequest) {
   let treeForAudit: unknown = null;
   if (rawTree != null) {
     const tree = rawTree as FilterNode;
-    const valid = validateFilterTree(tree);
+    const valid = validateFilterTree(tree, 1, lang);
     if (!valid.ok) {
       return NextResponse.json(
-        { error: "bad_filter", message: `Filter ditolak: ${valid.error}.` },
+        { error: "bad_filter", message: `${t.segments.apiBadFilterA}${valid.error}${t.segments.apiBadFilterB}` },
         { status: 400 },
       );
     }
@@ -145,7 +146,7 @@ export async function POST(request: NextRequest) {
   if (auditError) {
     logApiFailure("/segments", "audit_write_failed", { code: auditError.code });
     return NextResponse.json(
-      { error: "audit_failed", message: "Perhitungan ditolak: gagal mencatat audit (akuntabilitas)." },
+      { error: "audit_failed", message: t.segments.apiAuditFailed },
       { status: 503 },
     );
   }

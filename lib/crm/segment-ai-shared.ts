@@ -16,6 +16,8 @@ import { AUDIENCE_UNITS, AUDIENCE_SEGMENTS, SEGMENT_NULL, capFilterValue, FILTER
 import type { LeafField } from "./filter-tree";
 import { parseCriteria, hasClinicalCriteria, type SegmentCriteria } from "./segment";
 import { programByKey } from "./staging-constants";
+import { getDictionary } from "../i18n";
+import type { Lang } from "../i18n/config";
 
 /** A master-column condition the assistant proposes (becomes an AND row in the tree builder). */
 export interface AssistCondition {
@@ -149,34 +151,46 @@ export function sanitizeAssistOutput(raw: unknown, opts: { canViewHealth: boolea
 
 // ── Readable description (so the user reads the proposal before running it) ──────────────────
 
-const FIELD_WORD: Record<LeafField, string> = {
-  unit: "unit", segment: "segment", city: "kota", revenue: "revenue",
-  hasPhone: "punya telepon", hasEmail: "punya email",
-};
-
-function conditionPhrase(c: AssistCondition): string {
-  if (c.field === "hasPhone" || c.field === "hasEmail") return FIELD_WORD[c.field];
-  if (c.field === "segment" && c.value === SEGMENT_NULL) return "tanpa segment";
-  return `${FIELD_WORD[c.field]} = ${c.value}`;
+function fieldWord(field: LeafField, s: ReturnType<typeof segWords>): string {
+  switch (field) {
+    case "unit": return s.rbUnit;
+    case "segment": return s.rbSegment;
+    case "city": return s.rbWordCity;
+    case "revenue": return s.rbWordRevenue;
+    case "hasPhone": return s.rbHasPhone;
+    case "hasEmail": return s.rbHasEmail;
+  }
 }
 
-/** A plain-language sentence for the proposal. Empty proposal → "whole pool". */
-export function describeProposal(p: AssistProposal): string {
+function segWords(lang: Lang) {
+  return getDictionary(lang).segments;
+}
+
+function conditionPhrase(c: AssistCondition, s: ReturnType<typeof segWords>): string {
+  if (c.field === "hasPhone" || c.field === "hasEmail") return fieldWord(c.field, s);
+  if (c.field === "segment" && c.value === SEGMENT_NULL) return s.rbNoSegment;
+  return `${fieldWord(c.field, s)} = ${c.value}`;
+}
+
+/** A plain-language sentence for the proposal. Empty proposal → "whole pool". `lang` defaults to
+ *  "id" so existing callers and the pure-function tests get the original Indonesian output. */
+export function describeProposal(p: AssistProposal, lang: Lang = "id"): string {
+  const s = segWords(lang);
   const parts: string[] = [];
-  for (const c of p.conditions) parts.push(conditionPhrase(c));
+  for (const c of p.conditions) parts.push(conditionPhrase(c, s));
   const cr = p.criteria;
-  if (cr.ecoUnit) parts.push(`ekosistem unit ${cr.ecoUnit}`);
-  if (cr.ecoProduct) parts.push(`ekosistem produk ${cr.ecoProduct}`);
-  if (cr.srcHyrox) parts.push("peserta Hyrox");
-  if (cr.srcMy20fit) parts.push("pengguna my20fit");
-  if (cr.srcRecency) parts.push("punya aktivitas nyata");
-  if (cr.srcArena) parts.push("ada di arena");
-  if (cr.srcGym) parts.push("ada di gym");
-  if (cr.srcClinicPatient) parts.push("pasien klinik");
-  if (cr.srcClinicTxn) parts.push("punya transaksi klinik");
-  if (cr.srcRfm) parts.push(`RFM ${cr.srcRfm}`);
-  if (cr.srcProgram) parts.push(`ikut program ${programByKey(cr.srcProgram)?.label ?? cr.srcProgram}`);
-  return parts.length > 0 ? parts.join(" DAN ") : "seluruh pool (tidak ada kriteria terbaca)";
+  if (cr.ecoUnit) parts.push(`${s.rbEcoUnit} ${cr.ecoUnit}`);
+  if (cr.ecoProduct) parts.push(`${s.rbEcoProduct} ${cr.ecoProduct}`);
+  if (cr.srcHyrox) parts.push(s.rbHyrox);
+  if (cr.srcMy20fit) parts.push(s.rbMy20fit);
+  if (cr.srcRecency) parts.push(s.rbRecency);
+  if (cr.srcArena) parts.push(s.rbArena);
+  if (cr.srcGym) parts.push(s.rbGym);
+  if (cr.srcClinicPatient) parts.push(s.rbClinicPatient);
+  if (cr.srcClinicTxn) parts.push(s.rbClinicTxn);
+  if (cr.srcRfm) parts.push(`${s.rbRfm} ${cr.srcRfm}`);
+  if (cr.srcProgram) parts.push(`${s.rbProgram} ${programByKey(cr.srcProgram)?.label ?? cr.srcProgram}`);
+  return parts.length > 0 ? parts.join(` ${s.rbAnd} `) : s.rbWholePoolNoCriteria;
 }
 
 /** Whether the proposal actually narrows anything (else the model failed to map the request). */
