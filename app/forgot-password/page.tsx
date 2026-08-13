@@ -5,21 +5,21 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { requestPasswordReset } from "./actions";
+import { getServerDict } from "@/lib/i18n/server";
 
 export const metadata: Metadata = { title: "Lupa kata sandi" };
 export const dynamic = "force-dynamic";
-
-const ERRORS: Record<string, string> = {
-  invalid: "Masukkan alamat email yang valid.",
-  unavailable:
-    "Tidak dapat mengirim kode saat ini. Coba lagi sebentar lagi, atau hubungi admin bila berlanjut.",
-};
 
 export default function ForgotPasswordPage({
   searchParams,
 }: {
   searchParams: { error?: string };
 }) {
+  const { t } = getServerDict();
+  const ERRORS: Record<string, string> = {
+    invalid: t.auth.forgotErrInvalid,
+    unavailable: t.auth.forgotErrUnavailable,
+  };
   const errorMsg = searchParams?.error ? (ERRORS[searchParams.error] ?? null) : null;
 
   return (
@@ -33,10 +33,10 @@ export default function ForgotPasswordPage({
           <BrandLogo variant="white" height={40} priority />
           <div>
             <h1 className="font-display text-[32px] font-black uppercase leading-none text-ink">
-              Lupa kata sandi
+              {t.auth.forgotTitle}
             </h1>
             <p className="mt-2 font-body text-[14px] text-ink-soft">
-              Kami kirim kode verifikasi ke email Anda untuk mengatur ulang kata sandi
+              {t.auth.forgotSubtitle}
             </p>
           </div>
         </div>
@@ -44,7 +44,7 @@ export default function ForgotPasswordPage({
         <div className="glass-strong p-6 shadow-glass-lg">
           <form action={requestPasswordReset} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">{t.auth.emailLabel}</Label>
               <Input
                 id="email"
                 name="email"
@@ -63,14 +63,14 @@ export default function ForgotPasswordPage({
             )}
 
             <Button type="submit" size="lg" className="mt-1 w-full">
-              Kirim kode
+              {t.auth.sendCodeButton}
             </Button>
           </form>
         </div>
 
         <p className="mt-6 text-center font-body text-[12px] text-ink-faint">
           <Link href="/login" className="underline underline-offset-2 hover:text-ink-soft">
-            Kembali ke halaman masuk
+            {t.auth.backToLogin}
           </Link>
         </p>
       </div>

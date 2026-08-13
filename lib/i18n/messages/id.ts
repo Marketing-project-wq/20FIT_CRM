@@ -596,6 +596,9 @@ export const id = {
     next: "Berikutnya",
     loadFailed: "Gagal memuat",
     connFailed: "Gagal terhubung ke server.",
+    // /settings/roles subpage chrome (RolesPanel itself is already translated).
+    rolesPageDeniedRole: "Halaman ini butuh peran dengan izin melihat audit log (super_admin, crm_manager). Bila RBAC belum di-provision, semua akses ditolak — fail-closed yang benar.",
+    allSettingsLink: "← Semua pengaturan",
     // RETENTION_LABEL (audit-log-constants). "Operasional"/"Kepatuhan" as retention CLASS labels.
     retOperational: "Operasional · dipangkas > 90 hari",
     retCompliance: "Kepatuhan · disimpan permanen",
@@ -635,6 +638,73 @@ export const id = {
       artifact1: "Artefak uji trigger append-only (Sprint 2B) — bukan aktivitas.",
       artifact5: "Artefak verifikasi retensi (Sprint 3A) — pemangkasan uji, bukan aktivitas.",
     },
+  },
+
+  // ComingSoon nav stubs (Sprint 4F) — user-openable routes that were hardcoded Indonesian with
+  // no marker. Translated (short text) rather than marked. Titles stay proper nav names.
+  stubs: {
+    comingSoon: "Segera hadir",
+    phase3: "Fase 3",
+    phase4: "Fase 4",
+    campaigns: "Kampanye manual: pilih segmen, pilih template, lihat estimasi biaya, minta persetujuan, kirim.",
+    messages: "Log setiap pengiriman — kanal, status, dan alasan pemblokiran yang selalu terlihat.",
+    exports: "Riwayat ekspor dengan pemohon, tujuan, jumlah baris, dan status persetujuan.",
+    templates: "Register template WhatsApp dan email dengan status persetujuan Meta dan kategori.",
+    workflows: "Mesin workflow marketing dengan sembilan guard. Diblokir sampai consent register aktif.",
+  },
+
+  // Auth pages (Sprint 4F) — /login, /forgot-password, /reset-password. Pre-session so they default
+  // to Indonesian; translated so a persisted "en" cookie (an en user who logged out) is honoured.
+  // Server pages read getServerDict; the reset FORM (client) reads a LangProvider the page wraps it in.
+  auth: {
+    loginTitle: "Masuk",
+    loginSubtitle: "Audience Data & CRM · alat internal 20FIT",
+    emailLabel: "Email",
+    passwordLabel: "Kata sandi",
+    forgotLink: "Lupa kata sandi?",
+    loginButton: "Masuk",
+    loginFootnote: "Akun dibuat oleh admin. Tidak ada registrasi mandiri.",
+    errInvalid: "Email atau kata sandi salah.",
+    errMissing: "Email dan kata sandi wajib diisi.",
+    errUnavailable: "Tidak dapat terhubung ke server autentikasi. Coba lagi sebentar lagi, atau hubungi admin bila berlanjut.",
+    errGeneric: "Tidak dapat masuk. Coba lagi.",
+    forgotTitle: "Lupa kata sandi",
+    forgotSubtitle: "Kami kirim kode verifikasi ke email Anda untuk mengatur ulang kata sandi",
+    sendCodeButton: "Kirim kode",
+    backToLogin: "Kembali ke halaman masuk",
+    forgotErrInvalid: "Masukkan alamat email yang valid.",
+    forgotErrUnavailable: "Tidak dapat mengirim kode saat ini. Coba lagi sebentar lagi, atau hubungi admin bila berlanjut.",
+    resetTitle: "Kata sandi baru",
+    resetSubtitle: "Masukkan kode dari email lalu buat kata sandi baru",
+    // reset form (client)
+    resetDone: "Kata sandi berhasil diubah. Silakan masuk dengan kata sandi baru Anda.",
+    resetToLoginButton: "Ke halaman masuk",
+    resetNeedFlow: "Halaman ini perlu dibuka dari alur lupa kata sandi. Mulai dengan memasukkan email Anda.",
+    resetToForgotButton: "Ke halaman lupa kata sandi",
+    resetSentA: "Kode dikirim ke ",
+    resetSentB: ". Kode berlaku ",
+    resetSentC: " dan hanya dapat dipakai sekali.",
+    codeLabel: "Kode verifikasi",
+    newPasswordLabel: "Kata sandi baru",
+    confirmPasswordLabel: "Ulangi kata sandi baru",
+    minCharsPlaceholderA: "Minimal ",
+    minCharsPlaceholderB: " karakter",
+    saving: "Menyimpan…",
+    saveButton: "Simpan kata sandi baru",
+    resendCooldownA: "Kirim ulang kode (",
+    resendCooldownB: "s)",
+    resending: "Mengirim ulang…",
+    resendButton: "Kirim ulang kode",
+    resetNoticeSent: "Kode baru sudah dikirim bila email tersebut terdaftar. Periksa kotak masuk dan folder spam.",
+    resetErrIncomplete: "Sesi reset tidak lengkap. Mulai lagi dari halaman lupa kata sandi.",
+    resetErrCodeDigitsA: "Kode terdiri dari ",
+    resetErrCodeDigitsB: " digit angka.",
+    resetErrMinCharsA: "Kata sandi baru minimal ",
+    resetErrMinCharsB: " karakter.",
+    resetErrMismatch: "Konfirmasi kata sandi tidak cocok.",
+    resetErrWrongCode: "Kode salah atau sudah kedaluwarsa. Minta kode baru lalu coba lagi.",
+    resetErrSetFailed: "Gagal mengatur kata sandi baru. Minta kode baru lalu coba lagi.",
+    resetErrConn: "Tidak dapat terhubung ke server. Coba lagi sebentar lagi.",
   },
 
   export: {

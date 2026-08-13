@@ -8,17 +8,24 @@
  * banner is gated on membership HERE, finishing a screen = adding its id to this set, which makes
  * the banner disappear on its own — there is no per-screen cleanup to forget.
  *
- * As each screen is fully translated (every string routed through the dictionary, no Indonesian
- * fallback left in English), add its id below with the sprint that completed it.
+ * EXHAUSTIVENESS (Sprint 4F): ALL_SCREENS is the single source of truth for the ScreenId union.
+ * Every id MUST be classified as either BILINGUAL (done) or PENDING (marker shown, not yet
+ * bilingual). coverage.test.ts fails if the two sets don't partition ALL_SCREENS exactly — so a
+ * NEW screen cannot be born silent: it has to be declared bilingual or explicitly pending.
  */
 
-export type ScreenId =
-  | "quality"
-  | "profile"
-  | "segments"
-  | "consent"
-  | "audit"
-  | "search";
+/** Every screen that renders a CoverageNotice. Single source of truth for ScreenId. */
+export const ALL_SCREENS = [
+  "quality",
+  "profile",
+  "segments",
+  "consent",
+  "audit",
+  "search",
+  "diagnostik",
+] as const;
+
+export type ScreenId = (typeof ALL_SCREENS)[number];
 
 /** Screens whose every string is available in both languages. Membership hides the marker.
  *  A screen is added ONLY once every string it renders is routed through the dictionary. */
@@ -27,6 +34,15 @@ export const BILINGUAL_SCREENS: ReadonlySet<ScreenId> = new Set<ScreenId>([
   "consent", // /consent — register + suppression list + record/lift dialogs + write-path API messages (Sprint 4D)
   "segments", // /segments — builder + AI assistant + AND/OR tree (readback + validator lang-aware) + 2 API routes (Sprint 4E)
   "audit", // /settings governance page — audit log panel + RBAC roles panel + retention/gap/artifact notes + api/audit (Sprint 4E)
+]);
+
+/** Screens that render the marker but are NOT bilingual yet — a LABELLED work-in-progress, never
+ *  a silent mix. Every ScreenId must be here or in BILINGUAL_SCREENS (coverage.test.ts enforces it).
+ *  Move an id from here to BILINGUAL_SCREENS the moment its screen is fully translated. */
+export const PENDING_SCREENS: ReadonlySet<ScreenId> = new Set<ScreenId>([
+  "quality", // /quality — largest surface; not yet translated (Sprint 4F+)
+  "profile", // /audience/[id] profile detail — not yet translated (Sprint 4F+)
+  "diagnostik", // /settings/diagnostik — verification status page; marked, translation deferred (Sprint 4F)
 ]);
 
 export function isScreenBilingual(screen: ScreenId): boolean {

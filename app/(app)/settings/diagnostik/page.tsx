@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Badge } from "@/components/ui/badge";
 import { computeVerificationStatus, type ScreenStatus, type VStatus } from "@/lib/crm/verification-status";
+import { CoverageNotice } from "@/components/i18n/coverage-notice";
 import { runReadLayerChecks, type CheckResult } from "@/lib/crm/diagnostic";
 import { fetchAuditLog } from "@/lib/crm/audit-log";
 import { logApiFailure } from "@/lib/crm/failure-log";
@@ -131,6 +132,7 @@ export default async function DiagnostikPage() {
 
   return (
     <div className="space-y-8">
+      <CoverageNotice screen="diagnostik" />
       <BackLink />
       <header>
         <h1 className="font-display text-[32px] font-black uppercase leading-none text-ink">Diagnostik</h1>
