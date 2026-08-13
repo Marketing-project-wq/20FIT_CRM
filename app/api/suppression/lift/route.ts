@@ -7,6 +7,7 @@ import { isUuid } from "@/lib/crm/audience";
 import { isIdentityKind, clampDetail, LIFTED_REASON_MAX } from "@/lib/crm/suppression-input";
 import { liftSuppression } from "@/lib/crm/suppression-write";
 import { logApiFailure } from "@/lib/crm/failure-log";
+import { getServerDict } from "@/lib/i18n/server";
 
 export const dynamic = "force-dynamic";
 
@@ -33,13 +34,14 @@ export async function POST(request: NextRequest) {
   }
   if (!userId) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
 
+  const { t } = getServerDict();
   const role = await getCurrentUserRole();
   if (!isPermitted(role, "consent.edit")) {
     return NextResponse.json(
       {
         error: "forbidden",
         decision: resolveGrant(role, "consent.edit"),
-        message: "Hanya super_admin, crm_manager, dan data_steward yang boleh mencabut suppression.",
+        message: t.consent.apiRoleDeniedLift,
       },
       { status: 403 },
     );
@@ -49,7 +51,7 @@ export async function POST(request: NextRequest) {
   try {
     body = (await request.json()) as typeof body;
   } catch {
-    return NextResponse.json({ error: "bad_request", message: "Body JSON tidak valid." }, { status: 400 });
+    return NextResponse.json({ error: "bad_request", message: t.consent.apiBadJson }, { status: 400 });
   }
 
   const id = typeof body.id === "string" ? body.id : null;
@@ -62,7 +64,7 @@ export async function POST(request: NextRequest) {
   );
   if (!liftedReason) {
     return NextResponse.json(
-      { error: "missing_lifted_reason", message: "Alasan pencabutan wajib diisi." },
+      { error: "missing_lifted_reason", message: t.consent.apiMissingLiftReason },
       { status: 422 },
     );
   }
@@ -89,7 +91,7 @@ export async function POST(request: NextRequest) {
   }
   if (row.status === "lifted") {
     return NextResponse.json(
-      { ok: true, action: "noop", status: "lifted", message: "Suppression ini sudah dicabut sebelumnya." },
+      { ok: true, action: "noop", status: "lifted", message: t.consent.apiAlreadyLifted },
       { headers: { "Cache-Control": "no-store" } },
     );
   }
@@ -106,7 +108,7 @@ export async function POST(request: NextRequest) {
   } catch (e) {
     logApiFailure("/suppression/lift", "rpc_write_failed", { code: (e as { code?: string })?.code });
     return NextResponse.json(
-      { error: "write_failed", message: "Gagal mencabut suppression. Tidak ada perubahan separuh jadi." },
+      { error: "write_failed", message: t.consent.warn.srvWriteFailedLift },
       { status: 500 },
     );
   }
@@ -116,7 +118,7 @@ export async function POST(request: NextRequest) {
       ok: true,
       action: result.action,
       status: result.status,
-      message: "Suppression dicabut. Orang ini kini BISA dihubungi kembali (tunduk pada status consent).",
+      message: t.consent.warn.srvLiftSuccess,
     },
     { headers: { "Cache-Control": "no-store" } },
   );

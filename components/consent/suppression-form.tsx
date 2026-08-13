@@ -19,6 +19,24 @@ import {
   REASON_DETAIL_MAX,
   type IdentityKind,
 } from "@/lib/crm/suppression-input";
+import { useI18n } from "@/components/i18n/lang-provider";
+import type { Dict } from "@/lib/i18n";
+
+/** RECORD_REASONS `value`s are stored codes (never translated); their labels come from the dict. */
+function reasonLabel(t: Dict, value: string): string {
+  switch (value) {
+    case "user_request":
+      return t.consent.reasonUserRequest;
+    case "complaint":
+      return t.consent.reasonComplaint;
+    case "bounce":
+      return t.consent.reasonBounce;
+    case "legal":
+      return t.consent.reasonLegal;
+    default:
+      return value;
+  }
+}
 
 interface CommonProps {
   open: boolean;
@@ -47,6 +65,7 @@ const inputTextarea =
   "flex min-h-[72px] w-full rounded-sm border border-glass-border bg-glass px-3 py-2 font-body text-[14px] text-ink placeholder:text-ink-faint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red focus-visible:border-transparent";
 
 export function SuppressionForm(props: Props) {
+  const { t } = useI18n();
   const { open, onOpenChange, onRecorded } = props;
   const profileKinds: IdentityKind[] =
     props.mode === "profile"
@@ -90,9 +109,9 @@ export function SuppressionForm(props: Props) {
 
   async function review() {
     setError(null);
-    if (!kind) return setError("Pilih identitas mana yang disuppress.");
-    if (props.mode === "direct" && value.trim() === "") return setError("Isi nomor telepon atau email.");
-    if (!reason) return setError("Pilih alasan permintaan.");
+    if (!kind) return setError(t.consent.valPickIdentity);
+    if (props.mode === "direct" && value.trim() === "") return setError(t.consent.valFillIdentity);
+    if (!reason) return setError(t.consent.valPickReason);
     setBusy(true);
     try {
       const res = await fetch("/api/suppression", {
@@ -102,13 +121,13 @@ export function SuppressionForm(props: Props) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data?.message ?? `Gagal meninjau (HTTP ${res.status}).`);
+        setError(data?.message ?? `${t.consent.valReviewFailed} (HTTP ${res.status}).`);
         return;
       }
       setDry({ identity_kind: data.identity_kind, identity_key: data.identity_key, will_do: data.will_do });
       setStep("review");
     } catch {
-      setError("Gagal terhubung ke server.");
+      setError(t.consent.connFailed);
     } finally {
       setBusy(false);
     }
@@ -125,14 +144,14 @@ export function SuppressionForm(props: Props) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data?.message ?? `Gagal mencatat (HTTP ${res.status}).`);
+        setError(data?.message ?? `${t.consent.valRecordFailed} (HTTP ${res.status}).`);
         return;
       }
-      setConsequence(data?.message ?? "Tercatat.");
+      setConsequence(data?.message ?? t.consent.recorded);
       setStep("done");
       onRecorded?.();
     } catch {
-      setError("Gagal terhubung ke server.");
+      setError(t.consent.connFailed);
     } finally {
       setBusy(false);
     }
@@ -140,22 +159,20 @@ export function SuppressionForm(props: Props) {
 
   const willDoNote =
     dry?.will_do === "noop"
-      ? "Sudah ada suppression AKTIF untuk identitas ini — mencatat lagi tidak mengubah apa pun."
+      ? t.consent.warn.willDoNoop
       : dry?.will_do === "reactivate"
-        ? "Identitas ini pernah disuppress lalu dicabut — ini akan MENGAKTIFKAN kembali."
-        : "Baris suppression baru akan dibuat.";
+        ? t.consent.warn.willDoReactivate
+        : t.consent.warn.willDoInsert;
 
   return (
     <Dialog open={open} onOpenChange={(o) => (o ? onOpenChange(true) : close())}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Ban className="h-5 w-5 text-red" aria-hidden /> Catat permintaan berhenti dihubungi
+            <Ban className="h-5 w-5 text-red" aria-hidden /> {t.consent.formTitle}
           </DialogTitle>
           <DialogDescription>
-            Mencatat permintaan yang <strong>sudah terjadi</strong> — seseorang minta berhenti dihubungi.
-            Ini bukan menghukum siapa pun; ini melindungi mereka. Nol tombol hapus: pencabutan lewat
-            jalur tersendiri.
+            {t.consent.warn.formDesc}
           </DialogDescription>
         </DialogHeader>
 
@@ -163,11 +180,11 @@ export function SuppressionForm(props: Props) {
           <div className="space-y-4">
             {/* Identity choice — ALWAYS explicit (never silently write one or both). */}
             <div className="space-y-2">
-              <Label>Identitas yang disuppress</Label>
+              <Label>{t.consent.fldIdentity}</Label>
               {props.mode === "profile" ? (
                 profileKinds.length === 0 ? (
                   <p className="font-body text-[13px] text-ink-soft">
-                    Profil ini tidak punya telepon maupun email untuk disuppress.
+                    {t.consent.noContactToSuppress}
                   </p>
                 ) : (
                   <div className="flex flex-col gap-2">
@@ -184,7 +201,7 @@ export function SuppressionForm(props: Props) {
                           className="accent-red"
                         />
                         <span className="font-display text-[12px] font-bold uppercase tracking-wide text-ink-faint">
-                          {k === "phone" ? "Telepon" : "Email"}
+                          {k === "phone" ? t.consent.kindPhone : t.consent.kindEmail}
                         </span>
                         <span className="font-mono text-[13px] text-ink">
                           {k === "phone" ? props.phone : props.email}
@@ -192,7 +209,7 @@ export function SuppressionForm(props: Props) {
                       </label>
                     ))}
                     <p className="font-body text-[12px] text-ink-faint">
-                      Hanya identitas yang dipilih yang disuppress. Untuk menutup keduanya, catat dua kali.
+                      {t.consent.onlySelectedNote}
                     </p>
                   </div>
                 )
@@ -210,19 +227,18 @@ export function SuppressionForm(props: Props) {
                             : "border-glass-border text-ink-soft hover:bg-glass"
                         }`}
                       >
-                        {k === "phone" ? "Telepon" : "Email"}
+                        {k === "phone" ? t.consent.kindPhone : t.consent.kindEmail}
                       </button>
                     ))}
                   </div>
                   <Input
                     value={value}
                     onChange={(e) => setValue(e.target.value)}
-                    placeholder={kind === "phone" ? "mis. 0812… atau 62812…" : "mis. nama@domain.com"}
+                    placeholder={kind === "phone" ? t.consent.directPhonePlaceholder : t.consent.directEmailPlaceholder}
                     inputMode={kind === "phone" ? "tel" : "email"}
                   />
                   <p className="font-body text-[12px] text-ink-faint">
-                    Dinormalkan di server ({kind === "phone" ? "62… tanpa +" : "huruf kecil"}) sebelum ditulis.
-                    Bentuk akhirnya ditampilkan di langkah tinjauan.
+                    {t.consent.normalizeNoteA}{kind === "phone" ? t.consent.normalizePhone : t.consent.normalizeEmail}{t.consent.normalizeNoteB}
                   </p>
                 </div>
               )}
@@ -230,17 +246,17 @@ export function SuppressionForm(props: Props) {
 
             {/* Reason */}
             <div className="space-y-2">
-              <Label htmlFor="reason">Alasan</Label>
+              <Label htmlFor="reason">{t.consent.fldReason}</Label>
               <select
                 id="reason"
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
                 className="flex h-10 w-full rounded-sm border border-glass-border bg-glass px-3 font-body text-[14px] text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red"
               >
-                <option value="">— pilih alasan —</option>
+                <option value="">{t.consent.reasonPlaceholder}</option>
                 {RECORD_REASONS.map((r) => (
                   <option key={r.value} value={r.value}>
-                    {r.label}
+                    {reasonLabel(t, r.value)}
                   </option>
                 ))}
               </select>
@@ -248,13 +264,13 @@ export function SuppressionForm(props: Props) {
 
             {/* Detail (free text, capped) */}
             <div className="space-y-2">
-              <Label htmlFor="detail">Catatan (opsional)</Label>
+              <Label htmlFor="detail">{t.consent.fldDetail}</Label>
               <textarea
                 id="detail"
                 value={detail}
                 maxLength={REASON_DETAIL_MAX}
                 onChange={(e) => setDetail(e.target.value)}
-                placeholder="Konteks singkat, mis. “minta stop lewat WA 11 Agu”."
+                placeholder={t.consent.detailPlaceholder}
                 className={inputTextarea}
               />
               <p className="text-right font-mono text-[11px] text-ink-faint">
@@ -268,10 +284,10 @@ export function SuppressionForm(props: Props) {
 
             <DialogFooter>
               <Button variant="secondary" onClick={close} disabled={busy}>
-                Batal
+                {t.consent.cancel}
               </Button>
               <Button onClick={review} disabled={busy || (props.mode === "profile" && profileKinds.length === 0)}>
-                {busy ? "Meninjau…" : "Tinjau"} <ArrowRight className="h-4 w-4" />
+                {busy ? t.consent.reviewing : t.consent.review} <ArrowRight className="h-4 w-4" />
               </Button>
             </DialogFooter>
           </div>
@@ -283,13 +299,13 @@ export function SuppressionForm(props: Props) {
               <div className="flex items-center gap-2">
                 <ShieldAlert className="h-4 w-4" aria-hidden />
                 <span className="font-display text-[13px] font-bold uppercase tracking-wide text-ink">
-                  Akan ditulis
+                  {t.consent.willWrite}
                 </span>
               </div>
               <div className="mt-3 space-y-1 font-body text-[14px] text-ink">
                 <div>
                   <span className="font-display text-[12px] font-bold uppercase tracking-wide text-ink-faint">
-                    {dry.identity_kind === "phone" ? "Telepon" : "Email"}:
+                    {dry.identity_kind === "phone" ? t.consent.kindPhone : t.consent.kindEmail}:
                   </span>{" "}
                   <span className="font-mono text-[13px]">{dry.identity_key}</span>
                 </div>
@@ -297,9 +313,7 @@ export function SuppressionForm(props: Props) {
               </div>
             </div>
             <p className="font-body text-[13px] leading-relaxed text-ink-soft">
-              Setelah dicatat, identitas ini <strong>tidak bisa dihubungi</strong> untuk marketing apa pun
-              status consent-nya. Baris ini adalah catatan permintaan orang sungguhan — <strong>tidak dihapus</strong>,
-              hanya bisa dicabut (dengan alasan dan audit).
+              {t.consent.warn.reviewConsequence}
             </p>
 
             {error && (
@@ -308,10 +322,10 @@ export function SuppressionForm(props: Props) {
 
             <DialogFooter>
               <Button variant="secondary" onClick={() => setStep("compose")} disabled={busy}>
-                <ArrowLeft className="h-4 w-4" /> Ubah
+                <ArrowLeft className="h-4 w-4" /> {t.consent.change}
               </Button>
               <Button onClick={confirm} disabled={busy}>
-                {busy ? "Mencatat…" : "Catat permintaan"}
+                {busy ? t.consent.recording : t.consent.recordConfirm}
               </Button>
             </DialogFooter>
           </div>
@@ -322,12 +336,12 @@ export function SuppressionForm(props: Props) {
             <div className="flex items-start gap-3 rounded-card border border-glass-border p-4">
               <Check className="mt-0.5 h-5 w-5 text-red" aria-hidden />
               <div>
-                <Badge tone="red">Tercatat</Badge>
+                <Badge tone="red">{t.consent.recorded}</Badge>
                 <p className="mt-2 font-body text-[14px] leading-relaxed text-ink">{consequence}</p>
               </div>
             </div>
             <DialogFooter>
-              <Button onClick={close}>Selesai</Button>
+              <Button onClick={close}>{t.consent.done}</Button>
             </DialogFooter>
           </div>
         )}

@@ -4,6 +4,7 @@ import { isPermitted, resolveGrant } from "@/lib/auth/roles";
 import { Badge } from "@/components/ui/badge";
 import { ConsentRegister } from "@/components/consent/consent-register";
 import { CoverageNotice } from "@/components/i18n/coverage-notice";
+import { getServerDict } from "@/lib/i18n/server";
 
 export const metadata: Metadata = { title: "Consent" };
 
@@ -21,15 +22,16 @@ export default async function ConsentPage() {
 
   if (!isPermitted(role, "consent.edit")) {
     const decision = resolveGrant(role, "consent.edit");
+    const { t } = getServerDict();
     return (
       <div>
-        <h1 className="font-display text-[32px] font-black uppercase leading-none text-ink">Consent</h1>
+        <h1 className="font-display text-[32px] font-black uppercase leading-none text-ink">{t.consent.title}</h1>
         <div className="mt-8 flex flex-col items-center justify-center gap-4 rounded-card border border-dashed border-glass-border px-6 py-20 text-center">
-          <Badge tone="red">Akses ditolak</Badge>
+          <Badge tone="red">{t.access.deniedBadge}</Badge>
           <p className="max-w-md font-body text-[14px] leading-relaxed text-ink-soft">
             {decision === "needs_scope"
-              ? "Peran unit_manager dibatasi pada unit yang dikelola, tetapi tabel unit-scope belum ada — akses ditolak (fail-closed)."
-              : "Register consent hanya untuk super_admin, crm_manager, dan data_steward. Bila RBAC belum di-provision, semua akses ditolak — ini perilaku fail-closed yang benar."}
+              ? t.access.segmentsDeniedScope
+              : t.consent.pageDeniedRole}
           </p>
         </div>
       </div>

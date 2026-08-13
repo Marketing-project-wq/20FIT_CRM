@@ -6,6 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SuppressionForm } from "@/components/consent/suppression-form";
 import { LiftSuppressionDialog } from "@/components/consent/lift-dialog";
+import { useI18n } from "@/components/i18n/lang-provider";
+import { formatCount, formatDate as fmtDate } from "@/lib/i18n";
 
 interface ConsentRow {
   id: string;
@@ -40,40 +42,26 @@ interface ApiResult {
 
 /**
  * `basis` vocabulary — PROVISIONAL, not final (see docs/SIGNOFF-legal-consent.md).
- * Shown WITH its status so nobody reads two placeholder values as a complete list.
+ * Shown WITH its status so nobody reads two placeholder values as a complete list. The `value`s are
+ * STORED vocabulary (never translated); only the notes follow the language (from the dictionary).
  */
-const BASIS_VOCAB: { value: string; note: string }[] = [
-  {
-    value: "legacy_import_unverified",
-    note: "impor lama; sejak keputusan pemilik produk (12 Agu 2026) mengizinkan marketing + transactional (docs/SIGNOFF-legal-consent.md)",
-  },
-  { value: "explicit_opt_in", note: "opt-in eksplisit tercatat — dasar terkuat, mengizinkan semua purpose" },
-];
-
-function formatTs(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return new Intl.DateTimeFormat("id-ID", { day: "2-digit", month: "short", year: "numeric" }).format(d);
-}
+const BASIS_VALUES = ["legacy_import_unverified", "explicit_opt_in"] as const;
 
 /** The meaning-of-zero banner — shown only WHILE the register is empty. */
 function ZeroMeaning() {
+  const w = useI18n().t.consent.warn;
   return (
     <div className="tint-red rounded-card p-5">
       <div className="flex items-center gap-2">
         <ShieldAlert className="h-4 w-4" aria-hidden />
-        <h2 className="font-display text-[15px] font-bold uppercase tracking-wide text-ink">
-          Nol baris consent = nol orang boleh dikirimi marketing
-        </h2>
+        <h2 className="font-display text-[15px] font-bold uppercase tracking-wide text-ink">{w.zeroTitle}</h2>
       </div>
       <p className="mt-3 max-w-3xl font-body text-[13px] leading-relaxed text-ink-soft">
-        Ini <strong>bukan</strong> “belum ada data”. Ini “<strong>tidak ada dasar hukum untuk
-        siapa pun</strong>”. Ketiadaan baris consent adalah jawaban <strong>fail-closed</strong> yang
-        benar: tanpa baris consent <span className="font-mono text-[12px]">purpose=marketing</span>{" "}
-        <span className="font-mono text-[12px]">status=active</span>, seseorang tidak boleh
-        dihubungi untuk marketing. Kartu “Bisa dihubungi” di dashboard menghitung dari aturan
-        ini — hasilnya <strong>0 terukur</strong>, bukan 0 yang ditulis tangan.
+        {w.zeroBodyA}
+        <span className="font-mono text-[12px]">purpose=marketing</span>
+        {w.zeroBodyB}
+        <span className="font-mono text-[12px]">status=active</span>
+        {w.zeroBodyC}
       </p>
     </div>
   );
@@ -83,22 +71,23 @@ function ZeroMeaning() {
  *  legacy import, and it is REVERSIBLE. Replaces the zero-meaning banner so the screen never
  *  contradicts its own data. */
 function BackfilledMeaning() {
+  const w = useI18n().t.consent.warn;
   return (
     <div className="tint-amber rounded-card p-5">
       <div className="flex items-center gap-2">
         <ShieldAlert className="h-4 w-4" aria-hidden />
         <h2 className="font-display text-[15px] font-bold uppercase tracking-wide text-ink">
-          Consent legacy sudah dibackfill — basis <span className="font-mono">legacy_import_unverified</span>
+          {w.backfilledTitleA}<span className="font-mono">legacy_import_unverified</span>
         </h2>
       </div>
       <p className="mt-3 max-w-3xl font-body text-[13px] leading-relaxed text-ink-soft">
-        Migrasi 11 mencatat consent aktif untuk impor lama atas keputusan pemilik produk
-        (12 Agu 2026): <strong>marketing</strong> + <strong>transactional</strong>, dengan basis{" "}
-        <span className="font-mono text-[12px]">legacy_import_unverified</span> yang jujur menandai
-        “belum diverifikasi per orang”. Suppression tetap <strong>menang</strong> atas consent (K-03).
-        Ini <strong>reversibel</strong>: <span className="font-mono text-[12px]">crm_consent</span> nol
-        trigger, dan menghapus baris <span className="font-mono text-[12px]">source =
-        &apos;20fit_data_import&apos;</span> membatalkannya bersih.
+        {w.backfilledBodyA}
+        <span className="font-mono text-[12px]">legacy_import_unverified</span>
+        {w.backfilledBodyB}
+        <span className="font-mono text-[12px]">crm_consent</span>
+        {w.backfilledBodyC}
+        <span className="font-mono text-[12px]">source = &apos;20fit_data_import&apos;</span>
+        {w.backfilledBodyD}
       </p>
     </div>
   );
@@ -106,33 +95,33 @@ function BackfilledMeaning() {
 
 /** The rule hierarchy — the thing most likely to be misread. */
 function SuppressionWins() {
+  const w = useI18n().t.consent.warn;
   return (
     <div className="tint-amber rounded-card p-5">
       <div className="flex items-center gap-2">
         <Ban className="h-4 w-4" aria-hidden />
-        <h2 className="font-display text-[15px] font-bold uppercase tracking-wide text-ink">
-          Suppression MENANG atas consent
-        </h2>
+        <h2 className="font-display text-[15px] font-bold uppercase tracking-wide text-ink">{w.winsTitle}</h2>
       </div>
       <p className="mt-3 max-w-3xl font-body text-[13px] leading-relaxed text-ink-soft">
-        Bila sebuah identitas kontak ada di <span className="font-mono text-[12px]">crm_suppression</span>{" "}
-        (status <span className="font-mono text-[12px]">active</span>), ia <strong>tidak boleh
-        dihubungi apa pun status consent-nya</strong> — walau punya opt-in aktif. Hierarki ini
-        ditegakkan di <strong>kode</strong> (satu fungsi teruji, <span className="font-mono text-[12px]">isContactableForMarketing</span>),
-        bukan di constraint database, jadi harus terbaca di sini. Suppression di-key pada identitas
-        kontak (telepon/email ternormalisasi), bukan pada <span className="font-mono text-[12px]">customer_id</span>,
-        supaya bertahan lintas penghapusan profil & impor ulang.
+        {w.winsBodyA}
+        <span className="font-mono text-[12px]">crm_suppression</span>
+        {w.winsBodyB}
+        <span className="font-mono text-[12px]">isContactableForMarketing</span>
+        {w.winsBodyC}
+        <span className="font-mono text-[12px]">customer_id</span>
+        {w.winsBodyD}
       </p>
     </div>
   );
 }
 
 function EmptyRegister({ what, why }: { what: string; why: string }) {
+  const { t } = useI18n();
   return (
     <div className="flex flex-col items-center justify-center gap-2 rounded-card border border-dashed border-glass-border px-6 py-12 text-center">
-      <Badge tone="neutral">0 baris</Badge>
+      <Badge tone="neutral">{t.consent.zeroRows}</Badge>
       <p className="max-w-lg font-body text-[13px] leading-relaxed text-ink-soft">
-        <span className="font-semibold text-ink">{what} kosong.</span> {why}
+        <span className="font-semibold text-ink">{what}</span> {why}
       </p>
     </div>
   );
@@ -153,23 +142,26 @@ function Pager({
   onPrev: () => void;
   onNext: () => void;
 }) {
+  const { lang, t } = useI18n();
   const first = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const last = Math.min(page * pageSize, total);
   const hasNext = page * pageSize < total;
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <p className="font-mono text-[12px] text-ink-faint">
-        {total === 0 ? "0 baris" : `Menampilkan ${first}–${last} dari ${total.toLocaleString("id-ID")}`}
+        {total === 0
+          ? t.consent.zeroRows
+          : `${t.consent.showingPre}${formatCount(first, lang)}–${formatCount(last, lang)}${t.consent.showingOf}${formatCount(total, lang)}`}
       </p>
       <div className="flex items-center gap-2">
         <button type="button" onClick={onPrev} disabled={loading || page <= 1}
           className="rounded-sm border border-glass-border px-3 py-1.5 font-display text-[12px] font-bold uppercase tracking-wide text-ink-soft transition-colors hover:bg-glass disabled:cursor-not-allowed disabled:opacity-40">
-          Sebelumnya
+          {t.consent.prev}
         </button>
-        <span className="font-mono text-[12px] text-ink-soft">Hal {page}</span>
+        <span className="font-mono text-[12px] text-ink-soft">{t.consent.pageLabel} {formatCount(page, lang)}</span>
         <button type="button" onClick={onNext} disabled={loading || !hasNext}
           className="rounded-sm border border-glass-border px-3 py-1.5 font-display text-[12px] font-bold uppercase tracking-wide text-ink-soft transition-colors hover:bg-glass disabled:cursor-not-allowed disabled:opacity-40">
-          Berikutnya
+          {t.consent.next}
         </button>
       </div>
     </div>
@@ -177,6 +169,7 @@ function Pager({
 }
 
 export function ConsentRegister() {
+  const { lang, t } = useI18n();
   const [cpage, setCpage] = useState(1);
   const [spage, setSpage] = useState(1);
   const [data, setData] = useState<ApiResult | null>(null);
@@ -196,19 +189,19 @@ export function ConsentRegister() {
       const res = await fetch(`/api/consent?cpage=${cpage}&spage=${spage}`, { signal: ac.signal, cache: "no-store" });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        setError(body?.message || `Gagal memuat (HTTP ${res.status}).`);
+        setError(body?.message || `${t.consent.loadFailed} (HTTP ${res.status}).`);
         setData(null);
         return;
       }
       setData((await res.json()) as ApiResult);
     } catch (e) {
       if ((e as Error).name === "AbortError") return;
-      setError("Gagal terhubung ke server.");
+      setError(t.consent.connFailed);
       setData(null);
     } finally {
       if (!ac.signal.aborted) setLoading(false);
     }
-  }, [cpage, spage]);
+  }, [cpage, spage, t]);
 
   useEffect(() => {
     load();
@@ -221,10 +214,9 @@ export function ConsentRegister() {
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="font-display text-[32px] font-black uppercase leading-none text-ink">Consent</h1>
+        <h1 className="font-display text-[32px] font-black uppercase leading-none text-ink">{t.consent.title}</h1>
         <p className="mt-2 font-body text-[14px] text-ink-soft">
-          Register dasar hukum kontak &amp; daftar do-not-contact — baca saja. Fase 2 dibuka;
-          jalur tulis ditunda ( <span className="font-mono text-[13px]">docs/RENCANA-jalur-tulis-consent.md</span> ).
+          {t.consent.subtitleA}<span className="font-mono text-[13px]">docs/RENCANA-jalur-tulis-consent.md</span>{t.consent.subtitleB}
         </p>
       </header>
 
@@ -234,24 +226,25 @@ export function ConsentRegister() {
       {/* basis vocabulary + provisional status */}
       <div className="rounded-card border border-glass-border p-5">
         <h3 className="font-display text-[13px] font-bold uppercase tracking-wide text-ink">
-          Kosakata <span className="font-mono">basis</span>{" "}
-          <Badge tone="amber">sementara — menunggu daftar final legal</Badge>
+          {t.consent.basisHeadingA}<span className="font-mono">basis</span>{" "}
+          <Badge tone="amber">{t.consent.basisProvisional}</Badge>
         </h3>
         <ul className="mt-3 space-y-1.5 font-body text-[13px] text-ink-soft">
-          {BASIS_VOCAB.map((b) => (
-            <li key={b.value}>
-              <span className="font-mono text-[12px] text-ink">{b.value}</span> — {b.note}
+          {BASIS_VALUES.map((value) => (
+            <li key={value}>
+              <span className="font-mono text-[12px] text-ink">{value}</span> —{" "}
+              {value === "legacy_import_unverified" ? t.consent.basisNoteLegacy : t.consent.basisNoteOptin}
             </li>
           ))}
         </ul>
         <p className="mt-2 font-body text-[12px] text-ink-faint">
-          Dua nilai ini bukan daftar lengkap. Status sign-off: docs/SIGNOFF-legal-consent.md.
+          {t.consent.basisFooter}
         </p>
       </div>
 
       {error && (
         <div className="rounded-card border border-glass-border p-6 text-center">
-          <Badge tone="red">Gagal</Badge>
+          <Badge tone="red">{t.consent.failed}</Badge>
           <p className="mt-2 font-body text-[13px] text-ink-soft">{error}</p>
         </div>
       )}
@@ -259,39 +252,36 @@ export function ConsentRegister() {
       {/* Consent register */}
       <section className="space-y-3">
         <div className="flex items-center gap-2">
-          <h2 className="font-display text-[18px] font-extrabold uppercase tracking-wide text-ink">Register consent</h2>
+          <h2 className="font-display text-[18px] font-extrabold uppercase tracking-wide text-ink">{t.consent.sectionConsent}</h2>
           <span className="font-mono text-[12px] text-ink-faint">crm_consent</span>
         </div>
         {loading && !data ? (
-          <p className="font-body text-[14px] text-ink-soft">Memuat…</p>
+          <p className="font-body text-[14px] text-ink-soft">{t.consent.loading}</p>
         ) : consent && consent.total === 0 ? (
-          <EmptyRegister
-            what="Register consent"
-            why="Belum ada satu baris pun. Backfill legacy (Migrasi 11) sudah disetujui pemilik produk tapi belum dijalankan di lingkungan ini; sampai dijalankan, nol tetap jawaban fail-closed yang benar. Basis yang akan dipakai: legacy_import_unverified (jujur menandai 'belum diverifikasi per orang')."
-          />
+          <EmptyRegister what={t.consent.emptyConsentWhat} why={t.consent.warn.emptyConsentWhy} />
         ) : consent ? (
           <>
             <div className="overflow-x-auto rounded-card border border-glass-border">
               <table className="w-full border-collapse text-left">
                 <thead>
                   <tr className="border-b border-glass-border font-display text-[12px] uppercase tracking-wide text-ink-faint">
-                    <th className="px-4 py-3 font-bold">Profil</th>
-                    <th className="px-4 py-3 font-bold">Channel</th>
-                    <th className="px-4 py-3 font-bold">Purpose</th>
-                    <th className="px-4 py-3 font-bold">Basis</th>
-                    <th className="px-4 py-3 font-bold">Status</th>
-                    <th className="px-4 py-3 font-bold">Dicatat</th>
+                    <th className="px-4 py-3 font-bold">{t.consent.thProfile}</th>
+                    <th className="px-4 py-3 font-bold">{t.consent.thChannel}</th>
+                    <th className="px-4 py-3 font-bold">{t.consent.thPurpose}</th>
+                    <th className="px-4 py-3 font-bold">{t.consent.thBasis}</th>
+                    <th className="px-4 py-3 font-bold">{t.consent.thStatus}</th>
+                    <th className="px-4 py-3 font-bold">{t.consent.thRecorded}</th>
                   </tr>
                 </thead>
                 <tbody className="font-body text-[13px] text-ink">
                   {consent.rows.map((r) => (
                     <tr key={r.id} className="border-b border-glass-border last:border-0">
-                      <td className="px-4 py-3 font-mono text-[12px]">{r.customer_id ?? <span className="text-ink-faint">(yatim)</span>}</td>
+                      <td className="px-4 py-3 font-mono text-[12px]">{r.customer_id ?? <span className="text-ink-faint">{t.consent.orphan}</span>}</td>
                       <td className="px-4 py-3">{r.channel}</td>
                       <td className="px-4 py-3">{r.purpose}</td>
                       <td className="px-4 py-3 font-mono text-[12px]">{r.basis}</td>
                       <td className="px-4 py-3"><Badge tone={r.status === "active" ? "green" : "neutral"}>{r.status}</Badge></td>
-                      <td className="px-4 py-3 font-mono text-[12px] text-ink-soft">{formatTs(r.recorded_at)}</td>
+                      <td className="px-4 py-3 font-mono text-[12px] text-ink-soft">{fmtDate(r.recorded_at, lang)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -306,36 +296,33 @@ export function ConsentRegister() {
       {/* Suppression list */}
       <section className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
-          <h2 className="font-display text-[18px] font-extrabold uppercase tracking-wide text-ink">Daftar suppression</h2>
+          <h2 className="font-display text-[18px] font-extrabold uppercase tracking-wide text-ink">{t.consent.sectionSuppression}</h2>
           <span className="font-mono text-[12px] text-ink-faint">crm_suppression</span>
           {suppression && suppression.rows.some((r) => r.identity_key?.includes("*")) && (
-            <Badge tone="amber" className="gap-1.5"><Lock className="h-3.5 w-3.5" /> disamarkan</Badge>
+            <Badge tone="amber" className="gap-1.5"><Lock className="h-3.5 w-3.5" /> {t.consent.maskedShort}</Badge>
           )}
           {/* Direct write entry — someone phoned in / messaged to stop. The page gate
               (consent.edit) already guards this whole screen; the API re-checks. */}
           <Button size="sm" variant="outline" className="ml-auto" onClick={() => setRecordOpen(true)}>
-            <Ban className="h-3.5 w-3.5" /> Catat permintaan berhenti
+            <Ban className="h-3.5 w-3.5" /> {t.consent.recordButton}
           </Button>
         </div>
         {loading && !data ? (
-          <p className="font-body text-[14px] text-ink-soft">Memuat…</p>
+          <p className="font-body text-[14px] text-ink-soft">{t.consent.loading}</p>
         ) : suppression && suppression.total === 0 ? (
-          <EmptyRegister
-            what="Daftar suppression"
-            why="Belum ada satu baris pun. Nol suppression bukan berarti aman untuk mengontak — yang menahan kontak adalah ketiadaan consent (di atas), bukan ketiadaan suppression."
-          />
+          <EmptyRegister what={t.consent.emptySuppWhat} why={t.consent.warn.emptySuppWhy} />
         ) : suppression ? (
           <>
             <div className="overflow-x-auto rounded-card border border-glass-border">
               <table className="w-full border-collapse text-left">
                 <thead>
                   <tr className="border-b border-glass-border font-display text-[12px] uppercase tracking-wide text-ink-faint">
-                    <th className="px-4 py-3 font-bold">Jenis</th>
-                    <th className="px-4 py-3 font-bold">Identitas</th>
-                    <th className="px-4 py-3 font-bold">Alasan</th>
-                    <th className="px-4 py-3 font-bold">Status</th>
-                    <th className="px-4 py-3 font-bold">Dicatat</th>
-                    <th className="px-4 py-3 font-bold text-right">Aksi</th>
+                    <th className="px-4 py-3 font-bold">{t.consent.thKind}</th>
+                    <th className="px-4 py-3 font-bold">{t.consent.thIdentity}</th>
+                    <th className="px-4 py-3 font-bold">{t.consent.thReason}</th>
+                    <th className="px-4 py-3 font-bold">{t.consent.thStatus}</th>
+                    <th className="px-4 py-3 font-bold">{t.consent.thRecorded}</th>
+                    <th className="px-4 py-3 font-bold text-right">{t.consent.thAction}</th>
                   </tr>
                 </thead>
                 <tbody className="font-body text-[13px] text-ink">
@@ -345,7 +332,7 @@ export function ConsentRegister() {
                       <td className="px-4 py-3 font-mono text-[12px]">{r.identity_key ?? "—"}</td>
                       <td className="px-4 py-3">{r.reason_code}</td>
                       <td className="px-4 py-3"><Badge tone={r.status === "active" ? "red" : "neutral"}>{r.status}</Badge></td>
-                      <td className="px-4 py-3 font-mono text-[12px] text-ink-soft">{formatTs(r.created_at)}</td>
+                      <td className="px-4 py-3 font-mono text-[12px] text-ink-soft">{fmtDate(r.created_at, lang)}</td>
                       <td className="px-4 py-3 text-right">
                         {r.status === "active" ? (
                           <Button
@@ -358,7 +345,7 @@ export function ConsentRegister() {
                               })
                             }
                           >
-                            <Undo2 className="h-3.5 w-3.5" /> Cabut
+                            <Undo2 className="h-3.5 w-3.5" /> {t.consent.liftButton}
                           </Button>
                         ) : (
                           <span className="font-mono text-[11px] text-ink-faint">—</span>
@@ -375,10 +362,7 @@ export function ConsentRegister() {
         ) : null}
       </section>
 
-      <p className="font-mono text-[11px] text-ink-faint">
-        Suppression: catat &amp; cabut (atomik dengan audit, nol DELETE) · consent tetap baca-saja (menunggu kanal opt-in) ·
-        dibaca via service role server-side · pembukaan halaman ini tercatat (list.viewed, crm_consent).
-      </p>
+      <p className="font-mono text-[11px] text-ink-faint">{t.consent.warn.footer}</p>
 
       {/* Write path — direct entry (someone asked to stop) + per-row lift. */}
       <SuppressionForm mode="direct" open={recordOpen} onOpenChange={setRecordOpen} onRecorded={load} />

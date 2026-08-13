@@ -24,6 +24,7 @@ export type ScreenId =
  *  A screen is added ONLY once every string it renders is routed through the dictionary. */
 export const BILINGUAL_SCREENS: ReadonlySet<ScreenId> = new Set<ScreenId>([
   "search", // /audience page — pool + single-person search + quality banner (Sprint 4D)
+  "consent", // /consent — register + suppression list + record/lift dialogs + write-path API messages (Sprint 4D)
 ]);
 
 export function isScreenBilingual(screen: ScreenId): boolean {
