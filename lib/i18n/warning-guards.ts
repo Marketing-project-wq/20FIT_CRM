@@ -48,12 +48,20 @@ export const FORBIDDEN_EN_WARNING_TERMS: readonly { term: string; reason: string
 
 /**
  * Minimum ratio of English warning length to Indonesian warning length. English is naturally
- * terser, so a floor of 0.5 does NOT flag normal terseness — it flags a warning that has lost a
- * whole clause (typically its "why"), which drops well over half the characters. This is a coarse
+ * terser, so this floor does NOT flag normal terseness — it flags a warning that has lost a whole
+ * clause (typically its "why"), which drops a large share of the characters. This is a coarse
  * truncation detector, not a quality score. Keys that are legitimately much shorter in English are
  * listed in WARNING_LENGTH_EXCEPTIONS with a note, so the exception is explicit, never silent.
+ *
+ * TUNING (Sprint 4E, TUGAS 4): with six-ish screens of real warnings measured, the LOWEST observed
+ * EN/ID ratio among substantial (>20 char) warning strings is 69% (segments.warn.rfmA, a ": "-
+ * ending split fragment); every whole-sentence warning sits 75–100%. At the old 0.5 floor NOTHING
+ * came within 19 points of tripping — i.e. a warning could lose ~40% of its clause and still pass,
+ * so the floor was too loose to catch a real truncation. Raised to 0.6: still passes all current
+ * strings (min 69%, a 9-point margin) with ZERO exceptions, while now catching a ≥40% drop. Going
+ * to 0.7 would fail the 69% fragment and force an exception, so 0.6 is the tight-but-clean setting.
  */
-export const WARNING_LENGTH_RATIO_MIN = 0.5;
+export const WARNING_LENGTH_RATIO_MIN = 0.6;
 
 /** Dotted warning keys allowed to be shorter than the ratio, each with the reason it's fine. */
 export const WARNING_LENGTH_EXCEPTIONS: ReadonlyMap<string, string> = new Map([
