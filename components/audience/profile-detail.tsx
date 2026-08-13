@@ -259,10 +259,10 @@ function EcosystemSection({ engagement }: { engagement: ProfileEngagement | null
             <table className="w-full border-collapse text-left">
               <thead>
                 <tr className="border-b border-glass-border">
-                  <th className="py-2 pr-4 font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">Unit</th>
-                  <th className="py-2 pr-4 font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">Produk</th>
-                  <th className="py-2 pr-4 font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">Jumlah</th>
-                  <th className="py-2 font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">Terakhir</th>
+                  <th className="py-2 pr-4 font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">Unit</th>
+                  <th className="py-2 pr-4 font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">Produk</th>
+                  <th className="py-2 pr-4 font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">Jumlah</th>
+                  <th className="py-2 font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">Terakhir</th>
                 </tr>
               </thead>
               <tbody>
@@ -296,7 +296,7 @@ function EcosystemSection({ engagement }: { engagement: ProfileEngagement | null
 function Field({ label, children, mono }: { label: string; children: React.ReactNode; mono?: boolean }) {
   return (
     <div className="flex flex-col gap-1 border-t border-glass-border py-3 first:border-t-0 first:pt-0">
-      <span className="font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">{label}</span>
+      <span className="font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{label}</span>
       <span className={mono ? "font-mono text-[13px] text-ink" : "font-body text-[14px] text-ink"}>{children}</span>
     </div>
   );
@@ -307,7 +307,7 @@ function Field({ label, children, mono }: { label: string; children: React.React
 function SourceLine({ label, matched, children }: { label: string; matched: boolean; children?: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1 border-t border-glass-border py-3 first:border-t-0 first:pt-0">
-      <span className="font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">{label}</span>
+      <span className="font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{label}</span>
       {matched ? (
         <span className="font-body text-[14px] text-ink">{children}</span>
       ) : (
@@ -408,7 +408,7 @@ function ClinicSection({ clinic }: { clinic: ProfileClinicT | null }) {
               ].map(([label, n]) => (
                 <div key={label as string} className="rounded-sm border border-glass-border p-3 text-center">
                   <div className="font-display text-[22px] font-black leading-none text-ink">{nf.format(n as number)}</div>
-                  <div className="mt-1 font-display text-[10px] font-bold uppercase tracking-wide text-ink-faint">{label}</div>
+                  <div className="mt-1 font-display text-[10px] font-semibold uppercase tracking-wide text-ink-faint">{label}</div>
                 </div>
               ))}
             </div>
@@ -606,7 +606,7 @@ function EnrichmentSection({ enrichment, canViewHealth }: { enrichment: ProfileE
             <div className="mt-4 rounded-sm border border-glass-border/70 p-4">
               <div className="flex items-center gap-2">
                 <Lock className="h-3.5 w-3.5 text-ink-soft" aria-hidden />
-                <h3 className="font-display text-[12px] font-bold uppercase tracking-wide text-ink">Field identitas Hyrox (sensitif)</h3>
+                <h3 className="font-display text-[12px] font-semibold uppercase tracking-wide text-ink">Field identitas Hyrox (sensitif)</h3>
               </div>
               <div className="mt-3">
                 <Field label="NIK" mono>{enrichment.hyrox.sensitive.nik ?? <Empty />}</Field>
@@ -707,7 +707,7 @@ export function ProfileDetail({ id, canEditConsent }: { id: string; canEditConse
   const BackLink = () => (
     <Link
       href="/audience"
-      className="inline-flex items-center gap-1.5 font-display text-[12px] font-bold uppercase tracking-wide text-ink-soft transition-colors hover:text-ink"
+      className="inline-flex items-center gap-1.5 font-display text-[12px] font-semibold uppercase tracking-wide text-ink-soft transition-colors hover:text-ink"
     >
       <ArrowLeft className="h-3.5 w-3.5" aria-hidden /> Kembali ke audience
     </Link>

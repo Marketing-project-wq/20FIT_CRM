@@ -376,19 +376,21 @@ export function QualityDashboard() {
                 {/* Birth-date parse outcomes — the sprint headline. Failed = flagged, not dropped. */}
                 <div className="border-t border-glass-border pt-3">
                   <p className="font-body text-[13px] font-semibold text-ink">Penguraian tanggal lahir</p>
+                  {/* Numbers carry the emphasis through COLOR (text-ink over text-ink-soft prose),
+                      not weight — so all five parse outcomes read equally without a bold pile-up. */}
                   <p className="mt-1 font-body text-[12px] leading-relaxed text-ink-soft">
-                    <strong>{formatCount(data.stagingCoverage.dobParsed)}</strong> berhasil diurai ·{" "}
-                    <strong>{formatCount(data.stagingCoverage.dobUnparseable)}</strong> gagal (ditandai, bukan dibuang) ·{" "}
-                    <strong>{formatCount(data.stagingCoverage.dobAmbiguousDayMonth)}</strong> hari-bulan ambigu (≤12 di dua posisi — tak bisa dipastikan) ·{" "}
-                    <strong>{formatCount(data.stagingCoverage.dobSwapped)}</strong> terbukti tertukar (bulan &gt; 12) ·{" "}
-                    <strong>{formatCount(data.stagingCoverage.dobImplausible)}</strong> umur mustahil (&lt;10 / &gt;100 / masa depan)
+                    <span className="text-ink">{formatCount(data.stagingCoverage.dobParsed)}</span> berhasil diurai ·{" "}
+                    <span className="text-ink">{formatCount(data.stagingCoverage.dobUnparseable)}</span> gagal (ditandai, bukan dibuang) ·{" "}
+                    <span className="text-ink">{formatCount(data.stagingCoverage.dobAmbiguousDayMonth)}</span> hari-bulan ambigu (≤12 di dua posisi — tak bisa dipastikan) ·{" "}
+                    <span className="text-ink">{formatCount(data.stagingCoverage.dobSwapped)}</span> terbukti tertukar (bulan &gt; 12) ·{" "}
+                    <span className="text-ink">{formatCount(data.stagingCoverage.dobImplausible)}</span> umur mustahil (&lt;10 / &gt;100 / masa depan)
                   </p>
                   <p className="mt-2 font-body text-[12px] leading-relaxed text-ink-soft">
                     Silang <span className="font-mono">Umur</span> (as-of snapshot 20 Apr 2026, memvalidasi TAHUN saja — menukar
                     hari-bulan tak mengubah umur): {formatCount(data.stagingCoverage.umurChecked)} diperiksa ·{" "}
-                    <strong>{formatCount(data.stagingCoverage.umurYearExact)}</strong> sama persis ·{" "}
+                    <span className="text-ink">{formatCount(data.stagingCoverage.umurYearExact)}</span> sama persis ·{" "}
                     {formatCount(data.stagingCoverage.umurOffByOne)} beda 1 tahun (drift snapshot, wajar) ·{" "}
-                    <strong>{formatCount(data.stagingCoverage.umurConflict)}</strong> bentrok ≥2 tahun (konflik tahun nyata)
+                    <span className="text-ink">{formatCount(data.stagingCoverage.umurConflict)}</span> bentrok ≥2 tahun (konflik tahun nyata)
                   </p>
                 </div>
 
