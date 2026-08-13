@@ -31,6 +31,8 @@ export const id = {
     // The K-08 distinction, in words, reused wherever the 0-vs-— rule is explained.
     measuredZero: "0 (terukur)",
     noSource: "— (tidak ada sumber)",
+    // K-28: the label on the collapsed "why does this matter" disclosure next to a one-line warning.
+    why: "Kenapa?",
   },
 
   nav: {
@@ -353,7 +355,7 @@ export const id = {
     subtitleB: ").",
     criteriaTitle: "Kriteria",
     aiTitle: "Asisten AI (opsional)",
-    aiDescA: "Jelaskan segmennya dengan kata-kata (mis. “pelanggan yang ikut RUNFEST dan punya email”). AI mengusulkan kriteria — Anda tetap meninjau, mengubah, lalu menekan Hitung sendiri. Kriteria waktu tidak bisa (kolom waktu = cap muat, K-19); permintaan klinis butuh ",
+    aiDescA: "Jelaskan segmennya dengan kata-kata (mis. “pelanggan yang ikut RUNFEST dan punya email”). AI mengusulkan kriteria — Anda tetap meninjau, mengubah, lalu menekan Hitung sendiri. Kriteria waktu tidak bisa (kolom waktu = cap muat); permintaan klinis butuh ",
     aiDescB: ".",
     aiPlaceholder: "Jelaskan segmen dengan kata-kata…",
     aiProposing: "Mengusulkan…",
@@ -483,8 +485,7 @@ export const id = {
       timeBannedA: "Tidak ada “bergabung dalam N hari”, tidak ada recency. Semua kolom waktu di data ini (",
       timeBannedB: ", ",
       timeBannedC: ", ",
-      timeBannedD: ") adalah cap waktu muat — satu instan per sumber, bukan jejak aktivitas (K-19, ",
-      timeBannedE: "). Menyaring berdasarkan itu menghasilkan angka yang tampak tegas tapi tak bermakna. Kotaknya sengaja tidak ada supaya tak ada yang tergoda memakainya.",
+      timeBannedD: ") adalah cap waktu muat — satu instan per sumber, bukan jejak aktivitas. Menyaring berdasarkan itu menghasilkan angka yang tampak tegas tapi tak bermakna. Kotaknya sengaja tidak ada supaya tak ada yang tergoda memakainya.",
       // Ecosystem note. Nuance: last_seen_at is 99,51% a load stamp — still no time criteria.
       ecoDescA: "Menyaring profil yang punya minimal satu baris di ",
       ecoDescB: " pada unit / produk terpilih. Kosakata ini beda dari “Unit” di atas (ada ",
@@ -493,23 +494,23 @@ export const id = {
       ecoDescE: " 99,51% cap muat.",
       // Unmatched-source note. Nuance: "real activity" is presence, NOT a time criterion —
       // last_active_at is real but only for 44/82.253; a time filter would hide 99,9% of the pool.
-      srcRecencyA: "Cocok lewat email ternormalisasi (K-06). “Aktivitas nyata” adalah presensi, bukan kriteria waktu: ",
-      srcRecencyB: " nyata tapi hanya untuk 44/82.253 — menjadikannya filter waktu akan terlihat presisi sambil menyembunyikan 99,9% pool (K-19).",
+      srcRecencyA: "Cocok lewat email ternormalisasi. “Aktivitas nyata” adalah presensi, bukan kriteria waktu: ",
+      srcRecencyB: " nyata tapi hanya untuk 44/82.253 — menjadikannya filter waktu akan terlihat presisi sambil menyembunyikan 99,9% pool.",
       // Clinic-hidden note (no view_health). Nuance: filtering "clinic patient" = inferring health.
       clinicHiddenA: "Kriteria klinik (pasien / transaksi) disembunyikan — butuh ",
       clinicHiddenB: ". Menyaring “pasien klinik” = menyimpulkan status kesehatan.",
       // Sources AND note. Nuance at risk: cross-table OR is honestly REFUSED (PostgREST can't express
       // it in one query) rather than silently turned into AND.
-      sourcesAndA: "Arena/gym cocok lewat email; klinik lewat telepon dulu (K-06). Semua kondisi sumber di-AND-kan (irisan himpunan). OR lintas-tabel tidak tersedia — PostgREST tak bisa mengungkapkannya jujur dalam satu query, jadi tak disediakan pilihannya alih-alih diam-diam ber-AND.",
+      sourcesAndA: "Arena/gym cocok lewat email; klinik lewat telepon dulu. Semua kondisi sumber di-AND-kan (irisan himpunan). OR lintas-tabel tidak tersedia — tak bisa diungkapkan jujur dalam satu query, jadi tak disediakan pilihannya alih-alih diam-diam ber-AND.",
       // RFM warning. Nuance at risk: RFM can't segment — New User = 92% of pool; filtering it ≈
       // filtering everyone; the top two buckets are ~66 people. Don't build a campaign on it (T-19).
       rfmA: "RFM hampir tak bisa menyegmentasi: ",
       rfmB: " = 81.213 (92% pool), dua keranjang teratas (",
       rfmC: "+",
-      rfmD: ") cuma 66 orang. Menyaring “New User” ≈ menyaring semua orang; “Loyal” = 65 orang. Jangan susun kampanye di atasnya (T-19).",
+      rfmD: ") cuma 66 orang. Menyaring “New User” ≈ menyaring semua orang; “Loyal” = 65 orang. Jangan susun kampanye di atasnya.",
       // Staging note. Nuance: stored spelling (Campion user) kept as-is; clinical program infers health.
       stagingA: "Dari ",
-      stagingB: " — impor yang sama dengan master, cocok 98,6% lewat email (K-06). RFM ditampilkan apa adanya termasuk ejaan tersimpan (",
+      stagingB: " — impor yang sama dengan master, cocok 98,6% lewat email. RFM ditampilkan apa adanya termasuk ejaan tersimpan (",
       stagingC: ") — tidak “diperbaiki” agar tetap cocok dengan sumber. Program pasien klinik menyimpulkan status kesehatan, jadi ",
       stagingD: " ",
       stagingE: ". Di-AND-kan dengan kriteria lain.",
@@ -529,10 +530,10 @@ export const id = {
       // Zero-contactable notes. Nuance: zero of N — no active consent (or suppression wins, K-03).
       mktZeroA: "Nol dari ",
       mktZeroB: ". Tak ada consent ",
-      mktZeroC: " aktif (atau suppression menang, K-03). ",
+      mktZeroC: " aktif (atau suppression menang). ",
       svcZeroA: "Nol dari ",
       svcZeroB: ". Tak ada consent ",
-      svcZeroC: " aktif (atau suppression menang, K-03).",
+      svcZeroC: " aktif (atau suppression menang).",
       // Read-only footer. Nuance at risk: nothing is saved/exported/sent because the FLOW isn't built
       // yet — "a button that refuses is worse than no button" — not because the role lacks permission.
       footer: "Baca saja · nol simpan/ekspor/kirim (belum ada; tombol yang menolak lebih buruk dari tak ada tombol) · nol daftar orang (segment builder yang mengeluarkan daftar = ekspor tanpa nama — pakai /audience) · tiap perhitungan tercatat (list.viewed).",

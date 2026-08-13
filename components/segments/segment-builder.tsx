@@ -9,6 +9,7 @@ import { STAGING_RFM_VALUES, STAGING_PROGRAMS } from "@/lib/crm/staging-constant
 import { EMPTY_CRITERIA, type SegmentCriteria } from "@/lib/crm/segment";
 import { describeProposal, proposalIsEmpty, type AssistProposal } from "@/lib/crm/segment-ai-shared";
 import { FilterTreeBuilder, rowsToTree, type Row } from "@/components/segments/filter-tree-builder";
+import { Why } from "@/components/ui/why";
 import { useI18n } from "@/components/i18n/lang-provider";
 import { formatCount, formatPct } from "@/lib/i18n";
 
@@ -25,24 +26,27 @@ const selectCls =
  *  shows (the count is NOT suppressed; this builder never emits a list of people anyway). */
 const SMALL_SEGMENT = 25;
 
-/** The rule this whole screen exists to make visible (PRD §18.8). */
+/** The rule this whole screen exists to make visible (PRD §18.8). K-28: the title is the one-line
+ *  screen-wide warning; the "why" (load-stamp explanation) is collapsed, and the K-code / docs
+ *  references are gone from the screen (they live in the code + docs/KOLOM-WAKTU.md). */
 function TimeBanned() {
   const w = useI18n().t.segments.warn;
   return (
     <div className="tint-blue rounded-card p-4">
       <div className="flex items-center gap-2">
-        <Clock className="h-4 w-4" aria-hidden />
+        <Clock className="h-4 w-4 shrink-0" aria-hidden />
         <h3 className="font-display text-[13px] font-bold uppercase tracking-wide text-ink">
           {w.timeBannedTitle}
         </h3>
       </div>
-      <p className="mt-2 max-w-3xl font-body text-[12px] leading-relaxed text-ink-soft">
-        {w.timeBannedA}
-        <span className="font-mono">created_at</span>{w.timeBannedB}
-        <span className="font-mono">first_seen_at</span>{w.timeBannedC}
-        <span className="font-mono">last_activity_at</span>{w.timeBannedD}
-        <span className="font-mono">docs/KOLOM-WAKTU.md</span>{w.timeBannedE}
-      </p>
+      <Why>
+        <p className="text-[12px] leading-relaxed text-ink-soft">
+          {w.timeBannedA}
+          <span className="font-mono">created_at</span>{w.timeBannedB}
+          <span className="font-mono">first_seen_at</span>{w.timeBannedC}
+          <span className="font-mono">last_activity_at</span>{w.timeBannedD}
+        </p>
+      </Why>
     </div>
   );
 }

@@ -299,3 +299,42 @@ dari **penghalang** jadi **kebersihan** yang bisa dikerjakan kapan saja.
 
 **Status T-18:** **DITUTUP.** Pertanyaan "produksi deploy dari branch atau main?" kini
 **diketahui (branch) dan diterima (sadar, dengan syarat pembalikan di atas).**
+
+## K-28 · Peringatan kualitas data: satu baris di titik pakai, sebab di balik pengungkapan (Sprint 5A)
+**Latar:** Selama belasan sprint aturannya adalah "peringatan kualitas data jangan pernah
+diperhalus, jangan disembunyikan, selalu sertakan sebabnya." Itu benar dan tetap benar untuk
+**isi**. Tapi efek kumulatif pada **tampilan** menjadi masalah tersendiri: tiap layar berbunyi
+seperti dokumen desain, dan datanya terkubur di bawah penjelasannya. `/audience` memakai
+separuh layar untuk banner sebelum satu baris data muncul; detail profil menampilkan delapan
+blok "tidak ada data untuk profil ini"; `/segments` mengubur kontrolnya di antara paragraf
+tentang PostgREST dan kode `K-`. Ini **membalik penekanan** K-08/K-19 dkk — bukan
+membatalkannya — jadi dicatat sebagai keputusan agar orang berikutnya tahu itu disengaja.
+
+**Keputusan (aturan tampilan, bukan aturan makna):**
+1. **Satu baris di titik pakai.** Peringatan tampil sebagai satu kalimat pendek tepat di
+   sebelah data/kontrol yang dipengaruhinya — bukan blok di puncak halaman.
+2. **Sebab panjang di balik pengungkapan.** Penjelasan pindah ke elemen yang bisa dibuka
+   (`<details>` "Kenapa?"), tertutup secara bawaan. **Isi tidak dipotong** — hanya tidak lagi
+   dibaca paksa.
+3. **Maksimum satu banner per layar**, dan hanya untuk peringatan yang berlaku ke SELURUH
+   layar, bukan satu bagian.
+4. **Nol paragraf batasan teknis di antarmuka.** Kalimat tentang PostgREST, nama migrasi,
+   kode keputusan (`K-19`), dan nama berkas `docs/*.md` **dikeluarkan dari layar** dan tetap
+   hidup di kode + dokumen. Pemakai butuh tahu **apa** yang terbatas, bukan **kenapa
+   arsitekturnya begitu**.
+5. **Bagian kosong menyusut.** Banyak blok "tidak ada data untuk profil ini" menjadi satu
+   baris yang menyebut sumber-sumber yang tak tersambung; blok penuh hanya untuk sumber yang
+   benar-benar berisi.
+
+**Yang TIDAK berubah (tetap dari K-08/K-19/K-06):** pembedaan `0` versus `—`, penandaan asal
+data, "tidak terekam" versus "belum terisi", dan gerbang peran. Ini soal **panjang dan
+tempat**, bukan makna.
+
+**Uji lima detik (syarat penerimaan):** setelah tiap layar disederhanakan, pemakai harus tetap
+menyadari peringatan yang relevan dalam lima detik pertama. Bila sebuah peringatan jadi tak
+terlihat sama sekali, ia terlalu jauh disembunyikan — tarik kembali satu tingkat (jadikan baris
+terlihat, bukan hanya di dalam "Kenapa?").
+
+**Membalikkan:** bila kelak audiens layar berubah (mis. auditor eksternal yang justru butuh
+sebab arsitektural tampil), tinjau ulang butir 4 — tapi butir 1–3 dan 5 adalah higiene tampilan
+yang jarang perlu dibatalkan.

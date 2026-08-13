@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Lock, AlertTriangle, Search } from "lucide-react";
 import { formatDisplayName } from "@/lib/crm/display-name";
 import { Badge } from "@/components/ui/badge";
+import { Why } from "@/components/ui/why";
 import { ProfileSearch } from "@/components/audience/profile-search";
 import { useI18n } from "@/components/i18n/lang-provider";
 import { formatCount, formatDate as fmtDate, type Lang } from "@/lib/i18n";
@@ -73,30 +74,35 @@ function Empty() {
 function QualityBanner() {
   const { t } = useI18n();
   const w = t.audience.warn;
+  // K-28: the screen-wide warning is the one line (the title). The per-field specifics and the
+  // "computed live on /quality" note are the same content as before, now collapsed under "Why?"
+  // instead of taking half the screen before any data appears.
   return (
-    <div className="tint-amber rounded-card p-5">
+    <div className="tint-amber rounded-card p-4">
       <div className="flex items-center gap-2">
-        <AlertTriangle className="h-4 w-4" aria-hidden />
-        <h2 className="font-display text-[15px] font-bold uppercase tracking-wide text-ink">{w.bannerTitle}</h2>
+        <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
+        <p className="font-body text-[13px] font-semibold leading-snug text-ink">{w.bannerTitle}</p>
       </div>
-      <ul className="mt-3 space-y-1.5 font-body text-[13px] leading-relaxed text-ink-soft">
-        <li>{w.bannerGender}</li>
-        <li>{w.bannerCity}</li>
-        <li>{w.bannerLtv}</li>
-        <li>{w.bannerSegment}</li>
-        <li>
-          {w.bannerLastActiveA}
-          <span className="font-mono text-[12px]">last_activity_at</span>
-          {w.bannerLastActiveB}
-        </li>
-      </ul>
-      <p className="mt-3 font-body text-[13px] text-ink-soft">
-        {w.bannerFooterA}
-        <Link href="/quality" className="font-semibold text-ink underline underline-offset-2">
-          {t.nav.quality}
-        </Link>
-        {w.bannerFooterB}
-      </p>
+      <Why>
+        <ul className="space-y-1.5 text-[13px] leading-relaxed text-ink-soft">
+          <li>{w.bannerGender}</li>
+          <li>{w.bannerCity}</li>
+          <li>{w.bannerLtv}</li>
+          <li>{w.bannerSegment}</li>
+          <li>
+            {w.bannerLastActiveA}
+            <span className="font-mono text-[12px]">last_activity_at</span>
+            {w.bannerLastActiveB}
+          </li>
+        </ul>
+        <p className="mt-3 text-[13px] text-ink-soft">
+          {w.bannerFooterA}
+          <Link href="/quality" className="font-semibold text-ink underline underline-offset-2">
+            {t.nav.quality}
+          </Link>
+          {w.bannerFooterB}
+        </p>
+      </Why>
     </div>
   );
 }

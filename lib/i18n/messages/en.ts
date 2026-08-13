@@ -22,6 +22,7 @@ export const en: Messages = {
     dash: "—",
     measuredZero: "0 (measured)",
     noSource: "— (no source)",
+    why: "Why?",
   },
 
   nav: {
@@ -428,8 +429,7 @@ export const en: Messages = {
       timeBannedA: "No “joined within N days”, no recency. Every time column in this data (",
       timeBannedB: ", ",
       timeBannedC: ", ",
-      timeBannedD: ") is a load timestamp — one instant per source, not an activity trace (K-19, ",
-      timeBannedE: "). Filtering on them produces numbers that look firm but mean nothing. The box is absent on purpose so nobody is tempted to use it.",
+      timeBannedD: ") is a load timestamp — one instant per source, not an activity trace. Filtering on them produces numbers that look firm but mean nothing. The box is absent on purpose so nobody is tempted to use it.",
       ecoDescA: "Filters profiles that have at least one row in ",
       ecoDescB: " for the chosen unit / product. This vocabulary differs from “Unit” above (there is ",
       ecoDescC: " & ",
@@ -437,22 +437,22 @@ export const en: Messages = {
       ecoDescE: " is 99.51% a load stamp.",
       // Nuance kept: "real activity" is presence, NOT a time criterion — last_active_at is real but only
       // for 44/82,253; making it a time filter would hide 99.9% of the pool.
-      srcRecencyA: "Matched via normalised email (K-06). “Real activity” is presence, not a time criterion: ",
-      srcRecencyB: " is real but only for 44/82,253 — making it a time filter would look precise while hiding 99.9% of the pool (K-19).",
+      srcRecencyA: "Matched via normalised email. “Real activity” is presence, not a time criterion: ",
+      srcRecencyB: " is real but only for 44/82,253 — making it a time filter would look precise while hiding 99.9% of the pool.",
       clinicHiddenA: "Clinic criteria (patient / transaction) are hidden — they need ",
       clinicHiddenB: ". Filtering “clinic patient” = inferring health status.",
       // Nuance kept: cross-table OR is honestly REFUSED (PostgREST can't express it in one query),
       // rather than silently turned into AND.
-      sourcesAndA: "Arena/gym match via email; clinic via phone first (K-06). All source conditions are AND-ed (set intersection). Cross-table OR is not available — PostgREST can't express it honestly in one query, so the option isn't offered rather than silently AND-ed.",
+      sourcesAndA: "Arena/gym match via email; clinic via phone first. All source conditions are AND-ed (set intersection). Cross-table OR is not available — it can't be expressed honestly in one query, so the option isn't offered rather than silently AND-ed.",
       // Nuance kept: RFM can't segment — New User = 92% of the pool; filtering it ≈ filtering everyone;
       // the top two buckets are ~66 people. Don't build a campaign on it (T-19).
       rfmA: "RFM can barely segment: ",
       rfmB: " = 81,213 (92% of the pool), the top two buckets (",
       rfmC: "+",
-      rfmD: ") are only 66 people. Filtering “New User” ≈ filtering everyone; “Loyal” = 65 people. Don't build a campaign on it (T-19).",
+      rfmD: ") are only 66 people. Filtering “New User” ≈ filtering everyone; “Loyal” = 65 people. Don't build a campaign on it.",
       // Nuance kept: stored spelling (Campion user) kept as-is; a clinical program infers health.
       stagingA: "From ",
-      stagingB: " — the same import as master, matched 98.6% via email (K-06). RFM is shown as-is including the stored spelling (",
+      stagingB: " — the same import as master, matched 98.6% via email. RFM is shown as-is including the stored spelling (",
       stagingC: ") — not “corrected”, so it still matches the source. The clinical-patient program infers health status, so it is ",
       stagingD: " ",
       stagingE: ". AND-ed with the other criteria.",
@@ -470,10 +470,10 @@ export const en: Messages = {
       smallSegmentC: " people, a segment practically points at specific individuals — its nature shifts from aggregate to disclosure. The count is still shown (hiding 0 would hide the measured), but do not treat it as an anonymous aggregate. This builder never emits a list of people (that is /audience's job, masked & audited).",
       mktZeroA: "Zero of ",
       mktZeroB: ". No active ",
-      mktZeroC: " consent (or suppression wins, K-03). ",
+      mktZeroC: " consent (or suppression wins). ",
       svcZeroA: "Zero of ",
       svcZeroB: ". No active ",
-      svcZeroC: " consent (or suppression wins, K-03).",
+      svcZeroC: " consent (or suppression wins).",
       // Nuance kept: nothing is saved/exported/sent because the FLOW isn't built yet — "a button that
       // refuses is worse than no button" — not because the role lacks permission.
       footer: "Read-only · zero save/export/send (not built yet; a button that refuses is worse than no button) · zero list of people (a segment builder that emits a list = an export without names — use /audience) · every computation is recorded (list.viewed).",
