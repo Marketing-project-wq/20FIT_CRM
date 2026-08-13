@@ -43,9 +43,7 @@ function q(col: string): string {
   return `"${col}"`;
 }
 
-const PAGE = 1000;
-const MATCH_CHUNK = 300;
-const EMAIL_CEILING = 200_000; // runaway guard on the paged email set
+const PAGE = 1000; // PostgREST page size for the DOB parse-stats read (dobStats)
 
 /** COUNT(*) with an optional filter. head:true → count only, no rows transferred. */
 async function count(
@@ -60,53 +58,28 @@ async function count(
   return c ?? 0;
 }
 
-/** Match a set of already-normalised emails to master customer_ids (chunked .in()). */
-async function masterIdsForEmails(admin: SupabaseClient, emails: Set<string>): Promise<Set<string>> {
-  const ids = new Set<string>();
-  if (emails.size === 0) return ids;
-  const list = Array.from(emails);
-  for (let i = 0; i < list.length; i += MATCH_CHUNK) {
-    const { data, error } = await admin
-      .from("master_customer")
-      .select("customer_id")
-      .in("email_normalized", list.slice(i, i + MATCH_CHUNK));
-    if (error) throw error;
-    for (const r of (data ?? []) as { customer_id: string }[]) ids.add(r.customer_id);
-  }
-  return ids;
-}
+// ── Segment resolvers (TUGAS 4 / Sprint 4A) ─────────────────────────────────────────────────
+//
+// These call the migration-14 RPC crm_staging_segment_ids, which does the staging↔master
+// semi-join server-side in ONE round trip (~0.33s warm). The old two-phase paging approach
+// (page ~82k staging emails, then chunk-match to master via .in()) was ~330 sequential PostgREST
+// requests = tens of seconds for a big criterion — a hard blocker for export (Sprint 4A TUGAS 1).
+// The RPC returns exactly the same customer_id set (verified: New User 74,021, Fitco 67,653).
 
-/** Page all normalised emails from staging rows that satisfy `refine`, then match to master. */
-async function resolveEmailsToMaster(
+/** Read a full page-set of customer_ids from the migration-14 RPC into a Set. */
+async function rpcSegmentIds(
   admin: SupabaseClient,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  refine: (query: any) => any,
+  args: { p_rfm?: string | null; p_program_column?: string | null },
 ): Promise<Set<string>> {
-  const emails = new Set<string>();
-  for (let from = 0; ; from += PAGE) {
-    // Order by the (near-unique) email so range pagination is deterministic — staging_20fit_data
-    // has no exposed primary key, and unordered .range() can skip/dup rows at page boundaries.
-    let query = admin
-      .from(STAGING_TABLE)
-      .select(q(STAGING_COLUMNS.email))
-      .not(q(STAGING_COLUMNS.email), "is", null)
-      .order(q(STAGING_COLUMNS.email), { ascending: true })
-      .range(from, from + PAGE - 1);
-    query = refine(query);
-    const { data, error } = await query;
-    if (error) throw error;
-    const batch = (data ?? []) as unknown as Record<string, unknown>[];
-    for (const r of batch) {
-      const e = normalizeEmail(r[STAGING_COLUMNS.email] as string | null);
-      if (e) emails.add(e);
-    }
-    if (batch.length < PAGE) break;
-    if (emails.size > EMAIL_CEILING) throw new Error("staging email set exceeded ceiling");
-  }
-  return masterIdsForEmails(admin, emails);
+  const { data, error } = await admin.rpc("crm_staging_segment_ids", {
+    p_rfm: args.p_rfm ?? null,
+    p_program_column: args.p_program_column ?? null,
+  });
+  if (error) throw error;
+  const out = new Set<string>();
+  for (const r of (data ?? []) as { customer_id: string }[]) if (r.customer_id) out.add(r.customer_id);
+  return out;
 }
-
-// ── Segment resolvers (TUGAS 4) ─────────────────────────────────────────────────────────────
 
 /** Master customer_ids whose staging row has RFM = `value` (closed list). AND-only in segments. */
 export async function resolveStagingRfmCustomerIds(
@@ -114,20 +87,19 @@ export async function resolveStagingRfmCustomerIds(
   value: string,
 ): Promise<Set<string>> {
   if (!isRfmValue(value)) return new Set();
-  return resolveEmailsToMaster(admin, (query) => query.eq(q(STAGING_COLUMNS.rfmPaidOrder), value));
+  return rpcSegmentIds(admin, { p_rfm: value });
 }
 
 /** Master customer_ids who participate in program `key` (value present and not `-`). CLINICAL
- *  programs are gated on profile.view_health at the route, not here. */
+ *  programs are gated on profile.view_health at the route, not here. The physical column name is
+ *  resolved from the CLOSED registry; the RPC re-validates it against its own allowlist. */
 export async function resolveStagingProgramCustomerIds(
   admin: SupabaseClient,
   key: string,
 ): Promise<Set<string>> {
   const def = programByKey(key);
   if (!def) return new Set();
-  return resolveEmailsToMaster(admin, (query) =>
-    query.not(q(def.column), "is", null).neq(q(def.column), "-"),
-  );
+  return rpcSegmentIds(admin, { p_program_column: def.column });
 }
 
 // ── Per-profile completion (TUGAS 4, profile detail) ────────────────────────────────────────

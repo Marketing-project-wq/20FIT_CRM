@@ -4,7 +4,7 @@ Hal-hal yang **tidak bisa diselesaikan dari kode** dan sedang memblokir. Diurut 
 memblokir paling banyak. Tiap baris menaut ke dokumen sumbernya — **jangan salin isinya ke
 sini** (dua salinan akan menyimpang). Perbarui/hapus baris saat tuntas.
 
-Diperbarui: 12 Agustus 2026.
+Diperbarui: 13 Agustus 2026.
 
 ---
 
@@ -63,3 +63,18 @@ Diperbarui: 12 Agustus 2026.
 - **Kalau dibiarkan:** tidak memblokir — backfill memakai `legacy_import_unverified` yang jujur,
   dan marketing sudah diizinkan (flag dibalik on-the-record). Ini peningkatan kualitas dasar
   hukum, bukan penghalang.
+
+## 8. (OPSIONAL) Indeks fungsional email di `staging_20fit_data` — usul untuk pemilik data
+- **Siapa:** pemilik `staging_20fit_data` (tim lain, Fase 0). **Agen tidak membuatnya** — tabel
+  itu di luar `crm_*`/`master_customer`, jadi hanya diusulkan di sini.
+- **SQL usulan:**
+  ```sql
+  create index if not exists staging_20fit_data_email_norm_idx
+    on public.staging_20fit_data (lower(btrim("Email")));
+  ```
+- **Manfaat:** `staging_20fit_data` tidak punya indeks sama sekali, jadi RPC resolver segmen
+  (Migrasi 14, `crm_staging_segment_ids`) selalu seq-scan penuh 88.536 baris. Indeks fungsional
+  ini akan mempercepat sisi staging pada join.
+- **Kalau dibiarkan:** **bukan penghalang.** RPC sudah **~0,33 dtk hangat** (diukur 13 Agu 2026)
+  — cukup untuk resolver dan ekspor. Indeks ini murni optimasi tambahan; kejar hanya bila
+  ekspor besar terasa lambat di produksi.
