@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Filter, Clock, Users, Send, Network, Download } from "lucide-react";
+import { Filter, Clock, Users, Send, Network, Download, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ECOSYSTEM_UNITS, ECOSYSTEM_PRODUCTS_BY_UNIT } from "@/lib/crm/engagement-constants";
 import { STAGING_RFM_VALUES, STAGING_PROGRAMS } from "@/lib/crm/staging-constants";
 import { EMPTY_CRITERIA, type SegmentCriteria } from "@/lib/crm/segment";
+import { describeProposal, proposalIsEmpty, type AssistProposal } from "@/lib/crm/segment-ai-shared";
 import { FilterTreeBuilder, rowsToTree, type Row } from "@/components/segments/filter-tree-builder";
 
 interface Counts {
@@ -54,6 +55,10 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [aiText, setAiText] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiProposal, setAiProposal] = useState<AssistProposal | null>(null);
 
   function set<K extends keyof SegmentCriteria>(k: K, v: SegmentCriteria[K]) {
     setC((prev) => ({ ...prev, [k]: v }));
@@ -115,6 +120,52 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
     }
   }
 
+  // AI assistant: propose criteria from free text. The proposal is NEVER run automatically — it
+  // fills the manual controls only when the user clicks "Terapkan", then they compute themselves.
+  async function aiPropose() {
+    setAiError(null);
+    setAiProposal(null);
+    setAiLoading(true);
+    try {
+      const res = await fetch("/api/segments/assist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: aiText }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setAiError(data?.message ?? `Gagal mengusulkan (HTTP ${res.status}).`);
+        return;
+      }
+      setAiProposal(data as AssistProposal);
+    } catch {
+      setAiError("Gagal terhubung ke server.");
+    } finally {
+      setAiLoading(false);
+    }
+  }
+
+  /** Apply a proposal into the MANUAL controls (rows + criteria). Nothing is computed yet. */
+  function applyProposal(p: AssistProposal) {
+    setRows(p.conditions.map((cnd) => ({ t: "cond", field: cnd.field, value: cnd.value })));
+    setC((prev) => ({
+      ...prev,
+      ecoUnit: p.criteria.ecoUnit,
+      ecoProduct: p.criteria.ecoProduct,
+      srcHyrox: p.criteria.srcHyrox,
+      srcMy20fit: p.criteria.srcMy20fit,
+      srcRecency: p.criteria.srcRecency,
+      srcArena: p.criteria.srcArena,
+      srcGym: p.criteria.srcGym,
+      srcClinicPatient: p.criteria.srcClinicPatient,
+      srcClinicTxn: p.criteria.srcClinicTxn,
+      srcRfm: p.criteria.srcRfm,
+      srcProgram: p.criteria.srcProgram,
+    }));
+    setCounts(null);
+    setAiProposal(null);
+  }
+
   async function exportCsv() {
     setExportError(null);
     setExporting(true);
@@ -166,6 +217,68 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
         <div className="flex items-center gap-2">
           <Filter className="h-4 w-4 text-ink-soft" aria-hidden />
           <h2 className="font-display text-[15px] font-bold uppercase tracking-wide text-ink">Kriteria</h2>
+        </div>
+
+        {/* AI accelerator (Sprint 4A TUGAS 3). Describe the segment in words → the server maps it
+            to criteria via an LLM whose JSON is re-validated against the closed vocabulary. It is
+            a PROPOSAL: nothing runs until you apply it and press Hitung. The manual filters below
+            are always complete on their own — if the AI is down, this box just disappears in use. */}
+        <div className="mt-4 rounded-sm border border-glass-border/70 p-4">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-ink-soft" aria-hidden />
+            <h3 className="font-display text-[12px] font-bold uppercase tracking-wide text-ink">Asisten AI (opsional)</h3>
+          </div>
+          <p className="mt-1 max-w-3xl font-body text-[12px] leading-relaxed text-ink-soft">
+            Jelaskan segmennya dengan kata-kata (mis. “pelanggan yang ikut RUNFEST dan punya email”). AI
+            mengusulkan kriteria — Anda tetap meninjau, mengubah, lalu menekan Hitung sendiri. Kriteria waktu
+            tidak bisa (kolom waktu = cap muat, K-19); permintaan klinis butuh <span className="font-mono">profile.view_health</span>.
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <input
+              className="h-10 min-w-[16rem] flex-1 rounded-sm border border-glass-border bg-glass px-3 font-body text-[14px] text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-red"
+              value={aiText}
+              onChange={(e) => setAiText(e.target.value)}
+              placeholder="Jelaskan segmen dengan kata-kata…"
+              maxLength={500}
+            />
+            <Button variant="outline" onClick={aiPropose} disabled={aiLoading || aiText.trim() === ""}>
+              {aiLoading ? "Mengusulkan…" : "Usulkan (AI)"}
+            </Button>
+          </div>
+          {aiError && <p className="mt-2 font-body text-[13px] text-red">{aiError}</p>}
+          {aiProposal && (
+            <div className="tint-neutral mt-3 rounded-sm px-3 py-3">
+              <p className="font-body text-[13px] text-ink">
+                <span className="font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">Usulan: </span>
+                {describeProposal(aiProposal)}
+              </p>
+              {aiProposal.notes && (
+                <p className="mt-1.5 font-body text-[12px] italic text-ink-soft">Catatan AI: {aiProposal.notes}</p>
+              )}
+              {aiProposal.clinicalBlocked && (
+                <p className="mt-1.5 font-body text-[12px] text-amber">
+                  Kriteria klinis diminta tapi dibuang — butuh <span className="font-mono">profile.view_health</span>.
+                </p>
+              )}
+              {aiProposal.unexpressible.length > 0 && (
+                <div className="mt-1.5">
+                  <p className="font-body text-[12px] font-semibold text-ink">Tidak bisa diungkapkan:</p>
+                  <ul className="ml-4 list-disc font-body text-[12px] text-ink-soft">
+                    {aiProposal.unexpressible.map((u, i) => <li key={i}>{u}</li>)}
+                  </ul>
+                </div>
+              )}
+              <div className="mt-3 flex items-center gap-2">
+                <Button size="sm" onClick={() => applyProposal(aiProposal)} disabled={proposalIsEmpty(aiProposal)}>
+                  Terapkan usulan
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setAiProposal(null)}>Abaikan</Button>
+                {proposalIsEmpty(aiProposal) && (
+                  <span className="font-body text-[12px] italic text-ink-faint">Tak ada kriteria yang bisa diterapkan.</span>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="mt-4">
