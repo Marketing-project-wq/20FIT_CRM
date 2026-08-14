@@ -58,6 +58,7 @@ Full spec: `PRD — 20FIT Audience Data & CRM System v1.1`.
 > | 10 | `…110000_lock_crm_purge_audit_log_execute` | `20260811085420` | `lock_crm_purge_audit_log_execute` |
 > | 15 | **`docs/migrations-applied/…091255_create_crm_customer_mirror`** *(bukan `supabase/migrations/`)* | `20260813091255` | `create_crm_customer_mirror` |
 > | 16 | **`docs/migrations-applied/…040554_add_is_fitco_member_matched…`** *(bukan `supabase/migrations/`)* | `20260814040554` | `add_is_fitco_member_matched_to_crm_customer_mirror` |
+> | 17 | **`docs/migrations-applied/…055353_crm_norm_phone_guard_empty_nsn`** *(bukan `supabase/migrations/`)* | `20260814055353` | `crm_norm_phone_guard_empty_nsn` |
 >
 > **Baris 11–14 sengaja belum dienumerasi di sini.** DB memuat migrasi CRM **11–16**; repo sudah
 > punya `…20260812000000_create_crm_backfill_consent` (migrasi 11) di `supabase/migrations/`, dan

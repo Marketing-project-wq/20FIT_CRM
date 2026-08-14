@@ -5,20 +5,21 @@ database**, dan `supabase db push` **dilarang** di proyek ini — ledger sudah d
 migrasi dijalankan lewat `apply_migration` per gate, mencap versi sendiri). Lihat blok
 "Migration ledger diverged" di `README.md` utama.
 
-## ⚠️ Dua migrasi cermin TIDAK ada di folder ini — dengan sengaja
+## ⚠️ Tiga migrasi (cermin + kanon telepon) TIDAK ada di folder ini — dengan sengaja
 
-Migrasi **15** (`crm_customer_mirror` matview + `crm_mirror_meta` + `crm_refresh_customer_mirror()`)
-dan **16** (kolom `is_fitco_member_matched`) **diterapkan ke DB tapi disimpan di
-`docs/migrations-applied/`, bukan di sini.**
+Migrasi **15** (`crm_customer_mirror` matview + `crm_mirror_meta` + `crm_refresh_customer_mirror()`),
+**16** (kolom `is_fitco_member_matched`), dan **17** (`crm_norm_phone` guard empty-NSN)
+**diterapkan ke DB tapi disimpan di `docs/migrations-applied/`, bukan di sini.**
 
 Alasannya ada di `docs/migrations-applied/README.md`: menaruh berkas baru di folder ini hanya
 menambah yang akan dicoba dijalankan `db push` (yang sudah berbahaya), tanpa menyelesaikan
 divergensi. **Tanpa pointer ini, siapa pun yang membuka folder ini akan menyimpulkan cermin tak
 pernah dibuat lewat migrasi — lalu menulis ulang sesuatu yang sudah ada.**
 
-DDL cermin (definisi 20 kolom, indeks, grant, fungsi refresh) ada lengkap di:
+DDL cermin + kanon telepon ada lengkap di:
 - `docs/migrations-applied/20260813091255_create_crm_customer_mirror.sql`
 - `docs/migrations-applied/20260814040554_add_is_fitco_member_matched_to_crm_customer_mirror.sql`
+- `docs/migrations-applied/20260814055353_crm_norm_phone_guard_empty_nsn.sql`
 
 ## Catatan divergensi yang lebih luas (utang teknis)
 

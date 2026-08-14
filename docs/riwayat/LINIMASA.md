@@ -50,6 +50,7 @@ belum diterapkan dan menjalankan ulang semuanya.
 | 10 | `…110000_lock_crm_purge_audit_log_execute` | `20260811085420` | Sprint 3I |
 | 15 | `docs/migrations-applied/…091255_create_crm_customer_mirror` | `20260813091255` | matview cermin (di `docs/`, bukan `supabase/migrations/`) |
 | 16 | `docs/migrations-applied/…040554_add_is_fitco_member_matched…` | `20260814040554` | kolom Fitco `is_fitco_member_matched` (di `docs/`) |
+| 17 | `docs/migrations-applied/…055353_crm_norm_phone_guard_empty_nsn` | `20260814055353` | `crm_norm_phone` guard empty-NSN, paritas `normalizePhoneID` (di `docs/`) |
 
 **10 berkas repo → 11 entri ledger `crm`.** Selisihnya adalah apply ganda migrasi 9.
 
