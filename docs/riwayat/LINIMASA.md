@@ -48,8 +48,18 @@ belum diterapkan dan menjalankan ulang semuanya.
 | 8 | `…090000_create_crm_purge_audit_log` | `20260811034942` | Sprint 3A |
 | 9 | `…100000_create_crm_record_suppression` | `20260811081711` **dan** `20260811081920` | Sprint 3H — **dua entri**, apply ganda untuk menutup grant `anon` |
 | 10 | `…110000_lock_crm_purge_audit_log_execute` | `20260811085420` | Sprint 3I |
+| 15 | `docs/migrations-applied/…091255_create_crm_customer_mirror` | `20260813091255` | matview cermin (di `docs/`, bukan `supabase/migrations/`) |
+| 16 | `docs/migrations-applied/…040554_add_is_fitco_member_matched…` | `20260814040554` | kolom Fitco `is_fitco_member_matched` (di `docs/`) |
 
 **10 berkas repo → 11 entri ledger `crm`.** Selisihnya adalah apply ganda migrasi 9.
+
+**Diperbarui 14 Agu 2026 — baris 11–16.** DB kini memuat migrasi CRM **11–16**. Repo punya
+`…20260812000000_create_crm_backfill_consent` (migrasi 11) di `supabase/migrations/`; 12–14
+(indeks, dst.) terarsip di `docs/riwayat/sprint-4a/` pada branch yang belum-merge. Migrasi **15
+(matview cermin)** & **16 (kolom Fitco)** hidup di **`docs/migrations-applied/`**, bukan
+`supabase/migrations/` — supaya `db push` tak memungutnya. **Baris 11–14 belum dienumerasi di
+tabel ini**; enumerasi penuh + rekonsiliasi ledger↔repo = utang teknis dengan gate sendiri
+(lihat `docs/migrations-applied/README.md`).
 
 ## Layar
 

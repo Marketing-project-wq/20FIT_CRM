@@ -79,6 +79,18 @@ database tidak menegakkannya. Perbaikan (menyempitkan policy) **akan memutus apl
 lain** yang mengandalkannya → keputusan pemilik data + owner Supabase, bukan sepihak.
 → `docs/ESKALASI-paparan-data-sensitif.md`, K-23. Silang-rujuk T-02.
 
+### T-19 · 5 view non-`crm_*` terbaca `anon` (`customer_360_v1`, `arena_dashboard`, `leaderboard_*`) — MILIK TIM LAIN
+**Ditemukan 14 Agu (verifikasi grant migrasi 15/16).** Saat memverifikasi ACL matview cermin —
+`has_table_privilege('anon', 'crm_customer_mirror', 'select') = false`, **benar** — sapuan
+sekitarnya menemukan **lima view** dengan **`anon` SELECT = TRUE** (dan `authenticated` = TRUE),
+terverifikasi 14 Agu: **`customer_360_v1`**, **`arena_dashboard`**, **`leaderboard_daily`**,
+**`leaderboard_season`**, **`leaderboard_team`**. Kelas sama dengan T-03/T-17: kontrol CRM tak
+ditembus, **dilewati** lewat objek milik subsistem lain (anon key ada di tiap bundel JS).
+`crm_customer_mirror` sendiri **terkunci** (grant `service_role` saja) — pola cermin benar; yang
+terbuka adalah view produk lain. **Di luar lingkup migrasi 16**; diukur & diangkat ke pemilik
+data + owner Supabase, **tidak disentuh sepihak** (menyempitkan bisa memutus aplikasi tim lain).
+Silang-rujuk T-17, K-23. *(Sempat bernomor **T-24** di gate migrasi 16 — lihat "Catatan penomoran".)*
+
 ---
 
 ## Korektness
@@ -180,6 +192,19 @@ jujurnya seperti di `master_customer`. Perbandingan antar-kolom tak bisa dihitun
 PostgREST → masuk `VERIFIED_ARTIFACTS` bertanggal (`ecosystem_last_seen_load_stamp`), sejajar
 T-11. Baris masa-depan dihitung live di `/quality` (bandingkan ke literal waktu). → K-19
 
+### T-18 · 7.260 baris "Fitco User" staging tak ter-resolve ke `master_customer` — DATA, tidak diremediasi
+**Ditemukan 14 Agu (migrasi 16, kolom cermin Fitco).** `staging_20fit_data` memuat **74.914**
+baris bertanda `"Fitco User" = 'Fitco User'` (**74.913 email unik**). Dicocokkan ke
+`master_customer` lewat email `lower(btrim)`: **67.653 cocok**, **7.260 TIDAK** — email staging
+tanpa padanan di `master_customer`. Kolom `crm_customer_mirror.is_fitco_member_matched` karena itu
+hanya melihat 67.653; namanya memakai `_matched` untuk **jujur soal batas ini**. **Cermin tak bisa
+memperbaikinya** — ini celah *identity resolution* di jalur ingestion (email tak ter-resolve saat
+`master_customer` dibangun), **bukan** cacat matview. **Sengaja tidak diselesaikan di migrasi 16**;
+memperbaikinya berarti menyentuh ingestion/identitas — tugas tersendiri dengan gate-nya. Konsekuensi
+UI: label Fitco **dilarang** tampil polos "67.653" — wajib menyebut konteks "67.653 tercocokkan dari
+74.914". → K-06 (satu kanon), K-08 (`0` vs `—`). *(Sempat bernomor **T-25** di gate migrasi 16 —
+lihat "Catatan penomoran".)*
+
 ---
 
 ## Kesalahan sendiri
@@ -253,3 +278,27 @@ ditindaklanjuti**. Ini **kali kedua** jawabannya sudah ada di tempat yang sudah 
 (bandingkan S-07: bukti ada di `crm_audit_log`, terlewat). **Perbaikan pola:** klaim keamanan
 tabel kini **wajib** menyebut RLS **dan** policy **dan** grant (K-23), dan kueri klasifikasinya
 masuk monitoring supaya bisa dijalankan ulang, bukan diandalkan pada ingatan.
+
+---
+
+## Catatan penomoran — T-24/T-25 TIDAK ADA sebagai temuan terpisah
+
+Di gate migrasi 16 (14 Agu), dua temuan di atas sempat diberi nomor **sementara** T-24 (paparan
+anon-SELECT) dan T-25 (celah 7.260); komentar kolom DB `is_fitco_member_matched` sempat merujuk
+**T-25**. Register ter-commit saat itu baru sampai **T-17**, jadi keduanya diselaraskan ke slot
+bebas berikutnya:
+
+| Nomor sementara (gate) | Nomor final | Temuan |
+|---|---|---|
+| T-25 | **T-18** | celah identity resolution 7.260 |
+| T-24 | **T-19** | 5 view non-`crm_*` terbaca `anon` |
+
+Komentar kolom DB diperbaiki **T-25 → T-18**. **Tidak ada empat temuan — hanya dua.** Orang yang
+membaca transkrip gate lama akan melihat T-24/T-25; catatan ini supaya mereka tidak mengira ada
+temuan tambahan.
+
+**Aturan tie-break (berlaku seterusnya, dicatat juga di `docs/migrations-applied/README.md`):**
+nomor yang sudah dirujuk dari **komentar DB** menang atas pesanan yang hanya ada di **dokumen** —
+komentar DB adalah DDL di database bersama + satu entri ledger (mahal diubah); dokumen dinomori
+ulang gratis. (Belum diformalkan sebagai keputusan ber-nomor `K-` untuk menghindari bentrok dengan
+pesanan `K-24…K-28` di `PANDUAN-LANJUTAN.md` yang belum ter-commit ke `KEPUTUSAN.md`.)
