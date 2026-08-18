@@ -160,8 +160,7 @@ export const en: Messages = {
 
   consent: {
     title: "Consent",
-    subtitleA: "The lawful-basis register for contact & the do-not-contact list — read-only. Phase 2 is open; the write path is deferred ( ",
-    subtitleB: " ).",
+    subtitleA: "The lawful-basis register for contact & the do-not-contact list — read-only. Phase 2 is open; the write path is deferred.",
     basisHeadingA: "Vocabulary for ",
     basisProvisional: "provisional — awaiting the final legal list",
     basisNoteLegacy: "legacy import; since the product owner's decision (12 Aug 2026) it allows marketing + transactional (docs/SIGNOFF-legal-consent.md)",
@@ -260,8 +259,8 @@ export const en: Messages = {
       zeroBodyC: ", a person may not be contacted for marketing. The dashboard's “Contactable” card counts from this rule — the result is 0 (measured), not a 0 written by hand.",
       // Nuance kept: reversible + honestly "unverified per person" + suppression still wins.
       backfilledTitleA: "Legacy consent has been backfilled — basis ",
-      backfilledBodyA: "Migration 11 recorded active consent for the legacy import on the product owner's decision (12 Aug 2026): marketing + transactional, with basis ",
-      backfilledBodyB: " that honestly marks it “not verified per person”. Suppression still wins over consent (K-03). This is reversible: ",
+      backfilledBodyA: "Backfill recorded active consent for the legacy import on the product owner's decision (12 Aug 2026): marketing + transactional, with basis ",
+      backfilledBodyB: " that honestly marks it “not verified per person”. Suppression still wins over consent. This is reversible: ",
       backfilledBodyC: " has zero triggers, and deleting the rows with ",
       backfilledBodyD: " undoes it cleanly.",
       // Nuance kept: enforced in CODE (one tested function), not a DB constraint; keyed on the contact
@@ -273,7 +272,7 @@ export const en: Messages = {
       winsBodyD: ", so it survives profile deletion & re-import.",
       // Nuance kept: zero suppression is NOT "safe to contact" — the absence of consent above is what
       // holds contact, not the absence of suppression.
-      emptyConsentWhy: "Not a single row yet. The legacy backfill (Migration 11) is approved by the product owner but has not been run in this environment; until it is, zero remains the correct fail-closed answer. The basis it will use: legacy_import_unverified (honestly marking it “not verified per person”).",
+      emptyConsentWhy: "Not a single row yet. The legacy backfill is approved by the product owner but has not been run in this environment; until it is, zero remains the correct fail-closed answer. The basis it will use: legacy_import_unverified (honestly marking it “not verified per person”).",
       emptySuppWhy: "Not a single row yet. Zero suppression does not mean it is safe to contact — what holds contact back is the absence of consent (above), not the absence of suppression.",
       footer: "Suppression: record & lift (atomic with an audit row, zero DELETE) · consent stays read-only (awaiting an opt-in channel) · read via the service role server-side · opening this page is recorded (list.viewed, crm_consent).",
       // Nuance kept: recording a stop-request PROTECTS the person, is not a punishment, and has no
@@ -299,11 +298,10 @@ export const en: Messages = {
   },
 
   segments: {
-    subtitleA: "Compose criteria, see the count, change it, look again. Nothing is saved — no table, no segment name (saving is deferred; ",
-    subtitleB: ").",
+    subtitleA: "Compose criteria, see the count, change it, look again. Nothing is saved — no table, no segment name. Saving is deferred.",
     criteriaTitle: "Criteria",
     aiTitle: "AI assistant (optional)",
-    aiDescA: "Describe the segment in words (e.g. “customers who joined RUNFEST and have an email”). The AI proposes criteria — you still review, adjust, then press Compute yourself. Time criteria aren't possible (the time columns are load stamps, K-19); a clinical request needs ",
+    aiDescA: "Describe the segment in words (e.g. “customers who joined RUNFEST and have an email”). The AI proposes criteria — you still review, adjust, then press Compute yourself. Time criteria aren't possible (the time columns are load stamps); a clinical request needs ",
     aiDescB: ".",
     aiPlaceholder: "Describe the segment in words…",
     aiProposing: "Proposing…",
@@ -348,6 +346,8 @@ export const en: Messages = {
     countMktSub: "active marketing consent & not suppressed",
     countSvcLabel: "Contactable · service",
     countSvcSub: "active service (transactional) consent & not suppressed — for CS/ops",
+    mirrorFreshA: "Source filters (Hyrox, arena, etc.) are read from the data mirror — refreshed ",
+    mirrorFreshB: ".",
     openConsent: "Open Consent",
     computeFailed: "Failed to compute",
     connFailed: "Couldn't reach the server.",
@@ -363,7 +363,7 @@ export const en: Messages = {
     noSegmentOption: "(no segment)",
     revHas: "Has (> 0)",
     revNone: "None (0/blank)",
-    revNegative: "Negative (T-10)",
+    revNegative: "Negative (anomaly)",
     cityInputPlaceholder: "e.g. Jakarta",
     removeCondition: "Remove condition",
     removeGroup: "Remove group",
@@ -544,7 +544,7 @@ export const en: Messages = {
       // answered — "absence of old rows doesn't mean nothing happened". The two retention classes
       // (operational pruned 90d / compliance permanent) stay distinct.
       retentionTitle: "This log is not the complete history",
-      retentionA: "The retention policy (migration 8) prunes the operational category (",
+      retentionA: "The retention policy prunes the operational category (",
       retentionB: ") after 90 days; the compliance category (",
       retentionC: ") is excluded permanently. The absence of old operational rows does not mean nothing happened. The purge function is not scheduled yet, so to this day not a single row has actually been pruned.",
       // Nuance: the stored filter value in list.viewed metadata is user-typed, not curated data.
@@ -658,7 +658,7 @@ export const en: Messages = {
   ai: {
     replyLanguageName: "English",
     timeUnexpressible:
-      "Time-based criteria aren't possible: the time columns in this data are load timestamps, not activity (K-19).",
+      "Time-based criteria aren't possible: the time columns in this data are load timestamps, not activity.",
     clinicalBlocked: "A clinical criterion was requested but dropped — it needs profile.view_health.",
     unavailable: "The AI assistant is unavailable right now. Use the manual filters — every criterion is still there.",
   },

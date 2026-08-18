@@ -11,12 +11,15 @@ import { describeProposal, proposalIsEmpty, type AssistProposal } from "@/lib/cr
 import { FilterTreeBuilder, rowsToTree, type Row } from "@/components/segments/filter-tree-builder";
 import { Why } from "@/components/ui/why";
 import { useI18n } from "@/components/i18n/lang-provider";
-import { formatCount, formatPct } from "@/lib/i18n";
+import { formatCount, formatPct, formatDateTime } from "@/lib/i18n";
 
 interface Counts {
   matched: number;
   contactableMarketing: number;
   contactableService: number;
+  /** ISO time the mirror was last refreshed — present only when a source-presence flag shaped
+   *  this count (that part is read from crm_customer_mirror). Null otherwise. */
+  mirrorRefreshedAt?: string | null;
 }
 
 const selectCls =
@@ -116,6 +119,7 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
         matched: data.matched,
         contactableMarketing: data.contactableMarketing,
         contactableService: data.contactableService,
+        mirrorRefreshedAt: data.mirrorRefreshedAt ?? null,
       });
     } catch {
       setError(t.segments.connFailed);
@@ -209,7 +213,7 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
         <div>
           <h1 className="font-display text-[32px] font-black uppercase leading-none text-ink">{t.nav.segments}</h1>
           <p className="mt-2 max-w-3xl font-body text-[14px] text-ink-soft">
-            {t.segments.subtitleA}<span className="font-mono text-[13px]">docs/RENCANA-simpan-segmen.md</span>{t.segments.subtitleB}
+            {t.segments.subtitleA}
           </p>
         </div>
       </header>
@@ -500,6 +504,14 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
             )}
           </div>
         </section>
+      )}
+
+      {/* Mirror provenance (Sprint 5A, K-28): one line, only when a source-presence flag was used —
+          that part of the count is read from the pre-joined mirror, so its freshness is shown. */}
+      {counts?.mirrorRefreshedAt && (
+        <p className="font-body text-[11px] text-ink-faint">
+          {t.segments.mirrorFreshA}{formatDateTime(counts.mirrorRefreshedAt, lang)}{t.segments.mirrorFreshB}
+        </p>
       )}
 
       <p className="font-mono text-[11px] text-ink-faint">{t.segments.warn.footer}</p>

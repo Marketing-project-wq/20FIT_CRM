@@ -201,7 +201,7 @@ function LastSeen({ row }: { row: EngagementRow }) {
       return (
         <span
           className="font-body text-[13px] italic text-ink-faint"
-          title="last_seen_at = first_seen_at → cap waktu muat, bukan aktivitas (K-19)"
+          title="last_seen_at = first_seen_at → cap waktu muat, bukan aktivitas"
         >
           tidak terekam
         </span>
@@ -242,7 +242,7 @@ function EcosystemSection({ engagement }: { engagement: ProfileEngagement | null
               <p className="font-body text-[12px] leading-relaxed text-ink">
                 Semua {nf.format(engagement.totalRows)} titik ekosistem profil ini <strong>cap waktu muat</strong>
                 {" "}(<span className="font-mono">last_seen_at = first_seen_at</span>). Riwayat aktivitasnya
-                <strong> belum terekam</strong> — itu bukan sama dengan “tidak aktif” (K-19).
+                <strong> belum terekam</strong> — itu bukan sama dengan “tidak aktif”.
               </p>
             </div>
           )}
@@ -250,7 +250,7 @@ function EcosystemSection({ engagement }: { engagement: ProfileEngagement | null
             <div className="tint-red mt-3 rounded-sm px-3 py-2">
               <p className="font-body text-[12px] leading-relaxed text-ink">
                 Setidaknya satu baris punya <span className="font-mono">last_seen_at</span> di masa depan —
-                cacat data, ditampilkan apa adanya (K-20).
+                cacat data, ditampilkan apa adanya.
               </p>
             </div>
           )}
@@ -357,8 +357,8 @@ function MultiSourceSection({ multiSource }: { multiSource: ProfileMultiSourceT 
             </SourceLine>
           ))}
           <p className="mt-3 font-body text-[11px] leading-relaxed text-ink-faint">
-            Cocok lewat email ternormalisasi dulu, lalu telepon (K-06) — nol cocok-nama-saja. Baca-gabung saat tampil, nol tulis.
-            Sumber klinis (via <span className="font-mono">patient_id</span>, di balik <span className="font-mono">profile.view_health</span>) menyusul — docs/RENCANA-multisumber.md.
+            Cocok lewat email ternormalisasi dulu, lalu telepon — nol cocok-nama-saja. Baca-gabung saat tampil, nol tulis.
+            Sumber klinis (via <span className="font-mono">patient_id</span>, di balik <span className="font-mono">profile.view_health</span>) menyusul.
           </p>
         </div>
       )}
@@ -554,7 +554,7 @@ function ImportSection({
           )}
           <p className="mt-2 font-body text-[11px] leading-relaxed text-ink-faint">
             Dari <span className="font-mono">staging_20fit_data</span> (impor yang sama dengan master), dicocokkan lewat{" "}
-            <strong>email ternormalisasi</strong> (K-06) — bukan nama. Nol tulis, nol salin: dibaca &amp; digabung saat tampil.
+            <strong>email ternormalisasi</strong> — bukan nama. Nol tulis, nol salin: dibaca &amp; digabung saat tampil.
           </p>
         </div>
       )}
@@ -667,7 +667,7 @@ function EnrichmentSection({ enrichment, canViewHealth }: { enrichment: ProfileE
           )}
 
           <p className="mt-3 font-body text-[12px] leading-relaxed text-ink-soft">
-            Dicocokkan lewat <strong>email ternormalisasi</strong> (K-06), bukan nama. Sumber ini tidak disalin ke{" "}
+            Dicocokkan lewat <strong>email ternormalisasi</strong>, bukan nama. Sumber ini tidak disalin ke{" "}
             <span className="font-mono">master_customer</span> — dibaca &amp; digabung saat tampil. Data medis clinic tidak dibawa (butuh dasar hukum).
           </p>
         </>
@@ -862,8 +862,7 @@ export function ProfileDetail({ id, canEditConsent }: { id: string; canEditConse
           <p className="mt-3 font-body text-[12px] leading-relaxed text-ink-soft">
             “First-seen” hanya bermakna pada baris <span className="font-mono">live_txn_ingest</span>;
             untuk <span className="font-mono">20fit_data_import</span> (98,7% pool) ia sama dengan waktu
-            muat. Segmentasi berbasis recency tidak bisa jujur dengan data ini —{" "}
-            <span className="font-mono">docs/KOLOM-WAKTU.md</span>.
+            muat. Segmentasi berbasis recency tidak bisa jujur dengan data ini.
           </p>
         </section>
 

@@ -338,3 +338,27 @@ terlihat, bukan hanya di dalam "Kenapa?").
 **Membalikkan:** bila kelak audiens layar berubah (mis. auditor eksternal yang justru butuh
 sebab arsitektural tampil), tinjau ulang butir 4 — tapi butir 1–3 dan 5 adalah higiene tampilan
 yang jarang perlu dibatalkan.
+
+## K-29 · Volume audit: satu baris per muat bertahap, tidak digabung (Sprint 5A)
+**Latar:** `/audience` kini memuat sepuluh baris per klik "Muat lagi" (bukan sekaligus). Tiap
+muatan menulis satu baris audit `list.viewed`. Muncul godaan untuk "menggabungkan" beberapa
+muatan menjadi satu baris audit demi menekan volume — sepuluh klik jadi satu catatan.
+
+**Keputusan:** **tetap satu baris audit per muatan.** Tidak digabung, tidak ditunda, tidak
+disampel. Tiap kali baris pelanggan tambahan benar-benar diambil ke layar, itu adalah **satu
+peristiwa akses** dan dicatat sebagai satu peristiwa.
+
+**Alasan:** audit ini menjawab "siapa melihat data siapa, kapan". Menggabungkan sepuluh
+pengambilan menjadi satu baris **mengaburkan justru pertanyaan yang audit itu ada untuk
+jawab** — berapa banyak yang benar-benar dilihat dan pada rentang waktu apa. Volume audit yang
+sedikit lebih besar adalah harga yang benar untuk kejujuran akses; ia bukan beban yang perlu
+"dioptimalkan". Ini konsisten dengan K-11 (aturan audit baca-agregat): peristiwa akses dicatat
+apa adanya, bukan versi yang dirapikan.
+
+**Yang TIDAK berubah:** metadata audit tetap tanpa PII dan tanpa nilai query (K-lama); yang
+dicatat adalah *bahwa* sekumpulan baris diambil dan berapa banyak, bukan *siapa* barisnya.
+
+**Membalikkan:** bila kelak volume audit jadi masalah operasional nyata (bukan hipotetis),
+jalur yang benar adalah **retensi/pemangkasan kategori operasional** (K-sudah-ada soal retensi),
+bukan menggabungkan peristiwa di titik tulis. Pangkas yang lama; jangan pernah gagal mencatat
+yang baru.

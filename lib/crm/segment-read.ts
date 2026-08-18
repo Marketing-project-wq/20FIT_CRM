@@ -8,9 +8,9 @@ import {
 import { SEGMENT_NULL, type SegmentCriteria } from "./segment";
 import { resolveEcosystemCustomerIds } from "./engagement";
 import { resolveEnrichmentCustomerIds } from "./enrichment";
-import { resolveMultiSourceCustomerIds } from "./multisource";
-import { resolveClinicPatientCustomerIds, resolveClinicTxnCustomerIds } from "./clinic-source";
+import { resolveClinicTxnCustomerIds } from "./clinic-source";
 import { resolveStagingRfmCustomerIds, resolveStagingProgramCustomerIds } from "./staging";
+import { resolveMirrorSourceIds } from "./mirror";
 import type { EcosystemUnit } from "./engagement-constants";
 
 /** Intersect a list of id sets (AND). Iterates the smallest for speed. Empty input → null. */
@@ -127,24 +127,33 @@ async function countMasterWithinIds(
  * customer_id by construction, so the intersection ⊆ master_customer.
  *
  * Cross-table OR is not expressible in one PostgREST query, so these stay AND-only (the AND/OR
- * tree covers master columns only). The staging resolvers now use the migration-14 RPC (fast).
+ * tree covers master columns only). The staging resolvers use the migration-14 RPC (fast).
+ *
+ * Sprint 5A: the five source-PRESENCE flags (Hyrox / my20fit / arena / gym / clinic-patient) now
+ * resolve from crm_customer_mirror in ONE indexed query (resolveMirrorSourceIds) instead of a
+ * per-source scan + over-the-wire match each. Their AND-in-SQL equals the old per-set intersect
+ * (each mirror flag == its live resolver for the current data — verified at apply time). The
+ * criteria the mirror cannot reproduce — ecosystem unit/product, real recency, clinic-TXN
+ * linkage, RFM buckets, and program/Fitco participation — stay on their live resolvers and are
+ * intersected with the mirror set exactly as before. Consent/suppression are never in the mirror
+ * and stay live in the contactable count (see computeSegment).
  */
 export async function resolveRestrictIds(
   admin: SupabaseClient,
   criteria: SegmentCriteria,
 ): Promise<Set<string> | null> {
   const idSets: Set<string>[] = [];
+  // Mirror-served presence flags (Hyrox/my20fit/arena/gym/clinic-patient): one query, or null
+  // when none of the five is active. clinic-patient stays gated on view_health at the route.
+  const mirrorIds = await resolveMirrorSourceIds(admin, criteria);
+  if (mirrorIds) idSets.push(mirrorIds);
+  // Everything the mirror cannot reproduce stays on its live source path:
   if (criteria.ecoUnit || criteria.ecoProduct) {
     idSets.push(
       await resolveEcosystemCustomerIds(admin, (criteria.ecoUnit as EcosystemUnit | null) ?? null, criteria.ecoProduct),
     );
   }
-  if (criteria.srcHyrox) idSets.push(await resolveEnrichmentCustomerIds(admin, "hyrox"));
-  if (criteria.srcMy20fit) idSets.push(await resolveEnrichmentCustomerIds(admin, "my20fit"));
   if (criteria.srcRecency) idSets.push(await resolveEnrichmentCustomerIds(admin, "recency"));
-  if (criteria.srcArena) idSets.push(await resolveMultiSourceCustomerIds(admin, "arena"));
-  if (criteria.srcGym) idSets.push(await resolveMultiSourceCustomerIds(admin, "gym"));
-  if (criteria.srcClinicPatient) idSets.push(await resolveClinicPatientCustomerIds(admin));
   if (criteria.srcClinicTxn) idSets.push(await resolveClinicTxnCustomerIds(admin));
   if (criteria.srcRfm) idSets.push(await resolveStagingRfmCustomerIds(admin, criteria.srcRfm));
   if (criteria.srcProgram) idSets.push(await resolveStagingProgramCustomerIds(admin, criteria.srcProgram));

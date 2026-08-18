@@ -5,6 +5,7 @@ import { getCurrentUserRole } from "@/lib/auth/current-role";
 import { isPermitted, resolveGrant } from "@/lib/auth/roles";
 import { parseCriteria, hasClinicalCriteria } from "@/lib/crm/segment";
 import { computeSegment } from "@/lib/crm/segment-read";
+import { activeMirrorFlagColumns, fetchMirrorMeta } from "@/lib/crm/mirror";
 import { validateFilterTree, filterTreeToExpr, type FilterNode } from "@/lib/crm/filter-tree";
 import { logApiFailure } from "@/lib/crm/failure-log";
 import { getServerDict } from "@/lib/i18n/server";
@@ -151,11 +152,24 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Mirror provenance (Sprint 5A): when a source-presence flag shaped this count, that part was
+  // read from crm_customer_mirror. Surface the mirror's freshness so a snapshot never looks live.
+  // Best-effort: a meta read failure must not fail the compute (the count already succeeded).
+  let mirrorRefreshedAt: string | null = null;
+  if (activeMirrorFlagColumns(criteria).length > 0) {
+    try {
+      mirrorRefreshedAt = (await fetchMirrorMeta(admin)).refreshedAt;
+    } catch {
+      mirrorRefreshedAt = null;
+    }
+  }
+
   return NextResponse.json(
     {
       matched: counts.matched,
       contactableMarketing: counts.contactableMarketing,
       contactableService: counts.contactableService,
+      mirrorRefreshedAt,
     },
     { headers: { "Cache-Control": "no-store" } },
   );

@@ -79,6 +79,44 @@ export function fileRevokesExecute(content: string, name: string): boolean {
   return false;
 }
 
+/** Find every `create materialized view public.crm_*` in one file. A matview does NOT honour
+ *  RLS, so grants are its ONLY protection (Sprint 5A, migration 15) — the same anon/authenticated
+ *  auto-grant hazard as functions, but on SELECT instead of EXECUTE. */
+export function findCrmMatviewDefs(content: string, file: string): { name: string; file: string }[] {
+  const defs: { name: string; file: string }[] = [];
+  const re = /create\s+materialized\s+view\s+(?:if\s+not\s+exists\s+)?public\.(crm_\w+)\b/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(content)) !== null) defs.push({ name: m[1], file });
+  return defs;
+}
+
+/** Does this file revoke SELECT (or ALL) on the matview from public AND anon AND authenticated? */
+export function fileRevokesSelect(content: string, name: string): boolean {
+  const re = new RegExp(
+    `revoke\\s+(?:all|select)\\b[^;]*?on\\s+(?:table\\s+)?public\\.${name}\\s+from\\s+([^;]+);`,
+    "gis",
+  );
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(content)) !== null) {
+    const from = m[1].toLowerCase();
+    if (from.includes("public") && from.includes("anon") && from.includes("authenticated")) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** The matview analyzer — pure, mirrors scanUnlockedCrmFunctions. */
+export function scanUnlockedCrmMatviews(files: { path: string; content: string }[]): Violation[] {
+  const out: Violation[] = [];
+  for (const f of files) {
+    for (const def of findCrmMatviewDefs(f.content, f.path)) {
+      if (!fileRevokesSelect(f.content, def.name)) out.push({ name: def.name, file: f.path });
+    }
+  }
+  return out;
+}
+
 export interface Violation {
   name: string;
   file: string;
@@ -173,5 +211,57 @@ describe("crm_* migration EXECUTE lock guard", () => {
   it("exempts trigger-returning functions (not RPC-exposable)", () => {
     const trig = "create function public.crm_trg() returns trigger language plpgsql as $$ begin return null; end $$;";
     expect(scanUnlockedCrmFunctions([{ path: "trg.sql", content: trig }], new Set())).toEqual([]);
+  });
+});
+
+/**
+ * GUARD (Sprint 5A, migration 15): a `crm_*` materialized view does NOT honour RLS, so its SELECT
+ * grant is its ONLY protection. Supabase auto-grants SELECT to anon/authenticated on new public
+ * relations, so every crm_* matview must revoke SELECT from public+anon+authenticated in the SAME
+ * file — the direct-ACL check the data owner required before sign-off.
+ */
+describe("crm_* materialized view SELECT lock guard", () => {
+  const files = readMigrations();
+
+  it("every crm_* materialized view locks SELECT in its own file", () => {
+    const violations = scanUnlockedCrmMatviews(files);
+    expect(
+      violations,
+      violations.length
+        ? "crm_* materialized view created without an in-file SELECT lock. A matview ignores RLS, " +
+            "so grants are its only protection. Add, in the SAME migration file:\n" +
+            "  revoke all on public.<matview> from public, anon, authenticated;\n" +
+            "  grant select on public.<matview> to service_role;\nOffenders:\n" +
+            violations.map((v) => `  ${v.name} (${v.file})`).join("\n")
+        : "",
+    ).toEqual([]);
+  });
+
+  it("finds crm_customer_mirror in the real migrations", () => {
+    const names = new Set(files.flatMap((f) => findCrmMatviewDefs(f.content, f.path)).map((d) => d.name));
+    expect(names.has("crm_customer_mirror")).toBe(true);
+  });
+
+  // ── The guard BITES — proven on synthetic input ──
+  it("flags a crm_* matview with NO revoke", () => {
+    const bad = "create materialized view public.crm_leak as select 1 as x with data;";
+    expect(scanUnlockedCrmMatviews([{ path: "bad.sql", content: bad }])).toEqual([
+      { name: "crm_leak", file: "bad.sql" },
+    ]);
+  });
+
+  it("passes a crm_* matview that DOES revoke from public+anon+authenticated", () => {
+    const good =
+      "create materialized view public.crm_ok_mv as select 1 as x with data;\n" +
+      "revoke all on public.crm_ok_mv from public, anon, authenticated;\n" +
+      "grant select on public.crm_ok_mv to service_role;";
+    expect(scanUnlockedCrmMatviews([{ path: "ok.sql", content: good }])).toEqual([]);
+  });
+
+  it("does NOT pass a matview revoke that misses anon (public-only is insufficient)", () => {
+    const partial =
+      "create materialized view public.crm_half_mv as select 1 as x with data;\n" +
+      "revoke all on public.crm_half_mv from public;";
+    expect(scanUnlockedCrmMatviews([{ path: "half.sql", content: partial }])).toHaveLength(1);
   });
 });

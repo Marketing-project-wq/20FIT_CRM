@@ -216,7 +216,7 @@ export function ConsentRegister() {
       <header>
         <h1 className="font-display text-[32px] font-black uppercase leading-none text-ink">{t.consent.title}</h1>
         <p className="mt-2 font-body text-[14px] text-ink-soft">
-          {t.consent.subtitleA}<span className="font-mono text-[13px]">docs/RENCANA-jalur-tulis-consent.md</span>{t.consent.subtitleB}
+          {t.consent.subtitleA}
         </p>
       </header>
 

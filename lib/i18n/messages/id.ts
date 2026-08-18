@@ -191,8 +191,7 @@ export const id = {
   consent: {
     title: "Consent",
     // subtitle split around the mono doc PATH (a file path — kept verbatim, never translated).
-    subtitleA: "Register dasar hukum kontak & daftar do-not-contact — baca saja. Fase 2 dibuka; jalur tulis ditunda ( ",
-    subtitleB: " ).",
+    subtitleA: "Register dasar hukum kontak & daftar do-not-contact — baca saja. Fase 2 dibuka; jalur tulis ditunda.",
     // basis vocabulary block. The `value`s (legacy_import_unverified, explicit_opt_in) are STORED
     // vocabulary and stay verbatim; only these explanatory NOTES follow the language.
     basisHeadingA: "Kosakata ",
@@ -302,8 +301,8 @@ export const id = {
       // "unverified per person"; suppression still WINS. Dropping "reversible"/"suppression wins"
       // would overstate the strength of a legacy consent basis.
       backfilledTitleA: "Consent legacy sudah dibackfill — basis ",
-      backfilledBodyA: "Migrasi 11 mencatat consent aktif untuk impor lama atas keputusan pemilik produk (12 Agu 2026): marketing + transactional, dengan basis ",
-      backfilledBodyB: " yang jujur menandai “belum diverifikasi per orang”. Suppression tetap menang atas consent (K-03). Ini reversibel: ",
+      backfilledBodyA: "Backfill mencatat consent aktif untuk impor lama atas keputusan pemilik produk (12 Agu 2026): marketing + transactional, dengan basis ",
+      backfilledBodyB: " yang jujur menandai “belum diverifikasi per orang”. Suppression tetap menang atas consent. Ini reversibel: ",
       backfilledBodyC: " nol trigger, dan menghapus baris ",
       // origin-marking predicate — a stored SQL literal, identical in both languages (never translated).
       backfilledBodyD: " membatalkannya bersih.",
@@ -317,7 +316,7 @@ export const id = {
       winsBodyD: ", supaya bertahan lintas penghapusan profil & impor ulang.",
       // Empty-state explanations. Nuance at risk (suppression): zero suppression is NOT "safe to
       // contact" — the thing holding contact is the ABSENCE OF CONSENT above, not absence of suppression.
-      emptyConsentWhy: "Belum ada satu baris pun. Backfill legacy (Migrasi 11) sudah disetujui pemilik produk tapi belum dijalankan di lingkungan ini; sampai dijalankan, nol tetap jawaban fail-closed yang benar. Basis yang akan dipakai: legacy_import_unverified (jujur menandai “belum diverifikasi per orang”).",
+      emptyConsentWhy: "Belum ada satu baris pun. Backfill legacy sudah disetujui pemilik produk tapi belum dijalankan di lingkungan ini; sampai dijalankan, nol tetap jawaban fail-closed yang benar. Basis yang akan dipakai: legacy_import_unverified (jujur menandai “belum diverifikasi per orang”).",
       emptySuppWhy: "Belum ada satu baris pun. Nol suppression bukan berarti aman untuk mengontak — yang menahan kontak adalah ketiadaan consent (di atas), bukan ketiadaan suppression.",
       footer: "Suppression: catat & cabut (atomik dengan audit, nol DELETE) · consent tetap baca-saja (menunggu kanal opt-in) · dibaca via service role server-side · pembukaan halaman ini tercatat (list.viewed, crm_consent).",
       // Record-dialog description. Nuance at risk: recording a stop-request PROTECTS the person; it
@@ -351,8 +350,7 @@ export const id = {
   // an optional lang (default "id") so old tests are untouched. Nuance-bearing warnings live under
   // segments.warn.* (guarded). Numbers/counts are interpolated by the component, not stored here.
   segments: {
-    subtitleA: "Susun kriteria, lihat jumlahnya, ubah, lihat lagi. Tidak ada yang disimpan — tanpa tabel, tanpa nama segmen (penyimpanan ditunda; ",
-    subtitleB: ").",
+    subtitleA: "Susun kriteria, lihat jumlahnya, ubah, lihat lagi. Tidak ada yang disimpan — tanpa tabel, tanpa nama segmen. Penyimpanan ditunda.",
     criteriaTitle: "Kriteria",
     aiTitle: "Asisten AI (opsional)",
     aiDescA: "Jelaskan segmennya dengan kata-kata (mis. “pelanggan yang ikut RUNFEST dan punya email”). AI mengusulkan kriteria — Anda tetap meninjau, mengubah, lalu menekan Hitung sendiri. Kriteria waktu tidak bisa (kolom waktu = cap muat); permintaan klinis butuh ",
@@ -400,6 +398,8 @@ export const id = {
     countMktSub: "consent marketing aktif & tidak disuppress",
     countSvcLabel: "Boleh dihubungi · layanan",
     countSvcSub: "consent layanan (transactional) aktif & tidak disuppress — untuk CS/operasional",
+    mirrorFreshA: "Filter sumber (Hyrox, arena, dll.) dibaca dari cermin data — disegarkan ",
+    mirrorFreshB: ".",
     openConsent: "Buka Consent",
     computeFailed: "Gagal menghitung",
     connFailed: "Gagal terhubung ke server.",
@@ -416,7 +416,7 @@ export const id = {
     noSegmentOption: "(tanpa segment)",
     revHas: "Punya (> 0)",
     revNone: "Tanpa (0/kosong)",
-    revNegative: "Negatif (T-10)",
+    revNegative: "Negatif (anomali)",
     cityInputPlaceholder: "mis. Jakarta",
     removeCondition: "Hapus kondisi",
     removeGroup: "Hapus grup",
@@ -614,7 +614,7 @@ export const id = {
       // is not one that has been answered — "absence of old rows doesn't mean nothing happened".
       // The two retention CLASSES (operational pruned 90d / compliance permanent) must stay distinct.
       retentionTitle: "Log ini bukan riwayat lengkap",
-      retentionA: "Kebijakan retensi (migrasi 8) memangkas kategori operasional (",
+      retentionA: "Kebijakan retensi memangkas kategori operasional (",
       retentionB: ") setelah 90 hari; kategori kepatuhan (",
       retentionC: ") dikecualikan permanen. Ketiadaan baris operasional lama tidak berarti tidak ada yang terjadi. Fungsi purge belum dijadwalkan, jadi sampai hari ini belum ada satu baris pun yang benar-benar terpangkas.",
       // Nuance: the stored filter value in list.viewed metadata is USER-TYPED, not curated data.
@@ -740,7 +740,7 @@ export const id = {
     // language. The model is instructed to answer in this language.
     replyLanguageName: "Bahasa Indonesia",
     timeUnexpressible:
-      "Kriteria berbasis waktu tidak bisa: kolom waktu di data ini adalah cap muat, bukan aktivitas (K-19).",
+      "Kriteria berbasis waktu tidak bisa: kolom waktu di data ini adalah cap muat, bukan aktivitas.",
     clinicalBlocked: "Kriteria klinis diminta tapi dibuang — butuh profile.view_health.",
     unavailable: "Asisten AI sedang tidak tersedia. Pakai filter manual — semua kriteria tetap ada.",
   },
