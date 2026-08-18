@@ -48,6 +48,47 @@ export interface MirrorMeta {
   rowCount: number | null;
 }
 
+/** The five source-presence flags for ONE profile, read from its single mirror row (Sprint 5B).
+ *  Lets the profile screen state "connected to / not connected to" from one pre-joined row with a
+ *  visible freshness stamp, instead of implying the answer is a live check. Returns null when the
+ *  customer has no mirror row (should not happen — 1:1 with master_customer — but handled). This
+ *  drives PRESENTATION only: the live per-source detail still renders whenever it exists, so a
+ *  stale snapshot can never hide a real connection. */
+export interface MirrorPresence {
+  hasHyrox: boolean;
+  hasMy20fit: boolean;
+  hasArena: boolean;
+  hasGym: boolean;
+  hasClinic: boolean;
+}
+
+export async function fetchProfileMirrorPresence(
+  admin: SupabaseClient,
+  customerId: string,
+): Promise<MirrorPresence | null> {
+  const { data, error } = await admin
+    .from(MIRROR)
+    .select("has_hyrox, has_my20fit, has_arena, has_gym, has_clinic")
+    .eq("customer_id", customerId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  const r = data as {
+    has_hyrox: boolean | null;
+    has_my20fit: boolean | null;
+    has_arena: boolean | null;
+    has_gym: boolean | null;
+    has_clinic: boolean | null;
+  };
+  return {
+    hasHyrox: r.has_hyrox === true,
+    hasMy20fit: r.has_my20fit === true,
+    hasArena: r.has_arena === true,
+    hasGym: r.has_gym === true,
+    hasClinic: r.has_clinic === true,
+  };
+}
+
 export async function fetchMirrorMeta(admin: SupabaseClient): Promise<MirrorMeta> {
   const { data, error } = await admin
     .from(META)

@@ -14,6 +14,7 @@ import { fetchProfileEnrichment, type ProfileEnrichment } from "@/lib/crm/enrich
 import { fetchProfileMultiSource, type ProfileMultiSource } from "@/lib/crm/multisource";
 import { fetchProfileClinic, type ProfileClinic } from "@/lib/crm/clinic-source";
 import { fetchProfileImport, type ProfileImport } from "@/lib/crm/staging";
+import { fetchProfileMirrorPresence, fetchMirrorMeta, type MirrorPresence } from "@/lib/crm/mirror";
 import { logApiFailure } from "@/lib/crm/failure-log";
 
 export const dynamic = "force-dynamic";
@@ -136,6 +137,24 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
     importData = null;
   }
 
+  // Mirror presence flags for THIS profile (Sprint 5B) — the "connected to / not connected to"
+  // snapshot, read from one pre-joined row, plus the mirror's freshness. Non-fatal + does NOT
+  // gate the live detail fetches above: those still run unconditionally, so a stale snapshot can
+  // never hide a real connection. The client only uses these to build the consolidated
+  // "not connected to …" line and to stamp it with the snapshot's age.
+  let mirror: MirrorPresence | null = null;
+  let mirrorRefreshedAt: string | null = null;
+  try {
+    [mirror, mirrorRefreshedAt] = await Promise.all([
+      fetchProfileMirrorPresence(admin, profile.customer_id),
+      fetchMirrorMeta(admin).then((m) => m.refreshedAt),
+    ]);
+  } catch (e) {
+    logApiFailure("/audience/[id]", "mirror_query_failed", { code: (e as { code?: string })?.code });
+    mirror = null;
+    mirrorRefreshedAt = null;
+  }
+
   // Which sensitive field KINDS were available to a view_health caller — recorded in the
   // ONE profile.viewed row (K-07), never the values, never a row per field (T2 rule).
   const sensitiveFields = new Set<string>();
@@ -179,7 +198,7 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
   }
 
   return NextResponse.json(
-    { profile, canViewHealth, engagement, enrichment, multiSource, clinic, importData },
+    { profile, canViewHealth, engagement, enrichment, multiSource, clinic, importData, mirror, mirrorRefreshedAt },
     { headers: { "Cache-Control": "no-store" } },
   );
 }
