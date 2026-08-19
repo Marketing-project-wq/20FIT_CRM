@@ -19,13 +19,45 @@ const NO_ENRICHMENT = {
   activity: { matched: false, firstSeenAt: null, lastActiveAt: null, pingCount: null },
 };
 
-// ── 1. EMPTY — connected to nothing ──────────────────────────────────────────────────────────
+// ── 1. EMPTY — near-empty in BOTH tabs (the whole-profile 5-second test) ──────────────────────
 const EMPTY: ApiResult = {
   profile: {
     customer_id: "cust_demo_empty_0001",
     full_name: "Sri Wahyuni",
-    phone: "628110000001",
-    email: "sri.demo@example.com",
+    phone: null,
+    email: null,
+    city: null,
+    first_unit: null,
+    segment: null,
+    lifetime_value: null,
+    source: null,
+    first_seen_at: "2026-04-20T00:00:00.000Z",
+    created_at: "2026-04-20T00:00:00.000Z",
+    updated_at: "2026-04-20T00:00:00.000Z",
+    is_potential_duplicate: false,
+    duplicate_reason: null,
+    is_merged: false,
+    notes: null,
+    tags: null,
+    masked: false,
+  },
+  canViewHealth: false,
+  engagement: EMPTY_ENGAGEMENT,
+  enrichment: { ...NO_ENRICHMENT, matchable: false },
+  multiSource: { matchable: false, sources: [] },
+  clinic: null, // non-view_health caller never fetches clinic
+  importData: { matchable: false, matched: false, city: null, dob: null, age: null, umurSnapshot: null, rfmPaidOrder: null, programs: [], clinicalWithheld: false },
+  mirror: { hasHyrox: false, hasMy20fit: false, hasArena: false, hasGym: false, hasClinic: false },
+  mirrorRefreshedAt: STALE_REFRESHED_AT,
+};
+
+// ── 1b. FILLABLE — has contact, but gender/DOB empty from every source (admin-fill target) ────
+const FILLABLE: ApiResult = {
+  profile: {
+    customer_id: "cust_demo_fill_0004",
+    full_name: "Rangga Saputra",
+    phone: "628160000005",
+    email: "rangga.demo@example.com",
     city: null,
     first_unit: "membership",
     segment: "New User",
@@ -45,8 +77,10 @@ const EMPTY: ApiResult = {
   engagement: EMPTY_ENGAGEMENT,
   enrichment: NO_ENRICHMENT,
   multiSource: { matchable: true, sources: [] },
-  clinic: null, // non-view_health caller never fetches clinic
-  importData: { matchable: true, matched: false, city: null, dob: null, age: null, umurSnapshot: null, rfmPaidOrder: null, programs: [], clinicalWithheld: false },
+  clinic: null,
+  // Matched to the import, but the import carries NO birth date / city for this person — so
+  // gender/DOB/city are empty from every source: exactly the admin-fill target (TUGAS 4).
+  importData: { matchable: true, matched: true, city: null, dob: { status: "empty", raw: null, iso: null, ambiguousDayMonth: false, swapped: false, plausibility: null }, age: null, umurSnapshot: null, rfmPaidOrder: "-", programs: [], clinicalWithheld: false },
   mirror: { hasHyrox: false, hasMy20fit: false, hasArena: false, hasGym: false, hasClinic: false },
   mirrorRefreshedAt: STALE_REFRESHED_AT,
 };
@@ -177,7 +211,8 @@ const DOB_DIFF: ApiResult = {
 };
 
 export const PROFILE_FIXTURES: { label: string; note: string; data: ApiResult }[] = [
-  { label: "Profil tanpa sambungan sama sekali", note: "uji lima detik: apakah kekosongan terbaca sebagai judul, bukan catatan kecil", data: EMPTY },
-  { label: "Profil dengan data klinis di balik gerbang", note: "canViewHealth = true: identitas + volume + booking terakhir, tanpa isi klinis", data: CLINIC },
-  { label: "Tanggal lahir berbeda antara NIK dan impor", note: "keduanya ditampilkan dengan asalnya, tidak dipilih diam-diam", data: DOB_DIFF },
+  { label: "Kosong di kedua tab", note: "uji lima detik: Demografi · 0 dan Perilaku · 0 terbaca tanpa membuka tab", data: EMPTY },
+  { label: "Perilaku berisi, Demografi tipis", note: "kelas + Hyrox + impor terisi; kontak tipis, tgl lahir NIK vs impor berbeda", data: DOB_DIFF },
+  { label: "Demografi bisa diisi admin", note: "gender/tgl lahir/kota kosong dari semua sumber — target isian admin (TUGAS 4)", data: FILLABLE },
+  { label: "Data klinis di balik gerbang", note: "canViewHealth = true: identitas + volume + booking, tanpa isi klinis", data: CLINIC },
 ];

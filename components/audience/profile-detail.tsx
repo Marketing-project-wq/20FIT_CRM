@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Lock, HeartPulse, Ban, Network, AlertTriangle } from "lucide-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { ArrowLeft, Lock, HeartPulse, Ban, Network, AlertTriangle, ChevronDown, User, Activity } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SuppressionForm } from "@/components/consent/suppression-form";
@@ -196,6 +197,145 @@ function Empty() {
 
 const nf = new Intl.NumberFormat("id-ID");
 
+type TabId = "demografi" | "perilaku";
+
+/** A count suffix shown in a tab label or a collapsible title. A zero is shown faint but NEVER
+ *  hidden — an empty section/tab must read as "no data", not "no feature" (Sprint: tab restructure). */
+function CountBadge({ n }: { n: number }) {
+  return <span className={`font-mono text-[11px] ${n === 0 ? "text-ink-faint" : "text-ink-soft"}`}>· {nf.format(n)}</span>;
+}
+
+/**
+ * One collapsible section = a glass card whose header is a native <summary> (keyboard-accessible,
+ * no JS state — same approach as <Why>). The title carries a count so an empty section reads as a
+ * closed row, never vanishes. `open` is the INITIAL state (open when it has content); the user can
+ * toggle freely afterward. Max depth is two: TAB → this. No collapsible inside a collapsible.
+ */
+function Section({
+  title,
+  count,
+  icon,
+  open = true,
+  span2 = false,
+  children,
+}: {
+  title: string;
+  count?: number;
+  icon?: React.ReactNode;
+  open?: boolean;
+  span2?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <details open={open} className={`glass shadow-glass group rounded-card ${span2 ? "lg:col-span-2" : ""}`}>
+      <summary className="flex cursor-pointer select-none list-none items-center justify-between gap-2 p-6 marker:content-['']">
+        <span className="flex items-center gap-2">
+          {icon}
+          <span className="font-display text-[16px] font-extrabold uppercase tracking-wide text-ink">{title}</span>
+          {count != null && <CountBadge n={count} />}
+        </span>
+        <ChevronDown className="h-4 w-4 shrink-0 text-ink-soft transition-transform group-open:rotate-180" aria-hidden />
+      </summary>
+      <div className="px-6 pb-6">{children}</div>
+    </details>
+  );
+}
+
+/** Active tab: persisted in the URL (?tab=) so a link reopens on the same tab, EXCEPT in the dev
+ *  preview (many profiles share one URL) where local state is used. All hooks run unconditionally. */
+function useProfileTab(isPreview: boolean): [TabId, (t: TabId) => void] {
+  const [local, setLocal] = useState<TabId>("demografi");
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
+  if (isPreview) return [local, setLocal];
+  const active: TabId = params.get("tab") === "perilaku" ? "perilaku" : "demografi";
+  const set = (t: TabId) => {
+    const p = new URLSearchParams(params.toString());
+    p.set("tab", t);
+    router.replace(`${pathname}?${p.toString()}`, { scroll: false });
+  };
+  return [active, set];
+}
+
+/**
+ * The two-tab shell. Header stays OUTSIDE (always visible). Each tab label carries a count so an
+ * empty tab reads without opening it — "Perilaku · 0" is the whole-profile-empty signal. Both
+ * panels stay mounted (hidden), so collapsible open-state survives a tab switch; the tradeoff is
+ * that a hidden tab's text is not part of a full-page copy (noted as a limitation). ARIA
+ * tablist/tab/tabpanel + arrow-key navigation. Tabs are LAYOUT, never access control — the server
+ * already withheld gated data before it reached here.
+ */
+function ProfileTabs({
+  active,
+  onTab,
+  demografiCount,
+  perilakuCount,
+  demografi,
+  perilaku,
+}: {
+  active: TabId;
+  onTab: (t: TabId) => void;
+  demografiCount: number;
+  perilakuCount: number;
+  demografi: React.ReactNode;
+  perilaku: React.ReactNode;
+}) {
+  const tabs: { id: TabId; label: string; count: number; icon: React.ReactNode }[] = [
+    { id: "demografi", label: "Demografi", count: demografiCount, icon: <User className="h-4 w-4" aria-hidden /> },
+    { id: "perilaku", label: "Perilaku", count: perilakuCount, icon: <Activity className="h-4 w-4" aria-hidden /> },
+  ];
+  const onKey = (e: React.KeyboardEvent) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    const i = tabs.findIndex((t) => t.id === active);
+    const next = e.key === "ArrowRight" ? (i + 1) % tabs.length : (i - 1 + tabs.length) % tabs.length;
+    onTab(tabs[next].id);
+  };
+  return (
+    <div>
+      <div role="tablist" aria-label="Bagian profil" onKeyDown={onKey} className="flex gap-1 border-b border-glass-border">
+        {tabs.map((tb) => (
+          <button
+            key={tb.id}
+            role="tab"
+            id={`tab-${tb.id}`}
+            aria-controls={`panel-${tb.id}`}
+            aria-selected={active === tb.id}
+            tabIndex={active === tb.id ? 0 : -1}
+            onClick={() => onTab(tb.id)}
+            className={`flex items-center gap-2 border-b-2 px-4 py-2.5 font-display text-[13px] font-bold uppercase tracking-wide transition-colors ${
+              active === tb.id ? "border-red text-ink" : "border-transparent text-ink-soft hover:text-ink"
+            }`}
+          >
+            {tb.icon} {tb.label} <CountBadge n={tb.count} />
+          </button>
+        ))}
+      </div>
+      {/* `hidden` gives display:none for a11y; the grid class is applied ONLY when visible, because
+          a Tailwind `grid` (display:grid) would otherwise override the `hidden` attribute. */}
+      <div
+        role="tabpanel"
+        id="panel-demografi"
+        aria-labelledby="tab-demografi"
+        hidden={active !== "demografi"}
+        className={active === "demografi" ? "mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2" : ""}
+      >
+        {demografi}
+      </div>
+      <div
+        role="tabpanel"
+        id="panel-perilaku"
+        aria-labelledby="tab-perilaku"
+        hidden={active !== "perilaku"}
+        className={active === "perilaku" ? "mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2" : ""}
+      >
+        {perilaku}
+      </div>
+    </div>
+  );
+}
+
 /**
  * Render one ecosystem row's last_seen_at strictly by its classification (K-19). A load
  * stamp is shown as "tidak terekam" — never a date, never a bare em-dash that reads as
@@ -233,13 +373,9 @@ function LastSeen({ row }: { row: EngagementRow }) {
 }
 
 function EcosystemSection({ engagement }: { engagement: ProfileEngagement | null }) {
+  const count = engagement?.totalRows ?? 0;
   return (
-    <section className="glass shadow-glass p-6 lg:col-span-2">
-      <div className="flex items-center gap-2">
-        <Network className="h-4 w-4 text-ink-soft" aria-hidden />
-        <h2 className="font-display text-[16px] font-extrabold uppercase tracking-wide text-ink">Ekosistem 20FIT</h2>
-      </div>
-
+    <Section title="Ekosistem 20FIT" count={count} icon={<Network className="h-4 w-4 text-ink-soft" aria-hidden />} open={count > 0} span2>
       {engagement === null ? (
         <div className="mt-4 rounded-sm border border-dashed border-glass-border px-4 py-6 text-center">
           <Badge tone="amber">Gagal dimuat</Badge>
@@ -314,7 +450,7 @@ function EcosystemSection({ engagement }: { engagement: ProfileEngagement | null
           </Why>
         </>
       )}
-    </section>
+    </Section>
   );
 }
 
@@ -651,15 +787,17 @@ function OtherSourcesSection({
   });
 
   const anyBlock = groups.some((g) => g.live);
+  const liveCount = groups.filter((g) => g.live).length;
   const matchable = (enrichment?.matchable ?? false) || (multiSource?.matchable ?? false);
 
   return (
-    <section className="glass shadow-glass p-6 lg:col-span-2">
-      <div className="flex items-center gap-2">
-        <Network className="h-4 w-4 text-ink-soft" aria-hidden />
-        <h2 className="font-display text-[16px] font-extrabold uppercase tracking-wide text-ink">Sumber lain 20FIT</h2>
-      </div>
-
+    <Section
+      title="Sumber lain 20FIT"
+      count={liveCount}
+      icon={<Network className="h-4 w-4 text-ink-soft" aria-hidden />}
+      open={anyBlock}
+      span2
+    >
       {loadFailed && (
         <p className="mt-3 font-body text-[12px] text-ink-soft">
           <Badge tone="amber">Sebagian gagal dimuat</Badge>{" "}
@@ -732,7 +870,7 @@ function OtherSourcesSection({
           </Why>
         </div>
       )}
-    </section>
+    </Section>
   );
 }
 
@@ -763,12 +901,19 @@ function ImportSection({
   nikDob: string | null;
   canViewHealth: boolean;
 }) {
+  const imp = importData;
+  const count =
+    imp && imp.matched
+      ? imp.programs.length + (imp.dob && imp.dob.status === "parsed" ? 1 : 0) + (imp.city ? 1 : 0)
+      : 0;
   return (
-    <section className="glass shadow-glass p-6 lg:col-span-2">
-      <div className="flex items-center gap-2">
-        <Network className="h-4 w-4 text-ink-soft" aria-hidden />
-        <h2 className="font-display text-[16px] font-extrabold uppercase tracking-wide text-ink">Data impor 20FIT</h2>
-      </div>
+    <Section
+      title="Data impor 20FIT"
+      count={count}
+      icon={<Network className="h-4 w-4 text-ink-soft" aria-hidden />}
+      open={!!imp?.matched}
+      span2
+    >
       {importData === null ? (
         <div className="mt-4 rounded-sm border border-dashed border-glass-border px-4 py-6 text-center">
           <Badge tone="amber">Gagal dimuat</Badge>
@@ -868,7 +1013,7 @@ function ImportSection({
           </Why>
         </div>
       )}
-    </section>
+    </Section>
   );
 }
 
@@ -889,6 +1034,7 @@ export function ProfileDetail({
     previewData ? "ready" : "loading",
   );
   const [suppressOpen, setSuppressOpen] = useState(false);
+  const [tab, setTab] = useProfileTab(!!previewData);
 
   useEffect(() => {
     if (previewData) return; // dev preview: no fetch
@@ -959,6 +1105,27 @@ export function ProfileDetail({
   const p = data.profile;
   const emailTypo = detectEmailTypo(p.masked ? null : p.email);
 
+  // Counts for the tab labels + collapsible titles. Perilaku's count is the whole-profile-empty
+  // signal: it is 0 exactly when there is no behavioural data at all.
+  const contactFilled = [p.phone, p.email, p.city].filter(Boolean).length;
+  const kurasiFilled = [p.notes, p.tags && p.tags.length > 0 ? "x" : null, p.duplicate_reason].filter(Boolean).length;
+  const imp = data.importData;
+  const importCount =
+    imp && imp.matched
+      ? imp.programs.length + (imp.dob && imp.dob.status === "parsed" ? 1 : 0) + (imp.city ? 1 : 0)
+      : 0;
+  const ms = data.multiSource?.sources ?? [];
+  const liveSourceCount = [
+    data.enrichment?.hyrox.matched,
+    data.enrichment?.my20fit.matched || data.enrichment?.activity.matched,
+    ms.some((s) => s.key.startsWith("arena") && s.matched),
+    ms.some((s) => s.key.startsWith("gym") && s.matched),
+    data.clinic?.gated && data.clinic.matched,
+  ].filter(Boolean).length;
+  const attrFilled = [p.first_unit, p.segment, p.lifetime_value != null ? "x" : null, p.source].filter(Boolean).length;
+  const demografiCount = contactFilled + attrFilled + importCount;
+  const perilakuCount = (data.engagement?.totalRows ?? 0) + liveSourceCount;
+
   return (
     <div className="space-y-6">
       <BackLink />
@@ -1005,141 +1172,131 @@ export function ProfileDetail({
         />
       )}
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* Kontak */}
-        <section className="glass shadow-glass p-6">
-          <h2 className="font-display text-[16px] font-extrabold uppercase tracking-wide text-ink">Kontak</h2>
-          <div className="mt-4">
-            <Field label="Telepon" mono>{p.phone ? p.phone : <Empty />}</Field>
-            <Field label="Email" mono>
-              {p.email ? p.email : <Empty />}
-              {/* Typo FLAG only — never an auto-fix. Runs on the real email, so it is shown
-                  only to roles that see it unmasked (a masked role can't correct it anyway). */}
-              {!p.masked && emailTypo.suspect && (
-                <span className="mt-1 flex items-center gap-1.5">
-                  <Badge tone="amber" className="gap-1">
-                    <AlertTriangle className="h-3 w-3" /> Mungkin salah ketik
-                  </Badge>
-                  <span className="font-body text-[12px] text-ink-soft">
-                    saran: <span className="font-mono text-ink">{emailTypo.suggestion}</span>{" "}
-                    ({emailTypo.confidence === "high" ? "keyakinan tinggi" : "keyakinan sedang"}) — perlu konfirmasi manusia, tidak diperbaiki otomatis
+      {/* Two tabs. Demografi first: for the CS flow (someone calls, staff opens their profile),
+          identity + contact is what's needed first. Row METADATA (Jejak waktu, Kurasi & duplikat)
+          lives here too, as CLOSED collapsibles — it is about the record, not participation, so it
+          fits Demografi better than Perilaku (which is strictly what the person did), but it is
+          secondary to the person, so it stays folded. */}
+      <ProfileTabs
+        active={tab}
+        onTab={setTab}
+        demografiCount={demografiCount}
+        perilakuCount={perilakuCount}
+        demografi={
+          <>
+            <Section title="Kontak" count={contactFilled} icon={<User className="h-4 w-4 text-ink-soft" aria-hidden />}>
+              <Field label="Telepon" mono>{p.phone ? p.phone : <Empty />}</Field>
+              <Field label="Email" mono>
+                {p.email ? p.email : <Empty />}
+                {/* Typo FLAG only — never an auto-fix. Runs on the real email, so it is shown
+                    only to roles that see it unmasked (a masked role can't correct it anyway). */}
+                {!p.masked && emailTypo.suspect && (
+                  <span className="mt-1 flex items-center gap-1.5">
+                    <Badge tone="amber" className="gap-1">
+                      <AlertTriangle className="h-3 w-3" /> Mungkin salah ketik
+                    </Badge>
+                    <span className="font-body text-[12px] text-ink-soft">
+                      saran: <span className="font-mono text-ink">{emailTypo.suggestion}</span>{" "}
+                      ({emailTypo.confidence === "high" ? "keyakinan tinggi" : "keyakinan sedang"}) — perlu konfirmasi manusia, tidak diperbaiki otomatis
+                    </span>
                   </span>
-                </span>
+                )}
+              </Field>
+              <Field label="Kota">{p.city ? p.city : <Empty />}</Field>
+            </Section>
+
+            <Section title="Atribut" count={attrFilled} icon={<User className="h-4 w-4 text-ink-soft" aria-hidden />}>
+              <Field label="Unit pertama">{p.first_unit ? p.first_unit : <Empty />}</Field>
+              <Field label="Segment">
+                {p.segment ? <Badge tone="neutral">{p.segment}</Badge> : <span className="font-body text-[13px] italic text-ink-faint">(tanpa segment)</span>}
+              </Field>
+              <Field label="Lifetime value" mono>
+                {p.lifetime_value != null ? (p.lifetime_value > 0 ? idr.format(p.lifetime_value) : <span className="text-ink-faint">Rp 0</span>) : <Empty />}
+              </Field>
+              <Field label="Sumber" mono>{p.source ? p.source : <Empty />}</Field>
+            </Section>
+
+            {/* Data impor 20FIT — carries the birth date + city master_customer lost, the identity a
+                CS agent needs. Provenance vs the NIK-derived date is shown, not silently reconciled. */}
+            <ImportSection
+              importData={data.importData}
+              nikDob={data.enrichment?.hyrox.nikDerived?.valid ? data.enrichment.hyrox.nikDerived.birthDate : null}
+              canViewHealth={data.canViewHealth}
+            />
+
+            {/* Row metadata — closed by default (secondary to the person). */}
+            <Section title="Jejak waktu" icon={<User className="h-4 w-4 text-ink-soft" aria-hidden />} open={false}>
+              <Field label="Dibuat (cap waktu muat batch)" mono>{formatTs(p.created_at)}</Field>
+              {p.source === "live_txn_ingest" ? (
+                <Field label="Pertama terlihat" mono>
+                  {formatTs(p.first_seen_at)}{" "}
+                  <span className="font-body text-[12px] italic text-ink-faint">· dari transaksi (nyata)</span>
+                </Field>
+              ) : (
+                <Field label="First-seen" mono>
+                  {formatTs(p.first_seen_at)}{" "}
+                  <span className="font-body text-[12px] italic text-ink-faint">· cap waktu muat, BUKAN “pertama terlihat”</span>
+                </Field>
               )}
-            </Field>
-            <Field label="Kota">{p.city ? p.city : <Empty />}</Field>
-          </div>
-        </section>
+              <Field label="Diperbarui" mono>{formatTs(p.updated_at)}</Field>
+              <Why>
+                <p className="text-[12px] leading-relaxed text-ink-soft">
+                  “First-seen” hanya bermakna pada baris <span className="font-mono">live_txn_ingest</span>;
+                  untuk <span className="font-mono">20fit_data_import</span> (98,7% pool) ia sama dengan waktu
+                  muat. Segmentasi berbasis recency tidak bisa jujur dengan data ini.
+                </p>
+              </Why>
+            </Section>
 
-        {/* Atribut */}
-        <section className="glass shadow-glass p-6">
-          <h2 className="font-display text-[16px] font-extrabold uppercase tracking-wide text-ink">Atribut</h2>
-          <div className="mt-4">
-            <Field label="Unit pertama">{p.first_unit ? p.first_unit : <Empty />}</Field>
-            <Field label="Segment">
-              {p.segment ? <Badge tone="neutral">{p.segment}</Badge> : <span className="font-body text-[13px] italic text-ink-faint">(tanpa segment)</span>}
-            </Field>
-            <Field label="Lifetime value" mono>
-              {p.lifetime_value != null ? (p.lifetime_value > 0 ? idr.format(p.lifetime_value) : <span className="text-ink-faint">Rp 0</span>) : <Empty />}
-            </Field>
-            <Field label="Sumber" mono>{p.source ? p.source : <Empty />}</Field>
-          </div>
-        </section>
+            <Section title="Kurasi & duplikat" count={kurasiFilled} icon={<User className="h-4 w-4 text-ink-soft" aria-hidden />} open={false}>
+              <Field label="Catatan">{p.notes ? p.notes : <Empty />}</Field>
+              <Field label="Tag">
+                {p.tags && p.tags.length > 0 ? (
+                  <span className="flex flex-wrap gap-1.5">{p.tags.map((t) => <Badge key={t} tone="neutral">{t}</Badge>)}</span>
+                ) : <Empty />}
+              </Field>
+              <Field label="Alasan duplikat">{p.duplicate_reason ? p.duplicate_reason : <Empty />}</Field>
+            </Section>
+          </>
+        }
+        perilaku={
+          <>
+            {/* Ekosistem 20FIT — read-only over customer_engagement, keyed by customer_id. */}
+            <EcosystemSection engagement={data.engagement} />
 
-        {/* Jejak waktu — first_seen_at is only real for live_txn_ingest rows; for
-            everything else it is a batch-load stamp, so the label is source-aware and
-            never says a bare "pertama terlihat". See docs/KOLOM-WAKTU.md. */}
-        <section className="glass shadow-glass p-6">
-          <h2 className="font-display text-[16px] font-extrabold uppercase tracking-wide text-ink">Jejak waktu</h2>
-          <div className="mt-4">
-            <Field label="Dibuat (cap waktu muat batch)" mono>{formatTs(p.created_at)}</Field>
-            {p.source === "live_txn_ingest" ? (
-              <Field label="Pertama terlihat" mono>
-                {formatTs(p.first_seen_at)}{" "}
-                <span className="font-body text-[12px] italic text-ink-faint">· dari transaksi (nyata)</span>
-              </Field>
-            ) : (
-              <Field label="First-seen" mono>
-                {formatTs(p.first_seen_at)}{" "}
-                <span className="font-body text-[12px] italic text-ink-faint">
-                  · cap waktu muat, BUKAN “pertama terlihat”
-                </span>
-              </Field>
+            {/* Sumber lain 20FIT — Hyrox/my20fit/arena/gym/klinik in ONE section. Present sources
+                render a block; absent ones collapse into one line stamped with the mirror's
+                freshness. Sensitive Hyrox + clinic stay view_health-gated (server withholds them). */}
+            <OtherSourcesSection
+              enrichment={data.enrichment}
+              multiSource={data.multiSource}
+              clinic={data.clinic}
+              canViewHealth={data.canViewHealth}
+              mirror={data.mirror}
+              mirrorRefreshedAt={data.mirrorRefreshedAt}
+            />
+
+            {/* Health flags — structural gate, but no source exists. */}
+            {data.canViewHealth && (
+              <Section title="Health flags" icon={<HeartPulse className="h-4 w-4 text-ink-soft" aria-hidden />} open={false} span2>
+                <div className="rounded-sm border border-dashed border-glass-border px-4 py-6 text-center">
+                  <Badge tone="neutral">Tidak ada sumber data</Badge>
+                  <p className="mx-auto mt-2 max-w-xl font-body text-[13px] leading-relaxed text-ink-soft">
+                    <span className="font-mono text-[12px]">master_customer</span> tidak memiliki kolom kesehatan
+                    apa pun. Satu-satunya sumber (<span className="font-mono text-[12px]">clinic_*</span>) di luar
+                    lingkup dan masih RLS OFF. Ini <strong>bukan</strong> “sehat” dan bukan nol terukur — memang
+                    belum ada sumbernya. Gerbang <span className="font-mono text-[12px]">profile.view_health</span>
+                    {" "}dipertahankan agar tetap benar begitu sumbernya ada.
+                  </p>
+                </div>
+              </Section>
             )}
-            <Field label="Diperbarui" mono>{formatTs(p.updated_at)}</Field>
-            {/* last_activity_at sengaja TIDAK ditampilkan (artefak impor, aturan sejak 3A). */}
-          </div>
-          <Why>
-            <p className="text-[12px] leading-relaxed text-ink-soft">
-              “First-seen” hanya bermakna pada baris <span className="font-mono">live_txn_ingest</span>;
-              untuk <span className="font-mono">20fit_data_import</span> (98,7% pool) ia sama dengan waktu
-              muat. Segmentasi berbasis recency tidak bisa jujur dengan data ini.
-            </p>
-          </Why>
-        </section>
-
-        {/* Kurasi & duplikat */}
-        <section className="glass shadow-glass p-6">
-          <h2 className="font-display text-[16px] font-extrabold uppercase tracking-wide text-ink">Kurasi & duplikat</h2>
-          <div className="mt-4">
-            <Field label="Catatan">{p.notes ? p.notes : <Empty />}</Field>
-            <Field label="Tag">
-              {p.tags && p.tags.length > 0 ? (
-                <span className="flex flex-wrap gap-1.5">{p.tags.map((t) => <Badge key={t} tone="neutral">{t}</Badge>)}</span>
-              ) : <Empty />}
-            </Field>
-            <Field label="Alasan duplikat">{p.duplicate_reason ? p.duplicate_reason : <Empty />}</Field>
-          </div>
-        </section>
-
-        {/* Ekosistem 20FIT — read-only over customer_engagement, keyed by customer_id.
-            No second audit row (profile.viewed above already covers this view). */}
-        <EcosystemSection engagement={data.engagement} />
-
-        {/* Sumber lain 20FIT — Hyrox/my20fit/arena/gym/klinik in ONE section (Sprint 5B). Present
-            sources render a block; absent ones collapse into one "not connected to …" line stamped
-            with the mirror's freshness. Live content always renders — the mirror only shapes the
-            summary line, never hides a match. Sensitive Hyrox + clinic stay view_health-gated. */}
-        <OtherSourcesSection
-          enrichment={data.enrichment}
-          multiSource={data.multiSource}
-          clinic={data.clinic}
-          canViewHealth={data.canViewHealth}
-          mirror={data.mirror}
-          mirrorRefreshedAt={data.mirrorRefreshedAt}
-        />
-        {/* Data impor 20FIT — the same import as master_customer, matched by email. Carries the
-            birth date master_customer lost. Provenance vs the NIK-derived date is shown, not
-            silently reconciled. */}
-        <ImportSection
-          importData={data.importData}
-          nikDob={data.enrichment?.hyrox.nikDerived?.valid ? data.enrichment.hyrox.nikDerived.birthDate : null}
-          canViewHealth={data.canViewHealth}
-        />
-
-        {/* Health flags — structural gate, but no source exists. */}
-        {data.canViewHealth && (
-          <section className="glass shadow-glass p-6 lg:col-span-2">
-            <div className="flex items-center gap-2">
-              <HeartPulse className="h-4 w-4 text-ink-soft" aria-hidden />
-              <h2 className="font-display text-[16px] font-extrabold uppercase tracking-wide text-ink">Health flags</h2>
-            </div>
-            <div className="mt-4 rounded-sm border border-dashed border-glass-border px-4 py-6 text-center">
-              <Badge tone="neutral">Tidak ada sumber data</Badge>
-              <p className="mx-auto mt-2 max-w-xl font-body text-[13px] leading-relaxed text-ink-soft">
-                <span className="font-mono text-[12px]">master_customer</span> tidak memiliki kolom kesehatan
-                apa pun. Satu-satunya sumber (<span className="font-mono text-[12px]">clinic_*</span>) di luar
-                lingkup dan masih RLS OFF. Ini <strong>bukan</strong> “sehat” dan bukan nol terukur — memang
-                belum ada sumbernya. Gerbang <span className="font-mono text-[12px]">profile.view_health</span>
-                {" "}dipertahankan agar tetap benar begitu sumbernya ada.
-              </p>
-            </div>
-          </section>
-        )}
-      </div>
+          </>
+        }
+      />
 
       <p className="font-mono text-[11px] text-ink-faint">
-        Baca saja · nol tombol edit/hapus/merge · pembukaan profil ini tercatat (profile.viewed) · kontak disamarkan di server untuk peran tanpa izin kontak.
+        Baca saja · nol tombol edit/hapus/merge · pembukaan profil ini tercatat sekali (profile.viewed) — pindah tab bukan pembacaan baru · kontak & data sensitif ditahan di server untuk peran tanpa izin (tab hanya tata letak).
       </p>
     </div>
   );
