@@ -67,27 +67,30 @@ Full spec: `PRD — 20FIT Audience Data & CRM System v1.1`.
 > | 13 | `…20260812020000_create_crm_contactable_counts` | `20260812063419` | `create_crm_contactable_counts` |
 > | 14 | `…20260813000000_create_crm_staging_segment_ids` | `20260813034302` | `create_crm_staging_segment_ids` |
 > | 15 | `…20260813091255_create_crm_customer_mirror` | `20260813091255` | `create_crm_customer_mirror` |
-> | 16 | *(no file on this branch — see below)* | `20260814040554` | `add_is_fitco_member_matched_to_crm_customer_mirror` |
-> | 17 | *(no file on this branch — see below)* | `20260814055353` | `crm_norm_phone_guard_empty_nsn` |
+> | 16 | `…20260814040554_add_is_fitco_member_matched_to_crm_customer_mirror` | `20260814040554` | `add_is_fitco_member_matched_to_crm_customer_mirror` (pulled from PR #13, verbatim SQL) |
+> | 17 | `…20260814055353_crm_norm_phone_guard_empty_nsn` | `20260814055353` | `crm_norm_phone_guard_empty_nsn` (pulled from PR #13, verbatim SQL) |
 > | 18 | `…20260819061103_schedule_crm_mirror_refresh` | `20260819061103` | `schedule_crm_mirror_refresh` (**19th** ledger entry — pg_cron daily mirror refresh, K-30) |
 >
-> **Count reconciliation (re-checked against `schema_migrations` on 2026-08-19): 16 CRM
+> **Count reconciliation (re-checked against `schema_migrations` on 2026-08-19): 18 CRM
 > migration files on THIS branch (`claude/lanjutkan-pekerjaan-mno804`) → 19 CRM ledger
 > entries in the DB.** (Table row 18 is the **19th** ledger entry — the migration-9 double
-> apply keeps every row number one behind the ledger-entry count from row 9 on.) The gap
-> between files and ledger entries is no longer only the migration-9 double-apply:
+> apply keeps every row number one behind the ledger-entry count from row 9 on.) The only
+> remaining gap between files and ledger entries is the migration-9 double-apply:
 >
 > - **+1** — migration **9** applied **twice** under the same name (Sprint 3H). The first
 >   apply left Supabase's default `EXECUTE` grant to `anon`/`authenticated` in place (a
 >   `revoke … from public` does **not** remove explicit per-role grants); the second apply
 >   carried the corrected `revoke … from public, anon, authenticated`. `create or replace`
 >   is idempotent, so both stamps point at the same two functions.
-> - **+2** — migrations **16 & 17** were applied by a **parallel session** (PR #13, branch
+> - **Migrations 16 & 17 were applied by a parallel session** (PR #13, branch
 >   `claude/20fit-crm-sprint-1-67vvhs`): `add_is_fitco_member_matched_to_crm_customer_mirror`
 >   adds a Fitco-membership flag to the mirror, and `crm_norm_phone_guard_empty_nsn` fixes the
->   `crm_norm_phone('62')` empty-NSN edge (flagged in Sprint 5A). **Their SQL files are NOT on
->   this branch** — they live on PR #13. So this branch's `supabase/migrations/` is 2 CRM
->   migrations behind production; do not assume the tree here is the whole CRM ledger (T-20).
+>   `crm_norm_phone('62')` empty-NSN edge (flagged in Sprint 5A). **Their SQL files are now on
+>   this branch too** — pulled **verbatim** from PR #13 into `supabase/migrations/` (2026-08-19),
+>   so this branch's tree is no longer behind the CRM ledger. Both are already stamped in
+>   `schema_migrations`; the files are the repo record only — do **not** re-apply. Verified
+>   against the live DB on 2026-08-19: the matview carries `is_fitco_member_matched` (= 67,653
+>   matched) at column 21, and `crm_norm_phone('62')` returns `null` (empty-NSN guard).
 >
 > **The ledger is now SHARED.** Other teams stamp into the same `schema_migrations` (e.g.
 > `my20fit_*`, `clinic_*`, `arena_*`, `talent_*`, `event_*`) interleaved with CRM versions, so
@@ -101,7 +104,7 @@ Full spec: `PRD — 20FIT Audience Data & CRM System v1.1`.
 >
 > **Do NOT run `supabase db push` against this project until the ledger and repo are
 > reconciled.** No repo file-name timestamp exists in the ledger, so the CLI would treat
-> all **12** repo migrations as unapplied and try to run them all — re-creating the seven
+> all **18** repo migrations as unapplied and try to run them all — re-creating the seven
 > live tables + re-defining the live functions, failing as "already exists". Run any
 > further migration one-by-one via a reviewed path (`apply_migration`), not `db push`.
 >

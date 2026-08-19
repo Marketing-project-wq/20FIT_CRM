@@ -1,87 +1,111 @@
 # Menunggu tindakan manusia
 
-Hal-hal yang **tidak bisa diselesaikan dari kode** dan sedang memblokir. Diurut dari yang
-memblokir paling banyak. Tiap baris menaut ke dokumen sumbernya — **jangan salin isinya ke
-sini** (dua salinan akan menyimpang). Perbarui/hapus baris saat tuntas.
+Hal-hal yang **tidak bisa diselesaikan dari kode**. Tiap baris menaut ke dokumen sumbernya —
+**jangan salin isinya ke sini** (dua salinan akan menyimpang). Perbarui/hapus baris saat tuntas.
 
-Diperbarui: 13 Agustus 2026.
+Diperbarui: 19 Agustus 2026.
 
 ---
 
-## 1. Rotasi `MAILTRAP_API_TOKEN` (BOCOR) — paling mendesak
+> ## BACA DULU — apa yang sebenarnya berisiko (K-27)
+>
+> Produksi men-deploy dari **branch**, bukan dari `main`. Maka:
+>
+> - **Merge ke `main` TIDAK mengubah apa yang berjalan.** Fitur sudah live lewat branch. Merge
+>   hanya **menyelaraskan** `main` dengan produksi. Orang akan mengira merge adalah momen berisiko —
+>   padahal bukan.
+> - **Yang berisiko justru mengarahkan Railway ke `main` SEBELUM merge.** Itu memundurkan produksi
+>   ke jalur baca lama + angka contactability salah **tanpa error**. Urutan wajib: **merge dulu, baru
+>   repoint** (`docs/KOREKSI-DEPLOY.md` §"Kalau dibalik").
+>
+> Karena itu daftar di bawah dipisah tegas: apa yang harus benar **sebelum kode mendarat di `main`**,
+> versus apa yang penting tetapi **jalan paralel** dan tak menahan merge.
+
+---
+
+## A. MEMBLOKIR MERGE — harus benar sebelum kode mendarat di `main`
+
+Per K-27 tak ada **operasi** yang memblokir (fitur sudah live); yang memblokir adalah prasyarat
+kualitas & izin agar `main` layak jadi cermin resmi produksi.
+
+### A1. Gate hijau di HEAD yang akan di-merge
+- **Siapa:** siapa pun yang menjalankan gate (agen/CI).
+- **Langkah:** `tsc --noEmit` bersih · `next lint` bersih · `npx vitest run` seluruhnya hijau ·
+  kelima pagar hijau · `NODE_ENV=production npm run build` lulus. Lihat laporan sprint terakhir.
+- **Kalau dilewati:** `main` bisa berisi kode yang tak kompilasi/tak lulus test — cermin yang rusak.
+
+### A2. Tinjauan PR #11 + izin merge eksplisit
+- **Siapa:** pemilik repo (agen **tidak** merge sendiri).
+- **Langkah:** tinjau per kelompok lewat `docs/PR-11-PANDUAN-TINJAU.md` (kelompok 1–2 = risiko tinggi,
+  wajib mata; 3–6 punya bukti terlampir). Beri izin merge eksplisit.
+- **Kalau dilewati:** perubahan skema + jalur tulis mendarat tanpa mata manusia di bagian berisiko.
+
+### A3. Ledger ↔ repo terekonsiliasi
+- **Siapa:** agen (sudah dikerjakan 19 Agu) + pemilik untuk verifikasi.
+- **Status:** **selesai untuk migrasi 15/16/17** — berkas 16/17 ditarik verbatim dari PR #13; ledger
+  README = 18 berkas → 19 entri (selisih +1 = migrasi 9 dua-apply, terdokumentasi). Utang tersisa:
+  rekonsiliasi penuh agar `supabase db push` aman lagi — **bukan** penghalang merge, dicatat di README.
+- **Kalau dilewati:** tak memblokir merge; hanya menahan `db push` (yang memang dilarang sampai beres).
+
+---
+
+## B. TIDAK MEMBLOKIR MERGE — penting, jalan paralel
+
+Tak satu pun menahan merge (K-27). Diurut dari paling mendesak (keamanan) ke opsional.
+
+### B1. Rotasi `MAILTRAP_API_TOKEN` (BOCOR) — paling mendesak (KEAMANAN, bukan merge)
 - **Siapa:** pemegang akun Mailtrap + pemegang Variables Railway.
-- **Langkah:** cabut token bocor di Mailtrap → terbitkan baru → perbarui `MAILTRAP_API_TOKEN`
-  di Railway (redeploy otomatis) → uji token lama ditolak. Rincian: `docs/SETUP-reset-password.md` §0.
-- **Kalau dibiarkan:** siapa pun yang melihat screenshot itu bisa mengirim email atas nama
-  `20fit.id` — dan email reset kata sandi adalah jenis yang paling dipercaya. Ini paparan aktif,
-  bukan risiko teoretis.
+- **Langkah:** cabut token bocor → terbitkan baru → perbarui `MAILTRAP_API_TOKEN` di Railway (redeploy
+  otomatis) → uji token lama ditolak. Rincian: `docs/SETUP-reset-password.md` §0.
+- **Kalau dilewati:** siapa pun yang melihat screenshot bisa mengirim email atas nama `20fit.id` — dan
+  email reset kata sandi paling dipercaya. **Paparan aktif** — kejar terpisah dari, dan lebih cepat dari, merge.
 
-## 2. Verifikasi domain `20fit.id` di Mailtrap
+### B2. Verifikasi domain `20fit.id` di Mailtrap
 - **Siapa:** pemegang akun Mailtrap + pemegang DNS `20fit.id`.
-- **Langkah:** Mailtrap → Sending Domains → `20fit.id` → salin record verifikasi ke DNS →
-  tunggu Verified. Rincian: `docs/SETUP-reset-password.md` §2–§3.
-- **Kalau dibiarkan:** **pengiriman dari `crm@20fit.id` ditolak sepenuhnya** — pengguna dapat
-  halaman kode tapi email tak pernah datang, mudah disalahartikan sebagai "kode salah". Kode
-  alur reset baru tak berguna tanpa ini.
+- **Langkah:** Mailtrap → Sending Domains → `20fit.id` → salin record verifikasi ke DNS → tunggu Verified.
+  Rincian: `docs/SETUP-reset-password.md` §2–§3.
+- **Kalau dilewati:** pengiriman dari `crm@20fit.id` ditolak — pengguna dapat halaman kode tapi email tak datang.
 
-## 3. Konfirmasi sumber deploy Railway — KEBERSIHAN (bukan lagi penghalang, K-27)
-- **Siapa:** pemegang akses dashboard Railway.
-- **Langkah:** Railway → service produksi → Settings → Source → Branch. Catat branch yang
-  tertera. Lihat `docs/KOREKSI-DEPLOY.md`.
-- **Status:** **diturunkan** dari penghalang. Pemilik produk **memutuskan sadar** produksi
-  men-deploy dari **branch** untuk sekarang (K-27, T-18 **ditutup**). Konfirmasi ini kini hanya
-  merapikan catatan, bukan membuka apa pun. Kerjakan kapan saja.
-
-## 4. Merge PR ke `main` — KEBERSIHAN, dikerjakan saat mengalihkan ke deploy-dari-main (K-27)
-- **Siapa:** pemilik repo (izin eksplisit; agen tidak merge sendiri).
-- **Langkah:** urutan wajib di `docs/KOREKSI-DEPLOY.md` — merge (branch→`main`) **lebih dulu**
-  agar `main` = branch, **baru** arahkan Railway ke `main`. Jangan dibalik.
-- **Status:** **diturunkan** dari penghalang jadi kebersihan (K-27). Fitur **tetap live** lewat
-  branch, jadi ini tak memblokir apa pun. Syarat yang membuatnya perlu: **begitu staf di luar
-  tim pengembang memakai sistem secara rutin**, produksi diarahkan ke `main` — dan hanya saat itu
-  urutan merge-dulu-baru-repoint jadi wajib (mengalihkan lebih dulu memundurkan produksi ke jalur
-  baca lama + angka contactability salah tanpa error; lihat KOREKSI-DEPLOY §"Kalau dibalik").
-
-## 5. SPF, DKIM, DMARC di DNS `20fit.id`
+### B3. SPF, DKIM, DMARC di DNS `20fit.id`
 - **Siapa:** pemegang DNS `20fit.id`.
-- **Langkah:** tambahkan record dari Mailtrap; mulai DMARC `p=none`; verifikasi via `dig` +
-  Gmail "Show original" (SPF/DKIM/DMARC = PASS). Rincian: `docs/SETUP-reset-password.md` §3.
-- **Kalau dibiarkan:** email tetap masuk Spam + spanduk "dangerous" **betapapun rapi isinya**;
-  staf tak menemukan emailnya. Propagasi DNS butuh waktu — kerjakan lebih awal.
+- **Langkah:** tambah record dari Mailtrap; mulai DMARC `p=none`; verifikasi via `dig` + Gmail "Show
+  original" (PASS). Rincian: `docs/SETUP-reset-password.md` §3.
+- **Kalau dilewati:** email masuk Spam + spanduk "dangerous" betapapun rapi isinya. Propagasi DNS lambat — mulai awal.
 
-## 6. Baris suppression pertama
+### B4. Konfirmasi sumber deploy Railway — KEBERSIHAN (K-27)
+- **Siapa:** pemegang akses dashboard Railway.
+- **Langkah:** Railway → service produksi → Settings → Source → Branch. Catat branch. Lihat `docs/KOREKSI-DEPLOY.md`.
+- **Kalau dilewati:** hanya merapikan catatan; T-18 sudah ditutup, tidak membuka apa pun.
+
+### B5. Alih deploy ke `main` — KEBERSIHAN, dengan urutan wajib
+- **Siapa:** pemilik repo + pemegang Railway.
+- **Langkah:** **merge (branch→`main`) lebih dulu**, **baru** arahkan Railway ke `main`. Jangan dibalik
+  (lihat "BACA DULU" + `docs/KOREKSI-DEPLOY.md`).
+- **Kalau dilewati:** fitur tetap live lewat branch. Jadi perlu **hanya** begitu staf di luar tim dev
+  memakai sistem rutin — saat itu urutan merge-dulu-baru-repoint jadi wajib.
+
+### B6. Baris suppression pertama
 - **Siapa:** staf CS/operator saat ada permintaan berhenti dihubungi **nyata**.
-- **Langkah:** `/consent` → "Catat permintaan berhenti" (jalur tulis atomik sudah siap sejak
-  Sprint 3H). Rincian: `docs/PERTAMA-suppression.md`.
-- **Kalau dibiarkan:** tidak memblokir apa pun — aturan sudah benar (suppression menang). **Jangan
-  buat baris uji**: suppression tak bisa dihapus (append-only), baris uji jadi permanen.
+- **Langkah:** `/consent` → "Catat permintaan berhenti" (jalur tulis atomik siap sejak 3H). `docs/PERTAMA-suppression.md`.
+- **Kalau dilewati:** tak memblokir apa pun. **Jangan buat baris uji** — suppression append-only, baris uji jadi permanen.
 
-## 7. Jawaban legal: `basis` → `explicit_opt_in`
+### B7. Jawaban legal: `basis` → `explicit_opt_in`
 - **Siapa:** legal + pemilik produk.
-- **Langkah:** petakan sumber impor ke bentuk consent-nya; bila ada catatan opt-in per orang,
-  putuskan sumber mana naik ke `explicit_opt_in`. Rincian: `docs/SIGNOFF-legal-consent.md`.
-- **Kalau dibiarkan:** tidak memblokir — backfill memakai `legacy_import_unverified` yang jujur,
-  dan marketing sudah diizinkan (flag dibalik on-the-record). Ini peningkatan kualitas dasar
-  hukum, bukan penghalang.
+- **Langkah:** petakan sumber impor ke bentuk consent; bila ada catatan opt-in per orang, putuskan mana
+  naik ke `explicit_opt_in`. `docs/SIGNOFF-legal-consent.md`.
+- **Kalau dilewati:** tak memblokir — backfill memakai `legacy_import_unverified` yang jujur; marketing sudah diizinkan.
 
-## 8. (OPSIONAL) Indeks fungsional email di `staging_20fit_data` — usul untuk pemilik data
-- **Siapa:** pemilik `staging_20fit_data` (tim lain, Fase 0). **Agen tidak membuatnya** — tabel
-  itu di luar `crm_*`/`master_customer`, jadi hanya diusulkan di sini.
+### B8. (OPSIONAL) Indeks fungsional email di `staging_20fit_data`
+- **Siapa:** pemilik `staging_20fit_data` (tim lain). **Agen tidak membuatnya** — di luar `crm_*`/`master_customer`.
 - **SQL usulan:**
   ```sql
   create index if not exists staging_20fit_data_email_norm_idx
     on public.staging_20fit_data (lower(btrim("Email")));
   ```
-- **Manfaat:** `staging_20fit_data` tidak punya indeks sama sekali, jadi RPC resolver segmen
-  (Migrasi 14, `crm_staging_segment_ids`) selalu seq-scan penuh 88.536 baris. Indeks fungsional
-  ini akan mempercepat sisi staging pada join.
-- **Kalau dibiarkan:** **bukan penghalang.** RPC sudah **~0,33 dtk hangat** (diukur 13 Agu 2026)
-  — cukup untuk resolver dan ekspor. Indeks ini murni optimasi tambahan; kejar hanya bila
-  ekspor besar terasa lambat di produksi.
+- **Kalau dilewati:** bukan penghalang. RPC resolver sudah ~0,33 dtk hangat (13 Agu). Kejar hanya bila ekspor besar lambat.
 
-## 9. (OPSIONAL) `ANTHROPIC_API_KEY` untuk asisten segmen AI — set di Railway
+### B9. (OPSIONAL) `ANTHROPIC_API_KEY` untuk asisten segmen AI
 - **Siapa:** pemegang Variables Railway.
-- **Langkah:** set `ANTHROPIC_API_KEY` (server-only, jangan prefix `NEXT_PUBLIC_`) di Railway;
-  opsional `SEGMENT_AI_MODEL` untuk mengganti model. Nama-namanya ada di `.env.example`.
-- **Kalau dibiarkan:** **bukan penghalang.** Tanpa kunci, tombol "Usulkan (AI)" menjawab 503 dan
-  filter manual tetap lengkap (AI mempercepat, bukan menggantikan). Aktifkan bila ingin fitur AI.
+- **Langkah:** set `ANTHROPIC_API_KEY` (server-only, jangan prefix `NEXT_PUBLIC_`); opsional `SEGMENT_AI_MODEL`.
+  Nama di `.env.example`.
+- **Kalau dilewati:** bukan penghalang. Tanpa kunci, "Usulkan (AI)" menjawab 503; filter manual tetap lengkap.

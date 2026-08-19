@@ -63,20 +63,23 @@ export function findCrmFunctionDefs(content: string, file: string): CrmFnDef[] {
   return defs;
 }
 
-/** Does this file revoke EXECUTE on `name` from public AND anon AND authenticated? */
+/** Does this file revoke EXECUTE on `name` from public AND anon AND authenticated?
+ *  The three roles may be named in ONE statement (`from public, anon, authenticated`) OR across
+ *  several statements (`from public;` `from anon;` `from authenticated;`) — both produce the exact
+ *  same ACL, so the roles are UNIONed across every revoke naming this function. `public`-only (or
+ *  any partial cover) still fails: the union must contain all three. */
 export function fileRevokesExecute(content: string, name: string): boolean {
   const re = new RegExp(
     `revoke\\s+(?:all|execute)\\b[^;]*?on\\s+function\\s+public\\.${name}\\s*\\([^)]*\\)\\s+from\\s+([^;]+);`,
     "gis",
   );
+  const roles = new Set<string>();
   let m: RegExpExecArray | null;
   while ((m = re.exec(content)) !== null) {
     const from = m[1].toLowerCase();
-    if (from.includes("public") && from.includes("anon") && from.includes("authenticated")) {
-      return true;
-    }
+    for (const r of ["public", "anon", "authenticated"]) if (from.includes(r)) roles.add(r);
   }
-  return false;
+  return roles.has("public") && roles.has("anon") && roles.has("authenticated");
 }
 
 /** Find every `create materialized view public.crm_*` in one file. A matview does NOT honour
@@ -90,20 +93,21 @@ export function findCrmMatviewDefs(content: string, file: string): { name: strin
   return defs;
 }
 
-/** Does this file revoke SELECT (or ALL) on the matview from public AND anon AND authenticated? */
+/** Does this file revoke SELECT (or ALL) on the matview from public AND anon AND authenticated?
+ *  Same union-across-statements rule as fileRevokesExecute: one combined revoke or three split
+ *  revokes both count; a partial cover (e.g. `public`-only) does not. */
 export function fileRevokesSelect(content: string, name: string): boolean {
   const re = new RegExp(
     `revoke\\s+(?:all|select)\\b[^;]*?on\\s+(?:table\\s+)?public\\.${name}\\s+from\\s+([^;]+);`,
     "gis",
   );
+  const roles = new Set<string>();
   let m: RegExpExecArray | null;
   while ((m = re.exec(content)) !== null) {
     const from = m[1].toLowerCase();
-    if (from.includes("public") && from.includes("anon") && from.includes("authenticated")) {
-      return true;
-    }
+    for (const r of ["public", "anon", "authenticated"]) if (from.includes(r)) roles.add(r);
   }
-  return false;
+  return roles.has("public") && roles.has("anon") && roles.has("authenticated");
 }
 
 /** The matview analyzer — pure, mirrors scanUnlockedCrmFunctions. */
@@ -208,6 +212,25 @@ describe("crm_* migration EXECUTE lock guard", () => {
     expect(scanUnlockedCrmFunctions([{ path: "half.sql", content: partial }], new Set())).toHaveLength(1);
   });
 
+  it("passes a function locked with THREE split revokes (equivalent to one combined revoke)", () => {
+    // migrations 16/17 were pulled verbatim from PR #13 and use the split form; it is the same ACL.
+    const split =
+      "create or replace function public.crm_split(x text) returns text language sql as $$ select x $$;\n" +
+      "revoke all on function public.crm_split(text) from public;\n" +
+      "revoke all on function public.crm_split(text) from anon;\n" +
+      "revoke all on function public.crm_split(text) from authenticated;\n" +
+      "grant execute on function public.crm_split(text) to service_role;";
+    expect(scanUnlockedCrmFunctions([{ path: "split.sql", content: split }], new Set())).toEqual([]);
+  });
+
+  it("STILL flags split revokes that cover only public+anon (authenticated missing)", () => {
+    const partialSplit =
+      "create function public.crm_two(x text) returns text language sql as $$ select x $$;\n" +
+      "revoke all on function public.crm_two(text) from public;\n" +
+      "revoke all on function public.crm_two(text) from anon;";
+    expect(scanUnlockedCrmFunctions([{ path: "two.sql", content: partialSplit }], new Set())).toHaveLength(1);
+  });
+
   it("exempts trigger-returning functions (not RPC-exposable)", () => {
     const trig = "create function public.crm_trg() returns trigger language plpgsql as $$ begin return null; end $$;";
     expect(scanUnlockedCrmFunctions([{ path: "trg.sql", content: trig }], new Set())).toEqual([]);
@@ -263,5 +286,15 @@ describe("crm_* materialized view SELECT lock guard", () => {
       "create materialized view public.crm_half_mv as select 1 as x with data;\n" +
       "revoke all on public.crm_half_mv from public;";
     expect(scanUnlockedCrmMatviews([{ path: "half.sql", content: partial }])).toHaveLength(1);
+  });
+
+  it("passes a matview locked with THREE split revokes (migration 16 form, verbatim from PR #13)", () => {
+    const split =
+      "create materialized view public.crm_split_mv as select 1 as x with data;\n" +
+      "revoke all on public.crm_split_mv from public;\n" +
+      "revoke all on public.crm_split_mv from anon;\n" +
+      "revoke all on public.crm_split_mv from authenticated;\n" +
+      "grant select on public.crm_split_mv to service_role;";
+    expect(scanUnlockedCrmMatviews([{ path: "split.sql", content: split }])).toEqual([]);
   });
 });
