@@ -3,6 +3,7 @@ import {
   prepareSearch,
   classifyResultCount,
   isSearchKind,
+  detectSearchKind,
   NAME_MIN_LEN,
   SEARCH_MAX_RESULTS,
 } from "./search";
@@ -14,6 +15,49 @@ describe("isSearchKind", () => {
     expect(isSearchKind("email")).toBe(true);
     expect(isSearchKind("tags")).toBe(false);
     expect(isSearchKind(null)).toBe(false);
+  });
+});
+
+describe("detectSearchKind — one box, kind from shape", () => {
+  it("anything with @ is email (even mixed case, even partial)", () => {
+    expect(detectSearchKind("Foo@Bar.com")).toBe("email");
+    expect(detectSearchKind("someone@")).toBe("email");
+    expect(detectSearchKind("  a@b  ")).toBe("email");
+  });
+
+  it("all-digits after stripping separators is phone", () => {
+    expect(detectSearchKind("08123456789")).toBe("phone");
+    expect(detectSearchKind("+62 812-3456-789")).toBe("phone");
+    expect(detectSearchKind("(0812) 3456.789")).toBe("phone");
+    expect(detectSearchKind("62812345678")).toBe("phone");
+  });
+
+  it("a name with digits keeps its letters → name, not phone", () => {
+    expect(detectSearchKind("Agent 007")).toBe("name");
+    expect(detectSearchKind("Budi 2")).toBe("name");
+  });
+
+  it("plain names are name", () => {
+    expect(detectSearchKind("Sri Wahyuni")).toBe("name");
+    expect(detectSearchKind("Ali")).toBe("name");
+  });
+
+  it("edge: a lone '+' has no digits → name (not phone)", () => {
+    expect(detectSearchKind("+")).toBe("name");
+    expect(detectSearchKind("  +  ")).toBe("name");
+  });
+
+  it("edge: empty / blank → name (neutral default; prepareSearch rejects it)", () => {
+    expect(detectSearchKind("")).toBe("name");
+    expect(detectSearchKind("   ")).toBe("name");
+    expect(detectSearchKind(null)).toBe("name");
+    expect(detectSearchKind(undefined)).toBe("name");
+  });
+
+  it("every detected kind is a valid SearchKind", () => {
+    for (const q of ["a@b.com", "0812", "Sri", "+", ""]) {
+      expect(isSearchKind(detectSearchKind(q))).toBe(true);
+    }
   });
 });
 

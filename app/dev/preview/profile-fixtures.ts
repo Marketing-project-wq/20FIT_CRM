@@ -142,7 +142,23 @@ const DOB_DIFF: ApiResult = {
     my20fit: { matched: false, isPlusMember: null, onboardingCompleted: null, createdAt: null },
     activity: { matched: false, firstSeenAt: null, lastActiveAt: null, pingCount: null },
   },
-  multiSource: { matchable: true, sources: [] },
+  multiSource: {
+    matchable: true,
+    sources: [
+      {
+        key: "arena_class",
+        label: "Arena — kelas",
+        matched: true,
+        keyUsed: "email",
+        count: 3,
+        rows: [
+          { label: "CL-20260503-0006", status: "confirmed", extra: {}, classInfo: { resolved: true, name: "Muay Thai", scheduleDate: "2026-05-03T00:00:00.000Z", startTime: "18:00:00", endTime: "19:00:00", instructor: "Coach Rian" } },
+          { label: "CL-20260510-0021", status: "confirmed", extra: {}, classInfo: { resolved: true, name: "Muay Thai", scheduleDate: "2026-05-10T00:00:00.000Z", startTime: "18:00:00", endTime: "19:00:00", instructor: "Coach Rian" } },
+          { label: "CL-20260517-0044", status: "confirmed", extra: {}, classInfo: { resolved: false, name: null, scheduleDate: null, startTime: null, endTime: null, instructor: null } },
+        ],
+      },
+    ],
+  },
   clinic: { gated: true, matched: false, keyUsed: null, patientCode: null, sensitive: null, counts: null, latestBooking: null },
   importData: {
     matchable: true,
@@ -156,7 +172,7 @@ const DOB_DIFF: ApiResult = {
     programs: [{ key: "event", label: "Event", value: "y" }],
     clinicalWithheld: false,
   },
-  mirror: { hasHyrox: true, hasMy20fit: false, hasArena: false, hasGym: false, hasClinic: false },
+  mirror: { hasHyrox: true, hasMy20fit: false, hasArena: true, hasGym: false, hasClinic: false },
   mirrorRefreshedAt: STALE_REFRESHED_AT,
 };
 

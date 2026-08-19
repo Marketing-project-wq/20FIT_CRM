@@ -83,10 +83,19 @@ interface ProfileEnrichment {
   activity: { matched: boolean; firstSeenAt: string | null; lastActiveAt: string | null; pingCount: number | null };
 }
 
+interface ClassInfoT {
+  resolved: boolean;
+  name: string | null;
+  scheduleDate: string | null;
+  startTime: string | null;
+  endTime: string | null;
+  instructor: string | null;
+}
 interface MultiSourceRowT {
   label: string | null;
   status: string | null;
   extra: Record<string, unknown>;
+  classInfo?: ClassInfoT;
 }
 interface MultiSourceResultT {
   key: string;
@@ -342,23 +351,107 @@ function rawDate(v: string | null): string {
 const multiKeyLabel = (k: "email" | "phone" | null) =>
   k === "email" ? "cocok via email" : k === "phone" ? "cocok via telepon (format, keyakinan lebih rendah)" : "";
 
-/** Matched arena/gym sub-sources, each as one line (Sprint 5B). */
+/** "HH:MM" from a stored "HH:MM:SS" time string. */
+function hhmm(v: string | null): string | null {
+  if (!v) return null;
+  return v.length >= 5 ? v.slice(0, 5) : v;
+}
+
+/**
+ * A class-booking source (arena/gym kelas, TUGAS 4). Summary first: class NAME + attendance count,
+ * grouped by name. Bookings whose class name could not be resolved (865 of 2.869 arena, measured)
+ * are NOT hidden and NOT guessed — grouped into one honest "nama kelas tak ditemukan" line that
+ * still shows the codes. "Lihat detail" expands date/time/instructor/status per booking — the full
+ * history stays folded until asked for (the screen was just simplified; don't refill it).
+ */
+function ClassSourceLine({ s }: { s: MultiSourceResultT }) {
+  const [open, setOpen] = useState(false);
+
+  const named = new Map<string, number>();
+  const unresolved: MultiSourceRowT[] = [];
+  for (const r of s.rows) {
+    if (r.classInfo?.resolved && r.classInfo.name) {
+      named.set(r.classInfo.name, (named.get(r.classInfo.name) ?? 0) + 1);
+    } else {
+      unresolved.push(r);
+    }
+  }
+  const namedList = Array.from(named.entries()).sort((a, b) => b[1] - a[1]);
+
+  return (
+    <SourceLine label={s.label} matched>
+      <span>
+        {nf.format(s.count)} kehadiran
+        <span className="font-mono text-[12px] text-ink-faint"> · {multiKeyLabel(s.keyUsed)}</span>
+      </span>
+
+      {/* Summary: class name × attendance. */}
+      {namedList.map(([name, count]) => (
+        <span key={name} className="block font-body text-[13px] text-ink-soft">
+          {name} <span className="text-ink-faint">· {nf.format(count)}×</span>
+        </span>
+      ))}
+      {unresolved.length > 0 && (
+        <span className="block font-body text-[13px] text-ink-faint italic">
+          Nama kelas tak ditemukan · {nf.format(unresolved.length)}
+          <span className="not-italic"> (kode: {unresolved.slice(0, 3).map((r) => r.label ?? "—").join(", ")}{unresolved.length > 3 ? "…" : ""})</span>
+        </span>
+      )}
+
+      {/* Detail behind a toggle — date, time, instructor, status per booking. */}
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="mt-1 inline-block font-display text-[11px] font-semibold uppercase tracking-wide text-ink-soft underline hover:text-ink"
+      >
+        {open ? "Sembunyikan detail" : `Lihat detail (${nf.format(s.rows.length)} booking)`}
+      </button>
+      {open && (
+        <span className="mt-1 block space-y-1">
+          {s.rows.map((r, i) => {
+            const ci = r.classInfo;
+            const time = ci ? [hhmm(ci.startTime), hhmm(ci.endTime)].filter(Boolean).join("–") : "";
+            return (
+              <span key={i} className="block font-body text-[12px] text-ink-soft">
+                <span className="text-ink">{ci?.resolved && ci.name ? ci.name : <span className="italic text-ink-faint">nama kelas tak ditemukan</span>}</span>
+                <span className="font-mono text-[11px] text-ink-faint">
+                  {" · "}{r.label ?? "—"}
+                  {ci?.scheduleDate ? ` · ${formatDateOnly(ci.scheduleDate)}` : ""}
+                  {time ? ` · ${time}` : ""}
+                  {ci?.instructor ? ` · ${ci.instructor}` : ""}
+                  {r.status ? ` · ${r.status}` : ""}
+                </span>
+              </span>
+            );
+          })}
+        </span>
+      )}
+    </SourceLine>
+  );
+}
+
+/** Matched arena/gym sub-sources, each as one line (Sprint 5B). Class-booking sources get the
+ *  name-resolving summary + detail toggle (TUGAS 4); the rest keep the plain code line. */
 function MultiGroupLines({ rows }: { rows: MultiSourceResultT[] }) {
   return (
     <>
-      {rows.map((s) => (
-        <SourceLine key={s.key} label={s.label} matched>
-          <span>
-            {nf.format(s.count)} baris
-            <span className="font-mono text-[12px] text-ink-faint"> · {multiKeyLabel(s.keyUsed)}</span>
-          </span>
-          {s.rows.slice(0, 3).map((r, i) => (
-            <span key={i} className="block font-body text-[13px] text-ink-soft">
-              {r.label ?? "—"}{r.status ? ` · ${r.status}` : ""}
+      {rows.map((s) =>
+        s.rows.some((r) => r.classInfo) ? (
+          <ClassSourceLine key={s.key} s={s} />
+        ) : (
+          <SourceLine key={s.key} label={s.label} matched>
+            <span>
+              {nf.format(s.count)} baris
+              <span className="font-mono text-[12px] text-ink-faint"> · {multiKeyLabel(s.keyUsed)}</span>
             </span>
-          ))}
-        </SourceLine>
-      ))}
+            {s.rows.slice(0, 3).map((r, i) => (
+              <span key={i} className="block font-body text-[13px] text-ink-soft">
+                {r.label ?? "—"}{r.status ? ` · ${r.status}` : ""}
+              </span>
+            ))}
+          </SourceLine>
+        ),
+      )}
     </>
   );
 }

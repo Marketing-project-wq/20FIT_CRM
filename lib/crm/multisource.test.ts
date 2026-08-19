@@ -2,6 +2,9 @@ import { describe, it, expect } from "vitest";
 import {
   MULTISOURCE_DEFS,
   MULTISOURCE_FORBIDDEN_COLUMNS,
+  CLASS_SCHEDULE_SAFE_COLUMNS,
+  CLASS_TYPE_SAFE_COLUMNS,
+  CLASS_CHAIN_FORBIDDEN_COLUMNS,
   phoneMatchCandidates,
   matchKeyOrder,
 } from "./multisource-constants";
@@ -28,6 +31,29 @@ describe("multisource safe-column allowlist (TUGAS 3 guard)", () => {
   it("source keys are unique (registry integrity)", () => {
     const keys = MULTISOURCE_DEFS.map((d) => d.key);
     expect(new Set(keys).size).toBe(keys.length);
+  });
+});
+
+describe("class-name chain safe columns (TUGAS 4 guard)", () => {
+  it("schedule + type safe columns contain no forbidden free-text (notes/cancelled_reason/created_by)", () => {
+    for (const col of [...CLASS_SCHEDULE_SAFE_COLUMNS, ...CLASS_TYPE_SAFE_COLUMNS]) {
+      expect(CLASS_CHAIN_FORBIDDEN_COLUMNS.has(col), `${col} is forbidden but listed as safe`).toBe(false);
+    }
+  });
+
+  it("class sources declare a chain; the schedule FK is read (so it can be resolved)", () => {
+    for (const def of MULTISOURCE_DEFS.filter((d) => d.classChain)) {
+      const chain = def.classChain!;
+      expect(def.safeColumns).toContain(chain.scheduleIdColumn);
+      expect(chain.scheduleColumns).toContain("id"); // must be able to key schedules by id
+      expect(chain.scheduleColumns).toContain("class_type_id"); // and hop to the type
+      expect(chain.typeColumns).toContain("name"); // the whole point
+    }
+  });
+
+  it("exactly the two class-booking sources carry a chain (not the venue/package/member ones)", () => {
+    const withChain = MULTISOURCE_DEFS.filter((d) => d.classChain).map((d) => d.key).sort();
+    expect(withChain).toEqual(["arena_class", "gym_class"]);
   });
 });
 

@@ -164,6 +164,11 @@ export const en: Messages = {
     openProfile: "Open profile",
     notFoundName: "Not found. Try a different part of the name.",
     notFoundId: "Not found. Make sure the number/email is complete and correct.",
+    detectedAsPre: "Recognized as ",
+    detectAutoSuffix: " · auto-detected from input",
+    detectManualSuffix: " · chosen manually",
+    detectOverrideHint: "Change type:",
+    detectBackToAuto: "auto",
     warn: {
       searchIntroA:
         "To find someone who just called — then open the profile & record their stop-contact request. Phone & email are matched EXACTLY (the full number/email is required), name by word fragments. This looks up ONE person (recorded as ",

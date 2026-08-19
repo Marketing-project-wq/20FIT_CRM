@@ -20,6 +20,43 @@
 
 export type MatchKey = "email" | "phone";
 
+/**
+ * Class-name chain (TUGAS 4): a class booking carries only a `schedule_id`; the human class NAME
+ * lives two hops away (booking.schedule_id → schedule.class_type_id → type.name). These are the
+ * ONLY columns read from the two chain tables — factual schedule facts + the type name, never the
+ * schedule's free-text `notes`/`cancelled_reason`/`created_by`. Guarded by multisource.test.ts.
+ */
+export interface ClassChain {
+  scheduleTable: string;
+  typeTable: string;
+  /** booking column holding the schedule FK. */
+  scheduleIdColumn: string;
+  /** schedule columns: its own id, the type FK, and the display facts. */
+  scheduleColumns: readonly string[];
+  /** type columns: its id + the name. */
+  typeColumns: readonly string[];
+}
+
+/** Schedule columns that are safe to read for the class chain — no free-text. Shared by both units. */
+export const CLASS_SCHEDULE_SAFE_COLUMNS = [
+  "id",
+  "class_type_id",
+  "schedule_date",
+  "start_time",
+  "end_time",
+  "instructor",
+] as const;
+
+/** Type columns that are safe to read — the id (to join) and the human name. */
+export const CLASS_TYPE_SAFE_COLUMNS = ["id", "name"] as const;
+
+/** Free-text / sensitive columns that must NEVER be read from a schedule table. */
+export const CLASS_CHAIN_FORBIDDEN_COLUMNS: ReadonlySet<string> = new Set([
+  "notes",
+  "cancelled_reason",
+  "created_by",
+]);
+
 export interface MultiSourceDef {
   /** Stable id for the UI + registry lookups. */
   key: string;
@@ -35,6 +72,8 @@ export interface MultiSourceDef {
   labelColumn: string;
   /** Optional status column for a one-line summary. */
   statusColumn: string | null;
+  /** Present on class-booking sources: how to resolve the class NAME (TUGAS 4). */
+  classChain?: ClassChain;
 }
 
 /**
@@ -69,9 +108,16 @@ export const MULTISOURCE_DEFS: readonly MultiSourceDef[] = [
     table: "arena_class_bookings",
     emailColumn: "email",
     phoneColumn: "phone",
-    safeColumns: ["booking_code", "status", "price", "created_at"],
+    safeColumns: ["booking_code", "status", "price", "created_at", "schedule_id"],
     labelColumn: "booking_code",
     statusColumn: "status",
+    classChain: {
+      scheduleTable: "arena_class_schedules",
+      typeTable: "arena_class_types",
+      scheduleIdColumn: "schedule_id",
+      scheduleColumns: CLASS_SCHEDULE_SAFE_COLUMNS,
+      typeColumns: CLASS_TYPE_SAFE_COLUMNS,
+    },
   },
   {
     key: "arena_booking",
@@ -109,9 +155,16 @@ export const MULTISOURCE_DEFS: readonly MultiSourceDef[] = [
     table: "gym_class_bookings",
     emailColumn: "email",
     phoneColumn: "phone",
-    safeColumns: ["booking_code", "status", "price"],
+    safeColumns: ["booking_code", "status", "price", "schedule_id"],
     labelColumn: "booking_code",
     statusColumn: "status",
+    classChain: {
+      scheduleTable: "gym_class_schedules",
+      typeTable: "gym_class_types",
+      scheduleIdColumn: "schedule_id",
+      scheduleColumns: CLASS_SCHEDULE_SAFE_COLUMNS,
+      typeColumns: CLASS_TYPE_SAFE_COLUMNS,
+    },
   },
   {
     key: "gym_membership",

@@ -25,10 +25,24 @@ import type { SourceCoverage } from "./quality-types";
 
 const ROW_CAP = 20; // per source; a profile view is not an export
 
+/** Resolved class-name chain for one booking row (TUGAS 4). `resolved` is false when the class
+ *  name could NOT be found (null schedule_id, or a deleted schedule/type) — the UI shows the
+ *  booking code with a "class name not found" note, never a guessed name and never hidden. */
+export interface ClassInfo {
+  resolved: boolean;
+  name: string | null;
+  scheduleDate: string | null;
+  startTime: string | null;
+  endTime: string | null;
+  instructor: string | null;
+}
+
 export interface MultiSourceRow {
   label: string | null; // the labelColumn value (e.g. a booking code)
   status: string | null;
   extra: Record<string, unknown>; // remaining safe columns, for the UI to render as it likes
+  /** Present only on class-booking sources — the resolved (or unresolved) class name + schedule. */
+  classInfo?: ClassInfo;
 }
 
 export interface MultiSourceResult {
@@ -67,16 +81,83 @@ function selectByPhone(admin: SupabaseClient, def: MultiSourceDef, candidates: s
 }
 
 function toRows(def: MultiSourceDef, data: Record<string, unknown>[]): MultiSourceRow[] {
+  const scheduleIdCol = def.classChain?.scheduleIdColumn;
   return data.map((r) => {
     const extra: Record<string, unknown> = {};
     for (const col of def.safeColumns) {
       if (col === def.labelColumn || col === def.statusColumn) continue;
+      if (col === scheduleIdCol) continue; // a join key, resolved into classInfo — not raw display
       extra[col] = r[col];
     }
     return {
       label: (r[def.labelColumn] as string | null) ?? null,
       status: def.statusColumn ? ((r[def.statusColumn] as string | null) ?? null) : null,
       extra,
+    };
+  });
+}
+
+/**
+ * Resolve the class NAME + schedule facts for a set of booking rows (TUGAS 4). Two targeted
+ * lookups keyed by the schedule ids present in THIS profile's rows (≤ ROW_CAP): schedules by id,
+ * then types by class_type_id. Attaches `classInfo` to each row IN PLACE. A row whose schedule_id
+ * is null, or whose schedule/type is missing (deleted), gets `resolved: false` — never a guessed
+ * name, never dropped. Only the tested safe columns are selected from the two chain tables.
+ */
+async function resolveClassInfo(
+  admin: SupabaseClient,
+  def: MultiSourceDef,
+  data: Record<string, unknown>[],
+  rows: MultiSourceRow[],
+): Promise<void> {
+  const chain = def.classChain;
+  if (!chain) return;
+
+  const scheduleIds = Array.from(
+    new Set(data.map((r) => r[chain.scheduleIdColumn] as string | null).filter((v): v is string => !!v)),
+  );
+
+  // schedule id → { class_type_id, schedule_date, start_time, end_time, instructor }
+  const schedById = new Map<string, Record<string, unknown>>();
+  if (scheduleIds.length > 0) {
+    const { data: sch, error } = await admin
+      .from(chain.scheduleTable)
+      .select(chain.scheduleColumns.join(","))
+      .in("id", scheduleIds);
+    if (error) throw error;
+    for (const s of (sch ?? []) as unknown as Record<string, unknown>[]) {
+      schedById.set(s.id as string, s);
+    }
+  }
+
+  // class_type_id → name
+  const typeIds = Array.from(
+    new Set(Array.from(schedById.values()).map((s) => s.class_type_id as string | null).filter((v): v is string => !!v)),
+  );
+  const nameById = new Map<string, string | null>();
+  if (typeIds.length > 0) {
+    const { data: types, error } = await admin
+      .from(chain.typeTable)
+      .select(chain.typeColumns.join(","))
+      .in("id", typeIds);
+    if (error) throw error;
+    for (const t of (types ?? []) as unknown as Record<string, unknown>[]) {
+      nameById.set(t.id as string, (t.name as string | null) ?? null);
+    }
+  }
+
+  data.forEach((r, i) => {
+    const sid = r[chain.scheduleIdColumn] as string | null;
+    const sched = sid ? schedById.get(sid) : undefined;
+    const typeId = sched?.class_type_id as string | null | undefined;
+    const name = typeId ? nameById.get(typeId) ?? null : null;
+    rows[i].classInfo = {
+      resolved: name != null,
+      name,
+      scheduleDate: (sched?.schedule_date as string | null) ?? null,
+      startTime: (sched?.start_time as string | null) ?? null,
+      endTime: (sched?.end_time as string | null) ?? null,
+      instructor: (sched?.instructor as string | null) ?? null,
     };
   });
 }
@@ -127,13 +208,19 @@ export async function fetchProfileMultiSource(
       }
     }
 
+    const rows = toRows(def, data);
+    // Resolve class names for class-booking sources (TUGAS 4) — only when this source matched.
+    if (def.classChain && data.length > 0) {
+      await resolveClassInfo(admin, def, data, rows);
+    }
+
     sources.push({
       key: def.key,
       label: def.label,
       matched: matchKey !== null,
       keyUsed: matchKey,
       count: data.length,
-      rows: toRows(def, data),
+      rows,
     });
   }
 

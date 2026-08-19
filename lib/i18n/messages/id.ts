@@ -181,6 +181,12 @@ export const id = {
     openProfile: "Buka profil",
     notFoundName: "Tidak ditemukan. Coba potongan nama lain.",
     notFoundId: "Tidak ditemukan. Pastikan nomor/email lengkap dan benar.",
+    // One box, kind detected from the input's shape (shown before searching, overridable).
+    detectedAsPre: "Dikenali sebagai ",
+    detectAutoSuffix: " · otomatis dari isian",
+    detectManualSuffix: " · dipilih manual",
+    detectOverrideHint: "Ubah jenis:",
+    detectBackToAuto: "otomatis",
     warn: {
       // ID: "Untuk menemukan orang yang baru saja menelepon — lalu buka profil & catat permintaan
       //      berhenti. Telepon & email dicocokkan sama persis (harus lengkap), nama dengan potongan
