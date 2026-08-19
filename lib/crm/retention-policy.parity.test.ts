@@ -17,13 +17,19 @@ import {
  * drift would make the audit screen label a row "kept permanently" while the purge
  * deletes it — a silent compliance-evidence loss.
  *
- * Migration 8 is applied + historical; do NOT edit it to satisfy this test. If this
- * fails, the TypeScript side is what moves (or the migration genuinely changed and a
- * NEW migration — plus this file — must be updated together).
+ * Migration 8 is applied + historical; do NOT edit it to satisfy this test. The purge
+ * function was later REPLACED by a new migration (…113518_crm_purge_audit_log_add_demographic_
+ * compliance, Option 2 / K-09) that added `profile.demographic_updated` to the denylist — so this
+ * test now reads THAT file (the current definition), and migration 8 stays untouched. If this
+ * fails, the TypeScript side moves to match the live function (or a new migration + this file
+ * move together again).
  */
 
 const MIGRATION = fileURLToPath(
-  new URL("../../supabase/migrations/20260811090000_create_crm_purge_audit_log.sql", import.meta.url),
+  new URL(
+    "../../supabase/migrations/20260819113518_crm_purge_audit_log_add_demographic_compliance.sql",
+    import.meta.url,
+  ),
 );
 
 /** Extract normalized action rules from one SQL boolean block. */
