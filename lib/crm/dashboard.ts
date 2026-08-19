@@ -1,6 +1,16 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchStagingDashboard } from "./staging";
+import {
+  fetchContactCoverage,
+  fetchUnitSpread,
+  fetchEventRegistrations,
+  type ContactCoverage,
+  type UnitCount,
+  type ProductCount,
+} from "./dashboard-viz";
+import { fetchLiveSourceGaps, type SourceGap } from "./dashboard-sources";
+import { fetchMirrorMeta } from "./mirror";
 
 /**
  * Dashboard KPI stats — READ-ONLY aggregates over master_customer + crm_consent +
@@ -41,6 +51,16 @@ export interface DashboardStats {
   importDob: number;
   /** RFM ("per paid order") spread incl the "-" absence bucket (0 = measured zero, K-08). */
   importRfm: { value: string; count: number }[];
+  /** LIVE contact-coverage split over master_customer (email/phone combinations). */
+  contactCoverage: ContactCoverage;
+  /** Distinct profiles per ecosystem unit. Snapshot for the 5 mirror units, live for shop. */
+  unitSpread: UnitCount[];
+  /** Registrations per event product (live row tally, not distinct people). */
+  eventRegistrations: ProductCount[];
+  /** Per-source: people in the live source vs how many are not yet in the frozen pool. LIVE. */
+  liveSources: SourceGap[];
+  /** Mirror freshness: when the snapshot was last refreshed, and its row count. */
+  mirror: { refreshedAt: string | null; rowCount: number | null };
 }
 
 interface ContactableCounts {
@@ -58,11 +78,19 @@ export async function fetchDashboardStats(admin: SupabaseClient): Promise<Dashbo
     .limit(1)
     .maybeSingle();
 
+  // Everything runs in parallel — the ~2.9s contactable RPC dominates, so the new live-source /
+  // viz reads add little wall-clock. Each new block is non-fatal on its own (a failed viz read
+  // must not blank the KPI cards), so they resolve to safe empties rather than throwing.
   const [
     { count, error: sizeErr },
     { data: fresh, error: freshErr },
     { data: counts, error: rpcErr },
     staging,
+    contactCoverage,
+    unitSpread,
+    eventRegistrations,
+    liveSources,
+    mirrorMeta,
   ] = await Promise.all([
     sizeQ,
     freshQ,
@@ -71,6 +99,11 @@ export async function fetchDashboardStats(admin: SupabaseClient): Promise<Dashbo
     admin.rpc("crm_contactable_counts"),
     // staging_20fit_data summary (Sprint 3Y): birth-date count + RFM spread. Read-only, no copy.
     fetchStagingDashboard(admin),
+    fetchContactCoverage(admin).catch(() => ({ both: 0, emailOnly: 0, phoneOnly: 0, neither: 0 })),
+    fetchUnitSpread(admin).catch(() => [] as UnitCount[]),
+    fetchEventRegistrations(admin).catch(() => [] as ProductCount[]),
+    fetchLiveSourceGaps(admin).catch(() => [] as SourceGap[]),
+    fetchMirrorMeta(admin).catch(() => ({ refreshedAt: null, rowCount: null })),
   ]);
   if (sizeErr) throw sizeErr;
   if (freshErr) throw freshErr;
@@ -85,5 +118,10 @@ export async function fetchDashboardStats(admin: SupabaseClient): Promise<Dashbo
     lastProfileAt: (fresh as { created_at: string | null } | null)?.created_at ?? null,
     importDob: staging.importDob,
     importRfm: staging.importRfm,
+    contactCoverage,
+    unitSpread,
+    eventRegistrations,
+    liveSources,
+    mirror: { refreshedAt: mirrorMeta.refreshedAt, rowCount: mirrorMeta.rowCount },
   };
 }
