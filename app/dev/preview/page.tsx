@@ -1,5 +1,7 @@
 import { AppShell } from "@/components/shell/app-shell";
 import { DashboardContent } from "@/components/dashboard/dashboard-content";
+import { ProfileDetail } from "@/components/audience/profile-detail";
+import { PROFILE_FIXTURES } from "./profile-fixtures";
 
 export const dynamic = "force-dynamic";
 
@@ -67,6 +69,23 @@ export default function DevDashboardPreview() {
   return (
     <AppShell userEmail="marketing@20fit.id" activePath="/" showAllNav>
       <DashboardContent previewStats={FIXTURE} />
+
+      {/* Profile detail fixtures (Sprint 5B TUGAS 3) — the same shape as /api/audience/[id], no
+          Supabase, no PII. Each labelled so the screenshot names the case it exercises. */}
+      <div className="mt-12 space-y-12 border-t border-glass-border pt-8">
+        <p className="font-display text-[13px] font-semibold uppercase tracking-wide text-ink-faint">
+          Pratinjau detail profil — data fixture
+        </p>
+        {PROFILE_FIXTURES.map((f) => (
+          <div key={f.data.profile.customer_id} className="space-y-3">
+            <div className="rounded-sm bg-glass px-3 py-2">
+              <p className="font-display text-[13px] font-bold text-ink">{f.label}</p>
+              <p className="font-body text-[12px] text-ink-soft">{f.note}</p>
+            </div>
+            <ProfileDetail id={f.data.profile.customer_id} canEditConsent={false} previewData={f.data} />
+          </div>
+        ))}
+      </div>
     </AppShell>
   );
 }

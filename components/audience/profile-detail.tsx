@@ -146,7 +146,7 @@ interface MirrorPresenceT {
   hasClinic: boolean;
 }
 
-interface ApiResult {
+export interface ApiResult {
   profile: Profile;
   canViewHealth: boolean;
   engagement: ProfileEngagement | null;
@@ -578,6 +578,38 @@ function OtherSourcesSection({
         <p className="mt-4 font-body text-[13px] italic text-ink-faint">
           Profil ini tak punya email atau telepon untuk dicocokkan ke sumber lain.
         </p>
+      ) : !anyBlock ? (
+        /* No live block at all — the profile is NOT connected to ANY other 20FIT source. The
+           5-second test for THIS screen: that emptiness must READ as the headline, not hide as a
+           faint footnote. So it gets the prominent empty-state (same weight as the Ekosistem
+           empty), naming every absent source at once, stamped with the mirror snapshot it came
+           from — a stale snapshot can never hide a real block, because a real block would make
+           anyBlock true and take the branch below instead. */
+        <div className="mt-4 space-y-3">
+          <div className="rounded-sm border border-dashed border-glass-border px-4 py-6 text-center">
+            <Badge tone="neutral">Tidak tersambung ke sumber lain</Badge>
+            <p className="mx-auto mt-2 max-w-xl font-body text-[13px] leading-relaxed text-ink-soft">
+              Profil ini <strong>tidak tersambung</strong> ke sumber 20FIT lain mana pun
+              {absent.length > 0 ? <> — {absent.map((a) => a.label).join(", ")}</> : null}. Ini kosong
+              yang jujur: tak ada kunci (email/telepon) yang cocok ke sumber itu, bukan “belum aktif”.
+              {mirrorRefreshedAt && (
+                <span className="mt-1 block font-body text-[11px] text-ink-faint">
+                  Dari penanda kehadiran cermin per {formatTs(mirrorRefreshedAt)} — “tidak tersambung” berasal dari snapshot ini, bukan pemeriksaan langsung.
+                </span>
+              )}
+            </p>
+          </div>
+          <Why>
+            <p className="text-[12px] leading-relaxed text-ink-soft">
+              Dicocokkan lewat <strong>email ternormalisasi</strong> dulu, lalu telepon (arena/gym/klinik) — nol
+              cocok-nama-saja. “Tidak tersambung” berarti tak ada kunci yang cocok ATAU profil memang tak ada di
+              sumber itu. Dibaca &amp; digabung saat tampil, nol tulis, nol salin ke{" "}
+              <span className="font-mono">master_customer</span>. Sumber klinis digerbangi{" "}
+              <span className="font-mono">profile.view_health</span> dan hanya membawa identitas + volume keterlibatan +
+              booking terakhir — isi klinis (diagnosa, hasil, obat) sengaja tidak dibawa.
+            </p>
+          </Why>
+        </div>
       ) : (
         <div className="mt-2 space-y-3">
           {enrichment?.hyrox.matched && <HyroxLines enrichment={enrichment} canViewHealth={canViewHealth} />}
@@ -748,12 +780,25 @@ function ImportSection({
 }
 
 
-export function ProfileDetail({ id, canEditConsent }: { id: string; canEditConsent: boolean }) {
-  const [data, setData] = useState<ApiResult | null>(null);
-  const [state, setState] = useState<"loading" | "ready" | "not_found" | "error">("loading");
+export function ProfileDetail({
+  id,
+  canEditConsent,
+  previewData,
+}: {
+  id: string;
+  canEditConsent: boolean;
+  /** Dev-only fixture (app/dev/preview). When set, ProfileDetail renders it directly and skips the
+   *  fetch — no Supabase, no auth, no PII. Same shape as the API so the render is realistic. */
+  previewData?: ApiResult;
+}) {
+  const [data, setData] = useState<ApiResult | null>(previewData ?? null);
+  const [state, setState] = useState<"loading" | "ready" | "not_found" | "error">(
+    previewData ? "ready" : "loading",
+  );
   const [suppressOpen, setSuppressOpen] = useState(false);
 
   useEffect(() => {
+    if (previewData) return; // dev preview: no fetch
     const ac = new AbortController();
     (async () => {
       try {
@@ -774,7 +819,7 @@ export function ProfileDetail({ id, canEditConsent }: { id: string; canEditConse
       }
     })();
     return () => ac.abort();
-  }, [id]);
+  }, [id, previewData]);
 
   const BackLink = () => (
     <Link
