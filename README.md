@@ -67,15 +67,28 @@ Full spec: `PRD — 20FIT Audience Data & CRM System v1.1`.
 > | 13 | `…20260812020000_create_crm_contactable_counts` | `20260812063419` | `create_crm_contactable_counts` |
 > | 14 | `…20260813000000_create_crm_staging_segment_ids` | `20260813034302` | `create_crm_staging_segment_ids` |
 > | 15 | `…20260813091255_create_crm_customer_mirror` | `20260813091255` | `create_crm_customer_mirror` |
+> | 16 | *(no file on this branch — see below)* | `20260814040554` | `add_is_fitco_member_matched_to_crm_customer_mirror` |
+> | 17 | *(no file on this branch — see below)* | `20260814055353` | `crm_norm_phone_guard_empty_nsn` |
 >
-> **Count reconciliation: 15 repo files → 16 CRM ledger entries.** The extra entry is
-> migration **9**, applied **twice** under the same name (Sprint 3H). The first apply left
-> Supabase's default `EXECUTE` grant to `anon`/`authenticated` in place (a `revoke … from
-> public` does **not** remove explicit per-role grants); the second apply carried the
-> corrected `revoke … from public, anon, authenticated`. `create or replace` is idempotent,
-> so both stamps point at the same two functions — the repo file is the canonical full
-> definition and re-running it on a fresh DB reaches the same end state in one pass. No
-> other migration is duplicated.
+> **Count reconciliation (re-checked against `schema_migrations` on 2026-08-19): 15 CRM
+> migration files on THIS branch (`claude/lanjutkan-pekerjaan-mno804`) → 18 CRM ledger
+> entries in the DB.** The gap is no longer only the migration-9 double-apply:
+>
+> - **+1** — migration **9** applied **twice** under the same name (Sprint 3H). The first
+>   apply left Supabase's default `EXECUTE` grant to `anon`/`authenticated` in place (a
+>   `revoke … from public` does **not** remove explicit per-role grants); the second apply
+>   carried the corrected `revoke … from public, anon, authenticated`. `create or replace`
+>   is idempotent, so both stamps point at the same two functions.
+> - **+2** — migrations **16 & 17** were applied by a **parallel session** (PR #13, branch
+>   `claude/20fit-crm-sprint-1-67vvhs`): `add_is_fitco_member_matched_to_crm_customer_mirror`
+>   adds a Fitco-membership flag to the mirror, and `crm_norm_phone_guard_empty_nsn` fixes the
+>   `crm_norm_phone('62')` empty-NSN edge (flagged in Sprint 5A). **Their SQL files are NOT on
+>   this branch** — they live on PR #13. So this branch's `supabase/migrations/` is 2 CRM
+>   migrations behind production; do not assume the tree here is the whole CRM ledger (T-20).
+>
+> **The ledger is now SHARED.** Other teams stamp into the same `schema_migrations` (e.g.
+> `my20fit_*`, `clinic_*`, `arena_*`, `talent_*`, `event_*`) interleaved with CRM versions, so
+> reconcile CRM migrations by **name filter**, never by version range.
 >
 > **Migration 8 is historical and is NOT edited.** Its `EXECUTE` was left open to
 > `anon`/`authenticated` (the Supabase default); migration **10** revokes it — a separate

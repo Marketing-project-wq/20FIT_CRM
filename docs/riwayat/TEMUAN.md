@@ -40,9 +40,10 @@ kontrolnya tidak ditembus, melainkan **dilewati**.
 
 ### T-03 · 101 fungsi `SECURITY DEFINER` anon-executable di luar `crm_*` — MILIK TIM LAIN
 **Ditemukan 11 Agu.** Pola auto-grant yang sama tersebar di sistem arena, clinic, shop,
-rb, my20fit, rc, uob, talent. Angkanya **naik** tiap tim lain men-deploy (99 → 101 →
-**102** dalam beberapa sesi), yang justru membuktikan polanya sistemik. Di luar lingkup
-sprint mana pun di sini; perlu diangkat ke pemilik proyek Supabase.
+rb, my20fit, rc, uob, talent. Angkanya **naik** tiap tim lain men-deploy (99 → 101 → 102 →
+**109** pada 19 Agu 2026), yang justru membuktikan polanya sistemik. **Nol** di antaranya
+milik `crm_*` (diverifikasi ulang 19 Agu: pagar EXECUTE + matview kita utuh — kenaikan murni
+tim lain). Di luar lingkup sprint mana pun di sini; perlu diangkat ke pemilik proyek Supabase.
 → `docs/RISIKO-rpc-execute-terbuka.md`
 
 ### T-15 · NIK + data kesehatan ±1.100 orang terpapar anon (RLS OFF di tabel sumber) — MILIK TIM LAIN
@@ -310,3 +311,33 @@ audit** (di atas), bukan `recovery_sent_at`.
 produksi** bila produksi memang dari branch — perlindungannya ilusi. → K-25. Dokumen yang
 menyatakan "push ke `main` memicu auto-deploy" (README §Deploy, §MANDATORY DEPLOY ORDER)
 dikoreksi ke keadaan terbukti + butir konfirmasi dashboard.
+
+---
+
+### T-20 · Ledger migrasi kini BERSAMA, dan branch kerja tertinggal 2 migrasi CRM dari produksi — DIUKUR 19 Agu 2026
+**Ditemukan saat audit keadaan (19 Agu 2026).** Tiga hal, diukur langsung ke DB:
+
+1. **Ledger `schema_migrations` bersama.** Tim lain (`my20fit_*`, `clinic_*`, `arena_*`,
+   `talent_*`, `event_*`, `media_*`, `mcu_*`) menstempel ke ledger yang sama, terjalin di
+   antara versi CRM (mis. `20260814081512 my20fit_corporate_member_add_division` dan
+   `20260818041238 clinic_close_bill_multi_package` mendarat di antara/-setelah migrasi CRM).
+   Rekonsiliasi ledger CRM **wajib disaring per nama**, bukan per rentang versi. Hitungan per
+   nama: **18 entri ledger CRM** (termasuk apply-ganda migrasi 9).
+
+2. **Branch ini tertinggal 2 migrasi CRM.** `add_is_fitco_member_matched_to_crm_customer_mirror`
+   (`20260814040554`, migrasi 16) dan `crm_norm_phone_guard_empty_nsn` (`20260814055353`,
+   migrasi 17) **sudah diterapkan ke DB** oleh sesi paralel (PR #13, branch
+   `claude/20fit-crm-sprint-1-67vvhs`), tapi **berkas SQL-nya tidak ada di branch ini**. Jadi
+   `supabase/migrations/` di sini bukan gambaran utuh ledger CRM produksi. (Migrasi 17 justru
+   menutup celah `crm_norm_phone('62')` yang ditandai di Sprint 5A.)
+
+3. **Pekerjaan bercabang jadi ≥3 PR terbuka ke `main`:** #11 (branch utama ini), #12 (sesi lain
+   yang menduplikasi commit arsip handover), #13 (migrasi 16+17 + paritas telepon). Tiga sesi
+   menulis paralel; "PR #11" bukan lagi satu-satunya jalur.
+
+**Dampak:** README ledger diperbarui (baris 16/17 ditandai "no file on this branch" + catatan
+ledger-bersama). Sebelum sprint fitur berikutnya menyentuh `crm_customer_mirror` atau
+`crm_norm_phone`, **tarik dulu migrasi 16/17 ke branch ini** (atau merge PR #13) agar repo dan DB
+tidak makin menyimpang — dua salinan yang menyimpang adalah pola yang sudah menggigit proyek ini
+(kanon telepon, daftar retensi). Remediasi milik manusia (merge/koordinasi antar-sesi), bukan
+sesuatu yang diperbaiki dari audit ini.

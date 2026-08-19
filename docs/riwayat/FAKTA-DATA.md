@@ -301,3 +301,24 @@ dibaca & digabung saat tampil.
 | Jhm 2024 5k/10K/HM | 124 / 160 / 75 | | Training / Physio / Protection | 65 / 7 / 17 |
 | Padel rabel (`Padel rebel`) | 1.358 | | Pasien Clinic 24-25 / 25-26 (klinis) | 100 / 365 |
 | **Arena / GYM / Paid Shop** | **0 / 0 / 0** (nol terukur, K-08 — barisnya tetap ditampilkan) | | | |
+
+---
+
+## Sumber ekosistem bertumbuh — diukur ulang 19 Agu 2026 (audit keadaan)
+
+Tabel sumber tim lain **terus bertambah** sejak angka bertanggal di atas. Diukur langsung:
+
+| tabel sumber | dulu (bertanggal) | 18 Agu | **19 Agu** |
+|---|---|---|---|
+| `my20fit_profile` | 886 | 916 | **918** |
+| `clinic_patients` | 143 | 169 | **176** |
+| `cf_hyrox_participants` | 1.038 | — | **1.038** |
+| `staging_20fit_data` | 88.536 | — | **88.536** |
+| `master_customer` | 82.253 | — | **82.253** |
+
+**Konsekuensi:** `crm_customer_mirror` adalah snapshot **refresh-manual**. Karena sumber di atas
+tumbuh setelah refresh terakhir (14 Agu), penanda kehadiran cermin (`has_my20fit`, `has_clinic`)
+kini **tertinggal** dari sumber langsung — persis alasan cap `refreshed_at` ditampilkan (Sprint 5A/5B).
+Angka acuan yang diturunkan darinya (mis. my20fit 170→172, klinik 112→120 pada 18 Agu) akan terus
+bergeser sampai `crm_refresh_customer_mirror()` dijalankan lagi. Bukan kerusakan — snapshot
+memang begitu; hanya perlu refresh (dan/atau penjadwalan, yang tetap keputusan terpisah).
