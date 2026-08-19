@@ -186,6 +186,9 @@ export interface ApiResult {
   importData: ProfileImportT | null;
   /** Staff-entered demographic (crm_profile_demographic) — chain's last-resort DOB/gender. */
   demographic: ProfileDemographicT | null;
+  /** Server-decided provenance label for CLINIC-sourced identity — "klinik" for a view_health
+   *  caller, coarsened to "sumber ekosistem" otherwise so membership never leaks (T-21). */
+  clinicSourceLabel: string;
   /** The 5 source-presence flags from this profile's mirror row (Sprint 5B); null if unavailable.
    *  Used to build the consolidated "not connected to …" line and to stamp its freshness. It
    *  drives PRESENTATION only — a live-matched source always renders its block regardless. */
@@ -838,14 +841,25 @@ function toIsoDate(s: string | null | undefined): string | null {
   return m ? m[1] : null;
 }
 
-const DOB_SOURCE_LABEL: Record<DobSource, string> = {
+// Static provenance labels. The CLINIC entries are deliberately NOT here — a clinic label is
+// coarsened per the caller's medical gate (T-21), so it is supplied at render time by the
+// server-decided `clinicSourceLabel` via sourceLabel() below, never hardcoded.
+const DOB_SOURCE_LABEL: Record<Exclude<DobSource, "clinic">, string> = {
   nik: "NIK",
   staging: "data impor 20FIT",
-  clinic: "klinik",
   hyrox: "Hyrox",
   staff: "input staf",
 };
-const GENDER_SOURCE_LABEL: Record<GenderSource, string> = { nik: "NIK", clinic: "klinik", staff: "input staf" };
+const GENDER_SOURCE_LABEL: Record<Exclude<GenderSource, "clinic">, string> = { nik: "NIK", staff: "input staf" };
+
+/** Provenance label for a DOB source, using the server-coarsened clinic label for "clinic". */
+function dobSourceLabel(s: DobSource, clinicLabel: string): string {
+  return s === "clinic" ? clinicLabel : DOB_SOURCE_LABEL[s];
+}
+/** Provenance label for a gender source, using the server-coarsened clinic label for "clinic". */
+function genderSourceLabel(s: GenderSource, clinicLabel: string): string {
+  return s === "clinic" ? clinicLabel : GENDER_SOURCE_LABEL[s];
+}
 
 /**
  * Resolve the DEMOGRAPHIC identity of a profile into ONE chosen value per field, from whatever
@@ -866,7 +880,8 @@ function resolveIdentity(
   const dm = demographic?.gated ? demographic : null;
 
   const nik = hs?.nik ?? cs?.nik ?? null;
-  const nikSource: "Hyrox" | "klinik" | null = hs?.nik ? "Hyrox" : cs?.nik ? "klinik" : null;
+  // Source DISCRIMINATOR (not label) — the display maps it to a label, coarsening clinic per gate.
+  const nikSource: "hyrox" | "clinic" | null = hs?.nik ? "hyrox" : cs?.nik ? "clinic" : null;
 
   const staging = importData?.dob ?? null;
   const dob = pickBirthDate({
@@ -923,6 +938,107 @@ function genderLabel(v: "male" | "female"): string {
 }
 
 /**
+ * Fill-form for EMPTY demographic fields (profile.edit_demographic, K-32). Renders inputs ONLY for
+ * the fields still empty across every source (offerGender / offerDob decided by the caller from the
+ * resolved values). Submits to POST /api/audience/[id]/demographic, which re-checks the gate AND
+ * re-verifies emptiness server-side, then calls the atomic fill-empty-only RPC. On success the page
+ * reloads so the new value shows through the normal (audited) read path.
+ */
+function DemographicFillForm({
+  customerId,
+  offerGender,
+  offerDob,
+}: {
+  customerId: string;
+  offerGender: boolean;
+  offerDob: boolean;
+}) {
+  const [gender, setGender] = useState<"" | "male" | "female">("");
+  const [dob, setDob] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ tone: "green" | "red"; text: string } | null>(null);
+
+  if (!offerGender && !offerDob) return null;
+
+  async function submit() {
+    setMsg(null);
+    const payload: { gender?: string; date_of_birth?: string } = {};
+    if (offerGender && gender) payload.gender = gender;
+    if (offerDob && dob) payload.date_of_birth = dob;
+    if (Object.keys(payload).length === 0) {
+      setMsg({ tone: "red", text: "Isi minimal satu field." });
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/audience/${customerId}/demographic`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const body = (await res.json().catch(() => ({}))) as { error?: string; message?: string; fields?: string[] };
+      if (res.ok) {
+        setMsg({ tone: "green", text: "Tersimpan. Memuat ulang…" });
+        setTimeout(() => window.location.reload(), 600);
+      } else {
+        setMsg({ tone: "red", text: body.message ?? `Gagal (${res.status}).` });
+        setBusy(false);
+      }
+    } catch {
+      setMsg({ tone: "red", text: "Gagal menghubungi server." });
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 rounded-sm border border-dashed border-glass-border p-3">
+      <p className="font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+        Lengkapi demografi (isi yang kosong)
+      </p>
+      <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end">
+        {offerGender && (
+          <label className="flex flex-col gap-1">
+            <span className="font-body text-[11px] text-ink-soft">Gender</span>
+            <select
+              className="rounded-sm border border-glass-border bg-transparent px-2 py-1 font-body text-[13px] text-ink"
+              value={gender}
+              onChange={(e) => setGender(e.target.value as "" | "male" | "female")}
+              disabled={busy}
+            >
+              <option value="">— pilih —</option>
+              <option value="male">Laki-laki</option>
+              <option value="female">Perempuan</option>
+            </select>
+          </label>
+        )}
+        {offerDob && (
+          <label className="flex flex-col gap-1">
+            <span className="font-body text-[11px] text-ink-soft">Tanggal lahir</span>
+            <input
+              type="date"
+              className="rounded-sm border border-glass-border bg-transparent px-2 py-1 font-mono text-[13px] text-ink"
+              value={dob}
+              onChange={(e) => setDob(e.target.value)}
+              disabled={busy}
+            />
+          </label>
+        )}
+        <Button size="sm" variant="outline" onClick={submit} disabled={busy}>
+          {busy ? "Menyimpan…" : "Simpan"}
+        </Button>
+      </div>
+      {msg && (
+        <p className={`mt-2 font-body text-[12px] ${msg.tone === "green" ? "text-emerald" : "text-red"}`}>{msg.text}</p>
+      )}
+      <p className="mt-2 font-body text-[11px] italic text-ink-faint">
+        Hanya field yang kosong di semua sumber ditawarkan; nilai tersimpan sebagai <span className="font-mono">staff_entry</span>{" "}
+        dan tercatat di audit. Mengoreksi nilai yang sudah ada bukan lewat jalur ini.
+      </p>
+    </div>
+  );
+}
+
+/**
  * IDENTITAS (Demografi) — NIK + tanggal lahir + gender + provinsi KTP + alamat + kontak darurat,
  * one value per field chosen by the priority chain (lib/crm/demographic-pick), from whatever the
  * caller may see. K-31: identity rides `profile.view_contact` (NIK sekelas telepon/email); the
@@ -937,12 +1053,20 @@ function IdentitySection({
   importData,
   demographic,
   canSeeContact,
+  clinicSourceLabel,
+  customerId,
+  canEditDemographic,
 }: {
   enrichment: ProfileEnrichment | null;
   clinic: ProfileClinicT | null;
   importData: ProfileImportT | null;
   demographic: ProfileDemographicT | null;
   canSeeContact: boolean;
+  /** Server-coarsened label for clinic-sourced identity (T-21) — "klinik" or "sumber ekosistem". */
+  clinicSourceLabel: string;
+  customerId: string;
+  /** Whether to render the empty-field fill form (profile.edit_demographic, K-32). */
+  canEditDemographic: boolean;
 }) {
   const r = resolveIdentity(enrichment, clinic, importData, demographic);
   const count = identityFieldCount(enrichment, clinic, importData, demographic);
@@ -969,7 +1093,7 @@ function IdentitySection({
         <Field label="NIK" mono>
           <span>
             {r.nik}
-            {r.nikSource ? <span className="font-body text-[11px] text-ink-faint"> · dari {r.nikSource}</span> : null}
+            {r.nikSource ? <span className="font-body text-[11px] text-ink-faint"> · dari {r.nikSource === "hyrox" ? "Hyrox" : clinicSourceLabel}</span> : null}
           </span>
         </Field>
       )}
@@ -980,7 +1104,7 @@ function IdentitySection({
           <span className="flex flex-col gap-0.5">
             <span>
               {r.dob.iso}
-              {r.dob.source ? <span className="font-body text-[11px] text-ink-faint"> · dari {DOB_SOURCE_LABEL[r.dob.source]}</span> : null}
+              {r.dob.source ? <span className="font-body text-[11px] text-ink-faint"> · dari {dobSourceLabel(r.dob.source, clinicSourceLabel)}</span> : null}
               {r.dob.conflicts.length > 0 && (
                 <span className="font-body text-[11px] not-italic text-amber"> · sumber lain berbeda</span>
               )}
@@ -990,11 +1114,11 @@ function IdentitySection({
             {r.dob.conflicts.length > 0 && (
               <Why>
                 <p className="text-[12px] leading-relaxed text-ink-soft">
-                  Ditampilkan satu nilai (paling andal: {DOB_SOURCE_LABEL[r.dob.source!]}), tapi sumber lain
-                  tidak sepakat — <strong>tidak dipilih diam-diam</strong>:
-                  {" "}{r.dob.conflicts.map((c) => `${c.iso} (dari ${DOB_SOURCE_LABEL[c.source]})`).join(", ")}.
-                  Prioritas: NIK (posisi digit baku, nol ambiguitas hari-bulan) → impor → klinik/Hyrox
-                  (321 baris Hyrox terbukti hari-bulan tertukar) → input staf.
+                  Ditampilkan satu nilai (paling andal: {dobSourceLabel(r.dob.source!, clinicSourceLabel)}), tapi sumber
+                  lain tidak sepakat — <strong>tidak dipilih diam-diam</strong>:
+                  {" "}{r.dob.conflicts.map((c) => `${c.iso} (dari ${dobSourceLabel(c.source, clinicSourceLabel)})`).join(", ")}.
+                  Prioritas: NIK (posisi digit baku, nol ambiguitas hari-bulan) → impor → sumber lain →
+                  input staf.
                 </p>
               </Why>
             )}
@@ -1006,9 +1130,9 @@ function IdentitySection({
       {r.gender.value && (
         <Field label="Gender">
           {genderLabel(r.gender.value)}
-          {r.gender.source ? <span className="font-body text-[11px] text-ink-faint"> · dari {GENDER_SOURCE_LABEL[r.gender.source]}</span> : null}
+          {r.gender.source ? <span className="font-body text-[11px] text-ink-faint"> · dari {genderSourceLabel(r.gender.source, clinicSourceLabel)}</span> : null}
           {r.gender.conflicts.length > 0 && (
-            <span className="font-body text-[11px] not-italic text-amber"> · sumber lain berbeda ({r.gender.conflicts.map((c) => `${genderLabel(c.value)}/${GENDER_SOURCE_LABEL[c.source]}`).join(", ")})</span>
+            <span className="font-body text-[11px] not-italic text-amber"> · sumber lain berbeda ({r.gender.conflicts.map((c) => `${genderLabel(c.value)}/${genderSourceLabel(c.source, clinicSourceLabel)}`).join(", ")})</span>
           )}
         </Field>
       )}
@@ -1023,6 +1147,11 @@ function IdentitySection({
 
       {canSeeContact && r.address && <Field label="Alamat">{r.address}</Field>}
       {canSeeContact && r.emergency && <Field label="Kontak darurat" mono>{r.emergency}</Field>}
+
+      {/* Fill form — only for an editor role, and only for the fields still empty everywhere. */}
+      {canEditDemographic && canSeeContact && (!r.dob.iso || !r.gender.value) && (
+        <DemographicFillForm customerId={customerId} offerGender={!r.gender.value} offerDob={!r.dob.iso} />
+      )}
 
       {/* Explainer + the "behind the gate" note for a role without view_contact. */}
       {canSeeContact ? (
@@ -1118,10 +1247,14 @@ function ImportSection({ importData }: { importData: ProfileImportT | null }) {
 export function ProfileDetail({
   id,
   canEditConsent,
+  canEditDemographic = false,
   previewData,
 }: {
   id: string;
   canEditConsent: boolean;
+  /** Whether this role may fill EMPTY demographic fields (profile.edit_demographic, K-32). The API
+   *  re-checks server-side; this only gates whether the fill form renders. */
+  canEditDemographic?: boolean;
   /** Dev-only fixture (app/dev/preview). When set, ProfileDetail renders it directly and skips the
    *  fetch — no Supabase, no auth, no PII. Same shape as the API so the render is realistic. */
   previewData?: ApiResult;
@@ -1325,6 +1458,9 @@ export function ProfileDetail({
               importData={data.importData}
               demographic={data.demographic}
               canSeeContact={data.canSeeContact}
+              clinicSourceLabel={data.clinicSourceLabel}
+              customerId={p.customer_id}
+              canEditDemographic={canEditDemographic && !previewData}
             />
 
             {/* Row metadata — closed by default (secondary to the person). */}

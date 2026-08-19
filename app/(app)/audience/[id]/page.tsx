@@ -38,11 +38,14 @@ export default async function ProfileDetailPage({ params }: { params: { id: stri
   // Whether this role may record a suppression from the profile. The API re-checks
   // consent.edit server-side; this only decides whether to render the entry point.
   const canEditConsent = isPermitted(role, "consent.edit");
+  // Whether this role may fill EMPTY demographic fields (profile.edit_demographic, K-32 extension).
+  // The API re-checks server-side; this only decides whether to render the fill form.
+  const canEditDemographic = isPermitted(role, "profile.edit_demographic");
 
   return (
     <>
       <CoverageNotice screen="profile" />
-      <ProfileDetail id={params.id} canEditConsent={canEditConsent} />
+      <ProfileDetail id={params.id} canEditConsent={canEditConsent} canEditDemographic={canEditDemographic} />
     </>
   );
 }

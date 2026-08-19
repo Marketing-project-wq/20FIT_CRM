@@ -443,10 +443,14 @@ klinik/event — kesalahan yang sama dengan NIK yang tampil di tab Perilaku.
   dipakai read layer profil (`enrichment`/`clinic`/`staging`/`demographic`) DAN rute segmen
   (`hasClinicalCriteria` → `canSeeMedical`). Gerbang di **server**: kolom yang tak boleh dilihat
   **tak di-SELECT**, bukan dikirim lalu disembunyikan.
-- **Sisa yang diterima (didokumentasikan):** memberi peran view_contact identitas klinik berarti
-  ia bisa tahu orang itu ada di `clinic_patients` (sinyal keanggotaan-klinik yang lunak). Diterima
-  sebagai ongkos memperlakukan NIK/alamat sebagai identitas; sinyal KUAT (jumlah kunjungan,
-  booking, patient_code) tetap `view_health` (nested `clinical`, tak dihitung untuk peran non-medis).
+- **Sisa keanggotaan-klinik — kini DIPERBAIKI (T-21, 19 Agu 2026).** Semula: memberi peran
+  view_contact identitas klinik + label "· dari klinik" membocorkan bahwa orang itu pasien klinik
+  (status kesehatan). Perbaikan: **label dikasarkan** untuk peran tanpa `view_health` → "· dari
+  sumber ekosistem" (masih jujur, tak menyebut kliniknya), di satu tempat server
+  (`clinicProvenanceLabel`, dikirim sebagai `clinicSourceLabel`; dikunci test). Sinyal KUAT (jumlah
+  kunjungan, booking, patient_code) tetap `view_health` (nested `clinical`) — blok "Klinik —
+  keterlibatan" tak pernah dirender untuk peran non-medis, jadi bentuk halaman tak berbeda antara
+  ada/tidak-ada data klinik. Provenans Hyrox/my20fit diperiksa: bukan data kesehatan, aman.
 
 **SATU tanggal lahir, bukan dua (mengganti default Sprint 3S):** untuk alat CS, dua tanggal lahir
 berdampingan memaksa staf memutuskan sendiri di tengah panggilan. Kini ditampilkan **satu nilai**,
@@ -466,3 +470,45 @@ peran view_contact sama sekali, tarik identitas klinik kembali ke `view_health` 
 staging tetap `view_contact`) — ubah `fetchProfileClinic` agar `sensitive` butuh `canSeeMedical`.
 Bila kelak NIK perlu gerbang tersendiri (`profile.view_nik`), tambah action baru; jangan gabungkan
 dengan telepon/email.
+
+## K-32 · `profile.edit_demographic` — jalur isi demografi, PERLUASAN DI LUAR PRD 17.2 (menunggu Jeff) (Sprint NIK-3)
+**Status:** aksi + rute + form **dibangun dan berlaku** di kode; **penetapan RBAC-nya menunggu
+persetujuan Jeff**, sama seperti matriks 17.2 aslinya menunggu persetujuannya (10 Agu 2026).
+
+**Latar + koreksi kesalahan (jujur):** matriks RBAC proyek ini sengaja disamakan PERSIS dengan
+**PRD 17.2** (15 aksi) dan dikunci oleh `roles.test.ts`. Saat menyetujui aksi tulis demografi, versi
+sebelumnya tak menyebut biayanya — padahal beberapa sprint lalu usulan aksi NIK tersendiri justru
+ditolak dengan alasan itu. `profile.edit_demographic` **bukan** salah satu dari 15 aksi PRD.
+Menambahkannya ke daftar PRD akan merusak properti "matriks mencerminkan PRD".
+
+**Keputusan:** aksi dicatat sebagai **perluasan eksplisit**, TIDAK diselundupkan ke PRD.
+- `lib/auth/roles.ts`: `PRD_ACTIONS` (15, = PRD 17.2) DIPISAH dari `EXTENSION_ACTIONS`
+  (`["profile.edit_demographic"]`). `ACTIONS = PRD_ACTIONS ∪ EXTENSION_ACTIONS`.
+- `roles.test.ts`: uji paritas PRD hanya beriterasi atas `PRD_ACTIONS` terhadap salinan-mesin PRD;
+  uji terpisah memastikan `EXTENSION_ACTIONS` **disjoint** dari PRD (tak ada aksi non-PRD
+  diselundupkan), dan bahwa `profile.edit_demographic` **tidak** ada di salinan PRD.
+- Sel matriks tiap peran diberi komentar "EXTENSION (not PRD 17.2)".
+
+**Peran yang berhak + alasan:** `super_admin`, `crm_manager`, `crm_operator`, `data_steward` =
+**allow**; `unit_manager` = own_unit (fail-closed sampai tabel scope ada); `analyst` = deny.
+`crm_operator` **disertakan** karena ia staf yang sedang menelepon dan paling mungkin mendapat
+tanggal lahir dari pelanggan — mengecualikannya membuat fitur jarang terpakai; dan tulisnya
+**fill-empty-only + teraudit** (kewenangan-tulis terendah, tak bisa menimpa). Ketegangan "menulis >
+membaca" diakui: bila Jeff memilih pola `consent.edit` yang lebih ketat (steward + manajer saja,
+tanpa operator), itu perubahan **satu sel** — `crm_operator` `allow → deny`.
+
+**Jalur tulis (fill-empty-only, dua lapis):**
+1. Rute `POST /api/audience/[id]/demographic` menyelesaikan nilai field di **SEMUA sumber** (NIK /
+   staging / klinik / isian staf sebelumnya) dan **menolak (409)** menulis field yang sudah terisi.
+2. DB: `crm_upsert_profile_demographic` (K-14) sendiri fill-empty-only + atomik + menulis audit
+   `profile.demographic_updated`-nya sendiri. Rute **tidak** menulis audit kedua. `*_source =
+   'staff_entry'`. `master_customer` **tak disentuh**.
+
+**Verifikasi:** rute unauth → **307 ke /login** (middleware, fail-closed — tak pernah mencapai
+handler, tak ada tulis). Gerbang peran dikunci `roles.test.ts` (tak ada sesi non-super_admin untuk
+diuji live). Jalur tulis diverifikasi lewat **transaksi RPC yang di-rollback**: RPC jalan tanpa
+error lalu di-abort; sesudahnya `crm_profile_demographic` = **0 baris**, audit demografi = **0** —
+nol baris uji tertinggal di produksi.
+
+**Syarat pembalikan:** ini menunggu Jeff. Bila ditolak, hapus `EXTENSION_ACTIONS` + sel matriks +
+rute + form (aksi tak dipakai di tempat lain). Bila disetujui, catat tanggal persetujuan di sini.

@@ -49,10 +49,11 @@ export function isRole(value: unknown): value is Role {
 }
 
 /**
- * Actions — one per row of PRD 17.2, with export/send split per threshold. Renaming
- * or removing a member here is a PRD-level change; keep it in lockstep with the doc.
+ * PRD 17.2 actions — one per row of the PRD table, with export/send split per threshold. This
+ * list MUST equal the PRD exactly (approved Jeff 2026-08-10); renaming or removing a member is a
+ * PRD-level change. roles.test.ts locks these cells against a machine copy of the PRD table.
  */
-export const ACTIONS = [
+export const PRD_ACTIONS = [
   "profile.view_list", // View profile list
   "profile.view_contact", // View contact details (phone/email in the clear)
   "profile.view_health", // View health flags
@@ -69,6 +70,22 @@ export const ACTIONS = [
   "audit.view", // View audit log
   "killswitch", // Kill switch
 ] as const;
+
+/**
+ * EXTENSIONS beyond PRD 17.2 — actions the PRD did not anticipate. Kept SEPARATE from
+ * PRD_ACTIONS on purpose: the "matrix mirrors the PRD" property that Sprint 3A exists to enforce
+ * stays honest only if we never quietly smuggle a non-PRD action into the PRD list. Each entry
+ * here MUST be justified + dated, and recorded in docs/riwayat/KEPUTUSAN.md as pending Jeff's
+ * approval, exactly like the original matrix was.
+ *
+ *   profile.edit_demographic — fill-empty-only demographic curation (Sprint NIK-3, 19 Agu 2026,
+ *     K-32). NOT in PRD 17.2. Writing customer data is a larger authority than reading it, but
+ *     this write CANNOT overwrite (fill-empty-only, K-14) and every write is audited as
+ *     staff_entry — so it is the lowest-authority write path. Pending Jeff approval.
+ */
+export const EXTENSION_ACTIONS = ["profile.edit_demographic"] as const;
+
+export const ACTIONS = [...PRD_ACTIONS, ...EXTENSION_ACTIONS] as const;
 
 export type Action = (typeof ACTIONS)[number];
 
@@ -89,6 +106,7 @@ export type Grant =
 // Row order and cell values mirror the PRD table exactly. ✓ = allow, — = deny.
 const MATRIX: Record<Role, Record<Action, Grant>> = {
   super_admin: {
+    "profile.edit_demographic": "allow", // EXTENSION (not PRD 17.2) — see EXTENSION_ACTIONS / K-32
     "profile.view_list": "allow",
     "profile.view_contact": "allow",
     "profile.view_health": "allow",
@@ -106,6 +124,7 @@ const MATRIX: Record<Role, Record<Action, Grant>> = {
     killswitch: "allow",
   },
   crm_manager: {
+    "profile.edit_demographic": "allow", // EXTENSION (not PRD 17.2) — see EXTENSION_ACTIONS / K-32
     "profile.view_list": "allow",
     "profile.view_contact": "allow",
     "profile.view_health": "allow",
@@ -123,6 +142,10 @@ const MATRIX: Record<Role, Record<Action, Grant>> = {
     killswitch: "allow",
   },
   crm_operator: {
+    // EXTENSION (not PRD 17.2) — see EXTENSION_ACTIONS / K-32. GRANTED: crm_operator is the staff
+    // on the call who actually obtains a birth date from the customer; excluding them makes the
+    // feature rarely usable, and the write is fill-empty-only + audited (lowest-authority write).
+    "profile.edit_demographic": "allow",
     "profile.view_list": "allow",
     "profile.view_contact": "allow",
     "profile.view_health": "deny",
@@ -142,6 +165,7 @@ const MATRIX: Record<Role, Record<Action, Grant>> = {
   unit_manager: {
     // "own unit" everywhere the PRD grants scoped access. scopeRequired -> until a
     // unit scope exists, resolveGrant turns every own_unit into needs_scope = DENY.
+    "profile.edit_demographic": "own_unit", // EXTENSION (not PRD 17.2) — fail-closed until scope exists
     "profile.view_list": "own_unit",
     "profile.view_contact": "own_unit",
     "profile.view_health": "deny",
@@ -159,6 +183,7 @@ const MATRIX: Record<Role, Record<Action, Grant>> = {
     killswitch: "deny",
   },
   analyst: {
+    "profile.edit_demographic": "deny", // EXTENSION (not PRD 17.2) — analyst has no contact/write access
     "profile.view_list": "masked", // sees the list; phone/email masked server-side
     "profile.view_contact": "deny",
     "profile.view_health": "deny",
@@ -176,6 +201,7 @@ const MATRIX: Record<Role, Record<Action, Grant>> = {
     killswitch: "deny",
   },
   data_steward: {
+    "profile.edit_demographic": "allow", // EXTENSION (not PRD 17.2) — the data-curation role; NIK/DOB dedup
     "profile.view_list": "allow",
     "profile.view_contact": "allow",
     "profile.view_health": "deny",

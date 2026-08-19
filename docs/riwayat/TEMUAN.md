@@ -341,3 +341,40 @@ ledger-bersama). Sebelum sprint fitur berikutnya menyentuh `crm_customer_mirror`
 tidak makin menyimpang — dua salinan yang menyimpang adalah pola yang sudah menggigit proyek ini
 (kanon telepon, daftar retensi). Remediasi milik manusia (merge/koordinasi antar-sesi), bukan
 sesuatu yang diperbaiki dari audit ini.
+
+---
+
+### T-21 · Label "· dari klinik" membocorkan keanggotaan klinik ke peran `view_contact` — DIPERBAIKI (kasarkan derajat), 19 Agu 2026
+**Latar:** Setelah K-31, peran ber-`view_contact` (mis. `crm_operator`, `data_steward`) melihat
+NIK/alamat yang berasal dari `clinic_patients`, dengan label provenans "· dari klinik". **Nilainya
+boleh** mereka lihat (identitas). **Labelnya** yang bocor: ia memberi tahu orang ini pasien klinik —
+status kesehatan yang justru dijaga `profile.view_health`. Ini juga membuat sistem tak konsisten
+dengan dirinya sendiri: filter segmen menggerbangi kriteria "pasien klinik" di `view_health` dengan
+alasan yang sama (`hasClinicalCriteria`), sementara layar profil membocorkannya lewat pintu lain.
+
+**Perbaikan:** **kasarkan derajat label**, jangan hilangkan provenansnya. Untuk peran tanpa
+`view_health`, provenans identitas ber-sumber-klinik menjadi **"· dari sumber ekosistem"** (benar —
+memang dari sumber ekosistem — tapi tak menyebut kliniknya). Aturan "selalu tandai asalnya" tetap
+berlaku; yang berubah hanya seberapa spesifik, untuk siapa.
+- **Satu tempat, di server:** `lib/crm/demographic-pick.ts` `clinicProvenanceLabel(canSeeMedical)`;
+  rute `/api/audience/[id]` menghitung dari `canViewHealth` dan mengirim string `clinicSourceLabel`.
+  Klien hanya me-render string itu — tak ada "klinik" yang dikirim ke peran non-`view_health`, jadi
+  tak bisa dipulihkan di klien (pengasaran di server, bukan sembunyi di klien). Dipakai untuk
+  provenans NIK, tanggal lahir, dan gender.
+- **Test:** `demographic-pick.test.ts` mengunci `clinicProvenanceLabel(false) !== "klinik"` (dan
+  `=== "sumber ekosistem"`), `clinicProvenanceLabel(true) === "klinik"`.
+
+**Bentuk halaman (diperiksa):** blok **"Klinik — keterlibatan"** (jumlah kunjungan, kode pasien,
+booking) sudah sepenuhnya digerbangi `view_health` — untuk peran non-`view_health` ia **tak pernah
+dirender** (`ClinicLines` mengembalikan null saat `clinical` null; grup klinik tak "live"; baris
+"tidak tersambung" pun menjatuhkan klinik untuk mereka). Jadi **tak ada perbedaan bentuk** antara
+profil yang punya data klinik dan yang tidak, untuk peran tanpa `view_health` — bagian klinik yang
+muncul-sama-sekali bukan sinyal.
+
+**Sumber lain (diperiksa, aman):** provenans Hyrox ("Hyrox") dan my20fit ("my20fit") bukan data
+kesehatan — partisipasi event & keanggotaan; keduanya tak mengungkap fakta yang digerbangi. Golongan
+darah (satu-satunya medis dari baris Hyrox) hanya tampil untuk `view_health`. Jadi hanya label klinik
+yang perlu dikasarkan.
+
+**Konsekuensi tercatat di K-31** (sisa "sinyal-lunak keanggotaan klinik" sprint sebelumnya kini punya
+jawaban). Remediasi = kode ini; tak ada perubahan data.

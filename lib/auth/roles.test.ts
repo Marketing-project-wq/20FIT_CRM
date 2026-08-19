@@ -9,8 +9,9 @@ import {
   canSeeNav,
   ROLES,
   ACTIONS,
+  PRD_ACTIONS,
+  EXTENSION_ACTIONS,
   type Role,
-  type Action,
   type Grant,
 } from "./roles";
 
@@ -18,7 +19,7 @@ import {
  * This test IS the PRD 17.2 matrix in machine-checkable form. If a cell changes here
  * without a corresponding PRD change, that is the bug. Row order matches the PRD table.
  */
-const PRD_17_2: Record<Action, Record<Role, Grant>> = {
+const PRD_17_2: Record<(typeof PRD_ACTIONS)[number], Record<Role, Grant>> = {
   "profile.view_list": {
     super_admin: "allow", crm_manager: "allow", crm_operator: "allow",
     unit_manager: "own_unit", analyst: "masked", data_steward: "allow",
@@ -82,20 +83,46 @@ const PRD_17_2: Record<Action, Record<Role, Grant>> = {
 };
 
 describe("PRD 17.2 permission matrix", () => {
-  it("has an entry for every action × role (no gaps)", () => {
-    expect(Object.keys(PRD_17_2).sort()).toEqual([...ACTIONS].sort());
-    for (const action of ACTIONS) {
+  it("PRD_17_2 machine copy covers exactly the PRD actions × every role (no gaps)", () => {
+    expect(Object.keys(PRD_17_2).sort()).toEqual([...PRD_ACTIONS].sort());
+    for (const action of PRD_ACTIONS) {
       expect(Object.keys(PRD_17_2[action]).sort()).toEqual([...ROLES].sort());
     }
   });
 
-  for (const action of ACTIONS) {
+  // The live MATRIX (grantFor) MUST equal the PRD copy for every PRD action × role.
+  for (const action of PRD_ACTIONS) {
     for (const role of ROLES) {
       it(`${role} / ${action} = ${PRD_17_2[action][role]}`, () => {
         expect(grantFor(role, action)).toBe(PRD_17_2[action][role]);
       });
     }
   }
+});
+
+describe("extensions beyond PRD 17.2 (kept explicitly separate, K-32)", () => {
+  it("EXTENSION_ACTIONS is disjoint from PRD_ACTIONS — no non-PRD action is smuggled into the PRD list", () => {
+    const prd = new Set<string>(PRD_ACTIONS);
+    for (const e of EXTENSION_ACTIONS) expect(prd.has(e)).toBe(false);
+    // ACTIONS is exactly PRD ∪ extensions.
+    expect([...ACTIONS].sort()).toEqual([...PRD_ACTIONS, ...EXTENSION_ACTIONS].sort());
+  });
+
+  it("profile.edit_demographic is the only current extension, and it is NOT in the PRD copy", () => {
+    expect([...EXTENSION_ACTIONS]).toEqual(["profile.edit_demographic"]);
+    expect(Object.prototype.hasOwnProperty.call(PRD_17_2, "profile.edit_demographic")).toBe(false);
+  });
+
+  it("profile.edit_demographic grants: managers + operator + steward may edit; analyst may not; unit_manager fail-closed", () => {
+    expect(grantFor("super_admin", "profile.edit_demographic")).toBe("allow");
+    expect(grantFor("crm_manager", "profile.edit_demographic")).toBe("allow");
+    expect(grantFor("crm_operator", "profile.edit_demographic")).toBe("allow"); // the phone-staff use case
+    expect(grantFor("data_steward", "profile.edit_demographic")).toBe("allow");
+    expect(grantFor("analyst", "profile.edit_demographic")).toBe("deny"); // no contact/write access
+    // unit_manager own_unit -> needs_scope (denied) until a scope table exists.
+    expect(resolveGrant("unit_manager", "profile.edit_demographic")).toBe("needs_scope");
+    expect(isPermitted("unit_manager", "profile.edit_demographic")).toBe(false);
+  });
 });
 
 describe("fail-closed resolution", () => {

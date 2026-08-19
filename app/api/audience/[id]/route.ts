@@ -16,6 +16,7 @@ import { fetchProfileMultiSource, type ProfileMultiSource } from "@/lib/crm/mult
 import { fetchProfileClinic, type ProfileClinic } from "@/lib/crm/clinic-source";
 import { fetchProfileImport, type ProfileImport } from "@/lib/crm/staging";
 import { fetchProfileDemographic, type ProfileDemographic } from "@/lib/crm/demographic-read";
+import { clinicProvenanceLabel } from "@/lib/crm/demographic-pick";
 import { fetchProfileMirrorPresence, fetchMirrorMeta, type MirrorPresence } from "@/lib/crm/mirror";
 import { logApiFailure } from "@/lib/crm/failure-log";
 
@@ -213,8 +214,12 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
     );
   }
 
+  // Provenance label for clinic-sourced identity — coarsened server-side for a non-view_health
+  // caller so the "· dari klinik" label cannot leak clinic-membership (health status). T-21.
+  const clinicSourceLabel = clinicProvenanceLabel(canViewHealth);
+
   return NextResponse.json(
-    { profile, canViewHealth, canSeeContact, engagement, enrichment, multiSource, clinic, importData, demographic, mirror, mirrorRefreshedAt },
+    { profile, canViewHealth, canSeeContact, engagement, enrichment, multiSource, clinic, importData, demographic, clinicSourceLabel, mirror, mirrorRefreshedAt },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

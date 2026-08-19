@@ -28,6 +28,34 @@
  * city from master/staging is DOMICILE — different fields, kept separate with their own labels.
  */
 
+/**
+ * Provenance label for a CLINIC-sourced identity field, COARSENED by the caller's medical gate
+ * (T-21, K-31). A role without view_health may see the identity VALUE (K-31) but must not learn it
+ * came from the clinic — that the person is a clinic patient is health status, gated at view_health
+ * (the same fact the segment filter gates via hasClinicalCriteria). So the label is degraded, not
+ * removed: still honest ("from an ecosystem source"), just not clinic-specific. The DECISION is
+ * server-side — the route computes this from canViewHealth and sends the string; the client only
+ * renders it, so a client without the gate can never recover "klinik".
+ */
+export function clinicProvenanceLabel(canSeeMedical: boolean): string {
+  return canSeeMedical ? "klinik" : "sumber ekosistem";
+}
+
+export type GenderInput = "male" | "female";
+
+/** The demographic write path accepts the CODED gender only (male/female), not free text. Pure. */
+export function isGender(v: unknown): v is GenderInput {
+  return v === "male" || v === "female";
+}
+
+/** yyyy-mm-dd that is a REAL calendar date (leap years respected, parsed as UTC midnight). Pure. */
+export function isIsoDate(s: unknown): s is string {
+  if (typeof s !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const [y, m, d] = s.split("-").map((x) => parseInt(x, 10));
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() + 1 === m && dt.getUTCDate() === d;
+}
+
 export type DobSource = "nik" | "staging" | "clinic" | "hyrox" | "staff";
 
 /** Canonical birth-date priority. Do not reorder — see the reasoning in the file header. */

@@ -3,6 +3,7 @@ import {
   pickBirthDate,
   pickGender,
   normalizeGender,
+  clinicProvenanceLabel,
   DOB_PRIORITY,
   GENDER_PRIORITY,
 } from "./demographic-pick";
@@ -90,6 +91,18 @@ describe("pickGender — priority chain", () => {
   });
   it("canonical order is nik → clinic → staff", () => {
     expect(GENDER_PRIORITY).toEqual(["nik", "clinic", "staff"]);
+  });
+});
+
+describe("clinicProvenanceLabel (T-21 — coarsen clinic membership for non-health roles)", () => {
+  it("a view_health caller sees the precise 'klinik' label", () => {
+    expect(clinicProvenanceLabel(true)).toBe("klinik");
+  });
+  it("a caller WITHOUT view_health never gets 'klinik' — only the coarse ecosystem label", () => {
+    // This is the whole T-21 fix: the string "klinik" must not be produced for a non-health role.
+    expect(clinicProvenanceLabel(false)).toBe("sumber ekosistem");
+    expect(clinicProvenanceLabel(false)).not.toBe("klinik");
+    expect(clinicProvenanceLabel(false).toLowerCase()).not.toContain("klinik");
   });
 });
 
