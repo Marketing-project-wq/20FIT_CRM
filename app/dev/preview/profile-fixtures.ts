@@ -125,7 +125,7 @@ const CLINIC: ApiResult = {
     keyUsed: "phone",
     patientCode: "PX-2291",
     sensitive: {
-      nik: "3174xxxxxxxx0007",
+      nik: "3174011403880007",
       dateOfBirth: "1988-03-14T00:00:00.000Z",
       gender: "Laki-laki",
       address: "Jakarta Selatan",
@@ -170,7 +170,7 @@ const DOB_DIFF: ApiResult = {
       matched: true,
       rows: [{ eventName: "Hyrox Jakarta 2026", kategori: "Individual", namaTim: null, posisi: null, registeredAt: "2026-05-15T00:00:00.000Z" }],
       hasSensitive: true,
-      sensitive: { nik: "3273xxxxxxxx0512", tglLahir: "05/12/1990", golDarah: "O", kontakDarurat: "Andi", noKontakDarurat: "628150000004" },
+      sensitive: { nik: "3273015205900512", tglLahir: "05/12/1990", golDarah: "O", kontakDarurat: "Andi", noKontakDarurat: "628150000004" },
       nikDerived: { valid: true, gender: "female", birthDate: "1990-05-12", yearOutOfRange: false, provinceCode: "32", provinceName: "Jawa Barat", regencyCode: "3273", districtCode: "327301" },
     },
     my20fit: { matched: false, isPlusMember: null, onboardingCompleted: null, createdAt: null },

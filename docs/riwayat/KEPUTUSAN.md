@@ -389,3 +389,47 @@ job yang gagal diam justru muncul sebagai peringatan basi 24 jam itu, dan `cron.
 non-concurrent terasa), atau (b) cermin diganti mekanisme lain (incremental, trigger), **cabut jadwal
 ini** dan tinjau ulang. Sampai itu, satu refresh/hari di jam sepi adalah biaya nihil untuk snapshot yang
 tetap dalam ≤24 jam dari sumber hidup.
+
+## K-31 · NIK adalah identitas (Demografi), tampil penuh; usulan gerbang `view_contact` MENUNGGU konfirmasi (Sprint NIK)
+**Status:** dua bagian. Bagian yang **sudah berlaku** dicatat final di sini; bagian **gerbang**
+adalah **USULAN — belum diterapkan** sampai pemilik produk menjawab (lihat
+`docs/RENCANA-gerbang-nik.md`).
+
+**Latar:** NIK dan turunannya (tanggal lahir, gender, provinsi KTP) + alamat + kontak darurat
+tampil di tab **Perilaku** karena blok dikelompokkan per **tabel sumber** (cf_hyrox_participants,
+clinic_patients). Itu salah: NIK adalah **identitas** ("siapa orang ini"), bukan perilaku. Selain
+itu RFM + program dari `staging_20fit_data` tampil bersama demografi padahal itu **partisipasi**
+(perilaku).
+
+**Keputusan yang SUDAH berlaku sprint ini (final):**
+1. **Kelompokkan menurut MAKNA, bukan tabel sumber.** NIK + turunan + alamat + kontak darurat
+   pindah ke **Demografi** (`IdentitySection`). RFM + program pindah ke **Perilaku**
+   (`ImportSection`). Label sumber per-field tetap ("· dari Hyrox / klinik"). Partisipasi event
+   Hyrox + kunjungan klinik + booking kelas tetap perilaku di Perilaku.
+2. **NIK tampil PENUH, tanpa langkah buka/reveal** (keputusan pemilik produk — setiap orang sudah
+   menyerahkan NIK untuk acara/layanan; staf butuh untuk verifikasi identitas).
+3. **Nilai NIK TIDAK pernah** masuk `metadata` audit atau log (audit append-only + dipangkas
+   terjadwal → menaruh identitas di sana menyalinnya ke tempat yang tak bisa dibersihkan;
+   **alasannya BUKAN consent**). Audit tetap satu `profile.viewed` per buka, dengan **jenis**
+   field (`sensitive_fields`), bukan nilai.
+4. **NIK tidak pernah** di ekspor CSV (`EXPORT_FORBIDDEN_COLUMNS`), dan **tidak pernah** jadi
+   kunci pencocokan profil.
+5. **Data klinis tetap tersamar/digerbangi** — pembukaan masker **khusus NIK**. **Golongan
+   darah** (medis) tetap `view_health`.
+
+**Kualitas NIK dipertahankan (final):** NIK yang panjangnya bukan 16 digit **tidak diurai**
+(ditandai, tidak dipaksakan-sebagian); hari-bulan ambigu (day & month ≤12) **ditandai ambigu,
+tidak ditebak**; saat DOB-dari-NIK dan DOB-staging berbeda, **keduanya ditampilkan beserta
+asalnya**; provinsi dari NIK = **tempat KTP diterbitkan, bukan domisili** (label tak boleh jadi
+"alamat").
+
+**USULAN yang MENUNGGU konfirmasi (belum dikerjakan):** pindahkan gerbang NIK/turunan/alamat/
+kontak-darurat dari `profile.view_health` ke `profile.view_contact` (gerbang yang sama dengan
+telepon/email tanpa masker) → `crm_operator`, `data_steward`, dan `unit_manager` ber-scope jadi
+bisa melihat NIK; `analyst` tetap tidak. Golongan darah + klinis **tetap** `view_health`. Sampai
+dijawab, **gerbang tak berubah** — NIK masih di balik `view_health`. Usulan lengkap +
+siapa-lihat-apa: `docs/RENCANA-gerbang-nik.md`.
+
+**Konsistensi dengan `hasClinicalCriteria`:** filter segmen menggerbangi hanya kriteria klinis di
+`view_health`; NIK bukan kriteria segmen dan tak pernah jadi kunci cocok, jadi gerbang profil dan
+gerbang filter segmen **tidak diverge** untuk data klinis apa pun jawaban usulan gerbang.
