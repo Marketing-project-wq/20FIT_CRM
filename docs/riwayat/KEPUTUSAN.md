@@ -362,3 +362,30 @@ dicatat adalah *bahwa* sekumpulan baris diambil dan berapa banyak, bukan *siapa*
 jalur yang benar adalah **retensi/pemangkasan kategori operasional** (K-sudah-ada soal retensi),
 bukan menggabungkan peristiwa di titik tulis. Pangkas yang lama; jangan pernah gagal mencatat
 yang baru.
+
+## K-30 · Refresh cermin dijadwalkan (pg_cron harian 03:00 WIB) — larangan "nol jadwal otomatis" dicabut KHUSUS untuk cermin (Migrasi 19)
+**Latar:** Sejak Sprint 3A ada larangan keras "nol penjadwalan otomatis" — lahir dari kehati-hatian
+terhadap operasi yang berjalan diam-diam tanpa pengawasan (purge audit yang menghapus baris, refresh
+yang menutupi kebasian). Larangan itu tetap benar untuk operasi yang **mengubah atau menghapus data**.
+Tapi `crm_customer_mirror` adalah snapshot refresh-manual; sumbernya tumbuh harian, dan tanpa jadwal
+snapshot itu terus tertinggal sampai seseorang ingat menyegarkannya. Pemilik produk menyetujui jadwal.
+
+**Keputusan:** larangan penjadwalan otomatis **dicabut KHUSUS untuk `crm_refresh_customer_mirror`**.
+Migrasi 19 memasang job pg_cron `crm-refresh-customer-mirror`, `0 20 * * *` (= **03:00 WIB**, karena
+DB di UTC dan WIB = UTC+7; `0 3 * * *` justru jadi 10:00 WIB — jam sibuk). Job memanggil fungsi refresh
+**yang sudah ada** (satu aturan, satu tempat), yang menyegarkan matview + memperbarui `crm_mirror_meta`
+secara atomik.
+
+**Yang TIDAK ikut dicabut:** **purge audit tetap TIDAK dijadwalkan** — ia menghapus baris audit, kelas
+risiko yang berbeda; penjadwalannya tetap keputusan manusia yang belum diambil. Pencabutan ini sempit,
+untuk satu fungsi read-only yang hanya menghitung ulang.
+
+**Yang TIDAK berubah:** refresh manual tetap ada; `refreshed_at` tetap tampil; **ambang basi 24 jam
+tetap** (K-tak-berkode di komponen dashboard). Cron **memperkecil peluang** basi, tidak menjaminnya —
+job yang gagal diam justru muncul sebagai peringatan basi 24 jam itu, dan `cron.job_run_details`
+(status='failed') adalah jejak keduanya.
+
+**Syarat pembalikan:** bila kelak (a) refresh jadi mahal/mengganggu (mis. matview tumbuh besar, lock
+non-concurrent terasa), atau (b) cermin diganti mekanisme lain (incremental, trigger), **cabut jadwal
+ini** dan tinjau ulang. Sampai itu, satu refresh/hari di jam sepi adalah biaya nihil untuk snapshot yang
+tetap dalam ≤24 jam dari sumber hidup.

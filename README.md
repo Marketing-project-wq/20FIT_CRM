@@ -69,10 +69,13 @@ Full spec: `PRD — 20FIT Audience Data & CRM System v1.1`.
 > | 15 | `…20260813091255_create_crm_customer_mirror` | `20260813091255` | `create_crm_customer_mirror` |
 > | 16 | *(no file on this branch — see below)* | `20260814040554` | `add_is_fitco_member_matched_to_crm_customer_mirror` |
 > | 17 | *(no file on this branch — see below)* | `20260814055353` | `crm_norm_phone_guard_empty_nsn` |
+> | 18 | `…20260819061103_schedule_crm_mirror_refresh` | `20260819061103` | `schedule_crm_mirror_refresh` (**19th** ledger entry — pg_cron daily mirror refresh, K-30) |
 >
-> **Count reconciliation (re-checked against `schema_migrations` on 2026-08-19): 15 CRM
-> migration files on THIS branch (`claude/lanjutkan-pekerjaan-mno804`) → 18 CRM ledger
-> entries in the DB.** The gap is no longer only the migration-9 double-apply:
+> **Count reconciliation (re-checked against `schema_migrations` on 2026-08-19): 16 CRM
+> migration files on THIS branch (`claude/lanjutkan-pekerjaan-mno804`) → 19 CRM ledger
+> entries in the DB.** (Table row 18 is the **19th** ledger entry — the migration-9 double
+> apply keeps every row number one behind the ledger-entry count from row 9 on.) The gap
+> between files and ledger entries is no longer only the migration-9 double-apply:
 >
 > - **+1** — migration **9** applied **twice** under the same name (Sprint 3H). The first
 >   apply left Supabase's default `EXECUTE` grant to `anon`/`authenticated` in place (a

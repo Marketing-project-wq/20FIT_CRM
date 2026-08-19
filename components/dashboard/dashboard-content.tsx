@@ -56,13 +56,15 @@ function srcLabel(t: ReturnType<typeof useI18n>["t"], key: string): string {
  *     as a number that looks like it is still counting up.
  * And the K-08 rule stands: `0` = measured zero, `—` = no source. Never swapped.
  */
-export function DashboardContent() {
+export function DashboardContent({ previewStats }: { previewStats?: DashboardStats } = {}) {
   const { lang, t } = useI18n();
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [state, setState] = useState<"loading" | "ready" | "denied" | "error">("loading");
+  const [stats, setStats] = useState<DashboardStats | null>(previewStats ?? null);
+  const [state, setState] = useState<"loading" | "ready" | "denied" | "error">(previewStats ? "ready" : "loading");
   const [showAllEvents, setShowAllEvents] = useState(false);
 
   useEffect(() => {
+    // Dev preview (app/dev/preview): render fixture data with NO fetch — /dev/* is 404 in prod.
+    if (previewStats) return;
     const ac = new AbortController();
     (async () => {
       try {
@@ -77,7 +79,7 @@ export function DashboardContent() {
       }
     })();
     return () => ac.abort();
-  }, []);
+  }, [previewStats]);
 
   const todayLabel = new Intl.DateTimeFormat(lang === "en" ? "en-US" : "id-ID", {
     weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Jakarta",
