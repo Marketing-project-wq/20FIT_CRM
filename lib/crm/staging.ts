@@ -137,7 +137,7 @@ const NO_EMAIL: ProfileImport = {
 export async function fetchProfileImport(
   admin: SupabaseClient,
   customerId: string,
-  opts: { canViewHealth: boolean; today?: Date },
+  opts: { canSeeMedical: boolean; today?: Date },
 ): Promise<ProfileImport> {
   const today = opts.today ?? new Date();
 
@@ -151,10 +151,11 @@ export async function fetchProfileImport(
   const email = normalizeEmail((prof as { email_normalized: string | null } | null)?.email_normalized ?? null);
   if (!email) return NO_EMAIL;
 
-  // Which program columns to read: clinical ones only for a view_health caller (server-side
-  // omission, not client masking — being a clinic patient infers health status).
-  const visiblePrograms: ProgramDef[] = STAGING_PROGRAMS.filter((p) => opts.canViewHealth || !p.clinical);
-  const clinicalWithheld = !opts.canViewHealth && STAGING_PROGRAMS.some((p) => p.clinical);
+  // Which program columns to read: clinical ones only for a canSeeMedical caller (server-side
+  // omission, not client masking — being a clinic patient infers health status). DOB/city/RFM are
+  // NOT medical and are always read (they ride the profile's identity/behaviour gates elsewhere).
+  const visiblePrograms: ProgramDef[] = STAGING_PROGRAMS.filter((p) => opts.canSeeMedical || !p.clinical);
+  const clinicalWithheld = !opts.canSeeMedical && STAGING_PROGRAMS.some((p) => p.clinical);
 
   const selectCols = quoteCols([
     STAGING_COLUMNS.city,

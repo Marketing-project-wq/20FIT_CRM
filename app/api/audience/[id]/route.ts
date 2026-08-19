@@ -5,7 +5,8 @@ import { getCurrentUserRole } from "@/lib/auth/current-role";
 import {
   canViewProfileList,
   shouldMaskContact,
-  isPermitted,
+  canSeeContactPII,
+  canSeeMedical,
   resolveGrant,
 } from "@/lib/auth/roles";
 import { fetchProfileById, isUuid } from "@/lib/crm/audience";
@@ -14,6 +15,7 @@ import { fetchProfileEnrichment, type ProfileEnrichment } from "@/lib/crm/enrich
 import { fetchProfileMultiSource, type ProfileMultiSource } from "@/lib/crm/multisource";
 import { fetchProfileClinic, type ProfileClinic } from "@/lib/crm/clinic-source";
 import { fetchProfileImport, type ProfileImport } from "@/lib/crm/staging";
+import { fetchProfileDemographic, type ProfileDemographic } from "@/lib/crm/demographic-read";
 import { fetchProfileMirrorPresence, fetchMirrorMeta, type MirrorPresence } from "@/lib/crm/mirror";
 import { logApiFailure } from "@/lib/crm/failure-log";
 
@@ -79,9 +81,11 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
-  // Health section gate (super_admin, crm_manager). Sprint 3S: a view_health caller sees
-  // sensitive Hyrox fields UNMASKED — the gate is the RBAC role, not a per-field toggle.
-  const canViewHealth = isPermitted(role, "profile.view_health");
+  // The two sensitive-field gates, from the single source (roles.ts, K-31): identity (NIK/DOB/
+  // gender/address/emergency) rides `profile.view_contact`; medical (blood type, clinical
+  // involvement) rides `profile.view_health`. Everything downstream derives from these two.
+  const canSeeContact = canSeeContactPII(role);
+  const canViewHealth = canSeeMedical(role);
 
   // Ecosystem touchpoints (customer_engagement), keyed by customer_id. NON-fatal and
   // NON-audited: the mandatory profile.viewed row below accounts for opening this profile —
@@ -99,7 +103,7 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
   // ONLY for a view_health caller; omitted entirely for any other role.
   let enrichment: ProfileEnrichment | null = null;
   try {
-    enrichment = await fetchProfileEnrichment(admin, profile.customer_id, { canViewHealth });
+    enrichment = await fetchProfileEnrichment(admin, profile.customer_id, { canSeeContact, canSeeMedical: canViewHealth });
   } catch (e) {
     logApiFailure("/audience/[id]", "enrichment_query_failed", { code: (e as { code?: string })?.code });
     enrichment = null;
@@ -120,7 +124,7 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
   // Matched phone-first (12 vs 106), chained via patient_id, counts only (no clinical content).
   let clinic: ProfileClinic | null = null;
   try {
-    clinic = await fetchProfileClinic(admin, profile.customer_id, { canViewHealth });
+    clinic = await fetchProfileClinic(admin, profile.customer_id, { canSeeContact, canSeeMedical: canViewHealth });
   } catch (e) {
     logApiFailure("/audience/[id]", "clinic_query_failed", { code: (e as { code?: string })?.code });
     clinic = null;
@@ -131,10 +135,20 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
   // server-omitted for non-view_health callers (being a clinic patient infers health status).
   let importData: ProfileImport | null = null;
   try {
-    importData = await fetchProfileImport(admin, profile.customer_id, { canViewHealth });
+    importData = await fetchProfileImport(admin, profile.customer_id, { canSeeMedical: canViewHealth });
   } catch (e) {
     logApiFailure("/audience/[id]", "staging_query_failed", { code: (e as { code?: string })?.code });
     importData = null;
+  }
+
+  // Staff-entered demographic (crm_profile_demographic) — the chain's last-resort DOB/gender slot.
+  // Identity, so fetched only for a canSeeContact caller. Non-fatal.
+  let demographic: ProfileDemographic | null = null;
+  try {
+    demographic = await fetchProfileDemographic(admin, profile.customer_id, { canSeeContact });
+  } catch (e) {
+    logApiFailure("/audience/[id]", "demographic_query_failed", { code: (e as { code?: string })?.code });
+    demographic = null;
   }
 
   // Mirror presence flags for THIS profile (Sprint 5B) — the "connected to / not connected to"
@@ -155,17 +169,19 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
     mirrorRefreshedAt = null;
   }
 
-  // Which sensitive field KINDS were available to a view_health caller — recorded in the
-  // ONE profile.viewed row (K-07), never the values, never a row per field (T2 rule).
+  // Which sensitive field KINDS were available to this caller — recorded in the ONE
+  // profile.viewed row (K-07), never the values, never a row per field (T2 rule). Identity kinds
+  // are recorded when the caller could see them (canSeeContact); blood_type only under view_health.
+  // The NIK VALUE never enters metadata — only that a field OF KIND "nik" was shown.
   const sensitiveFields = new Set<string>();
-  if (canViewHealth && enrichment?.hyrox.hasSensitive && enrichment.hyrox.sensitive) {
+  if (enrichment?.hyrox.sensitive) {
     const s = enrichment.hyrox.sensitive;
     if (s.nik) sensitiveFields.add("nik");
     if (s.tglLahir) sensitiveFields.add("birthdate");
     if (s.golDarah) sensitiveFields.add("blood_type");
     if (s.kontakDarurat || s.noKontakDarurat) sensitiveFields.add("emergency_contact");
   }
-  if (canViewHealth && clinic?.matched && clinic.sensitive) {
+  if (clinic?.matched && clinic.sensitive) {
     const s = clinic.sensitive;
     if (s.nik) sensitiveFields.add("nik");
     if (s.dateOfBirth) sensitiveFields.add("birthdate");
@@ -198,7 +214,7 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
   }
 
   return NextResponse.json(
-    { profile, canViewHealth, engagement, enrichment, multiSource, clinic, importData, mirror, mirrorRefreshedAt },
+    { profile, canViewHealth, canSeeContact, engagement, enrichment, multiSource, clinic, importData, demographic, mirror, mirrorRefreshedAt },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

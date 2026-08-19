@@ -390,10 +390,10 @@ non-concurrent terasa), atau (b) cermin diganti mekanisme lain (incremental, tri
 ini** dan tinjau ulang. Sampai itu, satu refresh/hari di jam sepi adalah biaya nihil untuk snapshot yang
 tetap dalam ≤24 jam dari sumber hidup.
 
-## K-31 · NIK adalah identitas (Demografi), tampil penuh; usulan gerbang `view_contact` MENUNGGU konfirmasi (Sprint NIK)
-**Status:** dua bagian. Bagian yang **sudah berlaku** dicatat final di sini; bagian **gerbang**
-adalah **USULAN — belum diterapkan** sampai pemilik produk menjawab (lihat
-`docs/RENCANA-gerbang-nik.md`).
+## K-31 · NIK adalah identitas: gerbang pindah ke `profile.view_contact`; satu tanggal lahir dari rantai prioritas (Sprint NIK-2)
+**Status: DISETUJUI + BERLAKU (19 Agu 2026).** Diusulkan sprint sebelumnya (`docs/RENCANA-gerbang-nik.md`),
+disetujui pemilik produk, diterapkan di sprint ini. Bagian tab-move + tampil-penuh sudah berlaku sprint
+sebelumnya; bagian **gerbang** kini juga diterapkan.
 
 **Latar:** NIK dan turunannya (tanggal lahir, gender, provinsi KTP) + alamat + kontak darurat
 tampil di tab **Perilaku** karena blok dikelompokkan per **tabel sumber** (cf_hyrox_participants,
@@ -419,17 +419,50 @@ itu RFM + program dari `staging_20fit_data` tampil bersama demografi padahal itu
 
 **Kualitas NIK dipertahankan (final):** NIK yang panjangnya bukan 16 digit **tidak diurai**
 (ditandai, tidak dipaksakan-sebagian); hari-bulan ambigu (day & month ≤12) **ditandai ambigu,
-tidak ditebak**; saat DOB-dari-NIK dan DOB-staging berbeda, **keduanya ditampilkan beserta
-asalnya**; provinsi dari NIK = **tempat KTP diterbitkan, bukan domisili** (label tak boleh jadi
-"alamat").
+tidak ditebak**; provinsi dari NIK = **tempat KTP diterbitkan, bukan domisili** (label tak boleh
+jadi "alamat").
 
-**USULAN yang MENUNGGU konfirmasi (belum dikerjakan):** pindahkan gerbang NIK/turunan/alamat/
-kontak-darurat dari `profile.view_health` ke `profile.view_contact` (gerbang yang sama dengan
-telepon/email tanpa masker) → `crm_operator`, `data_steward`, dan `unit_manager` ber-scope jadi
-bisa melihat NIK; `analyst` tetap tidak. Golongan darah + klinis **tetap** `view_health`. Sampai
-dijawab, **gerbang tak berubah** — NIK masih di balik `view_health`. Usulan lengkap +
-siapa-lihat-apa: `docs/RENCANA-gerbang-nik.md`.
+**PERUBAHAN GERBANG (diterapkan sprint ini):** NIK + turunannya (gender, tanggal lahir, provinsi
+KTP) + alamat + kontak darurat pindah dari `profile.view_health` ke **`profile.view_contact`** —
+gerbang yang sama dengan telepon/email tanpa masker. **Alasan:** `view_health` ada untuk **data
+medis** (diagnosa, skrining, riwayat obat, golongan darah); NIK bukan medis, ia **identitas**,
+sekelas telepon/email. Ia berakhir di gerbang kesehatan hanya karena tabel asalnya kebetulan
+klinik/event — kesalahan yang sama dengan NIK yang tampil di tab Perilaku.
+- **Siapa jadi bisa melihat** (saat perannya dibuat): `crm_operator` (CS harian — paling butuh
+  untuk verifikasi identitas di telepon), `data_steward` (NIK = kunci dedup terkuat), dan
+  `unit_manager` ber-scope (fail-closed sampai tabel scope ada). `analyst` **tetap tidak** (ia
+  melihat telepon/email pun tersamar).
+- **Efek hari ini: NOL.** Ketiga akun di `crm_user_role` berperan `super_admin` dan sudah melihat
+  NIK lewat gerbang lama. Perubahan ini **pernah dijalankan** — baru terasa saat akun peran lain
+  dibuat, bukan tidak pernah dijalankan.
+- **Golongan darah TETAP `view_health`** — data medis meski satu baris dengan NIK; diperlakukan
+  menurut **sifatnya**, bukan tetangganya. Uji khusus: `roles.test.ts` mengunci `canSeeMedical`
+  hanya super_admin/crm_manager, dan `enrichment-constants.test.ts` mengunci `gol_darah` di daftar
+  MEDICAL (bukan IDENTITY).
+- **Satu tempat, dipakai keduanya:** `lib/auth/roles.ts` `canSeeContactPII` / `canSeeMedical` —
+  dipakai read layer profil (`enrichment`/`clinic`/`staging`/`demographic`) DAN rute segmen
+  (`hasClinicalCriteria` → `canSeeMedical`). Gerbang di **server**: kolom yang tak boleh dilihat
+  **tak di-SELECT**, bukan dikirim lalu disembunyikan.
+- **Sisa yang diterima (didokumentasikan):** memberi peran view_contact identitas klinik berarti
+  ia bisa tahu orang itu ada di `clinic_patients` (sinyal keanggotaan-klinik yang lunak). Diterima
+  sebagai ongkos memperlakukan NIK/alamat sebagai identitas; sinyal KUAT (jumlah kunjungan,
+  booking, patient_code) tetap `view_health` (nested `clinical`, tak dihitung untuk peran non-medis).
 
-**Konsistensi dengan `hasClinicalCriteria`:** filter segmen menggerbangi hanya kriteria klinis di
-`view_health`; NIK bukan kriteria segmen dan tak pernah jadi kunci cocok, jadi gerbang profil dan
-gerbang filter segmen **tidak diverge** untuk data klinis apa pun jawaban usulan gerbang.
+**SATU tanggal lahir, bukan dua (mengganti default Sprint 3S):** untuk alat CS, dua tanggal lahir
+berdampingan memaksa staf memutuskan sendiri di tengah panggilan. Kini ditampilkan **satu nilai**,
+paling relevan, lewat rantai prioritas murni + teruji `lib/crm/demographic-pick.ts`:
+**NIK → staging → klinik/Hyrox → input staf.** NIK #1 karena posisi digitnya baku (nol ambiguitas
+hari-bulan); NIK tak-terurai **turun urutan**, tak dipaksakan. **Konflik tetap bisa ditemukan:**
+penanda ringkas "sumber lain berbeda" + perbandingan di balik `<Why>`; tanda ambigu (abad untuk
+NIK, urutan hari-bulan untuk lainnya) tetap tampil di nilai terpilih. Rantai yang sama untuk
+gender. Provinsi **tidak** ikut rantai — provinsi NIK (tempat KTP) ≠ kota domisili.
+
+**Konsistensi dengan `hasClinicalCriteria`:** filter segmen menggerbangi kriteria klinis via
+`canSeeMedical` (helper yang sama dengan read layer profil); golongan darah + klinis tetap
+`view_health` di profil DAN segmen — gerbang profil dan filter segmen **tidak diverge**.
+
+**Syarat pembalikan:** bila pemilik produk memutuskan keanggotaan-klinik tak boleh terungkap ke
+peran view_contact sama sekali, tarik identitas klinik kembali ke `view_health` (identitas Hyrox/
+staging tetap `view_contact`) — ubah `fetchProfileClinic` agar `sensitive` butuh `canSeeMedical`.
+Bila kelak NIK perlu gerbang tersendiri (`profile.view_nik`), tambah action baru; jangan gabungkan
+dengan telepon/email.

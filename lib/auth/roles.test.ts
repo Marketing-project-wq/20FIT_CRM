@@ -4,6 +4,8 @@ import {
   resolveGrant,
   isPermitted,
   shouldMaskContact,
+  canSeeContactPII,
+  canSeeMedical,
   canSeeNav,
   ROLES,
   ACTIONS,
@@ -142,6 +144,49 @@ describe("contact masking (server-side)", () => {
 
   it("denies list access to unknown role (masking is moot)", () => {
     expect(shouldMaskContact("nope")).toBe(true); // fail-closed: not allow
+  });
+});
+
+describe("K-31 sensitive-field gates (identity=view_contact, medical=view_health)", () => {
+  it("canSeeContactPII = the roles allowed profile.view_contact IN FULL", () => {
+    // These roles receive NIK/DOB/gender/province/address/emergency from the server.
+    expect(canSeeContactPII("super_admin")).toBe(true);
+    expect(canSeeContactPII("crm_manager")).toBe(true);
+    expect(canSeeContactPII("crm_operator")).toBe(true); // CS staff — the point of K-31
+    expect(canSeeContactPII("data_steward")).toBe(true); // NIK = strongest dedup key
+    // analyst may not see contact at all → never receives the NIK from the server (not "hidden").
+    expect(canSeeContactPII("analyst")).toBe(false);
+    // unit_manager is fail-closed until a unit scope exists.
+    expect(canSeeContactPII("unit_manager")).toBe(false);
+    expect(canSeeContactPII("unit_manager", { hasUnitScope: true })).toBe(true);
+    expect(canSeeContactPII("nope")).toBe(false); // fail-closed
+  });
+
+  it("canSeeMedical = ONLY the roles allowed profile.view_health", () => {
+    expect(canSeeMedical("super_admin")).toBe(true);
+    expect(canSeeMedical("crm_manager")).toBe(true);
+    // Everyone else — including the new NIK-seers — must NOT receive blood type / clinical data.
+    for (const role of ["crm_operator", "data_steward", "unit_manager", "analyst"] as const) {
+      expect(canSeeMedical(role)).toBe(false);
+    }
+    expect(canSeeMedical("unit_manager", { hasUnitScope: true })).toBe(false);
+    expect(canSeeMedical("nope")).toBe(false);
+  });
+
+  it("NIK is NOT medical: a contact role that lacks view_health still sees identity, never blood type", () => {
+    // This is the whole K-31 claim in one assertion, for the two roles it newly affects.
+    for (const role of ["crm_operator", "data_steward"] as const) {
+      expect(canSeeContactPII(role)).toBe(true); // gets NIK/DOB/address
+      expect(canSeeMedical(role)).toBe(false); // does NOT get golongan darah / clinical
+    }
+  });
+
+  it("the two gates are independent, never collapsed into one", () => {
+    // A role with medical but not contact must not exist by accident, and vice-versa is the norm.
+    // (No role is medical-without-contact in the matrix, but the gates are separate predicates so
+    // a future matrix change cannot silently fuse them.)
+    expect(canSeeContactPII("crm_operator") && !canSeeMedical("crm_operator")).toBe(true);
+    expect(canSeeMedical("crm_manager") && canSeeContactPII("crm_manager")).toBe(true);
   });
 });
 

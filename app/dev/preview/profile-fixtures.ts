@@ -2,11 +2,14 @@ import type { ApiResult } from "@/components/audience/profile-detail";
 
 /**
  * Dev-only FIXTURES for the profile detail preview (app/dev/preview). No Supabase, no auth, no PII —
- * synthetic people with the same shape as /api/audience/[id]. The three cover the hard cases the
- * simplification (Sprint 5B) is meant to render honestly:
- *   1. EMPTY   — matchable but connected to nothing: the "mostly empty" 5-second test.
- *   2. CLINIC  — view_health caller, clinic identity + counts behind the gate.
- *   3. DOB-DIFF — birth date from NIK (Hyrox) disagrees with the import date; both shown, not picked.
+ * synthetic people with the same shape as /api/audience/[id]. They cover the cases this sprint
+ * (K-31 + single birth date) must render honestly:
+ *   1. EMPTY    — matchable but connected to nothing: the "mostly empty" 5-second test.
+ *   2. FILLABLE — a view_contact caller WITHOUT view_health; DOB empty from every source.
+ *   3. CLINIC   — view_health caller; clinic identity (→ Demografi) + involvement (→ Perilaku);
+ *                 birth date agrees across sources (NO conflict marker).
+ *   4. DOB-DIFF — birth date from NIK (Hyrox) disagrees with the import date: ONE value shown
+ *                 (NIK, most reliable) with a conflict cue + the comparison behind <Why>.
  * A 3-day-stale mirror stamp on every one, so the freshness note is exercised.
  */
 const STALE_REFRESHED_AT = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
@@ -42,16 +45,18 @@ const EMPTY: ApiResult = {
     masked: false,
   },
   canViewHealth: false,
+  canSeeContact: false,
   engagement: EMPTY_ENGAGEMENT,
   enrichment: { ...NO_ENRICHMENT, matchable: false },
   multiSource: { matchable: false, sources: [] },
-  clinic: null, // non-view_health caller never fetches clinic
+  clinic: null, // non-view_health/contact caller never fetches clinic
   importData: { matchable: false, matched: false, city: null, dob: null, age: null, umurSnapshot: null, rfmPaidOrder: null, programs: [], clinicalWithheld: false },
+  demographic: null,
   mirror: { hasHyrox: false, hasMy20fit: false, hasArena: false, hasGym: false, hasClinic: false },
   mirrorRefreshedAt: STALE_REFRESHED_AT,
 };
 
-// ── 1b. FILLABLE — has contact, but gender/DOB empty from every source (admin-fill target) ────
+// ── 2. FILLABLE — a view_contact caller WITHOUT view_health; DOB empty from every source ──────
 const FILLABLE: ApiResult = {
   profile: {
     customer_id: "cust_demo_fill_0004",
@@ -74,18 +79,20 @@ const FILLABLE: ApiResult = {
     masked: false,
   },
   canViewHealth: false,
+  canSeeContact: true, // sees contact/identity, but NOT medical (crm_operator / data_steward shape)
   engagement: EMPTY_ENGAGEMENT,
   enrichment: NO_ENRICHMENT,
   multiSource: { matchable: true, sources: [] },
   clinic: null,
   // Matched to the import, but the import carries NO birth date / city for this person — so
-  // gender/DOB/city are empty from every source: exactly the admin-fill target (TUGAS 4).
+  // DOB is empty from every source the caller can see: the admin-fill target.
   importData: { matchable: true, matched: true, city: null, dob: { status: "empty", raw: null, iso: null, ambiguousDayMonth: false, swapped: false, plausibility: null }, age: null, umurSnapshot: null, rfmPaidOrder: "-", programs: [], clinicalWithheld: false },
+  demographic: { gated: true, gender: null, dateOfBirth: null },
   mirror: { hasHyrox: false, hasMy20fit: false, hasArena: false, hasGym: false, hasClinic: false },
   mirrorRefreshedAt: STALE_REFRESHED_AT,
 };
 
-// ── 2. CLINIC behind view_health gate ────────────────────────────────────────────────────────
+// ── 3. CLINIC — view_health caller; identity + involvement; birth date AGREES (no conflict) ───
 const CLINIC: ApiResult = {
   profile: {
     customer_id: "cust_demo_clinic_0002",
@@ -108,6 +115,7 @@ const CLINIC: ApiResult = {
     masked: false,
   },
   canViewHealth: true,
+  canSeeContact: true,
   engagement: {
     rows: [
       { unit: "clinic", product: "Kunjungan Klinik", engagementCount: 3, firstSeenAt: "2026-05-01T00:00:00.000Z", lastSeenAt: "2026-06-10T00:00:00.000Z", source: "live_txn_sync", lastSeenClass: "real_activity" },
@@ -123,7 +131,7 @@ const CLINIC: ApiResult = {
     gated: true,
     matched: true,
     keyUsed: "phone",
-    patientCode: "PX-2291",
+    // Identity → Demografi (view_contact). Birth date matches the import date below (no conflict).
     sensitive: {
       nik: "3174011403880007",
       dateOfBirth: "1988-03-14T00:00:00.000Z",
@@ -132,15 +140,20 @@ const CLINIC: ApiResult = {
       emergencyContactName: "Rina",
       emergencyContactPhone: "628130000009",
     },
-    counts: { bookings: 5, visits: 3, assessments: 2, screenings: 1, transactions: 4 },
-    latestBooking: { bookingCode: "BK-88213", status: "selesai", date: "2026-06-10T00:00:00.000Z" },
+    // Involvement → Perilaku (view_health).
+    clinical: {
+      patientCode: "PX-2291",
+      counts: { bookings: 5, visits: 3, assessments: 2, screenings: 1, transactions: 4 },
+      latestBooking: { bookingCode: "BK-88213", status: "selesai", date: "2026-06-10T00:00:00.000Z" },
+    },
   },
-  importData: { matchable: true, matched: true, city: "Jakarta", dob: { status: "parsed", raw: "14/03/1988", iso: "1988-03-14", ambiguousDayMonth: false, swapped: false, plausibility: "ok" }, age: 38, umurSnapshot: "38", rfmPaidOrder: "Fitco User", programs: [{ key: "clinic", label: "Klinik", value: "y" }], clinicalWithheld: false },
+  importData: { matchable: true, matched: true, city: "Jakarta", dob: { status: "parsed", raw: "1988-03-14", iso: "1988-03-14", ambiguousDayMonth: false, swapped: false, plausibility: "ok" }, age: 38, umurSnapshot: "38", rfmPaidOrder: "Fitco User", programs: [{ key: "clinic", label: "Klinik", value: "y" }], clinicalWithheld: false },
+  demographic: { gated: true, gender: null, dateOfBirth: null },
   mirror: { hasHyrox: false, hasMy20fit: false, hasArena: false, hasGym: false, hasClinic: true },
   mirrorRefreshedAt: STALE_REFRESHED_AT,
 };
 
-// ── 3. DOB disagreement — NIK (Hyrox) vs import ──────────────────────────────────────────────
+// ── 4. DOB disagreement — NIK (Hyrox) vs import: ONE value (NIK) + a findable conflict ────────
 const DOB_DIFF: ApiResult = {
   profile: {
     customer_id: "cust_demo_dob_0003",
@@ -163,6 +176,7 @@ const DOB_DIFF: ApiResult = {
     masked: false,
   },
   canViewHealth: true,
+  canSeeContact: true,
   engagement: EMPTY_ENGAGEMENT,
   enrichment: {
     matchable: true,
@@ -170,7 +184,9 @@ const DOB_DIFF: ApiResult = {
       matched: true,
       rows: [{ eventName: "Hyrox Jakarta 2026", kategori: "Individual", namaTim: null, posisi: null, registeredAt: "2026-05-15T00:00:00.000Z" }],
       hasSensitive: true,
-      sensitive: { nik: "3273015205900512", tglLahir: "05/12/1990", golDarah: "O", kontakDarurat: "Andi", noKontakDarurat: "628150000004" },
+      // Raw Hyrox DOB agrees with the NIK derivation (1990-05-12); the import date below is the
+      // one that disagrees — so exactly ONE conflicting source is shown.
+      sensitive: { nik: "3273015205900512", tglLahir: "1990-05-12", golDarah: "O", kontakDarurat: "Andi", noKontakDarurat: "628150000004" },
       nikDerived: { valid: true, gender: "female", birthDate: "1990-05-12", yearOutOfRange: false, provinceCode: "32", provinceName: "Jawa Barat", regencyCode: "3273", districtCode: "327301" },
     },
     my20fit: { matched: false, isPlusMember: null, onboardingCompleted: null, createdAt: null },
@@ -193,26 +209,28 @@ const DOB_DIFF: ApiResult = {
       },
     ],
   },
-  clinic: { gated: true, matched: false, keyUsed: null, patientCode: null, sensitive: null, counts: null, latestBooking: null },
+  clinic: { gated: true, matched: false, keyUsed: null, sensitive: null, clinical: null },
   importData: {
     matchable: true,
     matched: true,
     city: "Bandung",
-    // Import parsed this as 12 May; NIK says 12 December — provenance disagreement, both shown.
-    dob: { status: "parsed", raw: "12/05/1990", iso: "1990-12-05", ambiguousDayMonth: true, swapped: false, plausibility: "ok" },
+    // Import parsed this as 5 Dec 1990; NIK says 12 May 1990 — a provenance disagreement. The chain
+    // picks the NIK value; this one is surfaced as the conflicting source.
+    dob: { status: "parsed", raw: "1990-12-05", iso: "1990-12-05", ambiguousDayMonth: true, swapped: false, plausibility: "ok" },
     age: 35,
     umurSnapshot: "35",
     rfmPaidOrder: "Loyal",
     programs: [{ key: "event", label: "Event", value: "y" }],
     clinicalWithheld: false,
   },
+  demographic: { gated: true, gender: null, dateOfBirth: null },
   mirror: { hasHyrox: true, hasMy20fit: false, hasArena: true, hasGym: false, hasClinic: false },
   mirrorRefreshedAt: STALE_REFRESHED_AT,
 };
 
 export const PROFILE_FIXTURES: { label: string; note: string; data: ApiResult }[] = [
   { label: "Kosong di kedua tab", note: "uji lima detik: Demografi · 0 dan Perilaku · 0 terbaca tanpa membuka tab", data: EMPTY },
-  { label: "Perilaku berisi, Demografi tipis", note: "kelas + Hyrox + impor terisi; kontak tipis, tgl lahir NIK vs impor berbeda", data: DOB_DIFF },
-  { label: "Demografi bisa diisi admin", note: "gender/tgl lahir/kota kosong dari semua sumber — target isian admin (TUGAS 4)", data: FILLABLE },
-  { label: "Data klinis di balik gerbang", note: "canViewHealth = true: identitas + volume + booking, tanpa isi klinis", data: CLINIC },
+  { label: "Konflik tgl lahir (NIK vs impor)", note: "satu nilai (NIK) + penanda 'sumber lain berbeda', perbandingan di balik Kenapa?", data: DOB_DIFF },
+  { label: "Peran view_contact, tanpa view_health", note: "identitas terlihat, tgl lahir kosong dari semua sumber — target isian admin", data: FILLABLE },
+  { label: "Klinik (view_health) — tanpa konflik", note: "identitas + volume + booking; tgl lahir impor = klinik, tanpa penanda konflik", data: CLINIC },
 ];

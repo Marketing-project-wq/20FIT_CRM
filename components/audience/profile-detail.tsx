@@ -9,6 +9,13 @@ import { Button } from "@/components/ui/button";
 import { SuppressionForm } from "@/components/consent/suppression-form";
 import { formatDisplayName, nameNeedsTidy } from "@/lib/crm/display-name";
 import { detectEmailTypo } from "@/lib/crm/email-typo";
+import {
+  pickBirthDate,
+  pickGender,
+  normalizeGender,
+  type DobSource,
+  type GenderSource,
+} from "@/lib/crm/demographic-pick";
 import { Why } from "@/components/ui/why";
 
 interface Profile {
@@ -115,7 +122,7 @@ interface ProfileClinicT {
   gated: boolean;
   matched: boolean;
   keyUsed: "email" | "phone" | null;
-  patientCode: string | null;
+  /** Identity values — present for a canSeeContact caller (K-31). */
   sensitive: {
     nik: string | null;
     dateOfBirth: string | null;
@@ -124,8 +131,18 @@ interface ProfileClinicT {
     emergencyContactName: string | null;
     emergencyContactPhone: string | null;
   } | null;
-  counts: { bookings: number; visits: number; assessments: number; screenings: number; transactions: number } | null;
-  latestBooking: { bookingCode: string | null; status: string | null; date: string | null } | null;
+  /** Clinical involvement — present ONLY for a canViewHealth caller (being a patient = health). */
+  clinical: {
+    patientCode: string | null;
+    counts: { bookings: number; visits: number; assessments: number; screenings: number; transactions: number } | null;
+    latestBooking: { bookingCode: string | null; status: string | null; date: string | null } | null;
+  } | null;
+}
+
+interface ProfileDemographicT {
+  gated: boolean;
+  gender: string | null;
+  dateOfBirth: string | null;
 }
 
 interface DobParseT {
@@ -158,12 +175,17 @@ interface MirrorPresenceT {
 
 export interface ApiResult {
   profile: Profile;
+  /** Medical gate (profile.view_health): blood type + clinical involvement. */
   canViewHealth: boolean;
+  /** Identity gate (profile.view_contact, K-31): NIK/DOB/gender/province/address/emergency. */
+  canSeeContact: boolean;
   engagement: ProfileEngagement | null;
   enrichment: ProfileEnrichment | null;
   multiSource: ProfileMultiSourceT | null;
   clinic: ProfileClinicT | null;
   importData: ProfileImportT | null;
+  /** Staff-entered demographic (crm_profile_demographic) — chain's last-resort DOB/gender. */
+  demographic: ProfileDemographicT | null;
   /** The 5 source-presence flags from this profile's mirror row (Sprint 5B); null if unavailable.
    *  Used to build the consolidated "not connected to …" line and to stamp its freshness. It
    *  drives PRESENTATION only — a live-matched source always renders its block regardless. */
@@ -638,6 +660,8 @@ function HyroxLines({ enrichment, canViewHealth }: { enrichment: ProfileEnrichme
  *  (Demografi). Still view_health-gated (clinical volume is health context). No clinical content
  *  (diagnoses/results/meds) — those stay out entirely. */
 function ClinicLines({ clinic }: { clinic: ProfileClinicT }) {
+  const inv = clinic.clinical;
+  if (!inv) return null; // involvement is view_health-only; nothing to render without it.
   const keyLabel = clinic.keyUsed === "phone" ? "cocok via telepon" : clinic.keyUsed === "email" ? "cocok via email" : "";
   return (
     <div className="space-y-4 border-t border-glass-border pt-3">
@@ -645,15 +669,15 @@ function ClinicLines({ clinic }: { clinic: ProfileClinicT }) {
         <HeartPulse className="h-4 w-4 text-ink-soft" aria-hidden />
         <h3 className="font-display text-[13px] font-bold uppercase tracking-wide text-ink">Klinik — keterlibatan (view_health)</h3>
       </div>
-      <p className="font-mono text-[12px] text-ink-faint">Pasien {clinic.patientCode ?? "—"} · {keyLabel}</p>
-      {clinic.counts && (
+      <p className="font-mono text-[12px] text-ink-faint">Pasien {inv.patientCode ?? "—"} · {keyLabel}</p>
+      {inv.counts && (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
           {[
-            ["Booking", clinic.counts.bookings],
-            ["Kunjungan", clinic.counts.visits],
-            ["Assessment", clinic.counts.assessments],
-            ["Skrining", clinic.counts.screenings],
-            ["Transaksi", clinic.counts.transactions],
+            ["Booking", inv.counts.bookings],
+            ["Kunjungan", inv.counts.visits],
+            ["Assessment", inv.counts.assessments],
+            ["Skrining", inv.counts.screenings],
+            ["Transaksi", inv.counts.transactions],
           ].map(([label, n]) => (
             <div key={label as string} className="rounded-sm border border-glass-border p-3 text-center">
               <div className="font-display text-[22px] font-black leading-none text-ink">{nf.format(n as number)}</div>
@@ -662,11 +686,11 @@ function ClinicLines({ clinic }: { clinic: ProfileClinicT }) {
           ))}
         </div>
       )}
-      {clinic.latestBooking && (clinic.latestBooking.bookingCode || clinic.latestBooking.date) && (
+      {inv.latestBooking && (inv.latestBooking.bookingCode || inv.latestBooking.date) && (
         <p className="font-body text-[13px] text-ink-soft">
-          Booking terakhir: <span className="font-mono text-[12px]">{clinic.latestBooking.bookingCode ?? "—"}</span>
-          {clinic.latestBooking.status ? ` · ${clinic.latestBooking.status}` : ""}
-          {clinic.latestBooking.date ? ` · ${formatDateOnly(clinic.latestBooking.date)}` : ""}
+          Booking terakhir: <span className="font-mono text-[12px]">{inv.latestBooking.bookingCode ?? "—"}</span>
+          {inv.latestBooking.status ? ` · ${inv.latestBooking.status}` : ""}
+          {inv.latestBooking.date ? ` · ${formatDateOnly(inv.latestBooking.date)}` : ""}
         </p>
       )}
     </div>
@@ -706,7 +730,7 @@ function OtherSourcesSection({
     { key: "my20fit", label: "my20fit", live: !!(enrichment?.my20fit.matched || enrichment?.activity.matched), mirror: mirror?.hasMy20fit, gated: false },
     { key: "arena", label: "arena", live: arenaRows.length > 0, mirror: mirror?.hasArena, gated: false },
     { key: "gym", label: "gym", live: gymRows.length > 0, mirror: mirror?.hasGym, gated: false },
-    { key: "clinic", label: "klinik", live: !!(clinic?.gated && clinic.matched), mirror: mirror?.hasClinic, gated: true },
+    { key: "clinic", label: "klinik", live: !!(clinic?.clinical && clinic.matched), mirror: mirror?.hasClinic, gated: true },
   ];
 
   // A source is named as "not connected" only when the snapshot marks it absent AND we are not
@@ -779,7 +803,7 @@ function OtherSourcesSection({
           {enrichment && (enrichment.my20fit.matched || enrichment.activity.matched) && <My20fitLines enrichment={enrichment} />}
           {arenaRows.length > 0 && <MultiGroupLines rows={arenaRows} />}
           {gymRows.length > 0 && <MultiGroupLines rows={gymRows} />}
-          {clinic?.gated && clinic.matched && <ClinicLines clinic={clinic} />}
+          {clinic?.clinical && clinic.matched && <ClinicLines clinic={clinic} />}
 
           {absent.length > 0 && (
             <p className="border-t border-glass-border pt-3 font-body text-[13px] text-ink-soft">
@@ -807,197 +831,217 @@ function OtherSourcesSection({
 }
 
 
-/** DOB plausibility → short human note. */
-function dobPlausibilityNote(p: DobParseT["plausibility"]): string | null {
-  switch (p) {
-    case "future": return "tanggal di masa depan — mustahil, ditandai";
-    case "too_old": return "umur > 100 — kemungkinan salah, ditandai";
-    case "too_young": return "umur < 10 — kemungkinan salah, ditandai";
-    default: return null;
-  }
+/** First 10 chars if they are a yyyy-mm-dd date (drops any time part); null otherwise. */
+function toIsoDate(s: string | null | undefined): string | null {
+  if (!s) return null;
+  const m = /^(\d{4}-\d{2}-\d{2})/.exec(String(s));
+  return m ? m[1] : null;
 }
 
-/** Render the import (staging) birth date with its full provenance — parse status, ambiguity,
- *  swap, plausibility, and disagreement with a NIK-derived date. Extracted so BOTH the Identitas
- *  section (Demografi) uses it. Ungated (staging is marketing data); the NIK comparison line only
- *  appears for a caller who can see the NIK date. */
-function StagingDob({ dob, nikDob, canSeeNik }: { dob: DobParseT | null; nikDob: string | null; canSeeNik: boolean }) {
-  if (!dob || dob.status === "empty") return <Empty />;
-  if (dob.status === "unparseable") {
-    return (
-      <span className="flex flex-col gap-0.5">
-        <span>{dob.raw ?? "—"}</span>
-        <span className="font-body text-[11px] not-italic text-amber">format tak dikenal — ditandai, tidak diurai</span>
-      </span>
-    );
-  }
-  const stagingIso = dob.iso;
-  const disagree = canSeeNik && nikDob && stagingIso && nikDob !== stagingIso;
-  const plaus = dobPlausibilityNote(dob.plausibility);
-  return (
-    <span className="flex flex-col gap-0.5">
-      <span>
-        {stagingIso}
-        <span className="font-body text-[11px] text-ink-faint"> · dari data impor 20FIT</span>
-      </span>
-      {disagree && (
-        <>
-          <span>dari NIK Hyrox: {nikDob}</span>
-          <span className="font-body text-[11px] not-italic text-amber">
-            dua sumber berbeda — ditampilkan keduanya beserta asalnya, tidak dipilih diam-diam
-          </span>
-        </>
-      )}
-      {dob.ambiguousDayMonth && (
-        <span className="font-body text-[11px] not-italic text-amber">
-          hari &amp; bulan sama-sama ≤ 12 — urutan tak bisa dipastikan; ditandai, tidak ditebak
-        </span>
-      )}
-      {dob.swapped && (
-        <span className="font-body text-[11px] not-italic text-amber">
-          tersimpan hari-dulu (bulan &gt; 12) — dibaca ulang dengan benar &amp; ditandai
-        </span>
-      )}
-      {plaus && <span className="font-body text-[11px] not-italic text-amber">{plaus}</span>}
-    </span>
-  );
-}
+const DOB_SOURCE_LABEL: Record<DobSource, string> = {
+  nik: "NIK",
+  staging: "data impor 20FIT",
+  clinic: "klinik",
+  hyrox: "Hyrox",
+  staff: "input staf",
+};
+const GENDER_SOURCE_LABEL: Record<GenderSource, string> = { nik: "NIK", clinic: "klinik", staff: "input staf" };
 
 /**
- * IDENTITAS (Demografi) — NIK dan turunannya + tanggal lahir + alamat + kontak darurat, DIGABUNG
- * dari sumbernya (Hyrox / klinik / staging), disusun berdasarkan MAKNA, bukan tabel asal. NIK =
- * data identitas ("siapa orang ini"), bukan perilaku — dulu salah kamar di tab Perilaku karena
- * bloknya disusun per tabel sumber (Hyrox/klinik). NIK ditampilkan PENUH (keputusan pemilik
- * produk: pengguna sudah menyerahkan NIK ke 20FIT; staf butuh untuk verifikasi) — nol langkah buka
- * tambahan; nilainya tetap tak pernah masuk audit/metadata/ekspor.
- *
- * GERBANG: field turunan-NIK + identitas klinis tetap di balik `profile.view_health` UNTUK
- * SEKARANG. Usulan pindah ke `profile.view_contact` sedang menunggu konfirmasi (docs + K-decision)
- * — gerbang TIDAK diubah di sini. Tanggal lahir dari staging (marketing) tetap terbuka.
- * Provinsi dari NIK = tempat KTP diterbitkan, BUKAN domisili — labelnya jangan berubah.
+ * Resolve the DEMOGRAPHIC identity of a profile into ONE chosen value per field, from whatever
+ * sources the caller was allowed to see (the server withholds gated sources for a role without
+ * view_contact, so the picker naturally shows each role its best PERMITTED value). Uses the pure
+ * priority chain (lib/crm/demographic-pick) so the order lives in one tested place. Province is
+ * kept SEPARATE from city — NIK province = KTP issuance, not domicile.
  */
+function resolveIdentity(
+  enrichment: ProfileEnrichment | null,
+  clinic: ProfileClinicT | null,
+  importData: ProfileImportT | null,
+  demographic: ProfileDemographicT | null,
+) {
+  const hs = enrichment?.hyrox.sensitive ?? null;
+  const nd = enrichment?.hyrox.nikDerived ?? null;
+  const cs = clinic?.sensitive ?? null; // present iff canSeeContact (server-gated)
+  const dm = demographic?.gated ? demographic : null;
+
+  const nik = hs?.nik ?? cs?.nik ?? null;
+  const nikSource: "Hyrox" | "klinik" | null = hs?.nik ? "Hyrox" : cs?.nik ? "klinik" : null;
+
+  const staging = importData?.dob ?? null;
+  const dob = pickBirthDate({
+    nik: nd?.valid ? { iso: toIsoDate(nd.birthDate), ambiguous: nd.yearOutOfRange } : null,
+    staging: staging && staging.status === "parsed" ? { iso: toIsoDate(staging.iso), ambiguous: staging.ambiguousDayMonth } : null,
+    clinic: { iso: toIsoDate(cs?.dateOfBirth), ambiguous: false },
+    hyrox: { iso: toIsoDate(hs?.tglLahir), ambiguous: false },
+    staff: { iso: toIsoDate(dm?.dateOfBirth), ambiguous: false },
+  });
+
+  const gender = pickGender({
+    nik: nd?.valid ? (nd.gender ?? null) : null,
+    clinic: normalizeGender(cs?.gender),
+    staff: normalizeGender(dm?.gender),
+  });
+
+  const emergency =
+    [hs?.kontakDarurat, hs?.noKontakDarurat].filter(Boolean).join(" · ") ||
+    [cs?.emergencyContactName, cs?.emergencyContactPhone].filter(Boolean).join(" · ") ||
+    null;
+
+  return {
+    nik,
+    nikSource,
+    dob,
+    gender,
+    provinceName: nd?.valid ? nd.provinceName : null,
+    provinceCode: nd?.valid ? nd.provinceCode : null,
+    address: cs?.address ?? null,
+    emergency,
+    /** Staging DOB detail kept for the notes shown only when staging is the chosen value. */
+    stagingDob: staging,
+  };
+}
+
 /**
- * Filled identity-field count for the Demografi tab label AND the Identitas section title —
- * one source so the two can never disagree. Ungated staging DOB always counts; the gated
- * NIK-derived / clinic identity fields count only when the caller may see them (view_health).
+ * Filled identity-field count for the Demografi tab label AND the Identitas section title — one
+ * source (this fn) so the two cannot disagree. Counts only what the CALLER can see, because the
+ * server already withheld the gated sources.
  */
 function identityFieldCount(
   enrichment: ProfileEnrichment | null,
   clinic: ProfileClinicT | null,
   importData: ProfileImportT | null,
-  canViewHealth: boolean,
+  demographic: ProfileDemographicT | null,
 ): number {
-  const hs = enrichment?.hyrox.sensitive ?? null;
-  const nd = enrichment?.hyrox.nikDerived ?? null;
-  const cs = clinic?.gated && clinic.matched ? clinic.sensitive : null;
-  const nik = hs?.nik ?? cs?.nik ?? null;
-  const gender = (nd?.valid && nd.gender ? nd.gender : null) ?? cs?.gender ?? null;
-  const nikDob = nd?.valid ? nd.birthDate : null;
-  const province = nd?.valid ? nd.provinceName ?? nd.provinceCode : null;
-  const address = cs?.address ?? null;
-  const emergency =
-    [hs?.kontakDarurat, hs?.noKontakDarurat].filter(Boolean).join(" · ") ||
-    [cs?.emergencyContactName, cs?.emergencyContactPhone].filter(Boolean).join(" · ") ||
-    null;
-  const stagingDob = importData?.dob ?? null;
-  const hasStagingDob = !!stagingDob && stagingDob.status !== "empty";
-  return (
-    (hasStagingDob ? 1 : 0) +
-    (canViewHealth ? [nik, gender, nikDob, province, address, emergency].filter(Boolean).length : 0)
-  );
+  const r = resolveIdentity(enrichment, clinic, importData, demographic);
+  return [r.nik, r.dob.iso, r.gender.value, r.provinceName ?? r.provinceCode, r.address, r.emergency].filter(Boolean).length;
 }
 
+/** Human genders. */
+function genderLabel(v: "male" | "female"): string {
+  return v === "female" ? "Perempuan" : "Laki-laki";
+}
+
+/**
+ * IDENTITAS (Demografi) — NIK + tanggal lahir + gender + provinsi KTP + alamat + kontak darurat,
+ * one value per field chosen by the priority chain (lib/crm/demographic-pick), from whatever the
+ * caller may see. K-31: identity rides `profile.view_contact` (NIK sekelas telepon/email); the
+ * server withholds NIK/clinic/staff sources for a role without it, so this shows each role its best
+ * PERMITTED value. One birth date, not two — but any DISAGREEMENT between sources stays findable
+ * (a ringkas marker + the comparison behind <Why>). NIK shown full (owner decision); its value
+ * never enters audit/metadata/CSV. Province = KTP issuance place, NOT domicile.
+ */
 function IdentitySection({
   enrichment,
   clinic,
   importData,
-  canViewHealth,
+  demographic,
+  canSeeContact,
 }: {
   enrichment: ProfileEnrichment | null;
   clinic: ProfileClinicT | null;
   importData: ProfileImportT | null;
-  canViewHealth: boolean;
+  demographic: ProfileDemographicT | null;
+  canSeeContact: boolean;
 }) {
-  const hs = enrichment?.hyrox.sensitive ?? null;
-  const nd = enrichment?.hyrox.nikDerived ?? null;
-  const cs = clinic?.gated && clinic.matched ? clinic.sensitive : null;
-
-  const nik = hs?.nik ?? cs?.nik ?? null;
-  const nikSource = hs?.nik ? "Hyrox" : cs?.nik ? "klinik" : null;
-  const nikDob = nd?.valid ? nd.birthDate : null;
-  const gender = nd?.valid && nd.gender ? nd.gender : null;
-  const clinicGender = cs?.gender ?? null;
-  const address = cs?.address ?? null;
-  const emergency = [hs?.kontakDarurat, hs?.noKontakDarurat].filter(Boolean).join(" · ")
-    || [cs?.emergencyContactName, cs?.emergencyContactPhone].filter(Boolean).join(" · ")
-    || null;
-
-  const stagingDob = importData?.dob ?? null;
-  const hasGatedIdentity = !!(enrichment?.hyrox.hasSensitive || cs);
-
-  const count = identityFieldCount(enrichment, clinic, importData, canViewHealth);
+  const r = resolveIdentity(enrichment, clinic, importData, demographic);
+  const count = identityFieldCount(enrichment, clinic, importData, demographic);
   const open = count > 0;
+
+  // Are there gated identity fields the caller CANNOT see (so we can show the "behind the gate" note)?
+  const hasGatedIdentity = !!(enrichment?.hyrox.hasSensitive || (clinic?.matched));
+
+  // The chosen DOB's own ambiguity note, worded by which source it came from.
+  const dobAmbNote =
+    r.dob.ambiguous && r.dob.source === "nik"
+      ? "tahun (abad) di luar rentang wajar — ditandai, tidak dipaksakan"
+      : r.dob.ambiguous && r.dob.source === "staging"
+        ? "hari & bulan sama-sama ≤ 12 — urutan tak bisa dipastikan; ditandai, tidak ditebak"
+        : null;
+  const stagingSwapNote = r.dob.source === "staging" && r.stagingDob?.swapped
+    ? "tersimpan hari-dulu (bulan > 12) — dibaca ulang dengan benar & ditandai"
+    : null;
 
   return (
     <Section title="Identitas" count={count} icon={<User className="h-4 w-4 text-ink-soft" aria-hidden />} open={open} span2>
-      {/* Tanggal lahir dari staging (terbuka untuk semua peran). */}
-      <Field label="Tanggal lahir (data impor)" mono>
-        <StagingDob dob={stagingDob} nikDob={nikDob} canSeeNik={canViewHealth} />
+      {/* NIK — full, view_contact (K-31). */}
+      {canSeeContact && r.nik && (
+        <Field label="NIK" mono>
+          <span>
+            {r.nik}
+            {r.nikSource ? <span className="font-body text-[11px] text-ink-faint"> · dari {r.nikSource}</span> : null}
+          </span>
+        </Field>
+      )}
+
+      {/* Tanggal lahir — ONE value from the chain, with provenance; disagreement stays findable. */}
+      <Field label="Tanggal lahir" mono>
+        {r.dob.iso ? (
+          <span className="flex flex-col gap-0.5">
+            <span>
+              {r.dob.iso}
+              {r.dob.source ? <span className="font-body text-[11px] text-ink-faint"> · dari {DOB_SOURCE_LABEL[r.dob.source]}</span> : null}
+              {r.dob.conflicts.length > 0 && (
+                <span className="font-body text-[11px] not-italic text-amber"> · sumber lain berbeda</span>
+              )}
+            </span>
+            {dobAmbNote && <span className="font-body text-[11px] not-italic text-amber">{dobAmbNote}</span>}
+            {stagingSwapNote && <span className="font-body text-[11px] not-italic text-amber">{stagingSwapNote}</span>}
+            {r.dob.conflicts.length > 0 && (
+              <Why>
+                <p className="text-[12px] leading-relaxed text-ink-soft">
+                  Ditampilkan satu nilai (paling andal: {DOB_SOURCE_LABEL[r.dob.source!]}), tapi sumber lain
+                  tidak sepakat — <strong>tidak dipilih diam-diam</strong>:
+                  {" "}{r.dob.conflicts.map((c) => `${c.iso} (dari ${DOB_SOURCE_LABEL[c.source]})`).join(", ")}.
+                  Prioritas: NIK (posisi digit baku, nol ambiguitas hari-bulan) → impor → klinik/Hyrox
+                  (321 baris Hyrox terbukti hari-bulan tertukar) → input staf.
+                </p>
+              </Why>
+            )}
+          </span>
+        ) : <Empty />}
       </Field>
 
-      {/* NIK + turunannya + identitas klinis — digerbangi view_health untuk SEKARANG. */}
-      {canViewHealth ? (
-        hasGatedIdentity ? (
-          <>
-            <Field label="NIK" mono>
-              {nik ? (
-                <span>
-                  {nik}
-                  {nikSource ? <span className="font-body text-[11px] text-ink-faint"> · dari {nikSource}</span> : null}
-                </span>
-              ) : <Empty />}
-            </Field>
-            {(gender || clinicGender) && (
-              <Field label={gender ? "Gender (dari NIK)" : "Jenis kelamin (klinik)"}>
-                {gender ? (gender === "female" ? "Perempuan" : "Laki-laki") : clinicGender}
-              </Field>
-            )}
-            {(nikDob || cs?.dateOfBirth) && (
-              <Field label="Tanggal lahir (dari NIK)" mono>
-                {nikDob ?? (cs?.dateOfBirth ? formatDateOnly(cs.dateOfBirth) : <Empty />)}
-                {nikDob ? <span className="font-body text-[11px] text-ink-faint"> · dari NIK</span> : null}
-              </Field>
-            )}
-            {nd?.yearOutOfRange && (
-              <p className="font-body text-[11px] text-amber">Tahun lahir dari NIK di luar rentang wajar — ditandai, tidak dipaksakan.</p>
-            )}
-            {nd?.valid && (
-              <Field label="Provinsi pendaftaran KTP (dari NIK)">
-                {nd.provinceName
-                  ? nd.provinceName
-                  : <span className="font-mono">kode {nd.provinceCode} (referensi wilayah belum tersedia)</span>}
-                <span className="font-body text-[11px] text-ink-faint"> · tempat KTP diterbitkan, bukan domisili sekarang</span>
-              </Field>
-            )}
-            {address && <Field label="Alamat">{address}</Field>}
-            {emergency && <Field label="Kontak darurat" mono>{emergency}</Field>}
-            <Why>
-              <p className="text-[12px] leading-relaxed text-ink-soft">
-                NIK ditampilkan penuh (keputusan pemilik produk) — nilainya tetap TIDAK pernah masuk
-                audit/metadata (append-only, dipangkas terjadwal) maupun ekspor CSV, dan tak pernah jadi
-                kunci pencocokan profil. Gender/tanggal lahir/provinsi <strong>diturunkan dari NIK</strong>
-                {" "}(<span className="font-mono">lib/crm/nik.ts</span>). Provinsi = tempat KTP diterbitkan,
-                bukan domisili. Field ini masih digerbangi <span className="font-mono">profile.view_health</span>
-                {" "}untuk sekarang; usulan pindah ke <span className="font-mono">profile.view_contact</span>
-                {" "}menunggu konfirmasi.
-              </p>
-            </Why>
-          </>
-        ) : null
+      {/* Gender — one value from the chain. */}
+      {r.gender.value && (
+        <Field label="Gender">
+          {genderLabel(r.gender.value)}
+          {r.gender.source ? <span className="font-body text-[11px] text-ink-faint"> · dari {GENDER_SOURCE_LABEL[r.gender.source]}</span> : null}
+          {r.gender.conflicts.length > 0 && (
+            <span className="font-body text-[11px] not-italic text-amber"> · sumber lain berbeda ({r.gender.conflicts.map((c) => `${genderLabel(c.value)}/${GENDER_SOURCE_LABEL[c.source]}`).join(", ")})</span>
+          )}
+        </Field>
+      )}
+
+      {/* Provinsi KTP — from NIK, SEPARATE from domicile city. */}
+      {canSeeContact && (r.provinceName || r.provinceCode) && (
+        <Field label="Provinsi pendaftaran KTP (dari NIK)">
+          {r.provinceName ? r.provinceName : <span className="font-mono">kode {r.provinceCode} (referensi wilayah belum tersedia)</span>}
+          <span className="font-body text-[11px] text-ink-faint"> · tempat KTP diterbitkan, bukan domisili sekarang</span>
+        </Field>
+      )}
+
+      {canSeeContact && r.address && <Field label="Alamat">{r.address}</Field>}
+      {canSeeContact && r.emergency && <Field label="Kontak darurat" mono>{r.emergency}</Field>}
+
+      {/* Explainer + the "behind the gate" note for a role without view_contact. */}
+      {canSeeContact ? (
+        (r.nik || r.dob.iso) && (
+          <Why>
+            <p className="text-[12px] leading-relaxed text-ink-soft">
+              NIK ditampilkan penuh (keputusan pemilik produk) — nilainya tetap TIDAK pernah masuk
+              audit/metadata maupun ekspor CSV, dan tak pernah jadi kunci pencocokan. Gender/tanggal
+              lahir/provinsi <strong>diturunkan dari NIK</strong> (<span className="font-mono">lib/crm/nik.ts</span>);
+              provinsi = tempat KTP diterbitkan, bukan domisili. Identitas digerbangi{" "}
+              <span className="font-mono">profile.view_contact</span> (K-31, sama seperti telepon/email);
+              golongan darah &amp; data klinis tetap <span className="font-mono">profile.view_health</span>.
+            </p>
+          </Why>
+        )
       ) : hasGatedIdentity ? (
         <p className="font-body text-[12px] italic text-ink-faint">
-          Field identitas (NIK, gender, tanggal lahir dari NIK, provinsi, alamat, kontak darurat) ada
-          tapi digerbangi — butuh peran <span className="font-mono">profile.view_health</span>.
+          NIK, gender, tanggal lahir, provinsi, alamat, dan kontak darurat ada tapi digerbangi — butuh
+          peran <span className="font-mono">profile.view_contact</span>.
         </p>
       ) : null}
     </Section>
@@ -1178,7 +1222,7 @@ export function ProfileDetail({
   const attrFilled = [p.first_unit, p.segment, p.lifetime_value != null ? "x" : null, p.source].filter(Boolean).length;
   // Identity (NIK + derivatives + staging DOB) moved OUT of Perilaku into Demografi — grouping by
   // meaning, not source table. Same helper as the Identitas section title so they can't drift.
-  const identityCount = identityFieldCount(data.enrichment, data.clinic, data.importData, data.canViewHealth);
+  const identityCount = identityFieldCount(data.enrichment, data.clinic, data.importData, data.demographic);
   const demografiCount = contactFilled + attrFilled + identityCount;
   const perilakuCount = (data.engagement?.totalRows ?? 0) + liveSourceCount + importCount;
 
@@ -1273,13 +1317,14 @@ export function ProfileDetail({
             </Section>
 
             {/* Identitas — NIK + turunannya + tanggal lahir + alamat + kontak darurat, DIGABUNG dari
-                Hyrox/klinik/staging berdasarkan MAKNA (bukan tabel sumber). NIK penuh; gerbang
-                view_health untuk sekarang (usulan view_contact menunggu konfirmasi). */}
+                Hyrox/klinik/staging berdasarkan MAKNA (bukan tabel sumber). NIK penuh; satu tanggal
+                lahir dari rantai prioritas; gerbang view_contact (K-31). */}
             <IdentitySection
               enrichment={data.enrichment}
               clinic={data.clinic}
               importData={data.importData}
-              canViewHealth={data.canViewHealth}
+              demographic={data.demographic}
+              canSeeContact={data.canSeeContact}
             />
 
             {/* Row metadata — closed by default (secondary to the person). */}

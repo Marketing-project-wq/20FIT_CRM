@@ -280,6 +280,37 @@ export function shouldMaskContact(role: unknown, ctx: AccessContext = {}): boole
 }
 
 /**
+ * THE SENSITIVE-FIELD GATE, in ONE place (K-31, 19 Agu 2026). Two predicates that every
+ * server read layer AND the segment route derive their gating from, so "what needs which
+ * role" can never drift between where a field is shown (profile) and where it is filtered on
+ * (segments).
+ *
+ *  - `canSeeContactPII` — IDENTITY fields: phone/email in the clear, and (K-31) NIK + its
+ *    NIK-derived gender/birth-date/issuance-province, plus address and emergency contact.
+ *    These are identity, sekelas telepon/email, so they ride the SAME gate as contact:
+ *    `profile.view_contact` (crm_operator, data_steward, managers, super_admin; a scoped
+ *    unit_manager; analyst NOT). NIK sat behind view_health only because its source tables
+ *    happened to be clinic/event — the same mis-filing that put it in the Perilaku tab.
+ *
+ *  - `canSeeMedical` — MEDICAL / CLINICAL, gated on `profile.view_health` (super_admin,
+ *    crm_manager): blood type, diagnoses, screening results, medication history, clinic
+ *    involvement (bookings/visits/…), and the clinic-inferring segment criteria. Golongan
+ *    darah stays here even though it rides in the same Hyrox row as NIK — it is medical BY
+ *    NATURE, gated by its nature, not by its neighbour.
+ *
+ * Being a clinic PATIENT infers health status, so the clinic-involvement framing (counts,
+ * bookings, patient code) stays behind canSeeMedical; only the identity VALUES a clinic row
+ * also carries (NIK/DOB/…) ride canSeeContactPII (K-31 boundary — see docs/riwayat/KEPUTUSAN.md).
+ */
+export function canSeeContactPII(role: unknown, ctx: AccessContext = {}): boolean {
+  return isPermitted(role, "profile.view_contact", ctx);
+}
+
+export function canSeeMedical(role: unknown, ctx: AccessContext = {}): boolean {
+  return isPermitted(role, "profile.view_health", ctx);
+}
+
+/**
  * Nav visibility — COSMETIC ONLY (the server still enforces every action). Driven
  * from the same matrix so menu and enforcement never drift. Fail-closed: unknown
  * routes and roles are hidden. Some nav destinations have no dedicated PRD action

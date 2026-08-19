@@ -1,9 +1,10 @@
 # RENCANA — Pindahkan gerbang NIK dari `view_health` ke `view_contact`
 
-**Status: USULAN — MENUNGGU KONFIRMASI PEMILIK PRODUK. Belum diterapkan.**
-Perubahan tab (NIK → Demografi) dan tampil-penuh NIK **sudah** jalan di sprint ini tanpa
-menunggu jawaban. Yang di dokumen ini **hanya** soal *siapa* yang boleh melihat NIK —
-perubahan gerbang **tidak** dikerjakan sampai dijawab.
+**Status: DISETUJUI + DITERAPKAN (19 Agu 2026).** Pemilik produk menyetujui; gerbang dipindah di
+Sprint NIK-2. Keputusan final + syarat pembalikan: **K-31** di `docs/riwayat/KEPUTUSAN.md`. Dokumen
+ini disimpan sebagai rekam usulan aslinya (tabel siapa-lihat-apa di bawah tetap akurat), dengan satu
+koreksi yang dicatat di K-31: identitas klinik ikut `view_contact`, tetapi keterlibatan klinis
+(jumlah/booking/patient_code) tetap `view_health`.
 
 ---
 

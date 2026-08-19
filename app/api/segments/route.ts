@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUserRole } from "@/lib/auth/current-role";
-import { isPermitted, resolveGrant } from "@/lib/auth/roles";
+import { isPermitted, canSeeMedical, resolveGrant } from "@/lib/auth/roles";
 import { parseCriteria, hasClinicalCriteria } from "@/lib/crm/segment";
 import { computeSegment } from "@/lib/crm/segment-read";
 import { activeMirrorFlagColumns, fetchMirrorMeta } from "@/lib/crm/mirror";
@@ -66,8 +66,9 @@ export async function POST(request: NextRequest) {
   const criteria = parseCriteria(body);
 
   // CLINICAL criteria (clinic patient / transaction) INFER health status from a count — they
-  // are gated on profile.view_health and REJECTED (not silently dropped) for a role without it.
-  if (hasClinicalCriteria(criteria) && !isPermitted(role, "profile.view_health")) {
+  // are gated on profile.view_health (via the SAME canSeeMedical helper the profile read layers
+  // use, K-31: one rule, one place) and REJECTED (not silently dropped) for a role without it.
+  if (hasClinicalCriteria(criteria) && !canSeeMedical(role)) {
     return NextResponse.json(
       {
         error: "forbidden",

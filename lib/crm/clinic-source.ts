@@ -10,17 +10,25 @@ import {
 import type { ClinicCoverage } from "./quality-types";
 
 /**
- * CLINIC chain (TUGAS 3) — READ-ONLY, server-only, service-role client passed in by the route.
- * The ENTIRE result is fetched + returned ONLY for a profile.view_health caller; for any other
- * role fetchProfileClinic returns { gated:false } and touches nothing (server-side omission,
- * not client masking).
+ * CLINIC chain (TUGAS 3; re-gated K-31, 19 Agu 2026) — READ-ONLY, server-only, service-role
+ * client passed in by the route. Now split by TWO gates:
+ *   - IDENTITY (nik / date_of_birth / gender / address / emergency contact) → `canSeeContact`
+ *     (profile.view_contact). NIK is identity regardless of the table it sits in.
+ *   - CLINICAL INVOLVEMENT (patient_code + engagement COUNTS + latest booking) → `canSeeMedical`
+ *     (profile.view_health). Being a clinic patient infers health status, so the involvement
+ *     framing keeps the stricter gate.
+ * For a caller with NEITHER gate, fetchProfileClinic returns { gated:false } and touches nothing.
+ *
+ * K-31 residual (documented, owner-accepted): giving a view_contact-only caller the clinic
+ * IDENTITY means it can tell the person exists in clinic_patients — a soft health-membership
+ * signal. Accepted as the cost of treating NIK/address as identity; the clinical involvement
+ * (the strong signal — counts, bookings) stays view_health.
  *
  * Match: clinic_patients PHONE-FIRST then email (measured: 12 vs 106 of 143), never by name.
  * The clinical tables chain via patient_id — never joined direct to master_customer.
  *
- * Shown: identity (patient_code + gated sensitive fields) + engagement COUNTS (head-count, no
- * content) + the latest booking. NOT shown: clinical content (diagnosis/results/medication/…);
- * those columns are never selected (CLINIC_FORBIDDEN_COLUMNS). ZERO write.
+ * NOT shown at any gate: clinical content (diagnosis/results/medication/…); those columns are
+ * never selected (CLINIC_FORBIDDEN_COLUMNS). ZERO write.
  *
  * clinic_transactions note (TUGAS 2, verified 12 Aug 2026): 2277/2477 rows have patient_id
  * NULL (unlinked spreadsheet import); the 200 linked rows are 100% valid. A per-patient count
@@ -52,25 +60,31 @@ export interface ClinicLatestBooking {
   date: string | null;
 }
 
-export interface ProfileClinic {
-  /** false when the caller lacks profile.view_health — nothing was fetched. */
-  gated: boolean;
-  matched: boolean;
-  keyUsed: MatchKey | null;
+/** Clinical involvement — the health-inferring part, gated on canSeeMedical (view_health). */
+export interface ClinicInvolvement {
   patientCode: string | null;
-  sensitive: ClinicSensitive | null;
   counts: ClinicCounts | null;
   latestBooking: ClinicLatestBooking | null;
 }
 
+export interface ProfileClinic {
+  /** false when the caller may see NEITHER identity nor clinical — nothing was fetched. */
+  gated: boolean;
+  matched: boolean;
+  keyUsed: MatchKey | null;
+  /** Identity values — populated only for a canSeeContact caller (K-31). */
+  sensitive: ClinicSensitive | null;
+  /** Clinical involvement (counts/bookings/patient code) — populated only for a canSeeMedical
+   *  caller. Being a clinic patient infers health status, so this keeps the view_health gate. */
+  clinical: ClinicInvolvement | null;
+}
+
 const NOT_GATED: ProfileClinic = {
-  gated: false, matched: false, keyUsed: null, patientCode: null,
-  sensitive: null, counts: null, latestBooking: null,
+  gated: false, matched: false, keyUsed: null, sensitive: null, clinical: null,
 };
-const NO_MATCH: ProfileClinic = {
-  gated: true, matched: false, keyUsed: null, patientCode: null,
-  sensitive: null, counts: null, latestBooking: null,
-};
+function noMatch(): ProfileClinic {
+  return { gated: true, matched: false, keyUsed: null, sensitive: null, clinical: null };
+}
 
 // ── COVERAGE (TUGAS 4): clinic reach for /quality. AGGREGATE counts only — no health
 //    content, no per-patient rows — so this is NOT view_health gated (it is a data-quality
@@ -211,9 +225,10 @@ async function countByPatient(admin: SupabaseClient, table: string, patientId: s
 export async function fetchProfileClinic(
   admin: SupabaseClient,
   customerId: string,
-  opts: { canViewHealth: boolean },
+  opts: { canSeeContact: boolean; canSeeMedical: boolean },
 ): Promise<ProfileClinic> {
-  if (!opts.canViewHealth) return NOT_GATED; // health data never leaves the server for others.
+  // Nothing to show unless the caller may see at least identity OR clinical.
+  if (!opts.canSeeContact && !opts.canSeeMedical) return NOT_GATED;
 
   // Profile identity, server-side only.
   const { data: prof, error: profErr } = await admin
@@ -225,7 +240,7 @@ export async function fetchProfileClinic(
   const p = prof as { email_normalized: string | null; phone_normalized: string | null } | null;
   const email = normalizeEmail(p?.email_normalized ?? null);
   const phone = normalizePhoneID(p?.phone_normalized ?? null);
-  if (!email && !phone) return NO_MATCH;
+  if (!email && !phone) return noMatch();
 
   const selectCols = [
     "id",
@@ -259,49 +274,54 @@ export async function fetchProfileClinic(
     if (rows.length > 0) { patient = rows[0]; keyUsed = "email"; }
   }
 
-  if (!patient) return NO_MATCH;
+  if (!patient) return noMatch();
 
   const patientId = String(patient.id);
 
-  // Engagement volume — counts only, no clinical content read.
-  const [bookings, visits, assessments, screenings, transactions] = await Promise.all([
-    countByPatient(admin, "clinic_bookings", patientId),
-    countByPatient(admin, "clinic_visits", patientId),
-    countByPatient(admin, "clinic_assessments", patientId),
-    countByPatient(admin, "clinic_screenings", patientId),
-    countByPatient(admin, "clinic_transactions", patientId),
-  ]);
+  // IDENTITY tier — only for a canSeeContact caller (K-31). NIK/DOB/address are identity.
+  const sensitive: ClinicSensitive | null = opts.canSeeContact
+    ? {
+        nik: (patient.id_number as string) ?? null,
+        dateOfBirth: (patient.date_of_birth as string) ?? null,
+        gender: (patient.gender as string) ?? null,
+        address: (patient.address as string) ?? null,
+        emergencyContactName: (patient.emergency_contact_name as string) ?? null,
+        emergencyContactPhone: (patient.emergency_contact_phone as string) ?? null,
+      }
+    : null;
 
-  // Latest booking for scheduling context (safe columns only).
-  const { data: bk, error: bkErr } = await admin
-    .from("clinic_bookings")
-    .select(CLINIC_BOOKING_SAFE_COLUMNS.join(","))
-    .eq("patient_id", patientId)
-    .order("manual_date", { ascending: false, nullsFirst: false })
-    .limit(1);
-  if (bkErr) throw bkErr;
-  const latest = ((bk ?? []) as unknown as Record<string, unknown>[])[0] as Record<string, unknown> | undefined;
+  // CLINICAL-INVOLVEMENT tier — only for a canSeeMedical caller (being a patient infers health).
+  // The count queries + patient_code are skipped entirely when the caller lacks view_health, so
+  // the health-inferring signal is never even computed for a contact-only role.
+  let clinical: ClinicInvolvement | null = null;
+  if (opts.canSeeMedical) {
+    const [bookings, visits, assessments, screenings, transactions] = await Promise.all([
+      countByPatient(admin, "clinic_bookings", patientId),
+      countByPatient(admin, "clinic_visits", patientId),
+      countByPatient(admin, "clinic_assessments", patientId),
+      countByPatient(admin, "clinic_screenings", patientId),
+      countByPatient(admin, "clinic_transactions", patientId),
+    ]);
+    const { data: bk, error: bkErr } = await admin
+      .from("clinic_bookings")
+      .select(CLINIC_BOOKING_SAFE_COLUMNS.join(","))
+      .eq("patient_id", patientId)
+      .order("manual_date", { ascending: false, nullsFirst: false })
+      .limit(1);
+    if (bkErr) throw bkErr;
+    const latest = ((bk ?? []) as unknown as Record<string, unknown>[])[0] as Record<string, unknown> | undefined;
+    clinical = {
+      patientCode: (patient.patient_code as string) ?? null,
+      counts: { bookings, visits, assessments, screenings, transactions },
+      latestBooking: latest
+        ? {
+            bookingCode: (latest.booking_code as string) ?? null,
+            status: (latest.status as string) ?? null,
+            date: (latest.manual_date as string) ?? null,
+          }
+        : null,
+    };
+  }
 
-  return {
-    gated: true,
-    matched: true,
-    keyUsed,
-    patientCode: (patient.patient_code as string) ?? null,
-    sensitive: {
-      nik: (patient.id_number as string) ?? null,
-      dateOfBirth: (patient.date_of_birth as string) ?? null,
-      gender: (patient.gender as string) ?? null,
-      address: (patient.address as string) ?? null,
-      emergencyContactName: (patient.emergency_contact_name as string) ?? null,
-      emergencyContactPhone: (patient.emergency_contact_phone as string) ?? null,
-    },
-    counts: { bookings, visits, assessments, screenings, transactions },
-    latestBooking: latest
-      ? {
-          bookingCode: (latest.booking_code as string) ?? null,
-          status: (latest.status as string) ?? null,
-          date: (latest.manual_date as string) ?? null,
-        }
-      : null,
-  };
+  return { gated: true, matched: true, keyUsed, sensitive, clinical };
 }

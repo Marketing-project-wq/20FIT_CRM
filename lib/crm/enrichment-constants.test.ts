@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   HYROX_SAFE_COLUMNS,
   HYROX_SENSITIVE_COLUMNS,
+  HYROX_IDENTITY_COLUMNS,
+  HYROX_MEDICAL_COLUMNS,
   HYROX_FORBIDDEN_COLUMNS,
   MY20FIT_PROFILE_SAFE_COLUMNS,
   MY20FIT_PROFILE_FORBIDDEN_COLUMNS,
@@ -19,6 +21,20 @@ describe("enrichment safe-column guards (Sprint 3R)", () => {
     expect([...HYROX_SENSITIVE_COLUMNS].sort()).toEqual(
       ["gol_darah", "kontak_darurat", "nik", "no_kontak_darurat", "tgl_lahir"].sort(),
     );
+  });
+
+  it("sensitive splits cleanly into IDENTITY (view_contact) and MEDICAL (view_health) — K-31", () => {
+    // Identity rides the contact gate; blood type is the only medical field and stays view_health.
+    expect([...HYROX_IDENTITY_COLUMNS].sort()).toEqual(
+      ["kontak_darurat", "nik", "no_kontak_darurat", "tgl_lahir"].sort(),
+    );
+    expect([...HYROX_MEDICAL_COLUMNS]).toEqual(["gol_darah"]);
+    // The two sub-lists PARTITION the sensitive set: union == sensitive, and disjoint.
+    expect([...HYROX_IDENTITY_COLUMNS, ...HYROX_MEDICAL_COLUMNS].sort()).toEqual([...HYROX_SENSITIVE_COLUMNS].sort());
+    const idSet = new Set<string>(HYROX_IDENTITY_COLUMNS);
+    for (const m of HYROX_MEDICAL_COLUMNS) expect(idSet.has(m)).toBe(false);
+    // gol_darah (blood type) must NOT be treated as identity — it is medical by nature (K-31).
+    expect(idSet.has("gol_darah")).toBe(false);
   });
 
   it("my20fit_profile safe list excludes ALL health/body/cycle columns", () => {
