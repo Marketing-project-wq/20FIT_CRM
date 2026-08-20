@@ -58,6 +58,11 @@ export const en: Messages = {
     title: "Dashboard",
     subtitle: "20FIT Audience Data & CRM",
     tz: "WIB",
+    // Per-block freshness — SAME wording across the screen (one small line per block):
+    todayLabel: "Today", // clarifies the header date is today, NOT when the data was refreshed
+    freshLive: "computed on page load",
+    freshSnapshot: "mirror snapshot", // + refresh date-time
+    freshManual: "measured manually", // + measurement date
     audienceSize: "Audience size",
     audienceSizeHint: "master_customer (read-only)",
     contactableMarketing: "Contactable · marketing",
@@ -71,7 +76,7 @@ export const en: Messages = {
       "date of the last batch load (2 loads: 20 Apr & 31 Jul 2026) — not a continuous feed",
     importDob: "Date of birth · import data",
     importDobHint:
-      "staging_20fit_data rows have a birth date (master_customer: 0) · ~98.6% matched to a profile (12 Aug 2026)",
+      "staging_20fit_data rows have a birth date (master_customer: 0) · ~98.6% matched to a profile (measured manually · 12 Aug 2026)",
     rfmTitle: "RFM spread · 20FIT import data",
     rfmNote:
       'From staging_20fit_data."RFM per paid order". “−” = no bucket (not empty). Stored spelling kept as-is. RFM per revenue 0% filled.',
@@ -107,6 +112,14 @@ export const en: Messages = {
     coveragePhoneOnly: "Phone only",
     coverageNeither: "Neither",
     coveragePhoneNote: "“Phone” = a stored phone number. WhatsApp status is NOT verified — do not build a WhatsApp campaign on this figure. “Neither” = a measured 0 (not hidden).",
+    // Per-category contact-coverage export → through the existing segment export engine.
+    coverageExportTitle: "Export CSV per category",
+    coverageExportBtn: "Export",
+    coverageExportBusy: "Exporting…",
+    coverageExportEmpty: "0 — nothing to export",
+    coveragePhoneOnlyWarn: "The “phone only” category has no email — this list cannot be used for an email campaign.",
+    coverageExportNote: "Exports through the same segment engine: suppression is excluded, role gates apply, NIK & clinical data never enter the file, and the real row count is written at the end of the file.",
+    coverageExportFailed: "Export failed.",
   },
 
   audience: {
@@ -422,6 +435,8 @@ export const en: Messages = {
     rbNoRevenue: "no revenue",
     rbHasPhone: "has a phone",
     rbHasEmail: "has an email",
+    rbNoPhone: "no phone",
+    rbNoEmail: "no email",
     rbWholePoolNoCriteria: "the whole pool (no readable criteria)",
     rbEcoUnit: "ecosystem unit",
     rbEcoProduct: "ecosystem product",

@@ -4,8 +4,27 @@ import { useEffect, useState } from "react";
 import { StatCard } from "./stat-card";
 import { BarList } from "./bar-list";
 import { Why } from "@/components/ui/why";
+import { Button } from "@/components/ui/button";
 import { useI18n } from "@/components/i18n/lang-provider";
 import { formatCount, formatDate, formatDateTime } from "@/lib/i18n";
+import type { FilterNode } from "@/lib/crm/filter-tree";
+
+/** Contact-coverage category → the AND filter tree the existing /api/exports engine understands.
+ *  Presence (hasPhone/hasEmail) + absence (noPhone/noEmail) leaves; one engine, no second path. */
+type CoverageCat = "both" | "emailOnly" | "phoneOnly" | "neither";
+const COVERAGE_LEAVES: Record<CoverageCat, [string, string]> = {
+  both: ["hasEmail", "hasPhone"],
+  emailOnly: ["hasEmail", "noPhone"],
+  phoneOnly: ["hasPhone", "noEmail"],
+  neither: ["noPhone", "noEmail"],
+};
+function coverageTree(cat: CoverageCat): FilterNode {
+  const [a, b] = COVERAGE_LEAVES[cat];
+  return { kind: "group", op: "AND", children: [
+    { kind: "condition", field: a as never },
+    { kind: "condition", field: b as never },
+  ] };
+}
 
 interface SourceGap { key: string; total: number; inPool: number; gap: number }
 interface UnitCount { unit: string; profiles: number; source: "mirror" | "live" }
@@ -35,6 +54,13 @@ const EVENT_TOP = 10;
  *  stale after every routine manual refresh. */
 const STALE_THRESHOLD_HOURS = 24;
 
+/** One small, CONSISTENT freshness marker per block — same faint mono line everywhere, so a reader
+ *  can tell a live count from a mirror snapshot from a hand-measured dated figure at a glance
+ *  (Freshness sprint). Kept to ONE line per block to avoid turning the screen back into captions. */
+function FreshTag({ children }: { children: React.ReactNode }) {
+  return <span className="font-mono text-[11px] font-normal text-ink-faint">· {children}</span>;
+}
+
 /** Dictionary label for a live-source key (source display names; not stored data values). */
 function srcLabel(t: ReturnType<typeof useI18n>["t"], key: string): string {
   const d = t.dashboard;
@@ -61,6 +87,43 @@ export function DashboardContent({ previewStats }: { previewStats?: DashboardSta
   const [stats, setStats] = useState<DashboardStats | null>(previewStats ?? null);
   const [state, setState] = useState<"loading" | "ready" | "denied" | "error">(previewStats ? "ready" : "loading");
   const [showAllEvents, setShowAllEvents] = useState(false);
+  const [exportBusy, setExportBusy] = useState<CoverageCat | null>(null);
+  const [exportMsg, setExportMsg] = useState<string | null>(null);
+
+  // Export a contact-coverage category via the ONE existing segment export engine (/api/exports).
+  // The route enforces the role gate (approval/deny), excludes suppression, forbids NIK/clinical
+  // columns, and writes export.performed AFTER the stream — none of it is rebuilt here.
+  async function exportCoverage(cat: CoverageCat) {
+    if (previewStats) return; // dev preview: no live export
+    setExportMsg(null);
+    setExportBusy(cat);
+    try {
+      const res = await fetch("/api/exports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tree: coverageTree(cat) }),
+      });
+      if (!res.ok) {
+        const d = (await res.json().catch(() => ({}))) as { message?: string };
+        setExportMsg(d.message ?? `${t.dashboard.coverageExportFailed} (HTTP ${res.status})`);
+        return;
+      }
+      const blob = await res.blob();
+      const name = res.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] ?? "segmen.csv";
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      setExportMsg(t.dashboard.coverageExportFailed);
+    } finally {
+      setExportBusy(null);
+    }
+  }
 
   useEffect(() => {
     // Dev preview (app/dev/preview): render fixture data with NO fetch — /dev/* is 404 in prod.
@@ -110,7 +173,9 @@ export function DashboardContent({ previewStats }: { previewStats?: DashboardSta
           <h1 className="font-display text-[30px] font-extrabold leading-none text-ink">{t.dashboard.title}</h1>
           <p className="mt-2 font-body text-[14px] text-ink-soft">{t.dashboard.subtitle}</p>
         </div>
-        <p className="font-mono text-[12px] text-ink-faint">{todayLabel} · {t.dashboard.tz}</p>
+        {/* Prefixed with "Today" so this reads as the current date, NOT when the data was refreshed
+            (each data block carries its own freshness marker below). */}
+        <p className="font-mono text-[12px] text-ink-faint">{t.dashboard.todayLabel} · {todayLabel} · {t.dashboard.tz}</p>
       </header>
 
       {state === "denied" && <p className="font-body text-[13px] text-ink-soft">{t.access.dashboardHidden}</p>}
@@ -131,7 +196,9 @@ export function DashboardContent({ previewStats }: { previewStats?: DashboardSta
       {state === "ready" && stats && (
         <section className="space-y-4">
           <div>
-            <h2 className="font-display text-[16px] font-bold text-ink">{t.dashboard.liveTitle}</h2>
+            <h2 className="font-display text-[16px] font-bold text-ink">
+              {t.dashboard.liveTitle} <FreshTag>{t.dashboard.freshLive}</FreshTag>
+            </h2>
             <p className="mt-1 max-w-3xl font-body text-[13px] leading-relaxed text-ink-soft">{t.dashboard.liveNote}</p>
           </div>
 
@@ -175,11 +242,7 @@ export function DashboardContent({ previewStats }: { previewStats?: DashboardSta
         <section className="space-y-3">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h2 className="font-display text-[16px] font-bold text-ink">{t.dashboard.unitTitle}</h2>
-            {mirrorAt && (
-              <span className="font-mono text-[11px] text-ink-faint">
-                {t.dashboard.snapshotBadge} · {t.dashboard.refreshedPrefix}{formatDateTime(mirrorAt, lang)}
-              </span>
-            )}
+            {mirrorAt && <FreshTag>{t.dashboard.freshSnapshot} · {formatDateTime(mirrorAt, lang)}</FreshTag>}
           </div>
           <p className="max-w-3xl font-body text-[12px] leading-relaxed text-ink-faint">{t.dashboard.unitNote}</p>
           {mirrorStale && (
@@ -198,7 +261,9 @@ export function DashboardContent({ previewStats }: { previewStats?: DashboardSta
       {/* ── Event registrations (live). ───────────────────────────────────────────────── */}
       {state === "ready" && stats && events.length > 0 && (
         <section className="space-y-3">
-          <h2 className="font-display text-[16px] font-bold text-ink">{t.dashboard.eventTitle}</h2>
+          <h2 className="font-display text-[16px] font-bold text-ink">
+            {t.dashboard.eventTitle} <FreshTag>{t.dashboard.freshLive}</FreshTag>
+          </h2>
           <p className="max-w-3xl font-body text-[12px] leading-relaxed text-ink-faint">{t.dashboard.eventNote}</p>
           <div className="glass rounded-card p-5">
             <BarList lang={lang} scale="linear" barClass="bg-green"
@@ -216,7 +281,9 @@ export function DashboardContent({ previewStats }: { previewStats?: DashboardSta
       {/* ── Contact coverage (live). ──────────────────────────────────────────────────── */}
       {state === "ready" && stats && (
         <section className="space-y-3">
-          <h2 className="font-display text-[16px] font-bold text-ink">{t.dashboard.coverageTitle}</h2>
+          <h2 className="font-display text-[16px] font-bold text-ink">
+            {t.dashboard.coverageTitle} <FreshTag>{t.dashboard.freshLive}</FreshTag>
+          </h2>
           <div className="glass rounded-card p-5">
             <BarList lang={lang} scale="linear" barClass="bg-blue"
               items={[
@@ -225,6 +292,39 @@ export function DashboardContent({ previewStats }: { previewStats?: DashboardSta
                 { label: t.dashboard.coveragePhoneOnly, value: stats.contactCoverage.phoneOnly },
                 { label: t.dashboard.coverageNeither, value: stats.contactCoverage.neither },
               ]} />
+
+            {/* Per-category CSV export — through the existing engine. A zero category (neither) is a
+                DISABLED button ("nothing to export"), never an empty file that reads as a failure;
+                its row still shows above (K-08). */}
+            <div className="mt-4 border-t border-glass-border pt-3">
+              <p className="font-display text-[12px] font-semibold uppercase tracking-wide text-ink-faint">{t.dashboard.coverageExportTitle}</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {([
+                  ["both", t.dashboard.coverageBoth, stats.contactCoverage.both],
+                  ["emailOnly", t.dashboard.coverageEmailOnly, stats.contactCoverage.emailOnly],
+                  ["phoneOnly", t.dashboard.coveragePhoneOnly, stats.contactCoverage.phoneOnly],
+                  ["neither", t.dashboard.coverageNeither, stats.contactCoverage.neither],
+                ] as [CoverageCat, string, number][]).map(([cat, label, value]) => (
+                  <Button
+                    key={cat}
+                    size="sm"
+                    variant="outline"
+                    disabled={value === 0 || exportBusy !== null}
+                    onClick={() => exportCoverage(cat)}
+                    title={value === 0 ? t.dashboard.coverageExportEmpty : undefined}
+                  >
+                    {t.dashboard.coverageExportBtn} · {label} ({formatCount(value, lang)})
+                    {exportBusy === cat ? ` — ${t.dashboard.coverageExportBusy}` : ""}
+                  </Button>
+                ))}
+              </div>
+              {stats.contactCoverage.phoneOnly > 0 && (
+                <p className="mt-2 font-body text-[11px] leading-relaxed text-amber">{t.dashboard.coveragePhoneOnlyWarn}</p>
+              )}
+              {exportMsg && <p className="mt-2 font-body text-[12px] text-red">{exportMsg}</p>}
+              <p className="mt-2 font-body text-[11px] leading-relaxed text-ink-faint">{t.dashboard.coverageExportNote}</p>
+            </div>
+
             <p className="mt-3 font-body text-[11px] leading-relaxed text-ink-faint">{t.dashboard.coveragePhoneNote}</p>
           </div>
         </section>
@@ -233,7 +333,9 @@ export function DashboardContent({ previewStats }: { previewStats?: DashboardSta
       {/* ── RFM spread (live, from staging). A distribution; 0 = measured zero (K-08). ──── */}
       {state === "ready" && stats && stats.importRfm.length > 0 && (
         <section className="space-y-2">
-          <h2 className="font-display text-[15px] font-semibold text-ink-soft">{t.dashboard.rfmTitle}</h2>
+          <h2 className="font-display text-[15px] font-semibold text-ink-soft">
+            {t.dashboard.rfmTitle} <FreshTag>{t.dashboard.freshLive}</FreshTag>
+          </h2>
           <p className="max-w-3xl font-body text-[12px] leading-relaxed text-ink-faint">{t.dashboard.rfmNote}</p>
           <div className="mt-1 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
             {stats.importRfm.map((r) => (

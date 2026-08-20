@@ -118,16 +118,17 @@ pagar panjang/terlarang. Baca judul doc untuk konteks, jangan audit tiap kalimat
   event_transaction 78/4.712 (total 4.790); lapis-3 gap (my20fit 745/919). Lihat `FAKTA-DATA.md`.
 - **Pagar dibuktikan menggigit:** probe istilah-terlarang + panjang (4D-T1) benar-benar gagal saat dilanggar.
 - **Screenshot fixture** dashboard (ID+EN) — skala-akar membuat gym (2) terlihat, banner basi menonjol.
-- **Cron terpasang & terverifikasi live:** jobid 9, `0 20 * * *`, active, next run 03:00 WIB.
+- **Cron terpasang & TERBUKTI BERJALAN:** jobid 9, `0 20 * * *`. Eksekusi pertama 19 Agu 2026 20:00 UTC
+  (03:00 WIB), `status=succeeded`, durasi 9,02 dtk, `refreshed_at` bergerak ke 2026-08-19 20:00 (FAKTA-DATA).
 
 ## Apa yang BELUM pernah terverifikasi (jujur)
 
 - **Render data nyata di balik login** — belum pernah; sandbox tak punya kredensial/egress. Pratinjau
   memakai fixture. Jalur nyata ditulis sebagai OPSI di `docs/RENCANA-render-data-nyata.md`, tak dijalankan.
-- **Ekspor CSV di produksi** — dibangun, gated, diaudit, tapi **belum pernah dipakai staf nyata**.
+- **Ekspor CSV di produksi** — dibangun, gated, diaudit, tapi **belum pernah dipakai staf nyata**
+  (`export.performed` masih 0). Kueri hitung untuk kategori terbesar (80.999) terukur ~48 ms; jalur
+  unduh terautentikasi belum dijalankan (tak ada sesi login di sandbox).
 - **Asisten segmen AI** — kode lengkap, tapi **belum menyala** (butuh `ANTHROPIC_API_KEY`; tanpa itu 503).
-- **Cron run pertama** — belum berjalan; eksekusi pertama 20:00 UTC nanti (03:00 WIB besok). Cek
-  `cron.job_run_details` (jobid 9) setelah itu.
 
 ---
 

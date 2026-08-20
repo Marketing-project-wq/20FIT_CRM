@@ -69,6 +69,11 @@ export const id = {
     title: "Dashboard",
     subtitle: "Audience Data & CRM 20FIT",
     tz: "WIB",
+    // Kesegaran per blok — kata-kata SAMA di seluruh layar (satu baris kecil per blok):
+    todayLabel: "Hari ini", // memperjelas tanggal di kepala = hari ini, BUKAN kapan data diperbarui
+    freshLive: "dihitung saat halaman dibuka",
+    freshSnapshot: "snapshot cermin", // + tanggal-waktu refresh
+    freshManual: "diukur manual", // + tanggal pengukuran
     audienceSize: "Ukuran audiens",
     audienceSizeHint: "master_customer (baca saja)",
     contactableMarketing: "Bisa dihubungi · marketing",
@@ -82,7 +87,7 @@ export const id = {
       "tanggal muatan batch terakhir (2 muatan: 20 Apr & 31 Jul 2026) — bukan feed berkelanjutan",
     importDob: "Tanggal lahir · data impor",
     importDobHint:
-      "baris staging_20fit_data punya tgl lahir (master_customer: 0) · ~98,6% cocok ke profil (12 Agu 2026)",
+      "baris staging_20fit_data punya tgl lahir (master_customer: 0) · ~98,6% cocok ke profil (diukur manual · 12 Agu 2026)",
     rfmTitle: "Sebaran RFM · data impor 20FIT",
     // The RFM note keeps the "− = no bucket, not empty" nuance and the "spelling kept" rule.
     rfmNote:
@@ -120,6 +125,14 @@ export const id = {
     coveragePhoneOnly: "Telepon saja",
     coverageNeither: "Tak punya keduanya",
     coveragePhoneNote: "“Telepon” = nomor telepon tersimpan. Status WhatsApp BELUM diverifikasi — jangan susun kampanye WhatsApp di atas angka ini. “Tak punya keduanya” = 0 terukur (bukan disembunyikan).",
+    // Ekspor per kategori cakupan kontak → lewat mesin ekspor segmen yang sudah ada.
+    coverageExportTitle: "Ekspor CSV per kategori",
+    coverageExportBtn: "Ekspor",
+    coverageExportBusy: "Mengekspor…",
+    coverageExportEmpty: "0 — tak ada yang bisa diekspor",
+    coveragePhoneOnlyWarn: "Kategori “telepon saja” tak punya email — daftar ini tak bisa dipakai untuk kampanye email.",
+    coverageExportNote: "Ekspor lewat mesin segmen yang sama: suppression dikecualikan, gerbang peran berlaku, NIK & data klinis tak pernah masuk berkas, dan jumlah baris nyata ditulis di akhir berkas.",
+    coverageExportFailed: "Ekspor gagal.",
   },
 
   // /audience page (Sprint 4D screen 1) — browse pool + single-person search + quality banner.
@@ -478,6 +491,8 @@ export const id = {
     rbNoRevenue: "tanpa revenue",
     rbHasPhone: "punya telepon",
     rbHasEmail: "punya email",
+    rbNoPhone: "tanpa telepon",
+    rbNoEmail: "tanpa email",
     rbWholePoolNoCriteria: "seluruh pool (tidak ada kriteria terbaca)",
     rbEcoUnit: "ekosistem unit",
     rbEcoProduct: "ekosistem produk",

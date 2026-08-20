@@ -316,9 +316,17 @@ Tabel sumber tim lain **terus bertambah** sejak angka bertanggal di atas. Diukur
 | `staging_20fit_data` | 88.536 | — | **88.536** |
 | `master_customer` | 82.253 | — | **82.253** |
 
-**Konsekuensi:** `crm_customer_mirror` adalah snapshot **refresh-manual**. Karena sumber di atas
-tumbuh setelah refresh terakhir (14 Agu), penanda kehadiran cermin (`has_my20fit`, `has_clinic`)
-kini **tertinggal** dari sumber langsung — persis alasan cap `refreshed_at` ditampilkan (Sprint 5A/5B).
-Angka acuan yang diturunkan darinya (mis. my20fit 170→172, klinik 112→120 pada 18 Agu) akan terus
-bergeser sampai `crm_refresh_customer_mirror()` dijalankan lagi. Bukan kerusakan — snapshot
-memang begitu; hanya perlu refresh (dan/atau penjadwalan, yang tetap keputusan terpisah).
+**Konsekuensi:** `crm_customer_mirror` adalah snapshot yang disegarkan **cron harian** (K-30).
+
+**Cron terbukti — eksekusi pertama (diverifikasi 20 Agu 2026):** job pg_cron `crm-refresh-customer-mirror`
+(jobid 9, `0 20 * * *`) menembak **19 Agu 2026 20:00:00 UTC** (= 03:00 WIB 20 Agu) tepat waktu,
+`status = succeeded`, **durasi 9,02 detik**, dan `crm_mirror_meta.refreshed_at` benar-benar **bergerak**
+dari `2026-08-18 04:11:45 UTC` ke `2026-08-19 20:00:00 UTC`. Konversi zona (UTC→WIB) terbukti di dunia
+nyata, bukan hanya di atas kertas; cermin cocok dengan sumber langsung setelahnya (`has_my20fit` 175 =
+175). Catatan: **9,02 dtk adalah satu sampel pada cermin yang sudah hangat** — bukan angka worst-case;
+durasi bisa berbeda saat sumber tumbuh atau saat cold cache.
+
+Sebelum eksekusi ini penanda cermin tertinggal saat sumber tumbuh (persis alasan cap `refreshed_at`
+ditampilkan, Sprint 5A/5B); kini cron memperkecil peluang basi itu ke ≤24 jam. Refresh manual tetap
+ada; ambang basi 24 jam tetap; cron **memperkecil peluang** basi, tak menjaminnya (job yang gagal diam
+justru muncul sebagai peringatan basi + `cron.job_run_details` status='failed').

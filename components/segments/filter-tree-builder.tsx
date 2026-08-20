@@ -32,6 +32,10 @@ function fieldLabel(t: Dict, field: LeafField): string {
     case "revenue": return t.segments.fieldRevenue;
     case "hasPhone": return t.segments.fieldHasPhone;
     case "hasEmail": return t.segments.fieldHasEmail;
+    // Absence leaves exist for the dashboard contact-coverage export only; they are NOT offered in
+    // the manual builder's FIELDS list below, but the switch must stay exhaustive.
+    case "noPhone": return t.segments.rbNoPhone;
+    case "noEmail": return t.segments.rbNoEmail;
   }
 }
 

@@ -159,6 +159,10 @@ function fieldWord(field: LeafField, s: ReturnType<typeof segWords>): string {
     case "revenue": return s.rbWordRevenue;
     case "hasPhone": return s.rbHasPhone;
     case "hasEmail": return s.rbHasEmail;
+    // Absence leaves (dashboard coverage export) — not produced by the AI assistant, but the
+    // switch over LeafField must be exhaustive.
+    case "noPhone": return s.rbNoPhone;
+    case "noEmail": return s.rbNoEmail;
   }
 }
 

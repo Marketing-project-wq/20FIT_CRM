@@ -29,8 +29,10 @@ function words(lang: Lang) {
 export type FilterOperator = "AND" | "OR";
 
 /** Leaf fields — a closed list. Values are validated against the same closed lists the flat
- *  builder uses. hasPhone/hasEmail take no value. */
-export type LeafField = "unit" | "segment" | "city" | "revenue" | "hasPhone" | "hasEmail";
+ *  builder uses. hasPhone/hasEmail (presence) and noPhone/noEmail (ABSENCE) take no value.
+ *  The absence leaves exist so the contact-coverage categories (email-only, phone-only, neither)
+ *  are expressible as trees and can ride the ONE existing export engine (Freshness/Export sprint). */
+export type LeafField = "unit" | "segment" | "city" | "revenue" | "hasPhone" | "hasEmail" | "noPhone" | "noEmail";
 
 export interface LeafCondition {
   kind: "condition";
@@ -63,6 +65,8 @@ function validateLeaf(leaf: LeafCondition, s: ReturnType<typeof words>): Validat
   switch (leaf.field) {
     case "hasPhone":
     case "hasEmail":
+    case "noPhone":
+    case "noEmail":
       return { ok: true };
     case "unit":
       return UNIT_VALUES.includes(leaf.value ?? "") ? { ok: true } : { ok: false, error: s.vUnknownUnit };
@@ -134,6 +138,10 @@ function leafToExpr(leaf: LeafCondition): string {
       return `phone_normalized.not.is.null`;
     case "hasEmail":
       return `email_normalized.not.is.null`;
+    case "noPhone":
+      return `phone_normalized.is.null`;
+    case "noEmail":
+      return `email_normalized.is.null`;
   }
 }
 
@@ -161,6 +169,8 @@ function fieldPhrase(field: LeafField, v: string | null | undefined, s: ReturnTy
     case "revenue": return v === "has" ? s.rbHasRevenue : v === "negative" ? s.rbNegativeRevenue : s.rbNoRevenue;
     case "hasPhone": return s.rbHasPhone;
     case "hasEmail": return s.rbHasEmail;
+    case "noPhone": return s.rbNoPhone;
+    case "noEmail": return s.rbNoEmail;
   }
 }
 
