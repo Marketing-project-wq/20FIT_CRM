@@ -73,7 +73,10 @@ export async function* streamSegmentCsv(
     resolveRestrictIds(admin, criteria),
   ]);
 
-  yield provenanceLines(ctx);
+  // UTF-8 BOM (﻿) leads the file so Excel reads it as UTF-8 — without it Excel assumes
+  // Windows-1252 and mangles non-ASCII (an em-dash "—" shows as "â€""). The BOM is the first
+  // bytes of the whole stream, prepended to the provenance block.
+  yield "﻿" + provenanceLines(ctx);
   yield csvHeader((col) => ctx.labels.headers[col as keyof Dict["export"]["headers"]] ?? col);
 
   const selectCols = ["customer_id", ...EXPORT_COLUMNS.map((c) => c.column).filter((c) => c !== "customer_id")].join(",");
@@ -81,44 +84,56 @@ export async function* streamSegmentCsv(
 
   let count = 0;
 
-  if (restrictIds && restrictIds.size === 0) {
-    // Intersected id-set criteria yielded nobody → header + EOF only, no rows.
-  } else if (restrictIds && restrictIds.size <= FULL_SCAN_ABOVE) {
-    // Small/medium id set: fetch ONLY those rows via chunked .in() (applies master criteria too).
-    const ids = Array.from(restrictIds);
-    for (let i = 0; i < ids.length; i += IN_CHUNK) {
-      let q = admin.from("master_customer").select(selectCols).in("customer_id", ids.slice(i, i + IN_CHUNK));
-      q = applyMasterCriteria(q, criteria, masterFilterExpr);
-      const { data, error } = await q;
-      if (error) throw error;
-      for (const row of (data ?? []) as unknown as Record<string, unknown>[]) {
-        if (suppressed.has(String(row.customer_id))) continue; // suppression wins (K-03/K-26)
-        count++;
-        yield emit(row);
+  // The row-producing section is wrapped so a mid-stream throw (a bad column, a query error) never
+  // ends the file silently after the header — HTTP 200 has already been sent, so the failure cannot
+  // surface as a status code. Instead we write a visible failure marker line and stop WITHOUT the
+  // success EOF or the audit row, so the file announces itself as truncated and no "complete" audit
+  // is recorded for a partial export. The cause is logged (PII-free) via the Sprint 3K failure path.
+  try {
+    if (restrictIds && restrictIds.size === 0) {
+      // Intersected id-set criteria yielded nobody → header + EOF only, no rows.
+    } else if (restrictIds && restrictIds.size <= FULL_SCAN_ABOVE) {
+      // Small/medium id set: fetch ONLY those rows via chunked .in() (applies master criteria too).
+      const ids = Array.from(restrictIds);
+      for (let i = 0; i < ids.length; i += IN_CHUNK) {
+        let q = admin.from("master_customer").select(selectCols).in("customer_id", ids.slice(i, i + IN_CHUNK));
+        q = applyMasterCriteria(q, criteria, masterFilterExpr);
+        const { data, error } = await q;
+        if (error) throw error;
+        for (const row of (data ?? []) as unknown as Record<string, unknown>[]) {
+          if (suppressed.has(String(row.customer_id))) continue; // suppression wins (K-03/K-26)
+          count++;
+          yield emit(row);
+        }
+      }
+    } else {
+      // No id-set criteria (master-only), or a very large set: page the filtered pool and, when a
+      // large id set is present, filter membership in memory. Deterministic order by the PK.
+      for (let from = 0; ; from += PAGE) {
+        let q = admin
+          .from("master_customer")
+          .select(selectCols)
+          .order("customer_id", { ascending: true })
+          .range(from, from + PAGE - 1);
+        q = applyMasterCriteria(q, criteria, masterFilterExpr);
+        const { data, error } = await q;
+        if (error) throw error;
+        const rows = (data ?? []) as unknown as Record<string, unknown>[];
+        for (const row of rows) {
+          const id = String(row.customer_id);
+          if (restrictIds && !restrictIds.has(id)) continue; // AND with the id-set criteria
+          if (suppressed.has(id)) continue; // suppression wins (K-03/K-26)
+          count++;
+          yield emit(row);
+        }
+        if (rows.length < PAGE) break;
       }
     }
-  } else {
-    // No id-set criteria (master-only), or a very large set: page the filtered pool and, when a
-    // large id set is present, filter membership in memory. Deterministic order by the PK.
-    for (let from = 0; ; from += PAGE) {
-      let q = admin
-        .from("master_customer")
-        .select(selectCols)
-        .order("customer_id", { ascending: true })
-        .range(from, from + PAGE - 1);
-      q = applyMasterCriteria(q, criteria, masterFilterExpr);
-      const { data, error } = await q;
-      if (error) throw error;
-      const rows = (data ?? []) as unknown as Record<string, unknown>[];
-      for (const row of rows) {
-        const id = String(row.customer_id);
-        if (restrictIds && !restrictIds.has(id)) continue; // AND with the id-set criteria
-        if (suppressed.has(id)) continue; // suppression wins (K-03/K-26)
-        count++;
-        yield emit(row);
-      }
-      if (rows.length < PAGE) break;
-    }
+  } catch (e) {
+    // NON-PII: route + failure type + the DB error code only. Never a row or a criteria value.
+    logApiFailure("/exports", "stream_row_fetch_failed", { code: (e as { code?: string })?.code });
+    yield csvRow([`# ${ctx.labels.aborted}`]);
+    return; // no audit, no success EOF — a truncated file must not look complete
   }
 
   // Audit AFTER streaming, with the real count. Reached only if all pages streamed (a mid-stream

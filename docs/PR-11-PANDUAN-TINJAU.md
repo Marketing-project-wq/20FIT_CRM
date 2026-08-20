@@ -125,9 +125,14 @@ pagar panjang/terlarang. Baca judul doc untuk konteks, jangan audit tiap kalimat
 
 - **Render data nyata di balik login** — belum pernah; sandbox tak punya kredensial/egress. Pratinjau
   memakai fixture. Jalur nyata ditulis sebagai OPSI di `docs/RENCANA-render-data-nyata.md`, tak dijalankan.
-- **Ekspor CSV di produksi** — dibangun, gated, diaudit, tapi **belum pernah dipakai staf nyata**
-  (`export.performed` masih 0). Kueri hitung untuk kategori terbesar (80.999) terukur ~48 ms; jalur
-  unduh terautentikasi belum dijalankan (tak ada sesi login di sandbox).
+- **Ekspor CSV di produksi** — ekspor nyata **pertama** (20 Agu 2026) **gagal diam-diam**: jalur
+  ambil-baris menyebut kolom `phone` yang tak ada di `master_customer` (ada `phone_normalized`),
+  jadi berkas terpotong setelah judul kolom — jalur hitung sehat, hanya jalur baris yang tak pernah
+  diuji. **Sudah diperbaiki** + test paritas hitung↔baris untuk keempat kategori (terbukti
+  menggigit), penanda kegagalan yang kelihatan di berkas, UTF-8 BOM, dan baris kriteria yang
+  menyebut kategori sebenarnya. Rincian: `docs/riwayat/FAKTA-DATA.md` (§Ekspor per kategori). Jalur
+  unduh terautentikasi **masih** tak terbukti di sandbox — instruksi uji pemilik produk (email-only,
+  `# EOF total_baris=638`) di `docs/VERIFIKASI-ekspor-per-kategori.md`.
 - **Asisten segmen AI** — kode lengkap, tapi **belum menyala** (butuh `ANTHROPIC_API_KEY`; tanpa itu 503).
 
 ---

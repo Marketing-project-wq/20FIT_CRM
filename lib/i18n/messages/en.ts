@@ -689,7 +689,7 @@ export const en: Messages = {
       customer_id: "customer_id",
       full_name: "name",
       email: "email",
-      phone: "phone",
+      phone_normalized: "phone",
       city: "city",
       first_unit: "first_unit",
       segment: "segment",
@@ -704,6 +704,7 @@ export const en: Messages = {
     provNoCriteria: "whole pool (no criteria)",
     eofTotal: "total_rows",
     auditFailed: "AUDIT_FAILED",
+    aborted: "FAILED: export truncated, do not use this file",
   },
 
   ai: {

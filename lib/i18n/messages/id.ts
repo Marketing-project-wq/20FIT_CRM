@@ -770,7 +770,7 @@ export const id = {
       customer_id: "customer_id",
       full_name: "nama",
       email: "email",
-      phone: "telepon",
+      phone_normalized: "telepon",
       city: "kota",
       first_unit: "unit_pertama",
       segment: "segment",
@@ -786,6 +786,9 @@ export const id = {
     provNoCriteria: "seluruh pool (tanpa kriteria)",
     eofTotal: "total_baris",
     auditFailed: "AUDIT_GAGAL",
+    // Written into the file when streaming throws mid-export, so a truncated download announces
+    // itself instead of looking complete (no EOF total = truncated, but this is explicit).
+    aborted: "GAGAL: ekspor terputus, jangan pakai berkas ini",
   },
 
   ai: {

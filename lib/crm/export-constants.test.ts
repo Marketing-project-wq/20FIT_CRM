@@ -28,7 +28,7 @@ describe("export column safety", () => {
   });
   it("exports only the expected contact/attribute columns (no surprise column)", () => {
     expect(EXPORT_COLUMNS.map((c) => c.column)).toEqual([
-      "customer_id", "full_name", "email", "phone", "city", "first_unit", "segment", "lifetime_value",
+      "customer_id", "full_name", "email", "phone_normalized", "city", "first_unit", "segment", "lifetime_value",
     ]);
   });
 });

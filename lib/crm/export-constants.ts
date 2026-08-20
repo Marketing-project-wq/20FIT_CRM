@@ -45,7 +45,7 @@ export const EXPORT_COLUMNS: readonly ExportColumn[] = [
   { column: "customer_id", header: "customer_id" },
   { column: "full_name", header: "nama" },
   { column: "email", header: "email" },
-  { column: "phone", header: "telepon" },
+  { column: "phone_normalized", header: "telepon" },
   { column: "city", header: "kota" },
   { column: "first_unit", header: "unit_pertama" },
   { column: "segment", header: "segment" },

@@ -330,3 +330,41 @@ Sebelum eksekusi ini penanda cermin tertinggal saat sumber tumbuh (persis alasan
 ditampilkan, Sprint 5A/5B); kini cron memperkecil peluang basi itu ke ≤24 jam. Refresh manual tetap
 ada; ambang basi 24 jam tetap; cron **memperkecil peluang** basi, tak menjaminnya (job yang gagal diam
 justru muncul sebagai peringatan basi + `cron.job_run_details` status='failed').
+
+---
+
+## Ekspor per kategori — kegagalan nyata pertama & perbaikannya (20 Agu 2026)
+
+Ekspor CSV sungguhan **pertama** (oleh `tifany@20fit.id`, 20 Agu 2026 04:13 UTC) **gagal
+diam-diam**: berkas `segmen-2026-08-20.csv` berisi blok provenans + baris judul kolom lalu
+**berhenti** — nol baris data, tanpa baris penutup `# EOF total_baris=`. `export.performed` di
+audit = **0** (jalur audit sehat — akun yang sama mencatat `list.viewed`/`profile.viewed`
+03:52–03:53). Karena audit ditulis **setelah** streaming selesai, ketiadaannya membuktikan
+streaming tak pernah selesai.
+
+**Sebab (ditemukan sebelum perbaikan, TUGAS 1):** jalur **hitung** (`computeSegment`) memilih
+kolom `customer_id` saja; jalur **ambil-baris** (`streamSegmentCsv`) memilih **semua**
+`EXPORT_COLUMNS`. Daftar itu menyebut `phone` — kolom yang **tidak ada** di `master_customer`
+(kolom aslinya `phone_normalized`; `phone` absen — dikonfirmasi ke `information_schema`,
+20 Agu 2026). Jadi hitung sukses, ambil-baris melempar `column master_customer.phone does not
+exist` **setelah** HTTP 200 + judul terkirim → berkas terpotong tanpa status galat. Hanya jalur
+hitung yang pernah diuji (pola "satu aturan, dua implementasi" yang sudah tiga kali menggigit
+proyek ini: kanon telepon, daftar retensi, paritas `crm_norm_phone`).
+
+**Perbaikan + celah ditutup:**
+- Kolom diarahkan ke `phone_normalized` (`export-constants.ts`) + kunci header i18n disesuaikan.
+- Test baru `export-row-path.test.ts` menjalankan **kedua** jalur untuk keempat kategori atas
+  satu dataset; fake DB-nya memvalidasi kolom terpilih ke kolom `master_customer` **sungguhan**
+  dan melempar "column does not exist" seperti Postgres. **Terbukti menggigit:** dikembalikan ke
+  `phone` → 5 test gagal.
+- Kegagalan streaming kini **kelihatan**: throw di tengah menulis baris
+  `# GAGAL: ekspor terputus, jangan pakai berkas ini`, melewati audit + EOF sukses, dan mencatat
+  `stream_row_fetch_failed` (tanpa PII).
+- Berkas kini diawali **UTF-8 BOM** (Excel tak lagi merusak `—` → `â€"`), dan baris `# kriteria:`
+  menuliskan **kategori sebenarnya** (mis. "punya email DAN tanpa telepon"), bukan "filter
+  lanjutan (AND/OR)" generik.
+
+**Belum terbukti (jujur):** jalur unduh di balik login — sandbox tak punya sesi. Instruksi uji
+untuk pemilik produk (email-only, harap `# EOF total_baris=638`, + SQL cek satu `export.performed`)
+di `docs/VERIFIKASI-ekspor-per-kategori.md`. Ekspor sintetis **tidak** ditulis (audit append-only,
+non-atribusi).

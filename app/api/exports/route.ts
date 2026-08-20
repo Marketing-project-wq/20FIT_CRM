@@ -5,7 +5,7 @@ import { getCurrentUserRole } from "@/lib/auth/current-role";
 import { isPermitted, resolveGrant } from "@/lib/auth/roles";
 import { parseCriteria, hasClinicalCriteria } from "@/lib/crm/segment";
 import { computeSegment } from "@/lib/crm/segment-read";
-import { validateFilterTree, filterTreeToExpr, type FilterNode } from "@/lib/crm/filter-tree";
+import { validateFilterTree, filterTreeToExpr, describeFilterTree, type FilterNode } from "@/lib/crm/filter-tree";
 import { thresholdAction } from "@/lib/crm/export-constants";
 import { streamSegmentCsv, type ExportContext } from "@/lib/crm/export";
 import { getServerDict } from "@/lib/i18n/server";
@@ -115,12 +115,16 @@ export async function POST(request: NextRequest) {
 
   // Passed the gate → stream the CSV. The audit row is written by the generator AFTER the last
   // data row with the real count (a mid-stream disconnect leaves no "complete" audit).
-  const { t } = getServerDict();
+  const { lang, t } = getServerDict();
   const ctx: ExportContext = {
     actorId: userId,
     actorEmail: userEmail,
     labels: t.export,
-    criteriaSummary: summarizeCriteria(criteria, masterFilterExpr != null, t.export.provNoCriteria),
+    criteriaSummary: summarizeCriteria(
+      criteria,
+      rawTree != null ? describeFilterTree(rawTree as FilterNode, true, lang) : null,
+      t.export.provNoCriteria,
+    ),
     criteriaForAudit: {
       unit: criteria.unit, segment: criteria.segment, city: criteria.city, revenue: criteria.revenue,
       has_phone: criteria.hasPhone, has_email: criteria.hasEmail,
@@ -169,9 +173,11 @@ export async function POST(request: NextRequest) {
 /** Short summary of the active criteria for the file's provenance line. The field descriptors are
  *  closed-list technical tokens (kept stable across languages); the "no criteria" fallback follows
  *  the language. */
-function summarizeCriteria(c: ReturnType<typeof parseCriteria>, hasTree: boolean, noneLabel: string): string {
+function summarizeCriteria(c: ReturnType<typeof parseCriteria>, treePhrase: string | null, noneLabel: string): string {
   const parts: string[] = [];
-  if (hasTree) parts.push("filter lanjutan (AND/OR)");
+  // The advanced AND/OR filter is what the contact-coverage export buttons send. Write the ACTUAL
+  // category ("has email and phone", "email only") so the file self-describes, not a generic label.
+  if (treePhrase) parts.push(treePhrase);
   if (c.unit) parts.push(`unit=${c.unit}`);
   if (c.segment) parts.push(`segment=${c.segment}`);
   if (c.city) parts.push(`kota~${c.city}`);
