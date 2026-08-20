@@ -7,7 +7,7 @@ import { streamSegmentCsv, type ExportContext } from "./export";
 import { computeSegment } from "./segment-read";
 import { filterTreeToExpr, type FilterNode } from "./filter-tree";
 import { parseCriteria } from "./segment";
-import { EXPORT_COLUMNS } from "./export-constants";
+import { EXPORT_COLUMNS, EXPORT_FORBIDDEN_COLUMNS, resolveExportColumns, contactColumnsForTree, type ExportColumn } from "./export-constants";
 import { getDictionary } from "../i18n";
 
 /**
@@ -50,6 +50,9 @@ interface Rec {
 }
 
 // A dataset spanning all four coverage categories (both / email-only / phone-only / neither).
+// c7 is the MASALAH 3 case: a valid RAW email but email_normalized NULL (the 108 live-ingest
+// rows). The filter keys off email_normalized, so c7 is "no email" — it lands in phone-only, and
+// its raw email must NEVER surface in the file (display keys off email_normalized too).
 const DATASET: Rec[] = [
   rec("c1", "budi@x.id", "62811000001"),
   rec("c2", "sari@x.id", "62811000002"),
@@ -57,6 +60,7 @@ const DATASET: Rec[] = [
   rec("c4", "eko@x.id", null), // email only
   rec("c5", null, "62811000005"), // phone only
   rec("c6", null, null), // neither
+  { ...rec("c7", null, "62811000007"), email: "leak@x.id", email_normalized: null }, // raw email, not normalized
 ];
 
 function rec(id: string, email: string | null, phone: string | null): Rec {
@@ -205,14 +209,15 @@ function and(a: string, b: string): FilterNode {
   };
 }
 
-function ctxFor(): ExportContext {
+function ctxFor(columns: ExportColumn[]): ExportContext {
   return {
     actorId: "00000000-0000-0000-0000-000000000000",
-    actorEmail: "tester@20fit.id",
+    actorEmail: null, // no '@' in the file except real email cells — lets us assert email leakage
     criteriaSummary: "test",
     criteriaForAudit: {},
     nowIso: "2026-08-20T00:00:00.000Z",
     labels: getDictionary("id").export,
+    columns,
   };
 }
 
@@ -232,9 +237,10 @@ describe("export row path vs count path — parity for all coverage categories (
       // Count path.
       const counted = await computeSegment(makeFake([]), criteria, expr);
 
-      // Row path — the REAL streamer, against the same schema-validating fake.
+      // Row path — the REAL streamer, with the columns the route would resolve for this category.
+      const columns = resolveExportColumns(contactColumnsForTree(cat.tree));
       const inserts: Record<string, unknown>[] = [];
-      const csv = await drain(streamSegmentCsv(makeFake(inserts), criteria, expr, ctxFor()));
+      const csv = await drain(streamSegmentCsv(makeFake(inserts), criteria, expr, ctxFor(columns)));
 
       // Data rows = lines that are neither a comment (#...) nor the header nor blank.
       const lines = csv.split("\r\n").filter((l) => l.length > 0);
@@ -258,4 +264,65 @@ describe("export row path vs count path — parity for all coverage categories (
       expect(MASTER_COLUMNS.has(c.column)).toBe(true);
     }
   });
+});
+
+// ── MASALAH 1 + 3: columns follow the category, and the wrong-field email leak is closed ──────
+
+/** Header column names from a rendered CSV (BOM + provenance stripped). */
+function headerCols(csv: string): string[] {
+  const line = csv.split("\r\n").find((l) => l.replace("﻿", "").startsWith("customer_id")) ?? "";
+  return line.replace("﻿", "").split(",");
+}
+function dataLines(csv: string): string[] {
+  return csv.split("\r\n").filter((l) => l && !l.startsWith("#") && !l.replace("﻿", "").startsWith("customer_id") && !l.startsWith("﻿#"));
+}
+
+describe("export content follows the category (MASALAH 1 + 3)", () => {
+  async function run(catKey: string): Promise<string> {
+    const cat = CATEGORIES.find((c) => c.key === catKey)!;
+    const columns = resolveExportColumns(contactColumnsForTree(cat.tree));
+    return drain(streamSegmentCsv(makeFake([]), parseCriteria({}), filterTreeToExpr(cat.tree), ctxFor(columns)));
+  }
+
+  it("email-only: no phone column, and no phone value anywhere", async () => {
+    const csv = await run("emailOnly");
+    expect(headerCols(csv)).not.toContain("telepon");
+    expect(csv).not.toContain('=""62'); // the excel-text phone marker never appears
+  });
+
+  it("phone-only: no email column, and NOT ONE email value — incl. the raw-email/null-normalized row", async () => {
+    const csv = await run("phoneOnly");
+    expect(headerCols(csv)).not.toContain("email");
+    // The decisive assertion: content, not row count. c7 has a valid raw email but is "no email"
+    // by email_normalized; it must not leak. No '@' in any data row (actorEmail is null).
+    for (const row of dataLines(csv)) expect(row).not.toContain("@");
+    expect(csv).not.toContain("leak@x.id");
+  });
+
+  it("both: carries email and phone columns", async () => {
+    const csv = await run("both");
+    expect(headerCols(csv)).toContain("email");
+    expect(headerCols(csv)).toContain("telepon");
+    expect(csv).toContain('=""62'); // phone rendered as spreadsheet text (MASALAH 4)
+  });
+});
+
+describe("column safety holds for EVERY category variant (forbidden-disjoint bites)", () => {
+  const VARIANTS = [
+    { email: true, phone: true },
+    { email: true, phone: false },
+    { email: false, phone: true },
+    { email: false, phone: false },
+  ];
+  for (const v of VARIANTS) {
+    it(`variant email=${v.email} phone=${v.phone}: no forbidden column, contact columns match toggle`, () => {
+      const cols = resolveExportColumns(v).map((c) => c.column);
+      for (const c of cols) expect(EXPORT_FORBIDDEN_COLUMNS.has(c)).toBe(false);
+      expect(cols.includes("email_normalized")).toBe(v.email);
+      expect(cols.includes("phone_normalized")).toBe(v.phone);
+      // NIK / clinical never appear, whatever the toggle.
+      expect(cols).not.toContain("id_number");
+      expect(cols).not.toContain("date_of_birth");
+    });
+  }
 });

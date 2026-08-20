@@ -786,6 +786,8 @@ export const id = {
     provNoCriteria: "seluruh pool (tanpa kriteria)",
     eofTotal: "total_baris",
     auditFailed: "AUDIT_GAGAL",
+    // Leading word of the download file name (followed by category-date-time).
+    fileBaseName: "segmen",
     // Written into the file when streaming throws mid-export, so a truncated download announces
     // itself instead of looking complete (no EOF total = truncated, but this is explicit).
     aborted: "GAGAL: ekspor terputus, jangan pakai berkas ini",

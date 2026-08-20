@@ -705,6 +705,7 @@ export const en: Messages = {
     eofTotal: "total_rows",
     auditFailed: "AUDIT_FAILED",
     aborted: "FAILED: export truncated, do not use this file",
+    fileBaseName: "segment",
   },
 
   ai: {

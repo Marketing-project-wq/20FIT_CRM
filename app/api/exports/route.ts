@@ -6,7 +6,7 @@ import { isPermitted, resolveGrant } from "@/lib/auth/roles";
 import { parseCriteria, hasClinicalCriteria } from "@/lib/crm/segment";
 import { computeSegment } from "@/lib/crm/segment-read";
 import { validateFilterTree, filterTreeToExpr, describeFilterTree, type FilterNode } from "@/lib/crm/filter-tree";
-import { thresholdAction } from "@/lib/crm/export-constants";
+import { thresholdAction, resolveExportColumns, contactColumnsForTree, exportFileName } from "@/lib/crm/export-constants";
 import { streamSegmentCsv, type ExportContext } from "@/lib/crm/export";
 import { getServerDict } from "@/lib/i18n/server";
 import { logApiFailure } from "@/lib/crm/failure-log";
@@ -116,13 +116,18 @@ export async function POST(request: NextRequest) {
   // Passed the gate → stream the CSV. The audit row is written by the generator AFTER the last
   // data row with the real count (a mid-stream disconnect leaves no "complete" audit).
   const { lang, t } = getServerDict();
+  // Contact columns follow the category: a column guaranteed empty for this filter is dropped
+  // (MASALAH 1). Derived from the same tree the filter uses, so display and filter never disagree.
+  const columns = resolveExportColumns(contactColumnsForTree(rawTree as FilterNode | null));
+  const categoryLabel = rawTree != null ? describeFilterTree(rawTree as FilterNode, true, lang) : t.export.provNoCriteria;
   const ctx: ExportContext = {
     actorId: userId,
     actorEmail: userEmail,
     labels: t.export,
+    columns,
     criteriaSummary: summarizeCriteria(
       criteria,
-      rawTree != null ? describeFilterTree(rawTree as FilterNode, true, lang) : null,
+      rawTree != null ? categoryLabel : null,
       t.export.provNoCriteria,
     ),
     criteriaForAudit: {
@@ -160,7 +165,8 @@ export async function POST(request: NextRequest) {
     },
   });
 
-  const filename = `segmen-${ctx.nowIso.slice(0, 10)}.csv`;
+  // Name carries category + date + time so several downloads on one day stay distinct (MASALAH 2).
+  const filename = exportFileName(t.export.fileBaseName, categoryLabel, ctx.nowIso);
   return new Response(stream, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",

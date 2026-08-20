@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveRestrictIds, applyMasterCriteria } from "./segment-read";
 import { fetchSuppressedCustomerIds } from "./contactability-read";
 import type { SegmentCriteria } from "./segment";
-import { EXPORT_COLUMNS, EXPORT_ACTION, csvHeader, csvRow } from "./export-constants";
+import { EXPORT_ACTION, csvHeader, csvRow, excelText, type ExportColumn } from "./export-constants";
 import { logApiFailure } from "./failure-log";
 import type { Dict } from "@/lib/i18n";
 
@@ -46,6 +46,9 @@ export interface ExportContext {
   nowIso: string;
   /** Localised export labels (headers + provenance block) — the file follows the chosen language. */
   labels: Dict["export"];
+  /** The columns to write, resolved per category (MASALAH 1): a contact column guaranteed empty
+   *  for the category is dropped. The route resolves this from the filter tree. */
+  columns: readonly ExportColumn[];
 }
 
 /** Provenance block (CSV comment lines) so a file that leaves the system stays traceable. */
@@ -76,11 +79,17 @@ export async function* streamSegmentCsv(
   // UTF-8 BOM (﻿) leads the file so Excel reads it as UTF-8 — without it Excel assumes
   // Windows-1252 and mangles non-ASCII (an em-dash "—" shows as "â€""). The BOM is the first
   // bytes of the whole stream, prepended to the provenance block.
+  const columns = ctx.columns;
   yield "﻿" + provenanceLines(ctx);
-  yield csvHeader((col) => ctx.labels.headers[col as keyof Dict["export"]["headers"]] ?? col);
+  yield csvHeader(columns, (key) => ctx.labels.headers[key as keyof Dict["export"]["headers"]] ?? key);
 
-  const selectCols = ["customer_id", ...EXPORT_COLUMNS.map((c) => c.column).filter((c) => c !== "customer_id")].join(",");
-  const emit = (row: Record<string, unknown>): string => csvRow(EXPORT_COLUMNS.map((c) => row[c.column]));
+  const selectCols = ["customer_id", ...columns.map((c) => c.column).filter((c) => c !== "customer_id")].join(",");
+  const emit = (row: Record<string, unknown>): string =>
+    csvRow(columns.map((c) => {
+      const v = row[c.column];
+      // Trusted phone digits render as spreadsheet text (MASALAH 4); everything else stays raw.
+      return c.asText && v != null && v !== "" ? excelText(String(v)) : v;
+    }));
 
   let count = 0;
 
@@ -149,7 +158,7 @@ export async function* streamSegmentCsv(
       // NON-PII: closed-list criteria + the columns included + the count. Never the content.
       metadata: {
         row_count: count,
-        columns: EXPORT_COLUMNS.map((c) => c.column),
+        columns: columns.map((c) => c.column),
         criteria: ctx.criteriaForAudit,
         suppression_excluded: true,
       },

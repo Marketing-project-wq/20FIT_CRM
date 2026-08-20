@@ -35,16 +35,23 @@ data benar-benar mengalir.
 1. **Masuk** ke CRM sebagai `super_admin` atau `crm_manager` (peran yang berhak ekspor).
 2. Buka **Dashboard**. Di blok cakupan kontak, klik tombol ekspor **"email saja"**
    (label "punya email, tanpa telepon").
-3. Berkas `segmen-2026-08-20.csv` (atau tanggal hari itu) akan terunduh. **Buka dengan editor
-   teks** (bukan langsung Excel dulu), lalu periksa **tiga** hal:
-   - **Baris pertama** diawali blok `#` provenans, dan baris `# kriteria:` menyebut
-     kategori email-only (bukan "filter lanjutan" generik).
-   - Ada **baris data** setelah judul kolom `customer_id,nama,email,telepon,kota,...` —
-     kolom `telepon` **kosong** untuk kategori ini (itu benar: email saja).
+3. Berkas terunduh dengan nama berpola **`segmen-<kategori>-YYYY-MM-DD-HHMM.csv`**
+   (mis. `segmen-punya-email-dan-tanpa-telepon-2026-08-20-0413.csv`). Jam (UTC) di nama membuat
+   beberapa unduhan di hari sama tak lagi jadi `(1)`, `(2)`. **Buka dengan editor teks** dulu,
+   lalu periksa:
+   - **Baris pertama** diawali blok `#` provenans; baris `# kriteria:` menyebut kategori
+     sebenarnya (bukan "filter lanjutan" generik).
+   - Judul kolom untuk email-only berbunyi `customer_id,nama,email,kota,unit_pertama,segment,lifetime_value`
+     — **kolom `telepon` tidak ada** (dijamin kosong untuk kategori ini, jadi dibuang). Sebaliknya
+     "telepon saja" tak memuat kolom `email`, dan **tak satu pun alamat email** muncul di berkasnya.
    - **Baris terakhir** berbunyi persis: `# EOF total_baris=638`.
    Kalau baris terakhir hilang, atau muncul `# GAGAL: ekspor terputus…`, **berhenti** — berkas
    tak lengkap; laporkan (sebab sudah tercatat di log server).
-4. Buka juga di **Excel** sekali untuk memastikan tak ada karakter aneh (mojibake) di nama/kota.
+4. Buka juga di **Excel** dan periksa dua hal: tak ada karakter aneh (mojibake) di nama/kota, dan
+   (di kategori yang berkolom telepon, mis. "punya email dan telepon") **nomor telepon terbaca
+   penuh sebagai teks** — bukan `6,28111E+11`. Nomor ditulis dalam bentuk `="628…"` supaya Excel
+   membacanya sebagai teks; lihat catatan trade-off di bawah bila berkas ini akan diunggah ke
+   alat lain.
 
 ---
 
@@ -90,3 +97,23 @@ jaga agar tak terjadi diam-diam).
 Kategori "punya email dan telepon" (80.999 baris) adalah ekspor besar sungguhan; kueri hitungnya
 terukur ~48 ms, dan streaming ~80 halaman. Uji itu **setelah** email-only lolos, kalau Anda ingin
 bukti skala penuh.
+
+---
+
+## Catatan format nomor telepon (trade-off, sengaja)
+
+Nomor telepon ditulis sebagai **teks Excel** dalam bentuk `="628…"`. Alasannya: tanpa itu Excel
+memperlakukan deret 12–13 digit sebagai bilangan dan menampilkannya `6,28111E+11` — tak terbaca
+staf, padahal ekspor ini justru untuk menelepon orang.
+
+**Konsekuensi yang harus diketahui:** sebuah alat yang menerima CSV ini tetapi **tidak**
+mengevaluasi formula (mis. pengunggah kampanye WhatsApp/SMS) akan melihat literal `="628…"` dan
+harus **melepas pembungkus `="` dan `"`** untuk mendapatkan nomor mentah `628…`. Jadi:
+
+- **Untuk dibaca staf di Excel** → apa adanya, sudah benar.
+- **Untuk diunggah ke alat lain** → minta operator strip `="` dan `"` (satu find-replace), atau
+  minta ekspor bentuk mentah bila alat itu jadi konsumen tetap (belum dibangun — satu jalur ekspor
+  saja untuk saat ini).
+
+Nama/email/kota **tidak** dibungkus begini — hanya nomor telepon (nilai digit terkontrol sistem),
+supaya pagar anti-injeksi-formula untuk teks bebas tetap utuh.
