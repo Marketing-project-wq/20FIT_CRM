@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { resendRecoveryCode } from "@/app/forgot-password/actions";
 import { useI18n } from "@/components/i18n/lang-provider";
@@ -167,26 +168,28 @@ export function ResetPasswordForm({
 
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="password">{t.auth.newPasswordLabel}</Label>
-        <Input
+        <PasswordInput
           id="password"
-          type="password"
           autoComplete="new-password"
           required
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder={`${t.auth.minCharsPlaceholderA}${MIN_PASSWORD}${t.auth.minCharsPlaceholderB}`}
+          showLabel={t.auth.showPassword}
+          hideLabel={t.auth.hidePassword}
         />
       </div>
 
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="confirm">{t.auth.confirmPasswordLabel}</Label>
-        <Input
+        <PasswordInput
           id="confirm"
-          type="password"
           autoComplete="new-password"
           required
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
+          showLabel={t.auth.showPassword}
+          hideLabel={t.auth.hidePassword}
         />
       </div>
 

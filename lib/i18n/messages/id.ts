@@ -761,6 +761,12 @@ export const id = {
     resetErrWrongCode: "Kode salah atau sudah kedaluwarsa. Minta kode baru lalu coba lagi.",
     resetErrSetFailed: "Gagal mengatur kata sandi baru. Minta kode baru lalu coba lagi.",
     resetErrConn: "Tidak dapat terhubung ke server. Coba lagi sebentar lagi.",
+    // pre-auth chrome (Sprint auth-UI): placeholder, password toggle, theme toggle
+    emailPlaceholder: "nama@20fit.id",
+    showPassword: "Tampilkan kata sandi",
+    hidePassword: "Sembunyikan kata sandi",
+    themeDark: "Mode gelap",
+    themeLight: "Mode terang",
   },
 
   export: {

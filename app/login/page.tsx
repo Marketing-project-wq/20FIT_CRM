@@ -1,11 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { BrandLogo } from "@/components/brand/logo";
+import { cookies } from "next/headers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
+import { ThemeLogo } from "@/components/brand/theme-logo";
+import { AuthControls } from "@/components/auth/auth-controls";
+import { LangProvider } from "@/components/i18n/lang-provider";
 import { signIn } from "./actions";
 import { getServerDict } from "@/lib/i18n/server";
+import { THEME_COOKIE, resolveTheme } from "@/lib/theme";
 
 export const metadata: Metadata = { title: "Masuk" };
 
@@ -14,7 +19,8 @@ export default function LoginPage({
 }: {
   searchParams: { error?: string; redirectedFrom?: string };
 }) {
-  const { t } = getServerDict();
+  const { lang, t } = getServerDict();
+  const theme = resolveTheme(cookies().get(THEME_COOKIE)?.value);
   const ERRORS: Record<string, string> = {
     invalid: t.auth.errInvalid,
     missing: t.auth.errMissing,
@@ -27,14 +33,12 @@ export default function LoginPage({
     typeof searchParams?.redirectedFrom === "string" ? searchParams.redirectedFrom : "/";
 
   return (
-    // Login uses the dark theme with the white lockup (PRD §18.8).
-    <div
-      data-theme="dark"
-      className="flex min-h-[100dvh] w-full items-center justify-center bg-[linear-gradient(150deg,var(--bg-from)_0%,var(--bg-to)_100%)] px-4 py-10"
-    >
+    // Follows the viewer's theme (PRD §18.8 "login always dark" superseded — see K-33); the lockup
+    // variant follows the theme too (white on dark, colour on light).
+    <div className="flex min-h-[100dvh] w-full items-center justify-center bg-[linear-gradient(150deg,var(--bg-from)_0%,var(--bg-to)_100%)] px-4 py-10">
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center gap-6 text-center">
-          <BrandLogo variant="white" height={40} priority />
+          <ThemeLogo height={40} priority />
           <div>
             <h1 className="font-display text-[32px] font-black uppercase leading-none text-ink">
               {t.auth.loginTitle}
@@ -44,6 +48,10 @@ export default function LoginPage({
             </p>
           </div>
         </div>
+
+        <LangProvider lang={lang}>
+          <AuthControls initialTheme={theme} />
+        </LangProvider>
 
         <div className="glass-strong p-6 shadow-glass-lg">
           <form action={signIn} className="flex flex-col gap-4">
@@ -57,7 +65,7 @@ export default function LoginPage({
                 type="email"
                 autoComplete="email"
                 required
-                placeholder="nama@20fit.id"
+                placeholder={t.auth.emailPlaceholder}
                 className="font-mono"
               />
             </div>
@@ -72,7 +80,14 @@ export default function LoginPage({
                   {t.auth.forgotLink}
                 </Link>
               </div>
-              <Input id="password" name="password" type="password" autoComplete="current-password" required />
+              <PasswordInput
+                id="password"
+                name="password"
+                autoComplete="current-password"
+                required
+                showLabel={t.auth.showPassword}
+                hideLabel={t.auth.hidePassword}
+              />
             </div>
 
             {errorMsg && (

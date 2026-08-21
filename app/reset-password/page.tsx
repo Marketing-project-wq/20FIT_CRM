@@ -1,11 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { BrandLogo } from "@/components/brand/logo";
+import { cookies } from "next/headers";
+import { ThemeLogo } from "@/components/brand/theme-logo";
+import { AuthControls } from "@/components/auth/auth-controls";
 import { ResetPasswordForm } from "@/components/auth/reset-password-form";
 import { normalizeEmail } from "@/lib/crm/normalize";
 import { RECOVERY_OTP_VALIDITY_LABEL } from "@/lib/auth/recovery";
 import { getServerDict } from "@/lib/i18n/server";
 import { LangProvider } from "@/components/i18n/lang-provider";
+import { THEME_COOKIE, resolveTheme } from "@/lib/theme";
 
 export const metadata: Metadata = { title: "Kata sandi baru" };
 export const dynamic = "force-dynamic";
@@ -24,15 +27,14 @@ export default function ResetPasswordPage({
 }) {
   const email = normalizeEmail(searchParams?.email ?? null);
   const { lang, t } = getServerDict();
+  const theme = resolveTheme(cookies().get(THEME_COOKIE)?.value);
 
   return (
-    <div
-      data-theme="dark"
-      className="flex min-h-[100dvh] w-full items-center justify-center bg-[linear-gradient(150deg,var(--bg-from)_0%,var(--bg-to)_100%)] px-4 py-10"
-    >
+    // Follows the viewer's theme (K-33); theme-aware lockup.
+    <div className="flex min-h-[100dvh] w-full items-center justify-center bg-[linear-gradient(150deg,var(--bg-from)_0%,var(--bg-to)_100%)] px-4 py-10">
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center gap-6 text-center">
-          <BrandLogo variant="white" height={40} priority />
+          <ThemeLogo height={40} priority />
           <div>
             <h1 className="font-display text-[32px] font-black uppercase leading-none text-ink">
               {t.auth.resetTitle}
@@ -42,6 +44,10 @@ export default function ResetPasswordPage({
             </p>
           </div>
         </div>
+
+        <LangProvider lang={lang}>
+          <AuthControls initialTheme={theme} />
+        </LangProvider>
 
         <div className="glass-strong p-6 shadow-glass-lg">
           {/* Auth pages live outside the app shell, so there is no ambient LangProvider — wrap the

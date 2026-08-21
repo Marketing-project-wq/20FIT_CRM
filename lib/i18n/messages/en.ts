@@ -682,6 +682,12 @@ export const en: Messages = {
     resetErrWrongCode: "The code is wrong or has expired. Request a new code and try again.",
     resetErrSetFailed: "Failed to set the new password. Request a new code and try again.",
     resetErrConn: "Couldn't reach the server. Try again shortly.",
+    // pre-auth chrome (Sprint auth-UI): placeholder, password toggle, theme toggle
+    emailPlaceholder: "name@20fit.id",
+    showPassword: "Show password",
+    hidePassword: "Hide password",
+    themeDark: "Dark mode",
+    themeLight: "Light mode",
   },
 
   export: {

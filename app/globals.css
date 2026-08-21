@@ -64,6 +64,12 @@
 .tint-green   { background: color-mix(in srgb, var(--green) 12%, transparent);     color: var(--green); }
 .tint-neutral { background: color-mix(in srgb, var(--ink-faint) 18%, transparent); color: var(--ink-soft); }
 
+/* Theme-aware brand lockup (auth ThemeLogo): the white wordmark's dark ring vanishes on a light
+   background, so each variant shows only on its surface. CSS (not JS) so it flips instantly with the
+   no-reload theme toggle; <html> always carries data-theme (root layout), so exactly one is shown. */
+[data-theme="light"] .logo-dark-only  { display: none; }   /* hide the WHITE lockup on light */
+[data-theme="dark"]  .logo-light-only { display: none; }   /* hide the COLOUR lockup on dark */
+
 @layer base {
   * { border-color: var(--glass-border); }
 

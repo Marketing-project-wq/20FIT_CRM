@@ -512,3 +512,32 @@ nol baris uji tertinggal di produksi.
 
 **Syarat pembalikan:** ini menunggu Jeff. Bila ditolak, hapus `EXTENSION_ACTIONS` + sel matriks +
 rute + form (aksi tak dipakai di tempat lain). Bila disetujui, catat tanggal persetujuan di sini.
+
+## K-33 · Halaman auth mengikuti preferensi tema pengguna — PRD §18.8 "login selalu gelap" DICABUT; varian logo ikut tema (Sprint auth-UI, 2026-08-21)
+
+**Latar (PRD §18.8):** aturan asli menetapkan halaman login **selalu tema gelap dengan logo putih**.
+Ketiga halaman auth (`/login`, `/forgot-password`, `/reset-password`) memaksa `data-theme="dark"` di
+wrapper-nya.
+
+**Keputusan (disetujui pemilik produk):** ganti jadi **halaman auth mengikuti preferensi pengguna**
+(cookie `20fit_theme`, sama seperti seluruh app). Alasannya bukan sekadar konsistensi: alat internal
+harian sebaiknya **menghormati preferensi** orang yang memakainya tiap hari, bukan memaksa satu
+tampilan. Pengalih tema + bahasa ditambahkan ke **sudut atas** ketiga halaman — memakai komponen
+`ThemeToggle` + `LangSwitcher` yang **sudah ada** (lewat cookie), bukan sistem baru.
+
+**Konsekuensi WAJIB — varian logo ikut tema.** `20fit-logo-white.png` punya cincin gelap di sekitar
+titik merah yang **hilang di latar terang** (PRD §18.1). Maka logo tak boleh lagi dipaku "putih":
+**gelap → `20fit-logo-white.png`, terang → `20fit-logo-color.png`** (`components/brand/theme-logo.tsx`
+merender **kedua** varian dan meng-toggle lewat CSS `[data-theme]` di `globals.css` — instan, tanpa
+reload, karena pengalih tema membalik `<html data-theme>` tanpa muat ulang). Tiap varian
+mempertahankan **rasio intrinsiknya sendiri** (putih 2405×677, warna 285×73) — jangan satu rasio
+untuk keduanya (logo gepeng — bug lama, jangan diulang).
+
+**Cakupan:** hanya UI. Alur auth (server actions, `verifyOtp`, pembedaan error kredensial-vs-koneksi)
+**tak disentuh** — baru terverifikasi bekerja di produksi 2026-08-21. Semua teks pra-auth masuk
+registry i18n (dua bahasa; dijaga parity TypeScript + `coverage.test.ts`); tombol lihat-password
+tak menyimpan state terlihat antar sesi (risiko bahu-orang-lain).
+
+**Syarat pembalikan:** kembalikan `data-theme="dark"` + `BrandLogo variant="white"` di ketiga halaman
+dan hapus `AuthControls`/`ThemeLogo`/`PasswordInput` (dipakai hanya di halaman auth). Nol perubahan
+data, nol sentuhan alur auth.
