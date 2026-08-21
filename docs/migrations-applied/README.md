@@ -28,10 +28,14 @@ ulang. Folder ini adalah jalan tengah: **DDL hidup di repo, CLI tak menyentuhnya
 | 15 | `20260813091255_create_crm_customer_mirror.sql` | `20260813091255` | 2026-08-13 | Matview cermin (19 kolom) + `crm_mirror_meta` + `crm_refresh_customer_mirror()` |
 | 16 | `20260814040554_add_is_fitco_member_matched_to_crm_customer_mirror.sql` | `20260814040554` | 2026-08-14 | DROP+recreate cermin, tambah kolom ke-20 `is_fitco_member_matched` (Fitco, 67.653) |
 | 17 | `20260814055353_crm_norm_phone_guard_empty_nsn.sql` | `20260814055353` | 2026-08-14 | `crm_norm_phone` guard empty-NSN — paritas dengan `normalizePhoneID` (K-06) |
+| 18 | `20260818041017_precompute_dashboard_stats_at_refresh.sql` | `20260818041017` | 2026-08-18 | Precompute `dashboard_stats` saat refresh (Opsi A): kolom + `crm_refresh_customer_mirror()` CONCURRENTLY+stats, reader `crm_mirror_dashboard_stats()`, diagnostik `crm_mirror_fitco_staleness()` |
 
 **Migrasi 15 adalah REKONSTRUKSI** dari katalog hidup (SQL asli tak pernah di-commit) —
 menjalankannya menghasilkan objek yang sama, tapi teks/urutan bisa beda dari yang asli.
-**Migrasi 16 & 17 adalah salinan PERSIS** SQL yang diterapkan.
+**Migrasi 16, 17 & 18 adalah salinan PERSIS** SQL yang diterapkan (badan ketiga fungsi di
+berkas 18 diambil verbatim dari `pg_get_functiondef` katalog live). Komentar fungsi
+`now()`-vs-`clock_timestamp()` di berkas 18 ditambah lewat `comment on function`
+(2026-08-18, pasca-apply, migrasi logis yang sama — bukan redefinisi fungsi).
 
 > **Migrasi 17 catatan:** `crm_norm_phone` semula dibuat di migrasi lain yang **tidak ada di
 > repo** (definisi pra-guard hanya hidup di DB live — bagian dari utang rekonsiliasi

@@ -59,13 +59,15 @@ Full spec: `PRD — 20FIT Audience Data & CRM System v1.1`.
 > | 15 | **`docs/migrations-applied/…091255_create_crm_customer_mirror`** *(bukan `supabase/migrations/`)* | `20260813091255` | `create_crm_customer_mirror` |
 > | 16 | **`docs/migrations-applied/…040554_add_is_fitco_member_matched…`** *(bukan `supabase/migrations/`)* | `20260814040554` | `add_is_fitco_member_matched_to_crm_customer_mirror` |
 > | 17 | **`docs/migrations-applied/…055353_crm_norm_phone_guard_empty_nsn`** *(bukan `supabase/migrations/`)* | `20260814055353` | `crm_norm_phone_guard_empty_nsn` |
+> | 18 | **`docs/migrations-applied/…041017_precompute_dashboard_stats_at_refresh`** *(bukan `supabase/migrations/`)* | `20260818041017` | `precompute_dashboard_stats_at_refresh` |
 >
-> **Baris 11–14 sengaja belum dienumerasi di sini.** DB memuat migrasi CRM **11–16**; repo sudah
+> **Baris 11–14 sengaja belum dienumerasi di sini.** DB memuat migrasi CRM **11–18**; repo sudah
 > punya `…20260812000000_create_crm_backfill_consent` (migrasi 11) di `supabase/migrations/`, dan
 > 12–14 (indeks, dst.) terarsip di `docs/riwayat/sprint-4a/` pada branch yang belum-merge. Migrasi
-> **15 & 16 (matview cermin) hidup di `docs/migrations-applied/`**, BUKAN `supabase/migrations/` —
-> supaya `db push` tak memungutnya (lihat README di kedua folder). Enumerasi penuh 11–16 +
-> rekonsiliasi ledger↔repo = **utang teknis dengan gate-nya sendiri** (jangan dikerjakan diam-diam).
+> **15, 16, 17 & 18 (cermin + kanon + stats) hidup di `docs/migrations-applied/`**, BUKAN
+> `supabase/migrations/` — supaya `db push` tak memungutnya (lihat README di kedua folder).
+> Enumerasi penuh 11–18 + rekonsiliasi ledger↔repo = **utang teknis dengan gate-nya sendiri**
+> (jangan dikerjakan diam-diam).
 >
 > **Count reconciliation: 10 repo files → 11 CRM ledger entries.** The extra entry is
 > migration **9**, applied **twice** under the same name (Sprint 3H). The first apply left
