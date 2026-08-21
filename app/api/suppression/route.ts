@@ -15,6 +15,7 @@ import {
 } from "@/lib/crm/suppression-input";
 import { recordSuppression } from "@/lib/crm/suppression-write";
 import { logApiFailure } from "@/lib/crm/failure-log";
+import { getServerDict } from "@/lib/i18n/server";
 
 export const dynamic = "force-dynamic";
 
@@ -52,13 +53,14 @@ export async function POST(request: NextRequest) {
   }
   if (!userId) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
 
+  const { t } = getServerDict();
   const role = await getCurrentUserRole();
   if (!isPermitted(role, "consent.edit")) {
     return NextResponse.json(
       {
         error: "forbidden",
         decision: resolveGrant(role, "consent.edit"),
-        message: "Hanya super_admin, crm_manager, dan data_steward yang boleh mencatat suppression.",
+        message: t.consent.apiRoleDeniedRecord,
       },
       { status: 403 },
     );
@@ -75,20 +77,20 @@ export async function POST(request: NextRequest) {
   try {
     body = (await request.json()) as typeof body;
   } catch {
-    return NextResponse.json({ error: "bad_request", message: "Body JSON tidak valid." }, { status: 400 });
+    return NextResponse.json({ error: "bad_request", message: t.consent.apiBadJson }, { status: 400 });
   }
 
   const identityKind = body.identity_kind;
   if (!isIdentityKind(identityKind)) {
     return NextResponse.json(
-      { error: "invalid_identity_kind", message: "Pilih identitas yang disuppress: telepon atau email." },
+      { error: "invalid_identity_kind", message: t.consent.apiInvalidKind },
       { status: 422 },
     );
   }
   const reasonCode = body.reason_code;
   if (!isOfferedReason(reasonCode)) {
     return NextResponse.json(
-      { error: "invalid_reason_code", message: "Alasan tidak valid untuk pencatatan manual." },
+      { error: "invalid_reason_code", message: t.consent.apiInvalidReason },
       { status: 422 },
     );
   }
@@ -127,8 +129,8 @@ export async function POST(request: NextRequest) {
           error: "no_identity_on_profile",
           message:
             identityKind === "phone"
-              ? "Profil ini tidak punya nomor telepon untuk disuppress."
-              : "Profil ini tidak punya email untuk disuppress.",
+              ? t.consent.apiNoPhoneOnProfile
+              : t.consent.apiNoEmailOnProfile,
         },
         { status: 422 },
       );
@@ -137,16 +139,24 @@ export async function POST(request: NextRequest) {
     rawIdentity = typeof body.identity_value === "string" ? body.identity_value : null;
     if (!rawIdentity || rawIdentity.trim() === "") {
       return NextResponse.json(
-        { error: "missing_identity", message: "Isi nomor telepon atau email yang minta berhenti." },
+        { error: "missing_identity", message: t.consent.apiMissingIdentity },
         { status: 422 },
       );
     }
   }
 
-  // ALWAYS normalize (D-2). Null → reject, never store raw.
+  // ALWAYS normalize (D-2). Null → reject, never store raw. prepareIdentity stays language-agnostic
+  // (it is a client+server pure module); the localized reason is chosen HERE by identityKind so its
+  // contract & tests are untouched.
   const prepared = prepareIdentity(identityKind as IdentityKind, rawIdentity);
   if (!prepared.ok) {
-    return NextResponse.json({ error: "not_normalizable", message: prepared.error }, { status: 422 });
+    return NextResponse.json(
+      {
+        error: "not_normalizable",
+        message: identityKind === "phone" ? t.consent.apiNotNormalizablePhone : t.consent.apiNotNormalizableEmail,
+      },
+      { status: 422 },
+    );
   }
 
   const masked = shouldMaskContact(role);
@@ -210,17 +220,17 @@ export async function POST(request: NextRequest) {
     // write failure is traceable, not silent.
     logApiFailure("/suppression", "rpc_write_failed", { code: (e as { code?: string })?.code });
     return NextResponse.json(
-      { error: "write_failed", message: "Gagal mencatat suppression. Tidak ada baris separuh jadi." },
+      { error: "write_failed", message: t.consent.warn.srvWriteFailedRecord },
       { status: 500 },
     );
   }
 
   const consequence =
     result.action === "noop"
-      ? "Sudah ada suppression aktif untuk identitas ini — tidak ada perubahan."
+      ? t.consent.warn.srvNoop
       : result.reactivated
-        ? "Suppression diaktifkan kembali. Orang ini kini TIDAK bisa dihubungi, apa pun status consent-nya."
-        : "Permintaan berhenti dicatat. Orang ini kini TIDAK bisa dihubungi, apa pun status consent-nya.";
+        ? t.consent.warn.srvReactivated
+        : t.consent.warn.srvSuppressed;
 
   return NextResponse.json(
     {

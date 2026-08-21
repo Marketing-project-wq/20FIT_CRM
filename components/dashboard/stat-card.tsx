@@ -19,7 +19,9 @@ export function StatCard({
   return (
     <div className={cn("glass shadow-glass relative overflow-hidden p-5", className)}>
       <span className="absolute left-0 top-0 h-full w-1 bg-red" aria-hidden />
-      <p className="font-display text-[12px] font-bold uppercase tracking-wide text-ink-soft">{label}</p>
+      {/* Label is a caption: uppercase + tracking already marks it, so it stays semibold and the
+          numeral is the one bold thing in the card (4B display cleanup). */}
+      <p className="font-display text-[12px] font-semibold uppercase tracking-wide text-ink-soft">{label}</p>
       <p className="mt-2 font-display text-[34px] font-black leading-none text-ink">{value}</p>
       {hint && <p className="mt-2 font-mono text-[11px] text-ink-faint">{hint}</p>}
     </div>

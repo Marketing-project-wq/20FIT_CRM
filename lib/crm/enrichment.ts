@@ -3,7 +3,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizeEmail } from "./normalize";
 import {
   HYROX_SAFE_COLUMNS,
-  HYROX_SENSITIVE_COLUMNS,
+  HYROX_IDENTITY_COLUMNS,
+  HYROX_MEDICAL_COLUMNS,
   MY20FIT_PROFILE_SAFE_COLUMNS,
   MY20FIT_ACTIVITY_SAFE_COLUMNS,
 } from "./enrichment-constants";
@@ -19,12 +20,15 @@ import type { EnrichmentSourceCoverage } from "./quality-types";
  * ZERO write to master_customer / crm_*. The profile's real email is read server-side ONLY
  * (by customer_id) to compute the match; it never leaves this layer.
  *
- * Sprint 3S: sensitive Hyrox fields (NIK/DOB/blood/emergency) are returned UNMASKED to a
- * profile.view_health caller (CS staff need them at a glance) and OMITTED entirely for any
- * other role (K-02 — the value never reaches the browser). The gate is the RBAC role, not a
- * per-field toggle. From the NIK we also DERIVE gender / birth date / issuance province
- * (lib/crm/nik.ts) — three fields that are 0% filled in master_customer — computed at display
- * time, never written.
+ * Sprint 3S / K-31 (19 Agu 2026): sensitive Hyrox fields are returned UNMASKED, but by TWO
+ * gates now, not one — the value never reaches the browser unless the caller may see it:
+ *   - IDENTITY (NIK, DOB, emergency contact) → `canSeeContact` (profile.view_contact). From the
+ *     NIK we also DERIVE gender / birth date / issuance province (lib/crm/nik.ts) — identity, so
+ *     also behind canSeeContact.
+ *   - MEDICAL (golongan darah) → `canSeeMedical` (profile.view_health). Blood type is medical by
+ *     nature and keeps the stricter gate even though it rides the same Hyrox row as the NIK.
+ * The gate is the RBAC role, not a per-field toggle; derivation happens at display time, never
+ * written.
  */
 
 export interface HyroxParticipation {
@@ -51,9 +55,12 @@ export interface ProfileEnrichment {
     rows: HyroxParticipation[];
     /** Whether any sensitive Hyrox field exists for this profile (presence, not value). */
     hasSensitive: boolean;
-    /** Present (UNMASKED) ONLY for a profile.view_health caller; null for any other role. */
+    /** Sensitive Hyrox fields, UNMASKED, each populated only for a caller allowed its gate:
+     *  identity (nik/tglLahir/emergency) needs canSeeContact; golDarah needs canSeeMedical. null
+     *  when the caller may see neither. */
     sensitive: HyroxSensitive | null;
-    /** Fields derived from the NIK (gender/DOB/province) — present with `sensitive`. */
+    /** Fields derived from the NIK (gender/DOB/province) — identity, so present for a canSeeContact
+     *  caller (with the NIK). */
     nikDerived: NikDerived | null;
   };
   my20fit: {
@@ -78,7 +85,7 @@ function eqEmail(q: any, col: string, email: string) { // eslint-disable-line @t
 export async function fetchProfileEnrichment(
   admin: SupabaseClient,
   customerId: string,
-  opts: { canViewHealth: boolean },
+  opts: { canSeeContact: boolean; canSeeMedical: boolean },
 ): Promise<ProfileEnrichment> {
   const empty: ProfileEnrichment = {
     matchable: false,
@@ -97,8 +104,14 @@ export async function fetchProfileEnrichment(
   const email = normalizeEmail((prof as { email_normalized: string | null } | null)?.email_normalized);
   if (!email) return empty;
 
-  // Hyrox — safe fields always; sensitive only for a permitted caller.
-  const sensCols = opts.canViewHealth ? `,${HYROX_SENSITIVE_COLUMNS.join(",")}` : "";
+  // Hyrox — safe fields always; identity columns only for a canSeeContact caller, the medical
+  // column (blood type) only for a canSeeMedical caller. A column the caller may not see is never
+  // even SELECTed, so its value cannot leave the server (K-02, K-31).
+  const gatedCols = [
+    ...(opts.canSeeContact ? HYROX_IDENTITY_COLUMNS : []),
+    ...(opts.canSeeMedical ? HYROX_MEDICAL_COLUMNS : []),
+  ];
+  const sensCols = gatedCols.length > 0 ? `,${gatedCols.join(",")}` : "";
   const { data: hyData, error: hyErr } = await eqEmail(
     admin.from("cf_hyrox_participants").select(`${HYROX_SAFE_COLUMNS.join(",")}${sensCols}`),
     "email",
@@ -115,12 +128,13 @@ export async function fetchProfileEnrichment(
     registeredAt: (r.registered_at as string) ?? null,
   }));
 
-  // Collapse sensitive fields across rows (first non-null wins). Returned UNMASKED for a
-  // view_health caller; entirely null (never sent) for any other role.
+  // Collapse sensitive fields across rows (first non-null wins). Each field is populated ONLY for
+  // a caller allowed its gate — identity behind canSeeContact, golongan darah behind canSeeMedical
+  // — and the ungated columns were not even SELECTed above, so this cannot leak either way.
   let hasSensitive = false;
   let sensitive: HyroxSensitive | null = null;
   let nikDerived: NikDerived | null = null;
-  if (opts.canViewHealth && hyRows.length > 0) {
+  if ((opts.canSeeContact || opts.canSeeMedical) && hyRows.length > 0) {
     const pick = (k: string) => {
       for (const r of hyRows) {
         const v = r[k];
@@ -128,12 +142,12 @@ export async function fetchProfileEnrichment(
       }
       return null;
     };
-    const raw = {
-      nik: pick("nik"),
-      tglLahir: pick("tgl_lahir"),
-      golDarah: pick("gol_darah"),
-      kontakDarurat: pick("kontak_darurat"),
-      noKontakDarurat: pick("no_kontak_darurat"),
+    const raw: HyroxSensitive = {
+      nik: opts.canSeeContact ? pick("nik") : null,
+      tglLahir: opts.canSeeContact ? pick("tgl_lahir") : null,
+      golDarah: opts.canSeeMedical ? pick("gol_darah") : null,
+      kontakDarurat: opts.canSeeContact ? pick("kontak_darurat") : null,
+      noKontakDarurat: opts.canSeeContact ? pick("no_kontak_darurat") : null,
     };
     hasSensitive = Object.values(raw).some((v) => v != null);
     sensitive = raw;

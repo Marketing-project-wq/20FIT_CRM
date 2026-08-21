@@ -5,12 +5,25 @@ import { AlertTriangle, FlaskConical } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
   AUDIT_DEFAULT_PAGE_SIZE,
-  ARTIFACT_ROWS,
-  RETENTION_LABEL,
   RETENTION_TONE,
   classifyAction,
   isArtifact,
 } from "@/lib/crm/audit-log-constants";
+import type { RetentionClass } from "@/lib/crm/retention-policy";
+import { useI18n } from "@/components/i18n/lang-provider";
+import { formatCount, type Dict, type Lang } from "@/lib/i18n";
+import { LOCALE } from "@/lib/i18n/config";
+
+/** Retention CLASS label from the dict (the constant RETENTION_LABEL stays Indonesian for any
+ *  importer/test; the screen renders the localized label here). */
+function retentionLabel(t: Dict, cls: RetentionClass): string {
+  return cls === "operational" ? t.audit.retOperational : cls === "compliance" ? t.audit.retCompliance : t.audit.retOther;
+}
+
+/** Note for a known test-artifact audit row (by id), from the dict. */
+function artifactNote(t: Dict, id: number): string | undefined {
+  return id === 1 ? t.audit.warn.artifact1 : id === 5 ? t.audit.warn.artifact5 : undefined;
+}
 
 interface AuditRow {
   id: number;
@@ -52,11 +65,12 @@ interface ApiResult {
   gap: AuditGap;
 }
 
-function formatTs(iso: string | null): string {
+function formatTs(iso: string | null, lang: Lang): string {
   if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
-  return new Intl.DateTimeFormat("id-ID", {
+  // Compact form (short month) is deliberate for the dense audit rows — locale-aware.
+  return new Intl.DateTimeFormat(LOCALE[lang], {
     day: "2-digit",
     month: "short",
     year: "numeric",
@@ -71,29 +85,27 @@ const inputCls =
 
 /** The honest caveat: this log is not the full history, and nothing has been purged yet. */
 function RetentionNote() {
+  const w = useI18n().t.audit.warn;
   return (
     <div className="tint-blue rounded-card p-4">
       <div className="flex items-center gap-2">
         <AlertTriangle className="h-4 w-4" aria-hidden />
         <h3 className="font-display text-[13px] font-bold uppercase tracking-wide text-ink">
-          Log ini bukan riwayat lengkap
+          {w.retentionTitle}
         </h3>
       </div>
       <p className="mt-2 max-w-3xl font-body text-[12px] leading-relaxed text-ink-soft">
-        Kebijakan retensi (migrasi 8) memangkas kategori <strong>operasional</strong>{" "}
-        (<span className="font-mono">profile.viewed</span>, <span className="font-mono">list.viewed</span>,{" "}
-        <span className="font-mono">search.*</span>, <span className="font-mono">login.*</span>) setelah
-        90 hari; kategori <strong>kepatuhan</strong> (<span className="font-mono">consent.*</span>,{" "}
-        <span className="font-mono">suppression.*</span>, <span className="font-mono">role.*</span>,{" "}
-        <span className="font-mono">profile.deleted</span>, <span className="font-mono">export.*</span>,{" "}
-        <span className="font-mono">retention.*</span>) dikecualikan permanen. Ketiadaan baris operasional
-        lama tidak berarti tidak ada yang terjadi. <strong>Fungsi purge belum dijadwalkan</strong>, jadi
-        sampai hari ini belum ada satu baris pun yang benar-benar terpangkas.
+        {w.retentionA}
+        <span className="font-mono">profile.viewed</span>, <span className="font-mono">list.viewed</span>,{" "}
+        <span className="font-mono">search.*</span>, <span className="font-mono">login.*</span>
+        {w.retentionB}
+        <span className="font-mono">consent.*</span>, <span className="font-mono">suppression.*</span>,{" "}
+        <span className="font-mono">role.*</span>, <span className="font-mono">profile.deleted</span>,{" "}
+        <span className="font-mono">export.*</span>, <span className="font-mono">retention.*</span>
+        {w.retentionC}
       </p>
       <p className="mt-2 max-w-3xl font-body text-[12px] leading-relaxed text-ink-soft">
-        Catatan: nilai filter yang tersimpan di <span className="font-mono">metadata</span> baris{" "}
-        <span className="font-mono">list.viewed</span> (mis. kota) berasal dari <strong>ketikan
-        pengguna</strong>, bukan data terkurasi — diperlakukan apa adanya dan dibatasi panjangnya.
+        {w.retentionNoteA}<span className="font-mono">metadata</span>{w.retentionNoteB}<span className="font-mono">list.viewed</span>{w.retentionNoteC}
       </p>
     </div>
   );
@@ -106,6 +118,8 @@ function RetentionNote() {
  * documented benign gap (id=4) from unexplained holes = real failures.
  */
 function GapNote({ gap }: { gap: AuditGap }) {
+  const { lang, t } = useI18n();
+  const w = t.audit.warn;
   if (!gap || gap.missing <= 0 || gap.minId == null || gap.maxId == null) return null;
   const alarm = gap.unexplained > 0;
   return (
@@ -113,29 +127,22 @@ function GapNote({ gap }: { gap: AuditGap }) {
       <div className="flex items-center gap-2">
         <AlertTriangle className="h-4 w-4" aria-hidden />
         <h3 className="font-display text-[13px] font-bold uppercase tracking-wide text-ink">
-          Daftar ini tidak lengkap — {gap.missing} nomor id tanpa baris
+          {w.gapTitleA}{gap.missing}{w.gapTitleB}
         </h3>
       </div>
       <p className="mt-2 max-w-3xl font-body text-[12px] leading-relaxed text-ink-soft">
-        Sepanjang audit log, rentang id <span className="font-mono">{gap.minId}–{gap.maxId}</span>{" "}
-        ({gap.span.toLocaleString("id-ID")} nomor) hanya memuat{" "}
-        <span className="font-mono">{gap.count.toLocaleString("id-ID")}</span> baris.{" "}
-        <strong>{gap.missing}</strong> nomor tidak punya baris:{" "}
-        <strong>{gap.knownLegit}</strong> sah (artefak uji yang dihapus) dan{" "}
-        <strong className={alarm ? "text-ink" : ""}>{gap.unexplained}</strong> tak dikenal.
+        {w.gapBodyA}<span className="font-mono">{gap.minId}–{gap.maxId}</span>{w.gapBodyB}{formatCount(gap.span, lang)}{w.gapBodyC}<span className="font-mono">{formatCount(gap.count, lang)}</span>{w.gapBodyD}
+        {gap.missing}{w.gapBodyE}{gap.knownLegit}{w.gapBodyF}<span className={alarm ? "text-ink" : ""}>{gap.unexplained}</span>{w.gapBodyG}
       </p>
       <p className="mt-2 max-w-3xl font-body text-[12px] leading-relaxed text-ink-soft">
-        Id memakai sequence: sebuah operasi teraudit yang <strong>gagal atau di-rollback</strong>{" "}
-        tetap mengambil nomornya lalu tak meninggalkan baris. Jadi tiap id yang hilang adalah{" "}
-        <strong>satu operasi teraudit yang gagal</strong> — barisnya yang seharusnya mencatatnya
-        justru yang tak pernah mendarat. {gap.unexplained > 0 && "Yang tak dikenal perlu ditelusuri di log Railway. "}
-        Sequence <strong>tidak pernah</strong> diisi ulang atau diatur ulang — itu menghapus satu-satunya bukti.
+        {w.gapBody2A}{gap.unexplained > 0 && w.gapUnexplainedHint}{w.gapBody2B}
       </p>
     </div>
   );
 }
 
 export function AuditLogPanel() {
+  const { lang, t } = useI18n();
   const [action, setAction] = useState("");
   const [actorEmail, setActorEmail] = useState("");
   const [from, setFrom] = useState("");
@@ -172,19 +179,19 @@ export function AuditLogPanel() {
       const res = await fetch(`/api/audit?${params.toString()}`, { signal: ac.signal, cache: "no-store" });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        setError(body?.message || `Gagal memuat (HTTP ${res.status}).`);
+        setError(body?.message || `${t.audit.loadFailed} (HTTP ${res.status}).`);
         setData(null);
         return;
       }
       setData((await res.json()) as ApiResult);
     } catch (e) {
       if ((e as Error).name === "AbortError") return;
-      setError("Gagal terhubung ke server.");
+      setError(t.audit.connFailed);
       setData(null);
     } finally {
       if (!ac.signal.aborted) setLoading(false);
     }
-  }, [page, applied, category]);
+  }, [page, applied, category, t]);
 
   useEffect(() => {
     load();
@@ -224,11 +231,10 @@ export function AuditLogPanel() {
     <section className="space-y-4">
       <div className="flex flex-col gap-1">
         <h2 className="font-display text-[22px] font-extrabold uppercase tracking-wide text-ink">
-          Audit log
+          {t.audit.auditTitle}
         </h2>
         <p className="max-w-2xl font-body text-[13px] text-ink-soft">
-          Jejak “siapa melakukan apa”. Append-only — tidak ada tombol hapus atau edit karena
-          trigger database menolaknya. Setiap pembukaan halaman ini sendiri tercatat.
+          {t.audit.auditSubtitle}
         </p>
       </div>
 
@@ -240,9 +246,9 @@ export function AuditLogPanel() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="inline-flex overflow-hidden rounded-sm border border-glass-border">
           {([
-            ["compliance", "Kepatuhan"],
-            ["operational", "Operasional"],
-            ["all", "Semua"],
+            ["compliance", t.audit.catCompliance],
+            ["operational", t.audit.catOperational],
+            ["all", t.audit.catAll],
           ] as [AuditCategory, string][]).map(([c, label]) => (
             <button
               key={c}
@@ -258,13 +264,13 @@ export function AuditLogPanel() {
         </div>
         {data && (
           <p className="font-mono text-[12px] text-ink-soft">
-            Dalam rentang ini:{" "}
-            <span className="text-ink">Kepatuhan {data.counts.compliance.toLocaleString("id-ID")}</span>
+            {t.audit.inRangeLabel}
+            <span className="text-ink">{t.audit.inRangeCompliance}{formatCount(data.counts.compliance, lang)}</span>
             {" · "}
-            Operasional {data.counts.operational.toLocaleString("id-ID")}
-            {data.counts.other > 0 ? ` · Lain ${data.counts.other.toLocaleString("id-ID")}` : ""}
-            {" · total "}
-            {data.counts.total.toLocaleString("id-ID")}
+            {t.audit.inRangeOperational}{formatCount(data.counts.operational, lang)}
+            {data.counts.other > 0 ? `${t.audit.inRangeOther}${formatCount(data.counts.other, lang)}` : ""}
+            {t.audit.inRangeTotal}
+            {formatCount(data.counts.total, lang)}
           </p>
         )}
       </div>
@@ -272,26 +278,26 @@ export function AuditLogPanel() {
       {/* Filters */}
       <div className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1">
-          <span className="font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">Aksi / prefiks</span>
-          <input className={inputCls} value={action} onChange={(e) => setAction(e.target.value)} placeholder="mis. role. atau list.viewed" />
+          <span className="font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">{t.audit.filterActionLabel}</span>
+          <input className={inputCls} value={action} onChange={(e) => setAction(e.target.value)} placeholder={t.audit.filterActionPlaceholder} />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">Email aktor</span>
-          <input className={inputCls} value={actorEmail} onChange={(e) => setActorEmail(e.target.value)} placeholder="mis. tifany@" />
+          <span className="font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">{t.audit.filterActorLabel}</span>
+          <input className={inputCls} value={actorEmail} onChange={(e) => setActorEmail(e.target.value)} placeholder={t.audit.filterActorPlaceholder} />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">Dari</span>
+          <span className="font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">{t.audit.filterFrom}</span>
           <input type="date" className={inputCls} onChange={(e) => onFrom(e.target.value)} />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">Sampai</span>
+          <span className="font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">{t.audit.filterTo}</span>
           <input type="date" className={inputCls} onChange={(e) => onTo(e.target.value)} />
         </label>
         <button type="button" onClick={applyFilters} className="h-9 rounded-sm bg-red px-4 font-display text-[12px] font-bold uppercase tracking-wide text-white transition-opacity hover:opacity-90">
-          Terapkan
+          {t.audit.apply}
         </button>
         <button type="button" onClick={resetFilters} className="h-9 rounded-sm border border-glass-border px-4 font-display text-[12px] font-bold uppercase tracking-wide text-ink-soft transition-colors hover:bg-glass">
-          Reset
+          {t.audit.reset}
         </button>
       </div>
 
@@ -299,46 +305,47 @@ export function AuditLogPanel() {
         <table className="w-full border-collapse text-left">
           <thead>
             <tr className="border-b border-glass-border font-display text-[12px] uppercase tracking-wide text-ink-faint">
-              <th className="px-4 py-3 font-bold">Waktu (WIB)</th>
-              <th className="px-4 py-3 font-bold">Aktor</th>
-              <th className="px-4 py-3 font-bold">Aksi</th>
-              <th className="px-4 py-3 font-bold">Retensi</th>
-              <th className="px-4 py-3 font-bold">Target</th>
-              <th className="px-4 py-3 font-bold">Ringkasan</th>
+              <th className="px-4 py-3 font-bold">{t.audit.thTime}</th>
+              <th className="px-4 py-3 font-bold">{t.audit.thActor}</th>
+              <th className="px-4 py-3 font-bold">{t.audit.thAction}</th>
+              <th className="px-4 py-3 font-bold">{t.audit.thRetention}</th>
+              <th className="px-4 py-3 font-bold">{t.audit.thTarget}</th>
+              <th className="px-4 py-3 font-bold">{t.audit.thSummary}</th>
             </tr>
           </thead>
           <tbody className="font-body text-[13px] text-ink">
             {loading ? (
-              <tr><td colSpan={6} className="px-4 py-16 text-center text-ink-soft">Memuat…</td></tr>
+              <tr><td colSpan={6} className="px-4 py-16 text-center text-ink-soft">{t.audit.loading}</td></tr>
             ) : error ? (
-              <tr><td colSpan={6} className="px-4 py-16 text-center"><Badge tone="red">Gagal</Badge><p className="mt-2 font-body text-[13px] text-ink-soft">{error}</p></td></tr>
+              <tr><td colSpan={6} className="px-4 py-16 text-center"><Badge tone="red">{t.audit.failed}</Badge><p className="mt-2 font-body text-[13px] text-ink-soft">{error}</p></td></tr>
             ) : rows.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-16 text-center text-ink-soft">Tidak ada baris audit yang cocok.</td></tr>
+              <tr><td colSpan={6} className="px-4 py-16 text-center text-ink-soft">{t.audit.noMatch}</td></tr>
             ) : (
               rows.map((r) => {
                 const cls = classifyAction(r.action);
                 const artifact = isArtifact(r.id);
+                const note = artifactNote(t, r.id);
                 return (
                   <tr key={r.id} className="border-b border-glass-border last:border-0 align-top hover:bg-glass">
                     <td className="px-4 py-3 font-mono text-[12px] text-ink-soft">
-                      {formatTs(r.occurred_at)}
+                      {formatTs(r.occurred_at, lang)}
                       {artifact && (
-                        <span className="mt-1 flex items-center gap-1 text-ink-faint" title={ARTIFACT_ROWS[r.id]}>
+                        <span className="mt-1 flex items-center gap-1 text-ink-faint" title={note}>
                           <FlaskConical className="h-3 w-3" aria-hidden />
-                          <span className="font-display text-[10px] font-bold uppercase tracking-wide">artefak</span>
+                          <span className="font-display text-[10px] font-bold uppercase tracking-wide">{t.audit.artifactTag}</span>
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3 font-mono text-[12px]">{r.actor_email ?? <span className="text-ink-faint">sistem</span>}</td>
+                    <td className="px-4 py-3 font-mono text-[12px]">{r.actor_email ?? <span className="text-ink-faint">{t.audit.systemActor}</span>}</td>
                     <td className="px-4 py-3 font-mono text-[12px]">{r.action}</td>
-                    <td className="px-4 py-3"><Badge tone={RETENTION_TONE[cls]}>{RETENTION_LABEL[cls]}</Badge></td>
+                    <td className="px-4 py-3"><Badge tone={RETENTION_TONE[cls]}>{retentionLabel(t, cls)}</Badge></td>
                     <td className="px-4 py-3 font-mono text-[11px] text-ink-soft">
                       {r.target_table ?? "—"}
                       {r.target_id && <div className="text-ink-faint">{r.target_id}</div>}
                     </td>
                     <td className="px-4 py-3">
-                      {artifact && (
-                        <p className="mb-1 font-body text-[11px] italic text-ink-faint">{ARTIFACT_ROWS[r.id]}</p>
+                      {artifact && note && (
+                        <p className="mb-1 font-body text-[11px] italic text-ink-faint">{note}</p>
                       )}
                       <p className="max-w-md text-ink-soft">{r.summary ?? "—"}</p>
                     </td>
@@ -352,22 +359,20 @@ export function AuditLogPanel() {
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="font-mono text-[12px] text-ink-faint">
-          {total === 0 ? "0 baris" : `Menampilkan ${firstRow.toLocaleString("id-ID")}–${lastRow.toLocaleString("id-ID")} dari ${total.toLocaleString("id-ID")}`}
+          {total === 0 ? t.audit.zeroRows : `${t.audit.showingPre}${formatCount(firstRow, lang)}–${formatCount(lastRow, lang)}${t.audit.showingOf}${formatCount(total, lang)}`}
         </p>
         <div className="flex items-center gap-2">
           <button type="button" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={loading || page <= 1} className="rounded-sm border border-glass-border px-3 py-1.5 font-display text-[12px] font-bold uppercase tracking-wide text-ink-soft transition-colors hover:bg-glass disabled:cursor-not-allowed disabled:opacity-40">
-            Sebelumnya
+            {t.audit.prev}
           </button>
-          <span className="font-mono text-[12px] text-ink-soft">Hal {page}</span>
+          <span className="font-mono text-[12px] text-ink-soft">{t.audit.pageLabel} {formatCount(page, lang)}</span>
           <button type="button" onClick={() => setPage((p) => p + 1)} disabled={loading || !hasNext} className="rounded-sm border border-glass-border px-3 py-1.5 font-display text-[12px] font-bold uppercase tracking-wide text-ink-soft transition-colors hover:bg-glass disabled:cursor-not-allowed disabled:opacity-40">
-            Berikutnya
+            {t.audit.next}
           </button>
         </div>
       </div>
 
-      <p className="font-mono text-[11px] text-ink-faint">
-        Append-only · nol tombol hapus/edit · dibaca via service role server-side · pembukaan halaman ini tercatat (list.viewed).
-      </p>
+      <p className="font-mono text-[11px] text-ink-faint">{t.audit.warn.footer}</p>
     </section>
   );
 }

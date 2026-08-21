@@ -39,6 +39,12 @@ describe("classifyAction (single source)", () => {
     expect(classifyAction("suppression.added")).toBe("compliance");
     expect(classifyAction("suppression.lifted")).toBe("compliance");
   });
+  it("the EXACT demographic write-path action is compliance (Option 2, K-09)", () => {
+    // crm_upsert_profile_demographic menulis PERSIS nama aksi ini. Penyuntingan data
+    // pelanggan oleh staf = catatan "siapa mengubah, kapan" yang harus bertahan pangkas
+    // operasional 90 hari. Nama diuji PERSIS seperti yang ditulis fungsi (bukan prefix).
+    expect(classifyAction("profile.demographic_updated")).toBe("compliance");
+  });
   it("anything else is 'other'", () => {
     expect(classifyAction("test.trigger_check")).toBe("other");
     expect(classifyAction("whatever.new")).toBe("other");
@@ -70,7 +76,7 @@ describe("toPostgrestOr derivation", () => {
       "action.eq.profile.viewed,action.eq.list.viewed,action.like.search.*,action.like.login.*",
     );
     expect(toPostgrestOr(COMPLIANCE_RULES)).toBe(
-      "action.like.consent.*,action.like.suppression.*,action.like.role.*,action.eq.profile.deleted,action.like.export.*,action.like.retention.*",
+      "action.like.consent.*,action.like.suppression.*,action.like.role.*,action.eq.profile.deleted,action.eq.profile.demographic_updated,action.like.export.*,action.like.retention.*",
     );
   });
 });

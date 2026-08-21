@@ -3,6 +3,7 @@ import { getCurrentUserRole } from "@/lib/auth/current-role";
 import { canViewProfileList, isPermitted, resolveGrant } from "@/lib/auth/roles";
 import { Badge } from "@/components/ui/badge";
 import { ProfileDetail } from "@/components/audience/profile-detail";
+import { CoverageNotice } from "@/components/i18n/coverage-notice";
 
 export const metadata: Metadata = { title: "Profil" };
 
@@ -37,6 +38,14 @@ export default async function ProfileDetailPage({ params }: { params: { id: stri
   // Whether this role may record a suppression from the profile. The API re-checks
   // consent.edit server-side; this only decides whether to render the entry point.
   const canEditConsent = isPermitted(role, "consent.edit");
+  // Whether this role may fill EMPTY demographic fields (profile.edit_demographic, K-32 extension).
+  // The API re-checks server-side; this only decides whether to render the fill form.
+  const canEditDemographic = isPermitted(role, "profile.edit_demographic");
 
-  return <ProfileDetail id={params.id} canEditConsent={canEditConsent} />;
+  return (
+    <>
+      <CoverageNotice screen="profile" />
+      <ProfileDetail id={params.id} canEditConsent={canEditConsent} canEditDemographic={canEditDemographic} />
+    </>
+  );
 }

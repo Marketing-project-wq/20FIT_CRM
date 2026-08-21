@@ -2,11 +2,52 @@ import { describe, it, expect } from "vitest";
 import {
   parseCriteria,
   activeCriteriaCount,
+  hasClinicalCriteria,
   isRevenueCriterion,
   EMPTY_CRITERIA,
   SEGMENT_NULL,
 } from "./segment";
 import { FILTER_VALUE_MAX } from "./audience-constants";
+
+describe("multi-source criteria (TUGAS 2)", () => {
+  it("parses the new source booleans (default false, true only for === true)", () => {
+    const c = parseCriteria({ srcArena: true, srcGym: true, srcClinicPatient: true, srcClinicTxn: "yes" });
+    expect(c.srcArena).toBe(true);
+    expect(c.srcGym).toBe(true);
+    expect(c.srcClinicPatient).toBe(true);
+    expect(c.srcClinicTxn).toBe(false); // "yes" is not === true → false (closed)
+  });
+  it("hasClinicalCriteria is true iff a clinic criterion is set (the view_health gate)", () => {
+    expect(hasClinicalCriteria(parseCriteria({}))).toBe(false);
+    expect(hasClinicalCriteria(parseCriteria({ srcArena: true }))).toBe(false);
+    expect(hasClinicalCriteria(parseCriteria({ srcClinicPatient: true }))).toBe(true);
+    expect(hasClinicalCriteria(parseCriteria({ srcClinicTxn: true }))).toBe(true);
+  });
+  it("counts the new criteria as active narrowing", () => {
+    expect(activeCriteriaCount(parseCriteria({ srcArena: true, srcClinicTxn: true }))).toBe(2);
+  });
+});
+
+describe("staging_20fit_data criteria (Sprint 3Y)", () => {
+  it("keeps a valid RFM value (incl the Campion misspelling) and program key; rejects unknowns", () => {
+    expect(parseCriteria({ srcRfm: "Campion user" }).srcRfm).toBe("Campion user");
+    expect(parseCriteria({ srcRfm: "Loyal user" }).srcRfm).toBe("Loyal user");
+    expect(parseCriteria({ srcRfm: "Champion user" }).srcRfm).toBeNull(); // not stored → not accepted
+    expect(parseCriteria({ srcRfm: "-" }).srcRfm).toBeNull(); // absence, not a bucket
+    expect(parseCriteria({ srcProgram: "fitco_user" }).srcProgram).toBe("fitco_user");
+    expect(parseCriteria({ srcProgram: "not_a_program" }).srcProgram).toBeNull();
+  });
+  it("counts RFM + program as active narrowing", () => {
+    expect(activeCriteriaCount(parseCriteria({ srcRfm: "New User", srcProgram: "fitco_user" }))).toBe(2);
+    expect(activeCriteriaCount(parseCriteria({ srcRfm: "nonsense" }))).toBe(0);
+  });
+  it("treats a clinic-patient program as CLINICAL (the view_health gate); non-clinic is not", () => {
+    expect(hasClinicalCriteria(parseCriteria({ srcProgram: "fitco_user" }))).toBe(false);
+    expect(hasClinicalCriteria(parseCriteria({ srcProgram: "clinic_2024_2025" }))).toBe(true);
+    expect(hasClinicalCriteria(parseCriteria({ srcProgram: "clinic_2025_2026" }))).toBe(true);
+    expect(hasClinicalCriteria(parseCriteria({ srcRfm: "New User" }))).toBe(false);
+  });
+});
 
 describe("isRevenueCriterion", () => {
   it("accepts the four buckets incl. negative (T-10)", () => {
@@ -73,6 +114,8 @@ describe("activeCriteriaCount", () => {
         unit: "gym", segment: "new", city: "Jakarta", revenue: "has", hasPhone: true, hasEmail: true,
         ecoUnit: "clinic", ecoProduct: "Transaksi Clinic",
         srcHyrox: true, srcMy20fit: true, srcRecency: true,
+        srcArena: false, srcGym: false, srcClinicPatient: false, srcClinicTxn: false,
+        srcRfm: null, srcProgram: null,
       }),
     ).toBe(11);
   });

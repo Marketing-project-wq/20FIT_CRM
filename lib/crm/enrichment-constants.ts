@@ -26,14 +26,28 @@ export const HYROX_SAFE_COLUMNS = [
   "registered_at",
 ] as const;
 
-/** cf_hyrox sensitive columns — GATED (profile.view_health), masked by default, each reveal
- *  audited. NIK is a national identity number; this is the first place the project shows one. */
-export const HYROX_SENSITIVE_COLUMNS = [
+/**
+ * cf_hyrox sensitive columns — split by GATE (K-31, 19 Agu 2026):
+ *   - IDENTITY (nik, tgl_lahir, kontak_darurat, no_kontak_darurat) → `profile.view_contact`.
+ *     NIK is a national identity number, sekelas telepon/email; it (and the DOB/emergency it
+ *     carries) rides the contact gate, not the health gate.
+ *   - MEDICAL (gol_darah) → `profile.view_health`. Blood type is medical BY NATURE even though it
+ *     sits in the same Hyrox row as NIK — gated by its nature, not its neighbour.
+ * HYROX_SENSITIVE_COLUMNS stays the UNION (identity ∪ medical) so the safe-list guard still sees
+ * every sensitive name; the two sub-lists drive the per-gate column selection in enrichment.ts.
+ */
+export const HYROX_IDENTITY_COLUMNS = [
   "nik",
   "tgl_lahir",
-  "gol_darah",
   "kontak_darurat",
   "no_kontak_darurat",
+] as const;
+
+export const HYROX_MEDICAL_COLUMNS = ["gol_darah"] as const;
+
+export const HYROX_SENSITIVE_COLUMNS = [
+  ...HYROX_IDENTITY_COLUMNS,
+  ...HYROX_MEDICAL_COLUMNS,
 ] as const;
 
 /** cf_hyrox columns that must NEVER be read (internal keys + the nik-validity flag). */

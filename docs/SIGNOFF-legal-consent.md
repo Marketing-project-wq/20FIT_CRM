@@ -147,6 +147,18 @@ terlihatnya.
 **Suppression tetap menang** (K-13): aturan kontak tunggal (`isContactableForPurpose`) tak
 diubah — suppression di atas consent untuk marketing maupun layanan, tanpa jalan pintas.
 
+**Hasil dijalankan (12 Agu 2026):** 408.119 baris tersisip, cocok prediksi persis per
+purpose×channel (81.637 / 81.615 / 81.637 / 81.615 / 81.615). Distinct customer per purpose =
+**82.253** (marketing & layanan), cocok `count(distinct customer_id)` langsung. `proacl` =
+`{postgres, service_role}`. Idempotensi terbukti: panggilan kedua menyisipkan **0** baris
+(baris audit kedua `inserted=0`, memang perilakunya). Versi ledger tercap `20260812041851`.
+
+**Kinerja (Migrasi 12, 12 Agu 2026):** jalur baca contactable tak-terbatas (dashboard) tadinya
+seq scan atas `crm_consent` difilter `(purpose,status)` (~17 detik). Migrasi 12 menambah indeks
+`crm_consent (purpose, status) include (customer_id)` → index-only scan → **~2,9 detik**
+(terukur). Angka jawaban tak berubah (82.253). Sisa biaya di hash join dengan `master_customer`
+yang tumpah ke disk pada instance kecil, bukan lagi scan `crm_consent`.
+
 ---
 
 > **Konteks lintas-sprint:** keputusan `docs/riwayat/KEPUTUSAN.md` **K-12** (migrasi 3 dijalankan apa adanya; syarat legal masih terbuka). Peta `basis`→`purpose`: `lib/crm/consent-policy.ts`. Jalur tulis: `docs/RENCANA-jalur-tulis-consent.md`.

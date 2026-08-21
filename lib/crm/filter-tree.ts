@@ -17,12 +17,22 @@
  * too many, unsafe value).
  */
 import { SEGMENT_NULL } from "./audience-constants";
+import { getDictionary } from "../i18n";
+import type { Lang } from "../i18n/config";
+
+/** The segments dict slice, resolved once per call. lang defaults to "id" so existing callers
+ *  (and the pure-function tests) get the original Indonesian output with no signature change. */
+function words(lang: Lang) {
+  return getDictionary(lang).segments;
+}
 
 export type FilterOperator = "AND" | "OR";
 
 /** Leaf fields — a closed list. Values are validated against the same closed lists the flat
- *  builder uses. hasPhone/hasEmail take no value. */
-export type LeafField = "unit" | "segment" | "city" | "revenue" | "hasPhone" | "hasEmail";
+ *  builder uses. hasPhone/hasEmail (presence) and noPhone/noEmail (ABSENCE) take no value.
+ *  The absence leaves exist so the contact-coverage categories (email-only, phone-only, neither)
+ *  are expressible as trees and can ride the ONE existing export engine (Freshness/Export sprint). */
+export type LeafField = "unit" | "segment" | "city" | "revenue" | "hasPhone" | "hasEmail" | "noPhone" | "noEmail";
 
 export interface LeafCondition {
   kind: "condition";
@@ -51,26 +61,28 @@ const UNSAFE_VALUE = /[,()".\\]/;
 
 export type ValidateResult = { ok: true } | { ok: false; error: string };
 
-function validateLeaf(leaf: LeafCondition): ValidateResult {
+function validateLeaf(leaf: LeafCondition, s: ReturnType<typeof words>): ValidateResult {
   switch (leaf.field) {
     case "hasPhone":
     case "hasEmail":
+    case "noPhone":
+    case "noEmail":
       return { ok: true };
     case "unit":
-      return UNIT_VALUES.includes(leaf.value ?? "") ? { ok: true } : { ok: false, error: `unit tidak dikenal` };
+      return UNIT_VALUES.includes(leaf.value ?? "") ? { ok: true } : { ok: false, error: s.vUnknownUnit };
     case "segment":
-      return SEGMENT_VALUES.includes(leaf.value ?? "") ? { ok: true } : { ok: false, error: `segment tidak dikenal` };
+      return SEGMENT_VALUES.includes(leaf.value ?? "") ? { ok: true } : { ok: false, error: s.vUnknownSegment };
     case "revenue":
-      return REVENUE_VALUES.includes(leaf.value ?? "") ? { ok: true } : { ok: false, error: `revenue tidak dikenal` };
+      return REVENUE_VALUES.includes(leaf.value ?? "") ? { ok: true } : { ok: false, error: s.vUnknownRevenue };
     case "city": {
       const v = (leaf.value ?? "").trim();
-      if (v === "") return { ok: false, error: "kota kosong" };
-      if (v.length > CITY_MAX) return { ok: false, error: "kota terlalu panjang" };
-      if (UNSAFE_VALUE.test(v)) return { ok: false, error: "kota memuat karakter yang tak bisa diungkapkan aman" };
+      if (v === "") return { ok: false, error: s.vCityEmpty };
+      if (v.length > CITY_MAX) return { ok: false, error: s.vCityTooLong };
+      if (UNSAFE_VALUE.test(v)) return { ok: false, error: s.vCityUnsafe };
       return { ok: true };
     }
     default:
-      return { ok: false, error: "field tidak dikenal" };
+      return { ok: false, error: s.vUnknownField };
   }
 }
 
@@ -79,20 +91,22 @@ function countConditions(node: FilterNode): number {
 }
 
 /** Validate the whole tree. Root MUST be a group. Rejects: over-deep, over-count, empty
- *  groups, unknown/invalid leaves. Returns the first problem found. */
-export function validateFilterTree(node: FilterNode, depth = 1): ValidateResult {
-  if (node.kind !== "group") return { ok: false, error: "akar filter harus sebuah grup" };
+ *  groups, unknown/invalid leaves. Returns the first problem found. `lang` defaults to "id"
+ *  so existing callers and tests are unchanged; the route passes the request language. */
+export function validateFilterTree(node: FilterNode, depth = 1, lang: Lang = "id"): ValidateResult {
+  const s = words(lang);
+  if (node.kind !== "group") return { ok: false, error: s.vRootMustBeGroup };
   if (depth === 1 && countConditions(node) > MAX_CONDITIONS) {
-    return { ok: false, error: `maksimum ${MAX_CONDITIONS} kondisi` };
+    return { ok: false, error: `${s.vMaxConditionsA}${MAX_CONDITIONS}${s.vMaxConditionsB}` };
   }
-  if (node.children.length === 0) return { ok: false, error: "grup kosong tidak diperbolehkan" };
+  if (node.children.length === 0) return { ok: false, error: s.vEmptyGroup };
   for (const child of node.children) {
     if (child.kind === "group") {
-      if (depth + 1 > MAX_DEPTH) return { ok: false, error: `kedalaman maksimum ${MAX_DEPTH} grup` };
-      const r = validateFilterTree(child, depth + 1);
+      if (depth + 1 > MAX_DEPTH) return { ok: false, error: `${s.vMaxDepthA}${MAX_DEPTH}${s.vMaxDepthB}` };
+      const r = validateFilterTree(child, depth + 1, lang);
       if (!r.ok) return r;
     } else {
-      const r = validateLeaf(child);
+      const r = validateLeaf(child, s);
       if (!r.ok) return r;
     }
   }
@@ -124,6 +138,10 @@ function leafToExpr(leaf: LeafCondition): string {
       return `phone_normalized.not.is.null`;
     case "hasEmail":
       return `email_normalized.not.is.null`;
+    case "noPhone":
+      return `phone_normalized.is.null`;
+    case "noEmail":
+      return `email_normalized.is.null`;
   }
 }
 
@@ -143,21 +161,27 @@ export function filterTreeToExpr(node: FilterNode): string | null {
 
 // ── Readable sentence — shown ABOVE the result so a person reads what they built ──────────
 
-const FIELD_PHRASES: Record<LeafField, (v?: string | null) => string> = {
-  unit: (v) => `unit ${v}`,
-  segment: (v) => (v === SEGMENT_NULL ? "tanpa segment" : `segment ${v}`),
-  city: (v) => `kota memuat “${(v ?? "").trim()}”`,
-  revenue: (v) => (v === "has" ? "punya revenue" : v === "negative" ? "revenue negatif" : "tanpa revenue"),
-  hasPhone: () => "punya telepon",
-  hasEmail: () => "punya email",
-};
+function fieldPhrase(field: LeafField, v: string | null | undefined, s: ReturnType<typeof words>): string {
+  switch (field) {
+    case "unit": return `${s.rbUnit} ${v}`;
+    case "segment": return v === SEGMENT_NULL ? s.rbNoSegment : `${s.rbSegment} ${v}`;
+    case "city": return `${s.rbCityContainsA}${(v ?? "").trim()}${s.rbCityContainsB}`;
+    case "revenue": return v === "has" ? s.rbHasRevenue : v === "negative" ? s.rbNegativeRevenue : s.rbNoRevenue;
+    case "hasPhone": return s.rbHasPhone;
+    case "hasEmail": return s.rbHasEmail;
+    case "noPhone": return s.rbNoPhone;
+    case "noEmail": return s.rbNoEmail;
+  }
+}
 
-/** Render the tree as an Indonesian sentence: "(punya email ATAU punya telepon) DAN unit arena". */
-export function describeFilterTree(node: FilterNode, top = true): string {
-  if (node.kind === "condition") return FIELD_PHRASES[node.field](node.value);
-  if (node.children.length === 0) return "semua orang";
-  const joiner = node.op === "AND" ? " DAN " : " ATAU ";
-  const parts = node.children.map((c) => describeFilterTree(c, false));
+/** Render the tree as a sentence: "(has an email OR has a phone) AND unit arena". `lang` defaults
+ *  to "id" so existing callers and pure-function tests get the original Indonesian output. */
+export function describeFilterTree(node: FilterNode, top = true, lang: Lang = "id"): string {
+  const s = words(lang);
+  if (node.kind === "condition") return fieldPhrase(node.field, node.value, s);
+  if (node.children.length === 0) return s.rbEveryone;
+  const joiner = node.op === "AND" ? ` ${s.rbAnd} ` : ` ${s.rbOr} `;
+  const parts = node.children.map((c) => describeFilterTree(c, false, lang));
   const joined = parts.join(joiner);
   return top || node.children.length === 1 ? joined : `(${joined})`;
 }

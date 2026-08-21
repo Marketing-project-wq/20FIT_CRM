@@ -3,6 +3,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { QualitySnapshot } from "./quality-types";
 import { fetchEcosystemQuality } from "./engagement";
 import { fetchEnrichmentCoverage } from "./enrichment";
+import { fetchMultiSourceCoverage } from "./multisource";
+import { fetchClinicCoverage } from "./clinic-source";
+import { fetchStagingImportCoverage } from "./staging";
 import { KNOWN_TYPO_DOMAINS } from "./email-typo";
 
 /**
@@ -56,6 +59,9 @@ export async function fetchQualitySnapshot(admin: SupabaseClient): Promise<Quali
   // counts — same posture: parameter-free, head:true, not audited (Sprint 3N).
   const ecosystemPromise = fetchEcosystemQuality(admin);
   const enrichmentCoveragePromise = fetchEnrichmentCoverage(admin);
+  const multiSourceCoveragePromise = fetchMultiSourceCoverage(admin);
+  const clinicCoveragePromise = fetchClinicCoverage(admin);
+  const stagingCoveragePromise = fetchStagingImportCoverage(admin);
   const [
     total,
     fullName,
@@ -123,12 +129,18 @@ export async function fetchQualitySnapshot(admin: SupabaseClient): Promise<Quali
 
   const ecosystem = await ecosystemPromise;
   const enrichmentCoverage = await enrichmentCoveragePromise;
+  const multiSourceCoverage = await multiSourceCoveragePromise;
+  const clinicCoverage = await clinicCoveragePromise;
+  const stagingCoverage = await stagingCoveragePromise;
 
   return {
     total,
     computedAt: new Date().toISOString(),
     ecosystem,
     enrichmentCoverage,
+    multiSourceCoverage,
+    clinicCoverage,
+    stagingCoverage,
 
     fillRates: [
       { key: "full_name", label: "Nama", column: "full_name", filled: fullName },

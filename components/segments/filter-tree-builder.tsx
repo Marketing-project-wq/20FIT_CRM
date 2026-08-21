@@ -7,6 +7,8 @@ import {
   type LeafField,
 } from "@/lib/crm/filter-tree";
 import { AUDIENCE_UNITS, AUDIENCE_SEGMENTS, SEGMENT_NULL } from "@/lib/crm/audience-constants";
+import { useI18n } from "@/components/i18n/lang-provider";
+import type { Dict } from "@/lib/i18n";
 
 /**
  * AND/OR filter builder (Sprint 3P). Root is a fixed AND; each row is either ONE condition
@@ -22,14 +24,20 @@ export type Row =
 const selectCls =
   "h-9 rounded-sm border border-glass-border bg-glass px-2 font-body text-[13px] text-ink focus:outline-none focus:ring-2 focus:ring-red";
 
-const FIELD_LABELS: Record<LeafField, string> = {
-  unit: "Unit",
-  segment: "Segment",
-  city: "Kota",
-  revenue: "Revenue",
-  hasPhone: "Punya telepon",
-  hasEmail: "Punya email",
-};
+function fieldLabel(t: Dict, field: LeafField): string {
+  switch (field) {
+    case "unit": return t.segments.fieldUnit;
+    case "segment": return t.segments.fieldSegment;
+    case "city": return t.segments.fieldCity;
+    case "revenue": return t.segments.fieldRevenue;
+    case "hasPhone": return t.segments.fieldHasPhone;
+    case "hasEmail": return t.segments.fieldHasEmail;
+    // Absence leaves exist for the dashboard contact-coverage export only; they are NOT offered in
+    // the manual builder's FIELDS list below, but the switch must stay exhaustive.
+    case "noPhone": return t.segments.rbNoPhone;
+    case "noEmail": return t.segments.rbNoEmail;
+  }
+}
 
 const FIELDS: LeafField[] = ["unit", "segment", "city", "revenue", "hasPhone", "hasEmail"];
 
@@ -73,6 +81,7 @@ function ValueControl({
   value: string;
   onChange: (v: string) => void;
 }) {
+  const { t } = useI18n();
   if (field === "hasPhone" || field === "hasEmail") return null;
   if (field === "unit") {
     return (
@@ -85,16 +94,16 @@ function ValueControl({
     return (
       <select className={selectCls} value={value} onChange={(e) => onChange(e.target.value)}>
         {AUDIENCE_SEGMENTS.map((s) => <option key={s} value={s}>{s}</option>)}
-        <option value={SEGMENT_NULL}>(tanpa segment)</option>
+        <option value={SEGMENT_NULL}>{t.segments.noSegmentOption}</option>
       </select>
     );
   }
   if (field === "revenue") {
     return (
       <select className={selectCls} value={value} onChange={(e) => onChange(e.target.value)}>
-        <option value="has">Punya (&gt; 0)</option>
-        <option value="none">Tanpa (0/kosong)</option>
-        <option value="negative">Negatif (T-10)</option>
+        <option value="has">{t.segments.revHas}</option>
+        <option value="none">{t.segments.revNone}</option>
+        <option value="negative">{t.segments.revNegative}</option>
       </select>
     );
   }
@@ -103,7 +112,7 @@ function ValueControl({
       className={`${selectCls} placeholder:text-ink-faint`}
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      placeholder="mis. Jakarta"
+      placeholder={t.segments.cityInputPlaceholder}
     />
   );
 }
@@ -121,6 +130,7 @@ function ConditionRow({
   onValue: (v: string) => void;
   onRemove: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <div className="flex flex-wrap items-center gap-2">
       <select
@@ -128,10 +138,10 @@ function ConditionRow({
         value={field}
         onChange={(e) => onField(e.target.value as LeafField)}
       >
-        {FIELDS.map((f) => <option key={f} value={f}>{FIELD_LABELS[f]}</option>)}
+        {FIELDS.map((f) => <option key={f} value={f}>{fieldLabel(t, f)}</option>)}
       </select>
       <ValueControl field={field} value={value} onChange={onValue} />
-      <button type="button" onClick={onRemove} aria-label="Hapus kondisi" className="text-ink-faint hover:text-red">
+      <button type="button" onClick={onRemove} aria-label={t.segments.removeCondition} className="text-ink-faint hover:text-red">
         <X className="h-4 w-4" />
       </button>
     </div>
@@ -139,6 +149,7 @@ function ConditionRow({
 }
 
 export function FilterTreeBuilder({ rows, setRows }: { rows: Row[]; setRows: (r: Row[]) => void }) {
+  const { lang, t } = useI18n();
   const tree = rowsToTree(rows);
 
   function addCond() {
@@ -157,8 +168,7 @@ export function FilterTreeBuilder({ rows, setRows }: { rows: Row[]; setRows: (r:
   return (
     <div className="space-y-3">
       <p className="font-body text-[12px] leading-relaxed text-ink-soft">
-        Semua baris digabung dengan <strong>DAN</strong>. Sebuah baris bisa berupa satu kondisi,
-        atau grup <strong>ATAU</strong> (mis. “punya email ATAU punya telepon”). Maks 2 tingkat, 12 kondisi.
+        {t.segments.treeIntro}
       </p>
 
       <div className="space-y-3">
@@ -176,8 +186,8 @@ export function FilterTreeBuilder({ rows, setRows }: { rows: Row[]; setRows: (r:
           ) : (
             <div key={i} className="rounded-sm border border-glass-border/70 p-2">
               <div className="mb-2 flex items-center justify-between">
-                <span className="font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">Grup ATAU</span>
-                <button type="button" onClick={() => remove(i)} aria-label="Hapus grup" className="text-ink-faint hover:text-red">
+                <span className="font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">{t.segments.orGroupLabel}</span>
+                <button type="button" onClick={() => remove(i)} aria-label={t.segments.removeGroup} className="text-ink-faint hover:text-red">
                   <X className="h-4 w-4" />
                 </button>
               </div>
@@ -203,7 +213,7 @@ export function FilterTreeBuilder({ rows, setRows }: { rows: Row[]; setRows: (r:
                   onClick={() => update(i, { t: "or", conds: [...row.conds, { field: "hasPhone", value: "" }] })}
                   className="inline-flex items-center gap-1 font-body text-[12px] text-ink-soft hover:text-ink"
                 >
-                  <Plus className="h-3 w-3" /> kondisi ATAU
+                  <Plus className="h-3 w-3" /> {t.segments.addOrCondition}
                 </button>
               </div>
             </div>
@@ -213,18 +223,18 @@ export function FilterTreeBuilder({ rows, setRows }: { rows: Row[]; setRows: (r:
 
       <div className="flex flex-wrap gap-2">
         <button type="button" onClick={addCond} className="inline-flex items-center gap-1 rounded-sm border border-glass-border bg-glass px-3 py-1.5 font-body text-[12px] text-ink hover:opacity-80">
-          <Plus className="h-3.5 w-3.5" /> Tambah kondisi
+          <Plus className="h-3.5 w-3.5" /> {t.segments.addCondition}
         </button>
         <button type="button" onClick={addOr} className="inline-flex items-center gap-1 rounded-sm border border-glass-border bg-glass px-3 py-1.5 font-body text-[12px] text-ink hover:opacity-80">
-          <Plus className="h-3.5 w-3.5" /> Tambah grup ATAU
+          <Plus className="h-3.5 w-3.5" /> {t.segments.addOrGroup}
         </button>
       </div>
 
       {/* Read the filter back in a sentence BEFORE trusting the number. */}
       <div className="tint-neutral rounded-sm px-3 py-2">
         <p className="font-body text-[12px] text-ink">
-          <span className="font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">Filter terbaca: </span>
-          {tree ? describeFilterTree(tree) : "semua orang (belum ada kondisi)"}
+          <span className="font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">{t.segments.filterReadLabel}</span>
+          {tree ? describeFilterTree(tree, true, lang) : t.segments.everyoneNoConditions}
         </p>
       </div>
     </div>

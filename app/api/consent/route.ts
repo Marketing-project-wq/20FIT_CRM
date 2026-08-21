@@ -5,6 +5,7 @@ import { getCurrentUserRole } from "@/lib/auth/current-role";
 import { isPermitted, shouldMaskContact, resolveGrant } from "@/lib/auth/roles";
 import { fetchConsentScreen, CONSENT_PAGE_SIZE } from "@/lib/crm/consent";
 import { logApiFailure } from "@/lib/crm/failure-log";
+import { getServerDict } from "@/lib/i18n/server";
 
 export const dynamic = "force-dynamic";
 
@@ -33,13 +34,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
   }
 
+  const { t } = getServerDict();
   const role = await getCurrentUserRole();
   if (!isPermitted(role, "consent.edit")) {
     return NextResponse.json(
       {
         error: "forbidden",
         decision: resolveGrant(role, "consent.edit"),
-        message: "Hanya super_admin, crm_manager, dan data_steward yang boleh melihat register consent.",
+        message: t.consent.apiRoleDenied,
       },
       { status: 403 },
     );
@@ -82,7 +84,7 @@ export async function GET(request: NextRequest) {
   if (auditError) {
     logApiFailure("/consent", "audit_write_failed", { code: auditError.code });
     return NextResponse.json(
-      { error: "audit_failed", message: "Pembacaan ditolak: gagal mencatat audit (akuntabilitas)." },
+      { error: "audit_failed", message: t.consent.apiAuditFailed },
       { status: 503 },
     );
   }

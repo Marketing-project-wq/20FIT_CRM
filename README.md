@@ -33,9 +33,15 @@ Full spec: `PRD — 20FIT Audience Data & CRM System v1.1`.
 > 1–2, **everyone is locked out of the app.**
 >
 > **Do NOT merge the RBAC branch (`claude/20fit-crm-sprint-2`) into `main` until
-> steps 1–2 are done** — a push to `main` triggers Railway's auto-deploy, and the
+> steps 1–2 are done** — a push to the deployed branch triggers Railway's auto-deploy, and the
 > lockout is immediate. This warning is here, not only in `lib/auth/current-role.ts`,
 > because whoever merges is reading this file, not the auth code.
+>
+> **CORRECTION (2026-08-12, T-18/K-25):** the deployed branch is **not confirmed to be `main`** —
+> evidence shows production serving *feature-branch* code (an audit action present only in the
+> branch was written by production). So "a push to `main`" above may actually be "a push to the
+> connected feature branch." The lockout risk is identical either way; the trigger branch must
+> be confirmed in the Railway dashboard.
 
 > ## ⚠️ Migration ledger diverged — do NOT run `supabase db push`
 >
@@ -56,15 +62,43 @@ Full spec: `PRD — 20FIT Audience Data & CRM System v1.1`.
 > | 8 | `…090000_create_crm_purge_audit_log` | `20260811034942` | `create_crm_purge_audit_log` |
 > | 9 | `…100000_create_crm_record_suppression` | `20260811081711` **+** `20260811081920` | `create_crm_record_suppression` (×2) |
 > | 10 | `…110000_lock_crm_purge_audit_log_execute` | `20260811085420` | `lock_crm_purge_audit_log_execute` |
+> | 11 | `…20260812000000_create_crm_backfill_consent` | `20260812041851` | `create_crm_backfill_consent` |
+> | 12 | `…20260812010000_add_crm_consent_contactability_index` | `20260812045411` | `add_crm_consent_contactability_index` |
+> | 13 | `…20260812020000_create_crm_contactable_counts` | `20260812063419` | `create_crm_contactable_counts` |
+> | 14 | `…20260813000000_create_crm_staging_segment_ids` | `20260813034302` | `create_crm_staging_segment_ids` |
+> | 15 | `…20260813091255_create_crm_customer_mirror` | `20260813091255` | `create_crm_customer_mirror` |
+> | 16 | `…20260814040554_add_is_fitco_member_matched_to_crm_customer_mirror` | `20260814040554` | `add_is_fitco_member_matched_to_crm_customer_mirror` (pulled from PR #13, verbatim SQL) |
+> | 17 | `…20260814055353_crm_norm_phone_guard_empty_nsn` | `20260814055353` | `crm_norm_phone_guard_empty_nsn` (pulled from PR #13, verbatim SQL) |
+> | 18 | `…20260819061103_schedule_crm_mirror_refresh` | `20260819061103` | `schedule_crm_mirror_refresh` (pg_cron daily mirror refresh, K-30) |
+> | 19 | `…20260819113518_crm_purge_audit_log_add_demographic_compliance` | `20260819113518` | `crm_purge_audit_log_add_demographic_compliance` (Opsi 2 / K-09 — adds `profile.demographic_updated` to the compliance denylist; migration 8 untouched) |
+> | 20 | `…20260819113649_create_crm_upsert_profile_demographic` | `20260819113452` **+** `20260819113649` | `create_crm_upsert_profile_demographic` (×2 — first apply hit an `array_cat` bug, re-applied fixed) |
 >
-> **Count reconciliation: 10 repo files → 11 CRM ledger entries.** The extra entry is
-> migration **9**, applied **twice** under the same name (Sprint 3H). The first apply left
-> Supabase's default `EXECUTE` grant to `anon`/`authenticated` in place (a `revoke … from
-> public` does **not** remove explicit per-role grants); the second apply carried the
-> corrected `revoke … from public, anon, authenticated`. `create or replace` is idempotent,
-> so both stamps point at the same two functions — the repo file is the canonical full
-> definition and re-running it on a fresh DB reaches the same end state in one pass. No
-> other migration is duplicated.
+> **Count reconciliation (re-checked against `schema_migrations` on 2026-08-19): 20 CRM
+> migration files on THIS branch (`claude/lanjutkan-pekerjaan-mno804`) → 22 CRM ledger
+> entries in the DB.** The gap between files and ledger entries is **two** double-applies:
+>
+> - **+1** — migration **9** applied **twice** under the same name (Sprint 3H). The first
+>   apply left Supabase's default `EXECUTE` grant to `anon`/`authenticated` in place (a
+>   `revoke … from public` does **not** remove explicit per-role grants); the second apply
+>   carried the corrected `revoke … from public, anon, authenticated`. `create or replace`
+>   is idempotent, so both stamps point at the same two functions.
+> - **+1** — migration **20** (`create_crm_upsert_profile_demographic`) applied **twice**: the
+>   first apply (`…113452`) used `v_changed || 'gender'`, which Postgres resolves as `array_cat`
+>   (→ "malformed array literal"); the re-apply (`…113649`) uses `array_append`. The FINAL
+>   definition is the row-20 file; the `…113452` stamp is a superseded stamp only.
+> - **Migrations 16 & 17 were applied by a parallel session** (PR #13, branch
+>   `claude/20fit-crm-sprint-1-67vvhs`): `add_is_fitco_member_matched_to_crm_customer_mirror`
+>   adds a Fitco-membership flag to the mirror, and `crm_norm_phone_guard_empty_nsn` fixes the
+>   `crm_norm_phone('62')` empty-NSN edge (flagged in Sprint 5A). **Their SQL files are now on
+>   this branch too** — pulled **verbatim** from PR #13 into `supabase/migrations/` (2026-08-19),
+>   so this branch's tree is no longer behind the CRM ledger. Both are already stamped in
+>   `schema_migrations`; the files are the repo record only — do **not** re-apply. Verified
+>   against the live DB on 2026-08-19: the matview carries `is_fitco_member_matched` (= 67,653
+>   matched) at column 21, and `crm_norm_phone('62')` returns `null` (empty-NSN guard).
+>
+> **The ledger is now SHARED.** Other teams stamp into the same `schema_migrations` (e.g.
+> `my20fit_*`, `clinic_*`, `arena_*`, `talent_*`, `event_*`) interleaved with CRM versions, so
+> reconcile CRM migrations by **name filter**, never by version range.
 >
 > **Migration 8 is historical and is NOT edited.** Its `EXECUTE` was left open to
 > `anon`/`authenticated` (the Supabase default); migration **10** revokes it — a separate
@@ -74,9 +108,16 @@ Full spec: `PRD — 20FIT Audience Data & CRM System v1.1`.
 >
 > **Do NOT run `supabase db push` against this project until the ledger and repo are
 > reconciled.** No repo file-name timestamp exists in the ledger, so the CLI would treat
-> all **10** repo migrations as unapplied and try to run them all — re-creating the seven
+> all **20** repo migrations as unapplied and try to run them all — re-creating the seven
 > live tables + re-defining the live functions, failing as "already exists". Run any
 > further migration one-by-one via a reviewed path (`apply_migration`), not `db push`.
+>
+> **Migration 11 (`crm_backfill_consent`) applied + run 2026-08-12.** It backfilled 408,119
+> consent rows for the legacy import (marketing + transactional). Unlike a schema migration,
+> its DATA is reversible and cheap to undo: `crm_consent` has **zero triggers**, so
+> `delete from public.crm_consent where source = '20fit_data_import'` removes exactly the
+> backfilled rows and nothing else. This is UNLIKE `crm_suppression` and `crm_audit_log`,
+> which are append-only (triggers block mutation) and cannot be undone.
 
 ## Data-quality screen (`/quality`)
 
@@ -145,7 +186,11 @@ reverse it in **both** aggregate endpoints, never leave two answers.
 - Tailwind CSS 3 + shadcn/ui (restyled to the 20FIT design tokens)
 - Supabase Auth via `@supabase/ssr` (cookie-based sessions, no localStorage)
 - Self-hosted fonts via `next/font` (Barlow Condensed, JetBrains Mono, Manrope)
-- Deploy: Railway (source = GitHub, auto-deploy on `main`)
+- Deploy: Railway (source = GitHub). **The connected branch is NOT confirmed to be `main`.**
+  Evidence (2026-08-12, T-18/K-25) shows **branch code serving production**: production wrote
+  an audit action that exists only in the feature branch, never in `main`. Confirm the actual
+  deploy branch in the Railway dashboard (service → Settings → Source); until then, treat
+  every push to the feature branch as potentially live in production.
 
 ## Run locally
 

@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Badge } from "@/components/ui/badge";
+import { getServerDict } from "@/lib/i18n/server";
 
 /**
  * Roles panel — read-only list of crm_user_role, resolved via the service-role client
@@ -39,27 +40,25 @@ async function loadRoleRows(): Promise<LoadResult> {
 
 export async function RolesPanel() {
   const result = await loadRoleRows();
+  const { t } = getServerDict();
 
   return (
     <section className="space-y-4">
       <div className="flex flex-col gap-1">
         <h2 className="font-display text-[22px] font-extrabold uppercase tracking-wide text-ink">
-          Peran (RBAC)
+          {t.audit.rolesTitle}
         </h2>
         <p className="max-w-2xl font-body text-[13px] text-ink-soft">
-          Read-only. Perubahan peran ditunda sampai alur pemberian peran ber-audit dibangun —
-          mengubah izin tanpa jejak adalah hal yang justru ingin dihindari. Matriks izin:{" "}
-          <span className="font-mono text-[12px]">lib/auth/roles.ts</span> (PRD 17.2, disetujui
-          Jeff 2026-08-10).
+          {t.audit.rolesSubtitleA}
+          <span className="font-mono text-[12px]">lib/auth/roles.ts</span>{t.audit.rolesSubtitleB}
         </p>
       </div>
 
       {result.state === "not_provisioned" ? (
         <div className="flex flex-col items-center justify-center gap-3 rounded-card border border-dashed border-glass-border px-6 py-12 text-center">
-          <Badge tone="amber">RBAC belum di-provision</Badge>
+          <Badge tone="amber">{t.audit.rolesNotProvisioned}</Badge>
           <p className="max-w-md font-body text-[13px] leading-relaxed text-ink-soft">
-            Tabel <code className="font-mono">crm_user_role</code> belum ada. Jalankan migrasi lalu
-            seed super_admin pertama; daftar peran akan muncul di sini.
+            {t.audit.rolesNotProvisionedA}<code className="font-mono">crm_user_role</code>{t.audit.rolesNotProvisionedB}
           </p>
         </div>
       ) : (
@@ -67,16 +66,16 @@ export async function RolesPanel() {
           <table className="w-full border-collapse text-left">
             <thead>
               <tr className="border-b border-glass-border font-display text-[12px] uppercase tracking-wide text-ink-faint">
-                <th className="px-4 py-3 font-bold">Pengguna</th>
-                <th className="px-4 py-3 font-bold">Peran</th>
-                <th className="px-4 py-3 font-bold">Diberikan</th>
+                <th className="px-4 py-3 font-bold">{t.audit.thUser}</th>
+                <th className="px-4 py-3 font-bold">{t.audit.thRole}</th>
+                <th className="px-4 py-3 font-bold">{t.audit.thGranted}</th>
               </tr>
             </thead>
             <tbody className="font-body text-[14px] text-ink">
               {result.rows.length === 0 ? (
                 <tr>
                   <td colSpan={3} className="px-4 py-10 text-center text-ink-soft">
-                    Belum ada peran yang di-assign.
+                    {t.audit.rolesEmpty}
                   </td>
                 </tr>
               ) : (

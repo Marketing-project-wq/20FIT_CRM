@@ -59,7 +59,10 @@ Email sampai ke Gmail (masuk Spam), jadi kemungkinan besar ini produk **Sending*
 
 - Endpoint yang dipakai aplikasi: `https://send.api.mailtrap.io/api/send` (Sending). Kotak
   **Testing** memakai host `sandbox.api.mailtrap.io` dan **tidak** mengantar ke inbox nyata.
-- Di Mailtrap → **Sending Domains** → domain `20fit.id` harus **Verified**.
+- Di Mailtrap → **Sending Domains** → domain `20fit.id` harus **Verified**. **Kalau BELUM
+  verified, pengiriman dari `crm@20fit.id` ditolak sepenuhnya oleh Mailtrap** — dan gejalanya
+  menipu: pengguna mendapat halaman kode tapi email tak pernah datang, mudah disalahartikan
+  sebagai "kode salah". Periksa status Verified sebelum menyimpulkan ada bug di alur.
 - Catat **batas kirim harian** paket Sending yang aktif (mis. free tier Mailtrap Sending
   membatasi jumlah email/hari). Bila staf yang mereset banyak, batas ini bisa terpukul —
   ketahui angkanya sebelum bergantung penuh pada alur ini.

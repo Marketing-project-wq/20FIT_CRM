@@ -27,6 +27,11 @@ tapi siapa pun yang melatih revert lokal **harus `rm -rf .next` dulu**. Sudah di
 **Kesimpulan:** perintah revert-nya `git revert -m 1 <sha-merge-PR#4>`, dan ia benar-benar
 mengembalikan kode ke Sprint 3A dengan bersih. Rencananya bukan harapan; ia jalan.
 
+> **KOREKSI model deploy (12 Agu 2026, T-18/K-25):** dokumen ini mengasumsikan "merge ke `main`
+> → deploy". Bukti kemudian menunjukkan produksi menjalankan kode *branch*, bukan `main`. Rencana
+> monitoring di bawah tetap berlaku untuk deploy apa pun; hanya pemicunya yang perlu diluruskan —
+> lihat `docs/KOREKSI-DEPLOY.md`.
+
 ## Yang diawasi 30 menit pertama setelah deploy
 
 ### Log Railway

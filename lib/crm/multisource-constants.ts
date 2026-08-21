@@ -1,0 +1,217 @@
+/**
+ * Constants + PURE helpers for multi-source profile completion (TUGAS 3). Client-safe: the
+ * profile UI imports the source registry + the match-key helpers. The service-role query code
+ * is in lib/crm/multisource.ts (server-only). Same split as enrichment-constants.ts (3R).
+ *
+ * SCOPE OF THIS SLICE: the arena / gym BOOKING + ORDER sources, matched by NORMALISED EMAIL
+ * first, then NORMALISED PHONE as a fallback (K-06) — never by name (a wrong name-match glues
+ * one person's history to another's profile; invisible until someone is wrongly contacted).
+ * The key that produced a match is RECORDED so the confidence is visible on screen.
+ *
+ * NOT in this slice (documented remaining — docs/RENCANA-multisumber.md): the clinic_* chain
+ * via patient_id (health data behind profile.view_health), /quality coverage, and segment
+ * filters. Kept separate on purpose — clinic carries NIK / DOB / address / emergency contacts
+ * and must not be rushed.
+ *
+ * ZERO write path, ZERO copy into master_customer / crm_*. Read + join at display time. The
+ * safe-column lists below are the ONLY columns read; a guard test (multisource.test.ts)
+ * enforces that no forbidden column (free-text notes, raw identity, payment proof) is listed.
+ */
+
+export type MatchKey = "email" | "phone";
+
+/**
+ * Class-name chain (TUGAS 4): a class booking carries only a `schedule_id`; the human class NAME
+ * lives two hops away (booking.schedule_id → schedule.class_type_id → type.name). These are the
+ * ONLY columns read from the two chain tables — factual schedule facts + the type name, never the
+ * schedule's free-text `notes`/`cancelled_reason`/`created_by`. Guarded by multisource.test.ts.
+ */
+export interface ClassChain {
+  scheduleTable: string;
+  typeTable: string;
+  /** booking column holding the schedule FK. */
+  scheduleIdColumn: string;
+  /** schedule columns: its own id, the type FK, and the display facts. */
+  scheduleColumns: readonly string[];
+  /** type columns: its id + the name. */
+  typeColumns: readonly string[];
+}
+
+/** Schedule columns that are safe to read for the class chain — no free-text. Shared by both units. */
+export const CLASS_SCHEDULE_SAFE_COLUMNS = [
+  "id",
+  "class_type_id",
+  "schedule_date",
+  "start_time",
+  "end_time",
+  "instructor",
+] as const;
+
+/** Type columns that are safe to read — the id (to join) and the human name. */
+export const CLASS_TYPE_SAFE_COLUMNS = ["id", "name"] as const;
+
+/** Free-text / sensitive columns that must NEVER be read from a schedule table. */
+export const CLASS_CHAIN_FORBIDDEN_COLUMNS: ReadonlySet<string> = new Set([
+  "notes",
+  "cancelled_reason",
+  "created_by",
+]);
+
+export interface MultiSourceDef {
+  /** Stable id for the UI + registry lookups. */
+  key: string;
+  /** Human label shown on the profile. */
+  label: string;
+  table: string;
+  emailColumn: string;
+  /** null → email-only source (no usable phone column). */
+  phoneColumn: string | null;
+  /** The ONLY columns read from this source. All non-sensitive, non-free-text, factual. */
+  safeColumns: readonly string[];
+  /** Column used as the short human summary of a row (e.g. a booking code). */
+  labelColumn: string;
+  /** Optional status column for a one-line summary. */
+  statusColumn: string | null;
+  /** Present on class-booking sources: how to resolve the class NAME (TUGAS 4). */
+  classChain?: ClassChain;
+}
+
+/**
+ * Columns that must NEVER appear in a safeColumns list — free-text (may hold private notes),
+ * raw contact identity (already matched on; re-displaying is redundant + a mini contact
+ * export), payment proof (can carry personal/financial detail), and anything sensitive. The
+ * guard test asserts every safeColumns list is disjoint from this set.
+ */
+export const MULTISOURCE_FORBIDDEN_COLUMNS: ReadonlySet<string> = new Set([
+  "notes",
+  "email",
+  "phone",
+  "payment_proof_url",
+  "payment_proof_notes",
+  "payment_proof_by",
+  "payment_ref",
+  "payment_reference",
+  // clinic sensitive (belongs to the deferred clinic chain, never here):
+  "id_number",
+  "date_of_birth",
+  "address",
+  "occupation",
+  "emergency_contact_name",
+  "emergency_contact_phone",
+]);
+
+/** The arena / gym sources for this slice. Columns verified against the live schema 12 Aug 2026. */
+export const MULTISOURCE_DEFS: readonly MultiSourceDef[] = [
+  {
+    key: "arena_class",
+    label: "Arena — kelas",
+    table: "arena_class_bookings",
+    emailColumn: "email",
+    phoneColumn: "phone",
+    safeColumns: ["booking_code", "status", "price", "created_at", "schedule_id"],
+    labelColumn: "booking_code",
+    statusColumn: "status",
+    classChain: {
+      scheduleTable: "arena_class_schedules",
+      typeTable: "arena_class_types",
+      scheduleIdColumn: "schedule_id",
+      scheduleColumns: CLASS_SCHEDULE_SAFE_COLUMNS,
+      typeColumns: CLASS_TYPE_SAFE_COLUMNS,
+    },
+  },
+  {
+    key: "arena_booking",
+    label: "Arena — booking venue",
+    table: "arena_bookings",
+    emailColumn: "email",
+    phoneColumn: "phone",
+    safeColumns: ["booking_code", "booking_date", "start_time", "status", "price"],
+    labelColumn: "booking_code",
+    statusColumn: "status",
+  },
+  {
+    key: "arena_package",
+    label: "Arena — paket",
+    table: "arena_package_orders",
+    emailColumn: "email",
+    phoneColumn: "phone",
+    safeColumns: ["order_code", "package_name", "sessions", "status"],
+    labelColumn: "order_code",
+    statusColumn: "status",
+  },
+  {
+    key: "arena_member",
+    label: "Arena — member",
+    table: "arena_members",
+    emailColumn: "email",
+    phoneColumn: "phone",
+    safeColumns: ["member_code", "is_active"],
+    labelColumn: "member_code",
+    statusColumn: null,
+  },
+  {
+    key: "gym_class",
+    label: "Gym — kelas",
+    table: "gym_class_bookings",
+    emailColumn: "email",
+    phoneColumn: "phone",
+    safeColumns: ["booking_code", "status", "price", "schedule_id"],
+    labelColumn: "booking_code",
+    statusColumn: "status",
+    classChain: {
+      scheduleTable: "gym_class_schedules",
+      typeTable: "gym_class_types",
+      scheduleIdColumn: "schedule_id",
+      scheduleColumns: CLASS_SCHEDULE_SAFE_COLUMNS,
+      typeColumns: CLASS_TYPE_SAFE_COLUMNS,
+    },
+  },
+  {
+    key: "gym_membership",
+    label: "Gym — membership",
+    table: "gym_membership_orders",
+    emailColumn: "email",
+    phoneColumn: "phone",
+    safeColumns: ["order_code", "plan_name", "duration_months", "status"],
+    labelColumn: "order_code",
+    statusColumn: "status",
+  },
+] as const;
+
+/**
+ * Raw phone variants to try when matching a normalised `62…` phone against source tables whose
+ * phone column is NOT normalised (they store `0812…`, `+62…`, bare national, etc.). PostgREST
+ * cannot normalise inside a filter, so we generate the common formats from the canonical form
+ * and match with `.in()`. Best-effort by design (lower confidence than email) — the key used
+ * is recorded so that shows on screen. Input MUST already be normalizePhoneID output (`62…`).
+ */
+export function phoneMatchCandidates(normalized62: string | null): string[] {
+  if (!normalized62 || !/^62\d+$/.test(normalized62)) return [];
+  const nsn = normalized62.slice(2); // national significant number, no country code
+  return Array.from(new Set([
+    normalized62, // 62…
+    `+${normalized62}`, // +62…
+    `0${nsn}`, // 0…
+    nsn, // bare national
+  ])).filter((v) => v.length > 0);
+}
+
+/**
+ * Which match keys to try, in order. Skips a key the profile has no value for. The order is
+ * PER SOURCE, not a global constant, because coverage differs by source:
+ *   - arena / gym (prefer 'email'): rows are keyed on email; email is the stronger match.
+ *   - clinic (prefer 'phone'): measured 12 Aug 2026 — of 143 clinic_patients, EMAIL matches
+ *     only 12 profiles but PHONE (via normalizePhoneID) matches 106. Email-first here would
+ *     hide ~9 of every 10 patients from CS — the unit that most needs context when phoning.
+ *     Do NOT "tidy" this back to a uniform email-first order; the numbers are why.
+ * Pure so the ordering is locked by a test.
+ */
+export function matchKeyOrder(
+  email: string | null,
+  phone: string | null,
+  prefer: MatchKey = "email",
+): MatchKey[] {
+  const have: Record<MatchKey, string | null> = { email, phone };
+  const order: MatchKey[] = prefer === "phone" ? ["phone", "email"] : ["email", "phone"];
+  return order.filter((k) => have[k]);
+}

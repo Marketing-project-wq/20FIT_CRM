@@ -28,12 +28,20 @@ export const OPERATIONAL_RULES: readonly MatchRule[] = [
   { kind: "prefix", value: "login." },
 ];
 
-/** Compliance — excluded from purge permanently. MUST equal migration 8's denylist. */
+/**
+ * Compliance — excluded from purge permanently. MUST equal the LIVE purge function's denylist —
+ * which is now migration `20260819113518_crm_purge_audit_log_add_demographic_compliance` (a
+ * create-or-replace that added `profile.demographic_updated`), NOT the historical migration 8.
+ * The parity test reads that newer file. `profile.demographic_updated` is compliance because staff
+ * editing a customer's data is a "who changed this, when" record that must survive the 90-day
+ * operational purge (Option 2, K-09).
+ */
 export const COMPLIANCE_RULES: readonly MatchRule[] = [
   { kind: "prefix", value: "consent." },
   { kind: "prefix", value: "suppression." },
   { kind: "prefix", value: "role." },
   { kind: "exact", value: "profile.deleted" },
+  { kind: "exact", value: "profile.demographic_updated" },
   { kind: "prefix", value: "export." },
   { kind: "prefix", value: "retention." },
 ];

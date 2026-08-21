@@ -109,7 +109,7 @@ Dua paparan terberat berat karena alasan **berbeda**, bukan satu skala:
 | 1 | **`cf_user` — kredensial:** pastikan `password` bukan polos; bila iya rotasi+hash segera | Kredensial polos = paling cepat dieksploitasi, anon-readable | **Owner `cf`** |
 | 2 | **`master_customer` + `customer_engagement`:** ganti policy `authenticated_full_access` (`ALL`/`USING true`) dengan policy yang sesuai kebutuhan nyata (mis. baca-saja untuk peran tertentu, tulis hanya `service_role`) | **Akan memutus aplikasi tim lain** yang kini baca/tulis lewat sesi authenticated — mereka harus pindah ke akses server-side dulu. Karena itu **bukan** perbaikan sepihak | **Pemilik data + owner Supabase + tim CRM** |
 | 3 | **NIK + data medis anon (`cf_hyrox_participants`, `clinic_*`):** nyalakan RLS **berbarengan** dengan policy (service_role / setara aplikasi sah), satu tabel per kali | Aplikasi tim itu pindah dari anon key ke jalur ber-otorisasi. Data kesehatan perlu dasar hukum (UU 27/2022) | **Legal + pemilik data + owner Supabase** |
-| 4 | **T-03 (102 fungsi `SECURITY DEFINER` anon-executable):** cabut `EXECUTE` (pola migrasi 10 CRM) | Naik tiap tim deploy (101→102) — sistemik | **Owner Supabase** |
+| 4 | **T-03 (109 fungsi `SECURITY DEFINER` anon-executable, 19 Agu 2026):** cabut `EXECUTE` (pola migrasi 10 CRM) | Naik tiap tim deploy (101→102→**109**) — sistemik. **Nol milik `crm_*`** (pagar EXECUTE + matview kita utuh) | **Owner Supabase** |
 | 5 | **T-02 (`staging_20fit_data`, 88.536 baris anon):** setelah yang di atas | Nama/telepon/email | **Pemilik data** |
 
 **Risiko perbaikan, jujur:** policy `authenticated_full_access` hampir pasti **sengaja**
@@ -123,8 +123,9 @@ sensitif** — jangan menyalakan RLS massal tanpa policy.
 
 ## 6. Kalau tidak diapa-apakan
 
-Paparannya **tetap terbuka dan cenderung membesar**: T-03 sudah naik 101 → 102 dalam satu
-sesi. Dua jalur tetap terbuka setiap hari: (a) NIK/tgl lahir/gol darah/kontak darurat/diagnosa
+Paparannya **tetap terbuka dan cenderung membesar**: T-03 sudah naik 101 → 102 → **109**
+(diukur ulang 19 Agu 2026; RLS OFF tetap **72** tabel, policy selimut `authenticated` tetap
+**24**). Dua jalur tetap terbuka setiap hari: (a) NIK/tgl lahir/gol darah/kontak darurat/diagnosa
 ±1.100 orang dapat ditarik massal **tanpa login** (anon); (b) **82.253 profil dapat dibaca,
 diubah, dan dihapus** oleh **887 akun** yang bisa login, tanpa masking dan tanpa jejak audit.
 Keduanya tanpa alarm — ia hanya **terus bisa** sampai seseorang memutuskan menutupnya, dan

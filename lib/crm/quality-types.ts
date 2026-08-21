@@ -71,6 +71,60 @@ export interface EnrichmentSourceCoverage {
   matchedProfiles: number;
 }
 
+/** Multi-source coverage (TUGAS 4) — arena/gym sources matched by email. `withKey` (rows that
+ *  HAVE the match identifier) lets the reader tell "identifier empty" (withKey < sourceRows)
+ *  from "not in master_customer" (matchedProfiles < withKey) — two causes, one symptom. */
+export interface SourceCoverage {
+  key: string;
+  label: string;
+  sourceRows: number;
+  withKey: number;
+  matchedProfiles: number;
+  keyUsed: "email" | "phone";
+}
+
+/** Clinic coverage (TUGAS 4). Aggregate counts only — no health content, so not view_health
+ *  gated. Shows why email-first fails clinic (12 vs 106) + the clinic_transactions NULL-FK
+ *  finding kept SEPARATE from match rate (different cause). */
+export interface ClinicCoverage {
+  patientsRows: number;
+  patientsWithPhone: number;
+  patientsWithEmail: number;
+  matchedByEmail: number;
+  matchedByPhone: number;
+  transactionsTotal: number;
+  transactionsLinked: number;
+  transactionsNullFk: number;
+  sparse: { table: string; rows: number }[];
+}
+
+/** staging_20fit_data coverage + birth-date parse stats (Sprint 3Y) — computed LIVE. The
+ *  distinct email-match figure (81.079 / 98,6%) is a count-distinct join that PostgREST cannot
+ *  express, so it lives in VERIFIED_ARTIFACTS (dated), NOT here — same treatment as ecosystem
+ *  coverage. Everything here is a cheap head:true count or a paged parse pass. */
+export interface StagingImportCoverage {
+  rowsTotal: number;
+  withEmail: number;
+  withDob: number;
+  /** Parse outcomes over the filled DOB values (live paged read). */
+  dobParsed: number;
+  dobUnparseable: number;
+  /** month ≤ 12 AND day ≤ 12 → order unverifiable; flagged, never guessed. */
+  dobAmbiguousDayMonth: number;
+  /** month field > 12 → stored day-first; read back correctly + flagged (0 measured 12 Agu). */
+  dobSwapped: number;
+  /** parsed but age out of the 10–100 window (future / too old / too young). */
+  dobImplausible: number;
+  /** Year cross-check vs the Umur column, computed AS-OF the import snapshot (not today). */
+  umurChecked: number;
+  umurYearExact: number;
+  umurOffByOne: number;
+  /** off by ≥ 2 years — a genuine year conflict, not snapshot drift. */
+  umurConflict: number;
+  rfm: { value: string; count: number }[];
+  programs: { key: string; label: string; count: number; clinical: boolean }[];
+}
+
 export interface QualitySnapshot {
   /** Rows in master_customer — the denominator for every percentage below. */
   total: number;
@@ -84,6 +138,12 @@ export interface QualitySnapshot {
   ecosystem: EcosystemQuality;
   /** Enrichment source coverage (Hyrox / my20fit) — Sprint 3R, computed live. */
   enrichmentCoverage: EnrichmentSourceCoverage[];
+  /** Multi-source coverage (arena/gym) — TUGAS 4, computed live. */
+  multiSourceCoverage: SourceCoverage[];
+  /** Clinic coverage + the clinic_transactions NULL-FK finding — TUGAS 4, computed live. */
+  clinicCoverage: ClinicCoverage | null;
+  /** staging_20fit_data coverage + birth-date parse stats — Sprint 3Y, computed live. */
+  stagingCoverage: StagingImportCoverage | null;
   /** ISO timestamp the snapshot was computed. Never cached. */
   computedAt: string;
 }
@@ -187,6 +247,18 @@ export const VERIFIED_ARTIFACTS = [
     label: "82.089 dari 82.253 profil (99,80%) punya jejak ekosistem",
     detail:
       "customer_engagement mencakup 82.089 profil master berbeda dari 82.253 (99,80%; count distinct — tak bisa live via PostgREST), lewat 90.419 baris, 0 baris yatim (setiap customer_id ada di master_customer). 164 profil tidak muncul sama sekali di ekosistem. Sebaran didominasi satu produk: membership/Fitco User = 67.828 baris (75%). Diverifikasi 11 Agustus 2026.",
+  },
+  {
+    key: "staging_email_match",
+    label: "staging_20fit_data cocok 98,6% ke master lewat email",
+    detail:
+      "staging_20fit_data adalah impor yang SAMA dengan master_customer: 88.536 baris, 88.445 punya email; 81.079 dari 82.253 profil master (98,62%) cocok lewat email ternormalisasi (count distinct — tak bisa live via PostgREST, karena itu diangkat di sini bertanggal). Kontras tajam dengan seluruh sumber ekosistem lain digabung (Hyrox/my20fit/arena/gym/klinik = 922 profil, 1,12%). Sumber inilah yang membawa tanggal lahir (5.467 baris — master_customer 0), kota, RFM, dan keikutsertaan program. Nol tulis, nol salin: dibaca & digabung saat tampil. Diverifikasi 12 Agustus 2026.",
+  },
+  {
+    key: "staging_dob_ambiguity",
+    label: "Tanggal lahir impor: 0 tertukar terbukti, 2.232 hari-bulan ambigu",
+    detail:
+      "Seluruh 5.467 tgl lahir di staging_20fit_data berbentuk ISO yyyy-mm-dd dan 0 punya field bulan > 12 — jadi TIDAK ada baris yang terbukti tertukar (beda dari cf_hyrox_participants: 321 tertukar, T-16). Namun 2.232 punya field bulan DAN hari sama-sama ≤ 12: urutannya tak bisa dipastikan dari nilainya, jadi DITANDAI ambigu, tak pernah ditebak. Kolom Umur tak bisa memutus ambiguitas ini (menukar hari-bulan tak mengubah TAHUN, jadi umur tetap) — Umur hanya memvalidasi tahun: as-of snapshot impor (20 Apr 2026) 0 baris meleset ≥ 2 tahun, sisanya meleset ≤ 1 tahun (wajar karena Umur snapshot basi). Umur TIDAK dipakai sebagai umur yang ditampilkan; umur selalu dihitung ulang dari tanggal. Diverifikasi 12 Agustus 2026.",
   },
   // NOTE: `phone_canonical_gap` sengaja DIHAPUS di Sprint 3B (2026-08-11). Temuan itu
   // sudah DIPERBAIKI — normalizePhoneID() kini menghasilkan `62…` tanpa `+`, cocok

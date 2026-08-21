@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { resendRecoveryCode } from "@/app/forgot-password/actions";
+import { useI18n } from "@/components/i18n/lang-provider";
 
 const MIN_PASSWORD = 8;
 const CODE_LENGTH = 6;
@@ -33,6 +34,7 @@ export function ResetPasswordForm({
   validityLabel: string;
 }) {
   const router = useRouter();
+  const { t } = useI18n();
   const [phase, setPhase] = useState<Phase>("ready");
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
@@ -58,34 +60,34 @@ export function ResetPasswordForm({
     try {
       await resendRecoveryCode(email);
       // Uniform: we never reveal whether the address has an account. Say "sent" regardless.
-      setNotice("Kode baru sudah dikirim bila email tersebut terdaftar. Periksa kotak masuk dan folder spam.");
+      setNotice(t.auth.resetNoticeSent);
     } catch {
-      setNotice("Kode baru sudah dikirim bila email tersebut terdaftar. Periksa kotak masuk dan folder spam.");
+      setNotice(t.auth.resetNoticeSent);
     } finally {
       setResending(false);
       setCooldown(RESEND_COOLDOWN_SECONDS);
     }
-  }, [email, cooldown, resending]);
+  }, [email, cooldown, resending, t]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setNotice(null);
     if (!email) {
-      setError("Sesi reset tidak lengkap. Mulai lagi dari halaman lupa kata sandi.");
+      setError(t.auth.resetErrIncomplete);
       return;
     }
     const token = code.replace(/\s/g, "");
     if (token.length !== CODE_LENGTH || !/^\d+$/.test(token)) {
-      setError(`Kode terdiri dari ${CODE_LENGTH} digit angka.`);
+      setError(`${t.auth.resetErrCodeDigitsA}${CODE_LENGTH}${t.auth.resetErrCodeDigitsB}`);
       return;
     }
     if (password.length < MIN_PASSWORD) {
-      setError(`Kata sandi baru minimal ${MIN_PASSWORD} karakter.`);
+      setError(`${t.auth.resetErrMinCharsA}${MIN_PASSWORD}${t.auth.resetErrMinCharsB}`);
       return;
     }
     if (password !== confirm) {
-      setError("Konfirmasi kata sandi tidak cocok.");
+      setError(t.auth.resetErrMismatch);
       return;
     }
     setLoading(true);
@@ -98,18 +100,18 @@ export function ResetPasswordForm({
       });
       if (verifyErr) {
         // Generic — an expired/wrong code and an unknown account look the same here.
-        setError("Kode salah atau sudah kedaluwarsa. Minta kode baru lalu coba lagi.");
+        setError(t.auth.resetErrWrongCode);
         return;
       }
       const { error: updateErr } = await supabase.auth.updateUser({ password });
       if (updateErr) {
-        setError("Gagal mengatur kata sandi baru. Minta kode baru lalu coba lagi.");
+        setError(t.auth.resetErrSetFailed);
         return;
       }
       await supabase.auth.signOut();
       setPhase("done");
     } catch {
-      setError("Tidak dapat terhubung ke server. Coba lagi sebentar lagi.");
+      setError(t.auth.resetErrConn);
     } finally {
       setLoading(false);
     }
@@ -119,10 +121,10 @@ export function ResetPasswordForm({
     return (
       <div className="flex flex-col gap-4 text-center">
         <p role="status" className="font-body text-[14px] leading-relaxed text-ink">
-          Kata sandi berhasil diubah. Silakan masuk dengan kata sandi baru Anda.
+          {t.auth.resetDone}
         </p>
         <Button size="lg" className="w-full" onClick={() => router.push("/login")}>
-          Ke halaman masuk
+          {t.auth.resetToLoginButton}
         </Button>
       </div>
     );
@@ -132,10 +134,10 @@ export function ResetPasswordForm({
     return (
       <div className="flex flex-col gap-4 text-center">
         <p role="alert" className="font-body text-[14px] leading-relaxed text-ink">
-          Halaman ini perlu dibuka dari alur lupa kata sandi. Mulai dengan memasukkan email Anda.
+          {t.auth.resetNeedFlow}
         </p>
         <Button size="lg" className="w-full" onClick={() => router.push("/forgot-password")}>
-          Ke halaman lupa kata sandi
+          {t.auth.resetToForgotButton}
         </Button>
       </div>
     );
@@ -144,12 +146,12 @@ export function ResetPasswordForm({
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-4">
       <p className="font-body text-[13px] leading-relaxed text-ink-soft">
-        Kode dikirim ke <span className="font-mono text-[12px] text-ink">{email}</span>. Kode berlaku{" "}
-        <strong>{validityLabel}</strong> dan hanya dapat dipakai sekali.
+        {t.auth.resetSentA}<span className="font-mono text-[12px] text-ink">{email}</span>{t.auth.resetSentB}
+        <strong>{validityLabel}</strong>{t.auth.resetSentC}
       </p>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="code">Kode verifikasi</Label>
+        <Label htmlFor="code">{t.auth.codeLabel}</Label>
         <Input
           id="code"
           inputMode="numeric"
@@ -164,7 +166,7 @@ export function ResetPasswordForm({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="password">Kata sandi baru</Label>
+        <Label htmlFor="password">{t.auth.newPasswordLabel}</Label>
         <Input
           id="password"
           type="password"
@@ -172,12 +174,12 @@ export function ResetPasswordForm({
           required
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          placeholder={`Minimal ${MIN_PASSWORD} karakter`}
+          placeholder={`${t.auth.minCharsPlaceholderA}${MIN_PASSWORD}${t.auth.minCharsPlaceholderB}`}
         />
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="confirm">Ulangi kata sandi baru</Label>
+        <Label htmlFor="confirm">{t.auth.confirmPasswordLabel}</Label>
         <Input
           id="confirm"
           type="password"
@@ -192,7 +194,7 @@ export function ResetPasswordForm({
       {notice && <p role="status" className="font-body text-[13px] text-ink-soft">{notice}</p>}
 
       <Button type="submit" size="lg" className="mt-1 w-full" disabled={loading}>
-        {loading ? "Menyimpan…" : "Simpan kata sandi baru"}
+        {loading ? t.auth.saving : t.auth.saveButton}
       </Button>
 
       <button
@@ -201,7 +203,7 @@ export function ResetPasswordForm({
         disabled={cooldown > 0 || resending}
         className="font-body text-[12px] text-ink-soft underline underline-offset-2 hover:text-ink disabled:no-underline disabled:opacity-60"
       >
-        {cooldown > 0 ? `Kirim ulang kode (${cooldown}s)` : resending ? "Mengirim ulang…" : "Kirim ulang kode"}
+        {cooldown > 0 ? `${t.auth.resendCooldownA}${cooldown}${t.auth.resendCooldownB}` : resending ? t.auth.resending : t.auth.resendButton}
       </button>
     </form>
   );

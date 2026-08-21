@@ -70,6 +70,31 @@ describe("filterTreeToExpr", () => {
   it("empty root → null (whole pool)", () => {
     expect(filterTreeToExpr(g("AND"))).toBeNull();
   });
+
+  it("absence leaves: noPhone / noEmail → is.null", () => {
+    expect(filterTreeToExpr(g("AND", c("noPhone")))).toBe("and(phone_normalized.is.null)");
+    expect(filterTreeToExpr(g("AND", c("noEmail")))).toBe("and(email_normalized.is.null)");
+  });
+
+  it("the four contact-coverage category trees compose from presence + absence leaves", () => {
+    // These are exactly the trees the dashboard export buttons POST for each category.
+    expect(filterTreeToExpr(g("AND", c("hasEmail"), c("hasPhone")))).toBe(
+      "and(email_normalized.not.is.null,phone_normalized.not.is.null)", // both
+    );
+    expect(filterTreeToExpr(g("AND", c("hasEmail"), c("noPhone")))).toBe(
+      "and(email_normalized.not.is.null,phone_normalized.is.null)", // email only
+    );
+    expect(filterTreeToExpr(g("AND", c("hasPhone"), c("noEmail")))).toBe(
+      "and(phone_normalized.not.is.null,email_normalized.is.null)", // phone only
+    );
+    expect(filterTreeToExpr(g("AND", c("noPhone"), c("noEmail")))).toBe(
+      "and(phone_normalized.is.null,email_normalized.is.null)", // neither
+    );
+  });
+
+  it("absence leaves validate (no value required)", () => {
+    expect(validateFilterTree(g("AND", c("noPhone"), c("noEmail"))).ok).toBe(true);
+  });
 });
 
 describe("describeFilterTree", () => {

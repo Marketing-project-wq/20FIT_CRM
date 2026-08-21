@@ -352,6 +352,85 @@ export function QualityDashboard() {
             </div>
           </Panel>
 
+          {data.stagingCoverage && (
+            <Panel
+              title="Cakupan data impor — staging_20fit_data (Sprint 3Y) ★"
+              caption="Impor yang SAMA dengan master_customer, dicocokkan lewat email ternormalisasi (K-06). Cakupan 98,6% (81.079/82.253 profil, count distinct — angka bertanggal 12 Agu 2026 karena tak bisa live via PostgREST) — kontras tajam dengan seluruh sumber lain digabung (922 profil / 1,12%). Inilah sumber yang mengisi tanggal lahir (master_customer: 0), kota, RFM, dan keikutsertaan program. Nol tulis, nol salin."
+            >
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div className="rounded-sm border border-glass-border p-3">
+                    <div className="font-display text-[22px] font-black leading-none text-ink">{formatCount(data.stagingCoverage.rowsTotal)}</div>
+                    <div className="mt-1 font-display text-[10px] font-bold uppercase tracking-wide text-ink-faint">Baris impor</div>
+                  </div>
+                  <div className="rounded-sm border border-glass-border p-3">
+                    <div className="font-display text-[22px] font-black leading-none text-ink">{formatCount(data.stagingCoverage.withEmail)}</div>
+                    <div className="mt-1 font-display text-[10px] font-bold uppercase tracking-wide text-ink-faint">Punya email</div>
+                  </div>
+                  <div className="rounded-sm border border-glass-border p-3">
+                    <div className="font-display text-[22px] font-black leading-none text-ink">{formatCount(data.stagingCoverage.withDob)}</div>
+                    <div className="mt-1 font-display text-[10px] font-bold uppercase tracking-wide text-ink-faint">Punya tgl lahir</div>
+                  </div>
+                </div>
+
+                {/* Birth-date parse outcomes — the sprint headline. Failed = flagged, not dropped. */}
+                <div className="border-t border-glass-border pt-3">
+                  <p className="font-body text-[13px] font-semibold text-ink">Penguraian tanggal lahir</p>
+                  {/* Numbers carry the emphasis through COLOR (text-ink over text-ink-soft prose),
+                      not weight — so all five parse outcomes read equally without a bold pile-up. */}
+                  <p className="mt-1 font-body text-[12px] leading-relaxed text-ink-soft">
+                    <span className="text-ink">{formatCount(data.stagingCoverage.dobParsed)}</span> berhasil diurai ·{" "}
+                    <span className="text-ink">{formatCount(data.stagingCoverage.dobUnparseable)}</span> gagal (ditandai, bukan dibuang) ·{" "}
+                    <span className="text-ink">{formatCount(data.stagingCoverage.dobAmbiguousDayMonth)}</span> hari-bulan ambigu (≤12 di dua posisi — tak bisa dipastikan) ·{" "}
+                    <span className="text-ink">{formatCount(data.stagingCoverage.dobSwapped)}</span> terbukti tertukar (bulan &gt; 12) ·{" "}
+                    <span className="text-ink">{formatCount(data.stagingCoverage.dobImplausible)}</span> umur mustahil (&lt;10 / &gt;100 / masa depan)
+                  </p>
+                  <p className="mt-2 font-body text-[12px] leading-relaxed text-ink-soft">
+                    Silang <span className="font-mono">Umur</span> (as-of snapshot 20 Apr 2026, memvalidasi TAHUN saja — menukar
+                    hari-bulan tak mengubah umur): {formatCount(data.stagingCoverage.umurChecked)} diperiksa ·{" "}
+                    <span className="text-ink">{formatCount(data.stagingCoverage.umurYearExact)}</span> sama persis ·{" "}
+                    {formatCount(data.stagingCoverage.umurOffByOne)} beda 1 tahun (drift snapshot, wajar) ·{" "}
+                    <span className="text-ink">{formatCount(data.stagingCoverage.umurConflict)}</span> bentrok ≥2 tahun (konflik tahun nyata)
+                  </p>
+                </div>
+
+                {/* RFM spread — misspelling kept; 0 shown (K-08). */}
+                <div className="border-t border-glass-border pt-3">
+                  <p className="font-body text-[13px] font-semibold text-ink">RFM per paid order</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {data.stagingCoverage.rfm.map((r) => (
+                      <span key={r.value} className="rounded-sm border border-glass-border px-2.5 py-1 font-mono text-[12px] text-ink">
+                        {r.value === "-" ? "− (tanpa bucket)" : r.value}: {formatCount(r.count)}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="mt-1.5 font-body text-[11px] text-ink-faint">
+                    Ejaan tersimpan dipertahankan (<span className="font-mono">Campion user</span>), tidak “diperbaiki”. <span className="font-mono">RFM per revenue</span> 0% terisi.
+                  </p>
+                </div>
+
+                {/* Program participation — every column incl. the all-zero Arena/GYM/Paid Shop (K-08). */}
+                <div className="border-t border-glass-border pt-3">
+                  <p className="font-body text-[13px] font-semibold text-ink">Keikutsertaan program</p>
+                  <p className="mt-1 font-body text-[11px] text-ink-faint">
+                    “−” = tidak ikut, NULL = kosong (dibedakan). Arena / GYM / Paid Shop nol terukur — barisnya tetap ditampilkan (K-08).
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {data.stagingCoverage.programs.map((p) => (
+                      <span
+                        key={p.key}
+                        className="rounded-sm border border-glass-border px-2.5 py-1 font-mono text-[12px] text-ink"
+                        title={p.clinical ? "kolom klinis (pasien) — agregat, bukan per-orang" : undefined}
+                      >
+                        {p.label}{p.clinical ? " ⚕" : ""}: {formatCount(p.count)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </Panel>
+          )}
+
           <Panel
             title="Cakupan sumber ekosistem tak-tercocok (Sprint 3R)"
             caption="Sumber lain (Hyrox, my20fit) dikaitkan ke profil lewat email ternormalisasi (K-06). Tingkat kecocokan RENDAH — jauh lebih banyak baris sumber yang tak punya profil master. Itu temuan kualitas data, bukan detail implementasi: menampilkan jumlah peserta tanpa menyebut yang tak tersambung membuat orang menyimpulkan itulah seluruh peserta. “Cocok” di sini = profil master berbeda (satu email bisa banyak baris sumber). rc_team_members dikecualikan (berkunci nama)."
@@ -373,6 +452,78 @@ export function QualityDashboard() {
               ))}
             </div>
           </Panel>
+
+          <Panel
+            title="Cakupan sumber lain — arena / gym (TUGAS 3–4)"
+            caption="Dikaitkan lewat email ternormalisasi (K-06). Cakupan RENDAH = identitas antar-sistem 20FIT belum terpadu — temuan kualitas data, bukan bug. DUA sebab dengan gejala sama, dibedakan di angka: bila “punya email” < “baris”, identifier-nya kosong; bila “cocok” < “punya email”, orangnya memang tak ada di master_customer. Baris bernilai nol tetap ditampilkan (0 terukur, bukan tak ada sumber)."
+          >
+            <div className="space-y-3.5">
+              {data.multiSourceCoverage.map((s) => (
+                <div key={s.key} className="flex flex-wrap items-start justify-between gap-3 border-t border-glass-border py-3.5 first:border-t-0 first:pt-0">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-body text-[14px] font-semibold text-ink">{s.label}</p>
+                    <p className="mt-1 font-body text-[12px] text-ink-soft">
+                      {formatCount(s.matchedProfiles)} profil cocok · {formatCount(s.withKey)} punya email · {formatCount(s.sourceRows)} baris
+                    </p>
+                    <p className="mt-0.5 font-body text-[11px] text-ink-faint">
+                      {s.withKey < s.sourceRows
+                        ? `${formatCount(s.sourceRows - s.withKey)} baris tanpa email (identifier kosong)`
+                        : "semua baris punya email"}
+                      {" · "}
+                      {formatCount(Math.max(s.withKey - s.matchedProfiles, 0))} punya email tapi tak ada di master
+                    </p>
+                  </div>
+                  <Badge tone={s.matchedProfiles === 0 ? "neutral" : "amber"}>
+                    {formatCount(s.matchedProfiles)}/{formatCount(s.sourceRows)}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          </Panel>
+
+          {data.clinicCoverage && (
+            <Panel
+              title="Cakupan klinik (TUGAS 3)"
+              caption="Klinik dicocokkan TELEPON dulu (K-06): email hanya menemukan sebagian kecil karena banyak pasien tak punya email — bukan karena mereka tak ada di master. Transaksi tak-tertaut adalah sebab BERBEDA (patient_id NULL dari impor spreadsheet), ditampilkan terpisah agar tak mengaburkan tingkat kecocokan."
+            >
+              <div className="space-y-3.5">
+                <div className="flex flex-wrap items-start justify-between gap-3 border-t border-glass-border py-3.5 first:border-t-0 first:pt-0">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-body text-[14px] font-semibold text-ink">clinic_patients</p>
+                    <p className="mt-1 font-body text-[12px] text-ink-soft">
+                      <strong>{formatCount(data.clinicCoverage.matchedByPhone)}</strong> cocok via telepon ·{" "}
+                      {formatCount(data.clinicCoverage.matchedByEmail)} via email · dari {formatCount(data.clinicCoverage.patientsRows)} pasien
+                    </p>
+                    <p className="mt-0.5 font-body text-[11px] text-ink-faint">
+                      {formatCount(data.clinicCoverage.patientsWithPhone)} punya telepon ·{" "}
+                      {formatCount(data.clinicCoverage.patientsWithEmail)} punya email — itu sebabnya telepon jauh lebih tinggi
+                    </p>
+                  </div>
+                  <Badge tone={data.clinicCoverage.matchedByPhone === 0 ? "neutral" : "amber"}>
+                    {formatCount(data.clinicCoverage.matchedByPhone)}/{formatCount(data.clinicCoverage.patientsRows)}
+                  </Badge>
+                </div>
+                <div className="flex flex-wrap items-start justify-between gap-3 border-t border-glass-border py-3.5">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-body text-[14px] font-semibold text-ink">clinic_transactions — tautan pasien</p>
+                    <p className="mt-1 font-body text-[12px] text-ink-soft">
+                      {formatCount(data.clinicCoverage.transactionsLinked)} tertaut · <strong>{formatCount(data.clinicCoverage.transactionsNullFk)} patient_id NULL</strong> dari {formatCount(data.clinicCoverage.transactionsTotal)}
+                    </p>
+                    <p className="mt-0.5 font-body text-[11px] text-ink-faint">
+                      Sebab berbeda: impor spreadsheet yang tak pernah ditautkan ke pasien — bukan tingkat kecocokan. Yang tertaut valid 100%.
+                    </p>
+                  </div>
+                  <Badge tone={issueTone(data.clinicCoverage.transactionsNullFk)}>
+                    {formatCount(data.clinicCoverage.transactionsNullFk)}
+                  </Badge>
+                </div>
+                <p className="border-t border-glass-border pt-3 font-body text-[11px] text-ink-faint">
+                  Terlalu tipis untuk ditampilkan per-profil (dicatat di sini):{" "}
+                  {data.clinicCoverage.sparse.map((t) => `${t.table} (${formatCount(t.rows)})`).join(" · ")}.
+                </p>
+              </div>
+            </Panel>
+          )}
 
           <Panel
             title="Temuan yang tidak bisa dihitung live"

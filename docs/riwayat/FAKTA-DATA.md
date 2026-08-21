@@ -204,3 +204,167 @@ Baris penting:
 - `target_table='crm_audit_log'` = **4** (dulu 0) — `/settings` **kini terbukti jalan di
   produksi** (id 44–47). Berkas ini sebelumnya menulis 0; itu sudah bergerak.
 - `search.performed` = **0** — Sprint 3J belum di-deploy (masih di branch).
+
+---
+
+## `crm_consent` — 12 Agustus 2026 (sesudah Migrasi 11 + 12)
+
+**Total: 408.119 baris.** Ditulis oleh backfill legacy (Migrasi 11, `source='20fit_data_import'`,
+`basis='legacy_import_unverified'`, semua `status='active'`). Diverifikasi `count(*)` eksak.
+
+| purpose | channel | baris |
+|---|---|---|
+| `marketing` | `email` | 81.637 |
+| `marketing` | `whatsapp` | 81.615 |
+| `transactional` | `email` | 81.637 |
+| `transactional` | `whatsapp` | 81.615 |
+| `transactional` | `phone_call` | 81.615 |
+| **Total** | | **408.119** |
+
+**Profil contactable (distinct `customer_id`, `status='active'`):**
+
+| purpose | distinct customer |
+|---|---|
+| `marketing` | **82.253** |
+| `transactional` (layanan) | **82.253** |
+
+= seluruh pool ber-identitas (email ∨ phone = 82.253). Suppression aktif = **0**, jadi
+contactable = distinct consenting. `sms` & `marketing`+`phone_call` sengaja tak diisi.
+`count(distinct customer_id)` langsung = 82.253, cocok jalur baca aplikasi (inner-embed parent
+count); interpretasi flat (hitung baris) = 163.252 marketing, sengaja dihindari.
+
+Indeks `crm_consent_purpose_status_customer_idx (purpose, status) include (customer_id)`
+(Migrasi 12): hitung contactable tak-terbatas ~17 dtk → ~2,9 dtk (index-only scan).
+
+**Kinerja terukur (12 Agu 2026), dua query berbeda dua kemacetan berbeda:**
+- Jalur aplikasi (inner-embed semi-join ke master_customer, yang benar-benar dijalankan app):
+  **~2,9 dtk** — sisa biaya **hash join** tumpah ke disk (Batches 4; work_mem instance 2184 kB),
+  bukan lagi scan `crm_consent`.
+- `count(distinct customer_id) from crm_consent` mentah: **~1,3 dtk** — kemacetannya **sort**
+  tumpah ke disk (external merge 3200 kB), memakai indeks (Index Only Scan). **Aplikasi tak bisa
+  menjalankan ini**: supabase-js hanya PostgREST (tak ada `count(distinct)`, tak ada `SET
+  work_mem` per sesi), dan RPC dilarang siklus ini. Jadi ~2,9 dtk = lantai aplikasi sekarang.
+- Perbaikan sub-detik sesungguhnya = **RPC `SECURITY DEFINER`** yang menjalankan `count(distinct)`
+  dengan `set local work_mem` per panggilan — tindak lanjut terjadwal, **belum dibuat**.
+
+---
+
+## staging_20fit_data — sumber impor asli (Sprint 3Y, diukur 12 Agu 2026)
+
+Tabel yang sama dengan impor `master_customer`, **RLS OFF** (T-02). Nol tulis, nol salin —
+dibaca & digabung saat tampil.
+
+**Volume & kecocokan:**
+
+| | Terukur |
+|---|---|
+| Baris | **88.536** |
+| Punya email | **88.445** (88.409 distinct ternormalisasi) |
+| Cocok ke `master_customer` lewat email | **81.079** dari 82.253 profil = **98,62%** |
+| Punya tanggal lahir | **5.467** (`master_customer.date_of_birth` = **0**) |
+| Punya kota | 5.834 · Punya Umur | 5.467 |
+
+`count(distinct join)` tak bisa live via PostgREST → 98,6% diangkat sebagai artefak bertanggal
+(`VERIFIED_ARTIFACTS.staging_email_match`), bukan angka live.
+
+**Tanggal lahir (semua ISO `yyyy-mm-dd`):**
+- 0 baris dengan field bulan > 12 → **tidak ada yang terbukti tertukar** (beda dari
+  `cf_hyrox_participants`: 321 tertukar, T-16).
+- **2.232 punya bulan DAN hari ≤ 12** → urutan tak bisa dipastikan dari nilai → **ditandai
+  ambigu**, tak ditebak. 3.235 tak ambigu (hari > 12 mengunci urutan).
+- Umur silang (as-of snapshot 20 Apr 2026, memvalidasi TAHUN — menukar hari-bulan tak mengubah
+  umur): 4.525 sama persis, 941 beda 1 tahun (drift snapshot, wajar), **0 beda ≥ 2 tahun**
+  (nol konflik tahun nyata). 1 baris Umur non-numerik.
+- Umur tak masuk akal: 13 > 100 th (thn < 1920), 1 di masa depan, 89 < 10 th → **ditandai
+  `implausible`**, bukan dibuang. 5.365 wajar.
+- **Umur dihitung dari tanggal, bukan dari kolom `Umur`** (snapshot basi 20 Apr 2026).
+
+**RFM (`RFM per paid order`), 5 nilai tersimpan — ejaan dipertahankan apa adanya:**
+
+| nilai | jumlah |
+|---|---|
+| New User | 81.213 |
+| Potensial user | 7.057 |
+| `-` (tanpa bucket) | 200 |
+| Loyal user | 65 |
+| `Campion user` (salah eja, **tidak** diperbaiki) | 1 |
+
+`RFM per revenue` = **0% terisi** (semua NULL).
+
+**Keikutsertaan program (`-` = tidak, NULL = kosong — dibedakan). Diukur ulang:**
+
+| kolom | ikut | | kolom | ikut |
+|---|---|---|---|---|
+| Fitco User | 74.914 | | Iwhm 2025 5k/10k/21k | 1.251 / 1.179 / 414 |
+| Mandiri RUNFEST 5K/2.7K/10K | 6.762 / 416 / 686 | | Raya run 2025 5k/10k | 1.014 / 998 |
+| Jhm 2025 5k/10K/HM | 2.555 / 2.082 / 1.431 | | Sportfest Half/Relay/Double/Single | 73 / 24 / 80 / 70 |
+| Jhm 2024 5k/10K/HM | 124 / 160 / 75 | | Training / Physio / Protection | 65 / 7 / 17 |
+| Padel rabel (`Padel rebel`) | 1.358 | | Pasien Clinic 24-25 / 25-26 (klinis) | 100 / 365 |
+| **Arena / GYM / Paid Shop** | **0 / 0 / 0** (nol terukur, K-08 — barisnya tetap ditampilkan) | | | |
+
+---
+
+## Sumber ekosistem bertumbuh — diukur ulang 19 Agu 2026 (audit keadaan)
+
+Tabel sumber tim lain **terus bertambah** sejak angka bertanggal di atas. Diukur langsung:
+
+| tabel sumber | dulu (bertanggal) | 18 Agu | **19 Agu** |
+|---|---|---|---|
+| `my20fit_profile` | 886 | 916 | **918** |
+| `clinic_patients` | 143 | 169 | **176** |
+| `cf_hyrox_participants` | 1.038 | — | **1.038** |
+| `staging_20fit_data` | 88.536 | — | **88.536** |
+| `master_customer` | 82.253 | — | **82.253** |
+
+**Konsekuensi:** `crm_customer_mirror` adalah snapshot yang disegarkan **cron harian** (K-30).
+
+**Cron terbukti — eksekusi pertama (diverifikasi 20 Agu 2026):** job pg_cron `crm-refresh-customer-mirror`
+(jobid 9, `0 20 * * *`) menembak **19 Agu 2026 20:00:00 UTC** (= 03:00 WIB 20 Agu) tepat waktu,
+`status = succeeded`, **durasi 9,02 detik**, dan `crm_mirror_meta.refreshed_at` benar-benar **bergerak**
+dari `2026-08-18 04:11:45 UTC` ke `2026-08-19 20:00:00 UTC`. Konversi zona (UTC→WIB) terbukti di dunia
+nyata, bukan hanya di atas kertas; cermin cocok dengan sumber langsung setelahnya (`has_my20fit` 175 =
+175). Catatan: **9,02 dtk adalah satu sampel pada cermin yang sudah hangat** — bukan angka worst-case;
+durasi bisa berbeda saat sumber tumbuh atau saat cold cache.
+
+Sebelum eksekusi ini penanda cermin tertinggal saat sumber tumbuh (persis alasan cap `refreshed_at`
+ditampilkan, Sprint 5A/5B); kini cron memperkecil peluang basi itu ke ≤24 jam. Refresh manual tetap
+ada; ambang basi 24 jam tetap; cron **memperkecil peluang** basi, tak menjaminnya (job yang gagal diam
+justru muncul sebagai peringatan basi + `cron.job_run_details` status='failed').
+
+---
+
+## Ekspor per kategori — kegagalan nyata pertama & perbaikannya (20 Agu 2026)
+
+Ekspor CSV sungguhan **pertama** (oleh `tifany@20fit.id`, 20 Agu 2026 04:13 UTC) **gagal
+diam-diam**: berkas `segmen-2026-08-20.csv` berisi blok provenans + baris judul kolom lalu
+**berhenti** — nol baris data, tanpa baris penutup `# EOF total_baris=`. `export.performed` di
+audit = **0** (jalur audit sehat — akun yang sama mencatat `list.viewed`/`profile.viewed`
+03:52–03:53). Karena audit ditulis **setelah** streaming selesai, ketiadaannya membuktikan
+streaming tak pernah selesai.
+
+**Sebab (ditemukan sebelum perbaikan, TUGAS 1):** jalur **hitung** (`computeSegment`) memilih
+kolom `customer_id` saja; jalur **ambil-baris** (`streamSegmentCsv`) memilih **semua**
+`EXPORT_COLUMNS`. Daftar itu menyebut `phone` — kolom yang **tidak ada** di `master_customer`
+(kolom aslinya `phone_normalized`; `phone` absen — dikonfirmasi ke `information_schema`,
+20 Agu 2026). Jadi hitung sukses, ambil-baris melempar `column master_customer.phone does not
+exist` **setelah** HTTP 200 + judul terkirim → berkas terpotong tanpa status galat. Hanya jalur
+hitung yang pernah diuji (pola "satu aturan, dua implementasi" yang sudah tiga kali menggigit
+proyek ini: kanon telepon, daftar retensi, paritas `crm_norm_phone`).
+
+**Perbaikan + celah ditutup:**
+- Kolom diarahkan ke `phone_normalized` (`export-constants.ts`) + kunci header i18n disesuaikan.
+- Test baru `export-row-path.test.ts` menjalankan **kedua** jalur untuk keempat kategori atas
+  satu dataset; fake DB-nya memvalidasi kolom terpilih ke kolom `master_customer` **sungguhan**
+  dan melempar "column does not exist" seperti Postgres. **Terbukti menggigit:** dikembalikan ke
+  `phone` → 5 test gagal.
+- Kegagalan streaming kini **kelihatan**: throw di tengah menulis baris
+  `# GAGAL: ekspor terputus, jangan pakai berkas ini`, melewati audit + EOF sukses, dan mencatat
+  `stream_row_fetch_failed` (tanpa PII).
+- Berkas kini diawali **UTF-8 BOM** (Excel tak lagi merusak `—` → `â€"`), dan baris `# kriteria:`
+  menuliskan **kategori sebenarnya** (mis. "punya email DAN tanpa telepon"), bukan "filter
+  lanjutan (AND/OR)" generik.
+
+**Belum terbukti (jujur):** jalur unduh di balik login — sandbox tak punya sesi. Instruksi uji
+untuk pemilik produk (email-only, harap `# EOF total_baris=638`, + SQL cek satu `export.performed`)
+di `docs/VERIFIKASI-ekspor-per-kategori.md`. Ekspor sintetis **tidak** ditulis (audit append-only,
+non-atribusi).

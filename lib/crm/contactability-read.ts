@@ -19,8 +19,38 @@ import type { ContactPurpose } from "./contactability";
  *
  * This is the SAME rule as isContactableForPurpose (suppression wins, fail-closed) expressed
  * as set arithmetic. The equality is VERIFIED after the backfill against a direct SQL
- * count(distinct customer_id) (Migrasi 11's mandatory check) — if the two ever disagree, the
- * read path is truncating and must be fixed before any number is trusted.
+ * count(distinct customer_id) (Migrasi 11's mandatory check): both = 82,253, and the WRONG
+ * flat-row interpretation would be 163,252 — the double-count this shape avoids. Confirmed
+ * 2026-08-12.
+ *
+ * TWO PATHS, DO NOT MERGE THEM (measured 2026-08-12):
+ *   1. UNRESTRICTED (dashboard, applyMaster = identity, no ids): counts DISTINCT profiles with
+ *      an active consent for the purpose.
+ *   2. RESTRICTED (segment builder): the SAME embed, but applyMaster narrows the parent by the
+ *      criteria/tree, and/or ids restrict to an ecosystem/source id-set. The join to
+ *      master_customer is MANDATORY here — the criteria live on the parent table.
+ *
+ * WHY THE JOIN STAYS EVEN ON THE DASHBOARD — do not "optimise" it away: PostgREST has no
+ * count(distinct), so counting from crm_consent alone gives ROW count (163,252 for marketing),
+ * NOT distinct profiles (82,253). The inner embed to master_customer supplies distinctness (one
+ * row per parent) AND excludes orphaned consent rows for free (customer_id is NULL after an
+ * ON DELETE SET NULL delete → matches no parent → not counted; 0 such rows today, but the guard
+ * is structural, not a lucky value).
+ *
+ * PERFORMANCE + why it is still >1s, and why the app can't beat it THIS cycle:
+ *   - Migrasi 12 index (purpose,status) include (customer_id) killed the seq scan: the embed is
+ *     a pure index-only scan now (Heap Fetches 0), ~17s → ~2.9s.
+ *   - The remaining ~2.9s is the HASH semi-join with master_customer spilling to disk
+ *     (Batches 4; instance work_mem 2184kB), NOT the crm_consent scan.
+ *   - A raw `count(distinct customer_id) … where purpose/status` is faster (~1.3s) but its
+ *     bottleneck is a DIFFERENT thing — an external-merge SORT spill — and the app CANNOT run
+ *     it: supabase-js speaks PostgREST only (no count(distinct), no per-session SET work_mem),
+ *     and an RPC is disallowed this cycle. So ~2.9s is the app floor here.
+ *   - The genuine sub-second fix is a SECURITY DEFINER RPC that runs the count(distinct) with a
+ *     per-call `set local work_mem` — a scheduled follow-up, NOT built here (like the index was
+ *     last cycle). See docs/riwayat/FAKTA-DATA.md + the sprint report.
+ * The .in()-restricted path (segment with ecosystem/source criteria) is fast regardless: it
+ * probes the unique index by customer_id per chunk (nested-loop, no hash spill).
  */
 
 /** Chunk size for `.in(customer_id, …)` — bounded URL length; each chunk is a head count,

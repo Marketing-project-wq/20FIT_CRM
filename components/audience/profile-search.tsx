@@ -6,8 +6,10 @@ import Link from "next/link";
 import { Search, UserSearch, Lock, ArrowRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { SEARCH_KINDS, type SearchKind } from "@/lib/crm/search";
+import { SEARCH_KINDS, detectSearchKind, type SearchKind } from "@/lib/crm/search";
 import { formatDisplayName } from "@/lib/crm/display-name";
+import { useI18n } from "@/components/i18n/lang-provider";
+import { formatCount } from "@/lib/i18n";
 
 interface Hit {
   customer_id: string;
@@ -23,13 +25,6 @@ type Result =
   | { status: "too_many"; cap: number }
   | { status: "ok"; rows: Hit[]; masked: boolean };
 
-const KIND_LABEL: Record<SearchKind, string> = { name: "Nama", phone: "Telepon", email: "Email" };
-const PLACEHOLDER: Record<SearchKind, string> = {
-  name: "min. 3 huruf nama…",
-  phone: "nomor lengkap (0812…, +62…, 62…)",
-  email: "alamat email lengkap",
-};
-
 /**
  * Find ONE person, to reach the suppression write path. Distinct from the filters below
  * (which BROWSE a list). Phone/email are matched EXACTLY and normalized server-side; a
@@ -38,17 +33,26 @@ const PLACEHOLDER: Record<SearchKind, string> = {
  */
 export function ProfileSearch() {
   const router = useRouter();
-  const [kind, setKind] = useState<SearchKind>("phone");
+  const { lang, t } = useI18n();
   const [q, setQ] = useState("");
+  // One box: the kind is DETECTED from the input's shape, shown before searching. `override` lets
+  // the user force a kind for edge cases (a numeric name, an odd address) — null means auto.
+  const [override, setOverride] = useState<SearchKind | null>(null);
   const [result, setResult] = useState<Result>({ status: "idle" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const detected = detectSearchKind(q);
+  const kind: SearchKind = override ?? detected;
+
+  const KIND_LABEL: Record<SearchKind, string> = { name: t.audience.kindName, phone: t.audience.kindPhone, email: t.audience.kindEmail };
+  const PLACEHOLDER: Record<SearchKind, string> = { name: t.audience.phName, phone: t.audience.phPhone, email: t.audience.phEmail };
 
   async function submit(e?: React.FormEvent) {
     e?.preventDefault();
     setError(null);
     if (q.trim() === "") {
-      setError("Isi kata kunci pencarian.");
+      setError(t.audience.searchFillKeyword);
       return;
     }
     setBusy(true);
@@ -60,7 +64,7 @@ export function ProfileSearch() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data?.message ?? `Gagal mencari (HTTP ${res.status}).`);
+        setError(data?.message ?? `${t.audience.searchFailed} (HTTP ${res.status}).`);
         setResult({ status: "idle" });
         return;
       }
@@ -78,7 +82,7 @@ export function ProfileSearch() {
         setResult({ status: "ok", rows, masked: data.masked });
       }
     } catch {
-      setError("Gagal terhubung ke server.");
+      setError(t.audience.connFailed);
       setResult({ status: "idle" });
     } finally {
       setBusy(false);
@@ -90,42 +94,28 @@ export function ProfileSearch() {
       <div className="flex items-center gap-2">
         <UserSearch className="h-4 w-4 text-ink-soft" aria-hidden />
         <h2 className="font-display text-[15px] font-bold uppercase tracking-wide text-ink">
-          Cari satu orang
+          {t.audience.searchTitle}
         </h2>
       </div>
       <p className="mt-1 font-body text-[13px] leading-relaxed text-ink-soft">
-        Untuk menemukan orang yang <strong>baru saja menelepon</strong> — lalu buka profil &amp;
-        catat permintaan berhenti dihubungi. Telepon &amp; email dicocokkan <strong>sama persis</strong>
-        {" "}(harus nomor/email lengkap), nama dengan potongan kata. Ini <strong>mencari satu orang</strong>{" "}
-        (tercatat <span className="font-mono text-[12px]">search.performed</span>) — berbeda dari{" "}
-        <strong>menyaring daftar</strong> di bawah (<span className="font-mono text-[12px]">list.viewed</span>).
+        {t.audience.warn.searchIntroA}
+        <span className="font-mono text-[12px]">search.performed</span>
+        {t.audience.warn.searchIntroB}
+        <span className="font-mono text-[12px]">list.viewed</span>
+        {t.audience.warn.searchIntroC}
       </p>
 
       <form onSubmit={submit} className="mt-4 flex flex-wrap items-center gap-2">
-        <div className="inline-flex overflow-hidden rounded-sm border border-glass-border">
-          {SEARCH_KINDS.map((k) => (
-            <button
-              key={k}
-              type="button"
-              onClick={() => {
-                setKind(k);
-                setResult({ status: "idle" });
-                setError(null);
-              }}
-              className={`px-3 py-2 font-display text-[12px] font-bold uppercase tracking-wide transition-colors ${
-                kind === k ? "tint-red text-ink" : "text-ink-soft hover:bg-glass"
-              }`}
-            >
-              {KIND_LABEL[k]}
-            </button>
-          ))}
-        </div>
-
         <div className="relative min-w-[16rem] flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" />
           <input
             value={q}
-            onChange={(e) => setQ(e.target.value)}
+            onChange={(e) => {
+              setQ(e.target.value);
+              setOverride(null); // typing re-runs auto-detection; a manual override is cleared
+              setResult({ status: "idle" });
+              setError(null);
+            }}
             placeholder={PLACEHOLDER[kind]}
             inputMode={kind === "phone" ? "tel" : kind === "email" ? "email" : "text"}
             className="h-10 w-full rounded-sm border border-glass-border bg-glass pl-9 pr-3 font-body text-[14px] text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-red"
@@ -133,32 +123,70 @@ export function ProfileSearch() {
         </div>
 
         <Button type="submit" disabled={busy}>
-          {busy ? "Mencari…" : "Cari"}
+          {busy ? t.audience.searching : t.audience.searchBtn}
         </Button>
       </form>
+
+      {/* Detected kind, shown BEFORE searching so a wrong guess never silently reads as
+          "person not found". Overridable for edge cases. */}
+      {q.trim() !== "" && (
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="font-body text-[12px] text-ink-soft">
+            {t.audience.detectedAsPre}
+            <span className="font-display font-bold uppercase tracking-wide text-ink">{KIND_LABEL[kind]}</span>
+            <span className="text-ink-faint">{override ? t.audience.detectManualSuffix : t.audience.detectAutoSuffix}</span>
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="font-body text-[11px] text-ink-faint">{t.audience.detectOverrideHint}</span>
+            {SEARCH_KINDS.map((k) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => {
+                  setOverride(k);
+                  setResult({ status: "idle" });
+                  setError(null);
+                }}
+                className={`rounded-sm px-2 py-0.5 font-display text-[11px] font-bold uppercase tracking-wide transition-colors ${
+                  kind === k ? "tint-red text-ink" : "text-ink-soft hover:bg-glass"
+                }`}
+              >
+                {KIND_LABEL[k]}
+              </button>
+            ))}
+            {override && (
+              <button
+                type="button"
+                onClick={() => { setOverride(null); setResult({ status: "idle" }); setError(null); }}
+                className="rounded-sm px-2 py-0.5 font-body text-[11px] text-ink-faint underline hover:text-ink"
+              >
+                {t.audience.detectBackToAuto}
+              </button>
+            )}
+          </span>
+        </div>
+      )}
 
       {error && <p className="mt-3 font-body text-[13px] text-red">{error}</p>}
 
       {result.status === "empty" && (
         <p className="mt-3 font-body text-[13px] text-ink-soft">
-          Tidak ditemukan. {kind === "name" ? "Coba potongan nama lain." : "Pastikan nomor/email lengkap dan benar."}
+          {kind === "name" ? t.audience.notFoundName : t.audience.notFoundId}
         </p>
       )}
 
       {result.status === "too_many" && (
         <p className="mt-3 font-body text-[13px] text-ink-soft">
-          Terlalu banyak hasil (lebih dari {result.cap}). <strong>Persempit</strong> kata kuncinya — pencarian
-          ini sengaja tidak menawarkan halaman berikutnya. Untuk menelusuri banyak orang, pakai daftar tersaring
-          di bawah.
+          {t.audience.warn.tooManyA}{result.cap}{t.audience.warn.tooManyB}
         </p>
       )}
 
       {result.status === "ok" && (
         <div className="mt-4 space-y-2">
           <div className="flex items-center gap-2">
-            <span className="font-mono text-[12px] text-ink-faint">{result.rows.length} hasil</span>
+            <span className="font-mono text-[12px] text-ink-faint">{formatCount(result.rows.length, lang)}{t.audience.resultsSuffix}</span>
             {result.masked && (
-              <Badge tone="amber" className="gap-1.5"><Lock className="h-3 w-3" /> disamarkan</Badge>
+              <Badge tone="amber" className="gap-1.5"><Lock className="h-3 w-3" /> {t.audience.maskedShort}</Badge>
             )}
           </div>
           <ul className="divide-y divide-glass-border rounded-sm border border-glass-border">
@@ -169,13 +197,13 @@ export function ProfileSearch() {
                   className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 transition-colors hover:bg-glass"
                 >
                   <span className="flex flex-col">
-                    <span className="font-semibold text-ink">{formatDisplayName(r.full_name) ?? "(tanpa nama)"}</span>
+                    <span className="font-semibold text-ink">{formatDisplayName(r.full_name) ?? t.audience.noName}</span>
                     <span className="font-mono text-[12px] text-ink-soft">
                       {[r.phone, r.email, r.city].filter(Boolean).join(" · ") || "—"}
                     </span>
                   </span>
                   <span className="inline-flex items-center gap-1 font-display text-[12px] font-bold uppercase tracking-wide text-red">
-                    Buka profil <ArrowRight className="h-3.5 w-3.5" />
+                    {t.audience.openProfile} <ArrowRight className="h-3.5 w-3.5" />
                   </span>
                 </Link>
               </li>

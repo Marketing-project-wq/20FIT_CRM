@@ -40,9 +40,10 @@ kontrolnya tidak ditembus, melainkan **dilewati**.
 
 ### T-03 · 101 fungsi `SECURITY DEFINER` anon-executable di luar `crm_*` — MILIK TIM LAIN
 **Ditemukan 11 Agu.** Pola auto-grant yang sama tersebar di sistem arena, clinic, shop,
-rb, my20fit, rc, uob, talent. Angkanya **naik** tiap tim lain men-deploy (99 → 101 →
-**102** dalam beberapa sesi), yang justru membuktikan polanya sistemik. Di luar lingkup
-sprint mana pun di sini; perlu diangkat ke pemilik proyek Supabase.
+rb, my20fit, rc, uob, talent. Angkanya **naik** tiap tim lain men-deploy (99 → 101 → 102 →
+**109** pada 19 Agu 2026), yang justru membuktikan polanya sistemik. **Nol** di antaranya
+milik `crm_*` (diverifikasi ulang 19 Agu: pagar EXECUTE + matview kita utuh — kenaikan murni
+tim lain). Di luar lingkup sprint mana pun di sini; perlu diangkat ke pemilik proyek Supabase.
 → `docs/RISIKO-rpc-execute-terbuka.md`
 
 ### T-15 · NIK + data kesehatan ±1.100 orang terpapar anon (RLS OFF di tabel sumber) — MILIK TIM LAIN
@@ -180,6 +181,22 @@ jujurnya seperti di `master_customer`. Perbandingan antar-kolom tak bisa dihitun
 PostgREST → masuk `VERIFIED_ARTIFACTS` bertanggal (`ecosystem_last_seen_load_stamp`), sejajar
 T-11. Baris masa-depan dihitung live di `/quality` (bandingkan ke literal waktu). → K-19
 
+### T-19 · RFM `staging_20fit_data` praktis tak bisa menyegmentasi — 92% dalam satu keranjang — DATA, tidak diremediasi
+**Ditemukan 12 Agu (Sprint 3Y, diangkat dari laporan).** Sebaran `RFM per paid order`:
+`New User` **81.213 (91,7%)** · `Potensial user` 7.057 · `-` 200 · `Loyal user` 65 ·
+`Campion user` 1. **Satu keranjang memuat 92% pool, dan dua keranjang teratas
+(`Loyal`+`Campion`) hanya berisi 66 orang.** Sebagai dimensi segmentasi ini **menyesatkan**:
+ia tampak seperti sumbu RFM yang berguna, padahal menyaring "New User" = menyaring hampir semua
+orang, dan menyaring "Loyal" = menyaring 65 orang dari 82 ribu. Ini **pola yang sama** dengan
+`segment` terbalik (1.242 NULL justru LTV tertinggi) dan kolom waktu cap-muat: kolom yang ADA
+tapi tak membawa sinyal yang dijanjikan namanya.
+
+**Konsekuensi:** kriteria **tetap disediakan** (menghapusnya = menyembunyikan data yang
+terukur), tetapi layar filter **memperingatkan** sebarannya supaya tak ada yang menyusun
+kampanye di atasnya, dan `RFM per revenue` (0% terisi) tetap tak ditawarkan. **Tidak
+diremediasi** — nilainya milik data impor, bukan untuk "diperbaiki". Disebut di layar segmen;
+angka mentahnya juga di `/quality` (blok cakupan staging) dan `FAKTA-DATA`.
+
 ---
 
 ## Kesalahan sendiri
@@ -253,3 +270,111 @@ ditindaklanjuti**. Ini **kali kedua** jawabannya sudah ada di tempat yang sudah 
 (bandingkan S-07: bukti ada di `crm_audit_log`, terlewat). **Perbaikan pola:** klaim keamanan
 tabel kini **wajib** menyebut RLS **dan** policy **dan** grant (K-23), dan kueri klasifikasinya
 masuk monitoring supaya bisa dijalankan ulang, bukan diandalkan pada ingatan.
+
+## T-18 · Produksi menjalankan kode BRANCH, bukan `main` — dokumentasi deploy salah
+> **DITUTUP (Sprint 3Y, 12 Agu 2026).** Pemilik produk **menerima secara sadar** bahwa produksi
+> men-deploy dari branch untuk sekarang (kecepatan > gate merge; belum ada pengguna eksternal),
+> dengan syarat pembalikan tercatat: begitu staf luar memakai sistem rutin → arahkan ke `main`
+> (merge dulu, repoint kemudian). Lihat **K-27**. Pertanyaan "branch atau main?" kini
+> **diketahui (branch) dan diterima** — bukan lagi kondisi tak disadari. Konfirmasi dashboard
+> Railway turun jadi kebersihan (MENUNGGU #3/#4), bukan penghalang. Detail bukti tetap di bawah.
+
+**Migrasi 11/12 (12 Agu 2026).** Reset kata sandi nyata berhasil di produksi
+(marketing@20fit.id masuk 04:58:21 UTC) dengan tiga baris audit
+`login.password_reset_requested`, `actor_email='system:password-reset'`,
+`metadata.outcome='sent'` (04:48:41 / 04:48:44 / 04:57:35 UTC).
+
+**Bukti (TERBUKTI):** aksi audit itu ditulis HANYA oleh kode branch. `git log -S
+"login.password_reset_requested"` dan `-S "system:password-reset"` → hanya commit branch
+(3T + email-fix); **nol** di `origin/main`. `origin/main` versi `/forgot-password` adalah
+komponen **klien** yang memanggil `resetPasswordForEmail` langsung dan **tak menulis audit
+sama sekali**. Maka reset yang tercatat itu **tidak mungkin** dari kode `main` — ia dari kode
+branch, dijalankan terhadap DB produksi (proyek Supabase yang sama).
+
+**Kesimpulan (TERBUKTI):** kode branch `claude/lanjutkan-pekerjaan-mno804` melayani lalu-lintas
+produksi. Push ke branch sepanjang sesi ini **langsung** masuk produksi.
+
+**Yang masih perlu dikonfirmasi manusia (TAK bisa saya lihat):** setelan sumber di dashboard
+Railway — apakah *service produksi* tersambung ke branch (README salah), atau ini deploy
+**preview PR** dari branch yang menulis ke DB produksi bersama (service produksi tetap `main`).
+Keduanya berarti kode branch berjalan atas data produksi; hanya mekanismenya beda. Cek:
+Railway → project → service produksi → Settings → Source → branch tersambung + Deploy triggers.
+Egress ke `20fitcrm-production.up.railway.app` diblokir proxy, jadi halaman live tak bisa saya
+ambil untuk memastikan dari luar.
+
+**JANGAN pakai `auth.users.recovery_sent_at` sebagai bukti jalur** — ia di-set oleh
+`resetPasswordForEmail` (bukan `generateLink`) TAPI dibersihkan setelah reset berhasil, jadi
+`null` sekarang tak membedakan kedua jalur. Diskriminatornya adalah **siapa yang menulis aksi
+audit** (di atas), bukan `recovery_sent_at`.
+
+**Dampak:** gate "jangan merge ke `main` tanpa izin" selama ~10 sprint **tidak pernah menahan
+produksi** bila produksi memang dari branch — perlindungannya ilusi. → K-25. Dokumen yang
+menyatakan "push ke `main` memicu auto-deploy" (README §Deploy, §MANDATORY DEPLOY ORDER)
+dikoreksi ke keadaan terbukti + butir konfirmasi dashboard.
+
+---
+
+### T-20 · Ledger migrasi kini BERSAMA, dan branch kerja tertinggal 2 migrasi CRM dari produksi — DIUKUR 19 Agu 2026
+**Ditemukan saat audit keadaan (19 Agu 2026).** Tiga hal, diukur langsung ke DB:
+
+1. **Ledger `schema_migrations` bersama.** Tim lain (`my20fit_*`, `clinic_*`, `arena_*`,
+   `talent_*`, `event_*`, `media_*`, `mcu_*`) menstempel ke ledger yang sama, terjalin di
+   antara versi CRM (mis. `20260814081512 my20fit_corporate_member_add_division` dan
+   `20260818041238 clinic_close_bill_multi_package` mendarat di antara/-setelah migrasi CRM).
+   Rekonsiliasi ledger CRM **wajib disaring per nama**, bukan per rentang versi. Hitungan per
+   nama: **18 entri ledger CRM** (termasuk apply-ganda migrasi 9).
+
+2. **Branch ini tertinggal 2 migrasi CRM.** `add_is_fitco_member_matched_to_crm_customer_mirror`
+   (`20260814040554`, migrasi 16) dan `crm_norm_phone_guard_empty_nsn` (`20260814055353`,
+   migrasi 17) **sudah diterapkan ke DB** oleh sesi paralel (PR #13, branch
+   `claude/20fit-crm-sprint-1-67vvhs`), tapi **berkas SQL-nya tidak ada di branch ini**. Jadi
+   `supabase/migrations/` di sini bukan gambaran utuh ledger CRM produksi. (Migrasi 17 justru
+   menutup celah `crm_norm_phone('62')` yang ditandai di Sprint 5A.)
+
+3. **Pekerjaan bercabang jadi ≥3 PR terbuka ke `main`:** #11 (branch utama ini), #12 (sesi lain
+   yang menduplikasi commit arsip handover), #13 (migrasi 16+17 + paritas telepon). Tiga sesi
+   menulis paralel; "PR #11" bukan lagi satu-satunya jalur.
+
+**Dampak:** README ledger diperbarui (baris 16/17 ditandai "no file on this branch" + catatan
+ledger-bersama). Sebelum sprint fitur berikutnya menyentuh `crm_customer_mirror` atau
+`crm_norm_phone`, **tarik dulu migrasi 16/17 ke branch ini** (atau merge PR #13) agar repo dan DB
+tidak makin menyimpang — dua salinan yang menyimpang adalah pola yang sudah menggigit proyek ini
+(kanon telepon, daftar retensi). Remediasi milik manusia (merge/koordinasi antar-sesi), bukan
+sesuatu yang diperbaiki dari audit ini.
+
+---
+
+### T-21 · Label "· dari klinik" membocorkan keanggotaan klinik ke peran `view_contact` — DIPERBAIKI (kasarkan derajat), 19 Agu 2026
+**Latar:** Setelah K-31, peran ber-`view_contact` (mis. `crm_operator`, `data_steward`) melihat
+NIK/alamat yang berasal dari `clinic_patients`, dengan label provenans "· dari klinik". **Nilainya
+boleh** mereka lihat (identitas). **Labelnya** yang bocor: ia memberi tahu orang ini pasien klinik —
+status kesehatan yang justru dijaga `profile.view_health`. Ini juga membuat sistem tak konsisten
+dengan dirinya sendiri: filter segmen menggerbangi kriteria "pasien klinik" di `view_health` dengan
+alasan yang sama (`hasClinicalCriteria`), sementara layar profil membocorkannya lewat pintu lain.
+
+**Perbaikan:** **kasarkan derajat label**, jangan hilangkan provenansnya. Untuk peran tanpa
+`view_health`, provenans identitas ber-sumber-klinik menjadi **"· dari sumber ekosistem"** (benar —
+memang dari sumber ekosistem — tapi tak menyebut kliniknya). Aturan "selalu tandai asalnya" tetap
+berlaku; yang berubah hanya seberapa spesifik, untuk siapa.
+- **Satu tempat, di server:** `lib/crm/demographic-pick.ts` `clinicProvenanceLabel(canSeeMedical)`;
+  rute `/api/audience/[id]` menghitung dari `canViewHealth` dan mengirim string `clinicSourceLabel`.
+  Klien hanya me-render string itu — tak ada "klinik" yang dikirim ke peran non-`view_health`, jadi
+  tak bisa dipulihkan di klien (pengasaran di server, bukan sembunyi di klien). Dipakai untuk
+  provenans NIK, tanggal lahir, dan gender.
+- **Test:** `demographic-pick.test.ts` mengunci `clinicProvenanceLabel(false) !== "klinik"` (dan
+  `=== "sumber ekosistem"`), `clinicProvenanceLabel(true) === "klinik"`.
+
+**Bentuk halaman (diperiksa):** blok **"Klinik — keterlibatan"** (jumlah kunjungan, kode pasien,
+booking) sudah sepenuhnya digerbangi `view_health` — untuk peran non-`view_health` ia **tak pernah
+dirender** (`ClinicLines` mengembalikan null saat `clinical` null; grup klinik tak "live"; baris
+"tidak tersambung" pun menjatuhkan klinik untuk mereka). Jadi **tak ada perbedaan bentuk** antara
+profil yang punya data klinik dan yang tidak, untuk peran tanpa `view_health` — bagian klinik yang
+muncul-sama-sekali bukan sinyal.
+
+**Sumber lain (diperiksa, aman):** provenans Hyrox ("Hyrox") dan my20fit ("my20fit") bukan data
+kesehatan — partisipasi event & keanggotaan; keduanya tak mengungkap fakta yang digerbangi. Golongan
+darah (satu-satunya medis dari baris Hyrox) hanya tampil untuk `view_health`. Jadi hanya label klinik
+yang perlu dikasarkan.
+
+**Konsekuensi tercatat di K-31** (sisa "sinyal-lunak keanggotaan klinik" sprint sebelumnya kini punya
+jawaban). Remediasi = kode ini; tak ada perubahan data.

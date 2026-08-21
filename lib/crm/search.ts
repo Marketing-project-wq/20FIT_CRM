@@ -44,6 +44,32 @@ export const NAME_MIN_LEN = 3;
  */
 export const SEARCH_MAX_RESULTS = 10;
 
+/**
+ * Detect which KIND a single free-text query is, from its shape alone — so the user types into
+ * ONE box instead of pre-picking Name/Phone/Email. The detection is a proxy, shown to the user
+ * BEFORE searching and overridable, because a silent wrong guess returns zero rows and reads as
+ * "person not found" when the real cause is "searched the wrong column".
+ *
+ * Rules (order matters):
+ *   1. contains '@'                                  → email
+ *   2. after stripping spaces . - ( ), all digits    → phone
+ *      (an optional leading '+' is allowed; there must be at least one digit)
+ *   3. otherwise                                     → name
+ *
+ * Deliberate edge behaviour: a lone '+' (no digits) is NOT a phone — it falls through to name,
+ * where prepareSearch will reject it for length. A name containing digits ("Agent 007") keeps
+ * its letters after stripping, so it is not all-digits → name. Empty/blank → name (the neutral
+ * default; prepareSearch rejects it). This is pure and unit-tested next to prepareSearch.
+ */
+export function detectSearchKind(raw: string | null | undefined): SearchKind {
+  const s = (raw ?? "").trim();
+  if (s === "") return "name";
+  if (s.includes("@")) return "email";
+  const stripped = s.replace(/[\s.\-()]/g, "");
+  if (/^\+?\d+$/.test(stripped)) return "phone";
+  return "name";
+}
+
 export type PreparedSearch =
   | { ok: true; kind: SearchKind; term: string }
   | { ok: false; error: string };

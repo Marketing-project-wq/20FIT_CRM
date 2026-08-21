@@ -2,11 +2,13 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUserRole } from "@/lib/auth/current-role";
-import { isPermitted, resolveGrant } from "@/lib/auth/roles";
-import { parseCriteria } from "@/lib/crm/segment";
+import { isPermitted, canSeeMedical, resolveGrant } from "@/lib/auth/roles";
+import { parseCriteria, hasClinicalCriteria } from "@/lib/crm/segment";
 import { computeSegment } from "@/lib/crm/segment-read";
+import { activeMirrorFlagColumns, fetchMirrorMeta } from "@/lib/crm/mirror";
 import { validateFilterTree, filterTreeToExpr, type FilterNode } from "@/lib/crm/filter-tree";
 import { logApiFailure } from "@/lib/crm/failure-log";
+import { getServerDict } from "@/lib/i18n/server";
 
 export const dynamic = "force-dynamic";
 
@@ -41,14 +43,14 @@ export async function POST(request: NextRequest) {
   }
   if (!userId) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
 
+  const { lang, t } = getServerDict();
   const role = await getCurrentUserRole();
   if (!isPermitted(role, "segment.build")) {
     return NextResponse.json(
       {
         error: "forbidden",
         decision: resolveGrant(role, "segment.build"),
-        message:
-          "Membangun segmen butuh peran segment.build (super_admin, crm_manager, crm_operator, analyst).",
+        message: t.segments.apiRoleDenied,
       },
       { status: 403 },
     );
@@ -58,10 +60,24 @@ export async function POST(request: NextRequest) {
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: "bad_request", message: "Body JSON tidak valid." }, { status: 400 });
+    return NextResponse.json({ error: "bad_request", message: t.segments.apiBadJson }, { status: 400 });
   }
 
   const criteria = parseCriteria(body);
+
+  // CLINICAL criteria (clinic patient / transaction) INFER health status from a count — they
+  // are gated on profile.view_health (via the SAME canSeeMedical helper the profile read layers
+  // use, K-31: one rule, one place) and REJECTED (not silently dropped) for a role without it.
+  if (hasClinicalCriteria(criteria) && !canSeeMedical(role)) {
+    return NextResponse.json(
+      {
+        error: "forbidden",
+        decision: resolveGrant(role, "profile.view_health"),
+        message: t.segments.apiClinicalNeedsHealth,
+      },
+      { status: 403 },
+    );
+  }
 
   // AND/OR filter tree (Sprint 3P). When present it REPLACES the flat master fields. It is
   // validated here; an inexpressible form (too deep, too many, unsafe value, empty group) is
@@ -71,10 +87,10 @@ export async function POST(request: NextRequest) {
   let treeForAudit: unknown = null;
   if (rawTree != null) {
     const tree = rawTree as FilterNode;
-    const valid = validateFilterTree(tree);
+    const valid = validateFilterTree(tree, 1, lang);
     if (!valid.ok) {
       return NextResponse.json(
-        { error: "bad_filter", message: `Filter ditolak: ${valid.error}.` },
+        { error: "bad_filter", message: `${t.segments.apiBadFilterA}${valid.error}${t.segments.apiBadFilterB}` },
         { status: 400 },
       );
     }
@@ -114,6 +130,12 @@ export async function POST(request: NextRequest) {
         src_hyrox: criteria.srcHyrox,
         src_my20fit: criteria.srcMy20fit,
         src_recency: criteria.srcRecency,
+        src_arena: criteria.srcArena,
+        src_gym: criteria.srcGym,
+        src_clinic_patient: criteria.srcClinicPatient,
+        src_clinic_txn: criteria.srcClinicTxn,
+        src_rfm: criteria.srcRfm,
+        src_program: criteria.srcProgram,
       },
       // AND/OR tree structure (closed-list fields/values; city leaf capped at 60 in
       // validateFilterTree, K-17). Null when the flat criteria path was used.
@@ -126,9 +148,21 @@ export async function POST(request: NextRequest) {
   if (auditError) {
     logApiFailure("/segments", "audit_write_failed", { code: auditError.code });
     return NextResponse.json(
-      { error: "audit_failed", message: "Perhitungan ditolak: gagal mencatat audit (akuntabilitas)." },
+      { error: "audit_failed", message: t.segments.apiAuditFailed },
       { status: 503 },
     );
+  }
+
+  // Mirror provenance (Sprint 5A): when a source-presence flag shaped this count, that part was
+  // read from crm_customer_mirror. Surface the mirror's freshness so a snapshot never looks live.
+  // Best-effort: a meta read failure must not fail the compute (the count already succeeded).
+  let mirrorRefreshedAt: string | null = null;
+  if (activeMirrorFlagColumns(criteria).length > 0) {
+    try {
+      mirrorRefreshedAt = (await fetchMirrorMeta(admin)).refreshedAt;
+    } catch {
+      mirrorRefreshedAt = null;
+    }
   }
 
   return NextResponse.json(
@@ -136,6 +170,7 @@ export async function POST(request: NextRequest) {
       matched: counts.matched,
       contactableMarketing: counts.contactableMarketing,
       contactableService: counts.contactableService,
+      mirrorRefreshedAt,
     },
     { headers: { "Cache-Control": "no-store" } },
   );

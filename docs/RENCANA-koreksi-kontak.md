@@ -87,3 +87,38 @@ crm_contact_correction
 > **Konteks:** K-14 (tulis atomik dengan audit), K-09 (satu sumber retensi), K-13
 > (suppression menang), `docs/riwayat/TEMUAN.md` (typo sistematis sebagai temuan impor),
 > `docs/RENCANA-simpan-segmen.md` (pola "aksi jatuh antara dua daftar").
+
+---
+
+## Temuan lanjutan — `email_normalized` NULL: 19 rusak + 108 tak ternormalkan (20 Agu 2026)
+
+Dipicu oleh ekspor "telepon saja" yang ternyata menampilkan email (filter memakai
+`email_normalized`, tampilan memakai `email` — dua field beda). Diukur langsung ke DB
+(`cpvzwqptzcxnwzfzgrmt`): **127 profil punya `email` terisi tetapi `email_normalized` NULL.**
+Terbelah tegas oleh sumber:
+
+| sumber | jumlah | bentuk email | arti |
+|---|---:|---|---|
+| `20fit_data_import` (20 Apr 2026) | **19** | cacat (`@gmail` tanpa TLD, `gmail:com`, `gmail,com`, `@gmail.c` terpotong) | benar-benar "tak punya email pakai" |
+| `live_txn_ingest` (31 Jul 2026) | **108** | **sah** (`joseph.soegandhi@gmail.com`, dst.) | email pakai, TAPI jalur ingest tak mengisi `email_normalized` |
+
+**Sebab 108-nya:** `email_normalized` diisi oleh backfill/normalisasi satu-kali; jalur tulis
+**`live_txn_ingest`** (muatan 31 Juli) menulis `email` mentah tapi **tidak** mengisi
+`email_normalized`. Jadi 108 orang dengan email sah tercatat "tanpa email" oleh setiap
+hitungan yang memakai `email_normalized` — termasuk dashboard "bisa dihubungi", pencocokan
+consent, dan filter segmen. `phone_normalized` NULL yang punya `phone_raw` = **0**, jadi sisi
+telepon bersih; hanya email yang bermasalah.
+
+**Keputusan untuk ekspor (Export sprint, MASALAH 3):** `email_normalized` adalah identitas
+kontak kanonik di SELURUH sistem, jadi ekspor memakainya untuk **filter DAN tampilan** (kolom
+email menampilkan `email_normalized`, bukan `email` mentah). Ini menutup kebocoran (kategori
+"tanpa email" tak lagi mencetak email) dan menjaga ekspor konsisten dengan angka lain. Ekspor
+**tidak** beralih ke `email` mentah — itu akan ikut mencetak 19 alamat rusak dan memisahkan
+ekspor dari setiap hitungan lain.
+
+**Yang masih menggantung (perbaikan hulu, BUKAN di ekspor):** normalkan 108 email sah itu —
+paling benar dengan membuat jalur `live_txn_ingest` mengisi `email_normalized` memakai
+normalizer yang sama, atau backfill satu-kali atas 108 baris. Sampai itu terjadi, 108 orang
+tetap terhitung "tanpa email" di mana-mana (0,13% dari 80.999 — kecil, tapi nyata) dan luput
+dari kampanye email. Ini pekerjaan pemilik data + jalur ingest, sama seperti koreksi typo di
+atas; ekspor tak boleh menebak diam-diam.
