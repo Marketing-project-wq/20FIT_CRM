@@ -69,32 +69,38 @@ Full spec: `PRD — 20FIT Audience Data & CRM System v1.1`.
 > | 15 | `…20260813091255_create_crm_customer_mirror` | `20260813091255` | `create_crm_customer_mirror` |
 > | 16 | `…20260814040554_add_is_fitco_member_matched_to_crm_customer_mirror` | `20260814040554` | `add_is_fitco_member_matched_to_crm_customer_mirror` (pulled from PR #13, verbatim SQL) |
 > | 17 | `…20260814055353_crm_norm_phone_guard_empty_nsn` | `20260814055353` | `crm_norm_phone_guard_empty_nsn` (pulled from PR #13, verbatim SQL) |
-> | 18 | `…20260819061103_schedule_crm_mirror_refresh` | `20260819061103` | `schedule_crm_mirror_refresh` (pg_cron daily mirror refresh, K-30) |
-> | 19 | `…20260819113518_crm_purge_audit_log_add_demographic_compliance` | `20260819113518` | `crm_purge_audit_log_add_demographic_compliance` (Opsi 2 / K-09 — adds `profile.demographic_updated` to the compliance denylist; migration 8 untouched) |
-> | 20 | `…20260819113649_create_crm_upsert_profile_demographic` | `20260819113452` **+** `20260819113649` | `create_crm_upsert_profile_demographic` (×2 — first apply hit an `array_cat` bug, re-applied fixed) |
+> | 18 | `…20260818041017_precompute_dashboard_stats_at_refresh` | `20260818041017` | `precompute_dashboard_stats_at_refresh` (consolidated from PR #13, 2026-08-21 — precompute dashboard stats into `crm_mirror_meta.dashboard_stats` at refresh; reader `crm_mirror_dashboard_stats()` + diagnostic `crm_mirror_fitco_staleness()`; refresh switched to `CONCURRENTLY`) |
+> | 19 | `…20260819061103_schedule_crm_mirror_refresh` | `20260819061103` | `schedule_crm_mirror_refresh` (pg_cron daily mirror refresh, K-30) |
+> | 20 | `…20260819113518_crm_purge_audit_log_add_demographic_compliance` | `20260819113518` | `crm_purge_audit_log_add_demographic_compliance` (Opsi 2 / K-09 — adds `profile.demographic_updated` to the compliance denylist; migration 8 untouched) |
+> | 21 | `…20260819113649_create_crm_upsert_profile_demographic` | `20260819113452` **+** `20260819113649` | `create_crm_upsert_profile_demographic` (×2 — first apply hit an `array_cat` bug, re-applied fixed) |
+> | 22 | `…20260821041044_pin_search_path_crm_audit_log_no_mutate` | `20260821041044` | `pin_search_path_crm_audit_log_no_mutate` (K-15 hardening — pins `search_path` on the append-only guard `crm_audit_log_no_mutate`; applied 2026-08-21, both triggers verified still reject UPDATE+DELETE) |
 >
-> **Count reconciliation (re-checked against `schema_migrations` on 2026-08-19): 20 CRM
-> migration files on THIS branch (`claude/lanjutkan-pekerjaan-mno804`) → 22 CRM ledger
-> entries in the DB.** The gap between files and ledger entries is **two** double-applies:
+> **Count reconciliation (re-checked against `schema_migrations` on 2026-08-21): 22 CRM
+> migration files on `main` → 24 CRM ledger entries in the DB.** The gap between files and
+> ledger entries is **two** double-applies:
 >
 > - **+1** — migration **9** applied **twice** under the same name (Sprint 3H). The first
 >   apply left Supabase's default `EXECUTE` grant to `anon`/`authenticated` in place (a
 >   `revoke … from public` does **not** remove explicit per-role grants); the second apply
 >   carried the corrected `revoke … from public, anon, authenticated`. `create or replace`
 >   is idempotent, so both stamps point at the same two functions.
-> - **+1** — migration **20** (`create_crm_upsert_profile_demographic`) applied **twice**: the
+> - **+1** — migration **21** (`create_crm_upsert_profile_demographic`) applied **twice**: the
 >   first apply (`…113452`) used `v_changed || 'gender'`, which Postgres resolves as `array_cat`
 >   (→ "malformed array literal"); the re-apply (`…113649`) uses `array_append`. The FINAL
->   definition is the row-20 file; the `…113452` stamp is a superseded stamp only.
-> - **Migrations 16 & 17 were applied by a parallel session** (PR #13, branch
+>   definition is the row-21 file; the `…113452` stamp is a superseded stamp only.
+> - **Migrations 16, 17 & 18 came from a parallel session** (PR #13, branch
 >   `claude/20fit-crm-sprint-1-67vvhs`): `add_is_fitco_member_matched_to_crm_customer_mirror`
->   adds a Fitco-membership flag to the mirror, and `crm_norm_phone_guard_empty_nsn` fixes the
->   `crm_norm_phone('62')` empty-NSN edge (flagged in Sprint 5A). **Their SQL files are now on
->   this branch too** — pulled **verbatim** from PR #13 into `supabase/migrations/` (2026-08-19),
->   so this branch's tree is no longer behind the CRM ledger. Both are already stamped in
->   `schema_migrations`; the files are the repo record only — do **not** re-apply. Verified
->   against the live DB on 2026-08-19: the matview carries `is_fitco_member_matched` (= 67,653
->   matched) at column 21, and `crm_norm_phone('62')` returns `null` (empty-NSN guard).
+>   adds a Fitco-membership flag to the mirror, `crm_norm_phone_guard_empty_nsn` fixes the
+>   `crm_norm_phone('62')` empty-NSN edge (flagged in Sprint 5A), and
+>   `precompute_dashboard_stats_at_refresh` (`20260818041017`) precomputes the dashboard stats at
+>   refresh. **Their SQL files are now on `main`** — 16 & 17 pulled verbatim on 2026-08-19, and
+>   **18 consolidated on 2026-08-21** (selective; its three function bodies md5-match the live
+>   catalog). All already stamped in `schema_migrations`; the files are the repo record only — do
+>   **not** re-apply. Verified against the live DB: the matview carries `is_fitco_member_matched`
+>   (= 67,653 matched) at column 21, and `crm_norm_phone('62')` returns `null` (empty-NSN guard).
+> - **Migration 22 (`pin_search_path_crm_audit_log_no_mutate`, `20260821041044`)** was applied this
+>   session and consolidated the same day (2026-08-21) — it pins `search_path` on the append-only
+>   guard `crm_audit_log_no_mutate`; both triggers verified still reject UPDATE+DELETE.
 >
 > **The ledger is now SHARED.** Other teams stamp into the same `schema_migrations` (e.g.
 > `my20fit_*`, `clinic_*`, `arena_*`, `talent_*`, `event_*`) interleaved with CRM versions, so
@@ -108,7 +114,7 @@ Full spec: `PRD — 20FIT Audience Data & CRM System v1.1`.
 >
 > **Do NOT run `supabase db push` against this project until the ledger and repo are
 > reconciled.** No repo file-name timestamp exists in the ledger, so the CLI would treat
-> all **20** repo migrations as unapplied and try to run them all — re-creating the seven
+> all **22** repo migrations as unapplied and try to run them all — re-creating the seven
 > live tables + re-defining the live functions, failing as "already exists". Run any
 > further migration one-by-one via a reviewed path (`apply_migration`), not `db push`.
 >

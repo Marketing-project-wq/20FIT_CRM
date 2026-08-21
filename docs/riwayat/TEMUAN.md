@@ -80,6 +80,19 @@ database tidak menegakkannya. Perbaikan (menyempitkan policy) **akan memutus apl
 lain** yang mengandalkannya → keputusan pemilik data + owner Supabase, bukan sepihak.
 → `docs/ESKALASI-paparan-data-sensitif.md`, K-23. Silang-rujuk T-02.
 
+### T-23 · 5 view non-`crm_*` terbaca `anon` (`customer_360_v1`, `arena_dashboard`, `leaderboard_*`) — MILIK TIM LAIN
+**Ditemukan 14 Agu (verifikasi grant migrasi 15/16).** Saat memverifikasi ACL matview cermin —
+`has_table_privilege('anon', 'crm_customer_mirror', 'select') = false`, **benar** — sapuan
+sekitarnya menemukan **lima view** dengan **`anon` SELECT = TRUE** (dan `authenticated` = TRUE),
+terverifikasi 14 Agu: **`customer_360_v1`**, **`arena_dashboard`**, **`leaderboard_daily`**,
+**`leaderboard_season`**, **`leaderboard_team`**. Kelas sama dengan T-03/T-17: kontrol CRM tak
+ditembus, **dilewati** lewat objek milik subsistem lain (anon key ada di tiap bundel JS).
+`crm_customer_mirror` sendiri **terkunci** (grant `service_role` saja) — pola cermin benar; yang
+terbuka adalah view produk lain. **Di luar lingkup migrasi 16**; diukur & diangkat ke pemilik
+data + owner Supabase, **tidak disentuh sepihak** (menyempitkan bisa memutus aplikasi tim lain).
+Silang-rujuk T-17, K-23. **Nomor: `sprint-1` memakai T-19 untuk ini, tapi `main` sudah punya
+T-19 (RFM); diselaraskan ke T-23** saat konsolidasi 2026-08-21 — lihat "Catatan penomoran".
+
 ---
 
 ## Korektness
@@ -181,6 +194,20 @@ jujurnya seperti di `master_customer`. Perbandingan antar-kolom tak bisa dihitun
 PostgREST → masuk `VERIFIED_ARTIFACTS` bertanggal (`ecosystem_last_seen_load_stamp`), sejajar
 T-11. Baris masa-depan dihitung live di `/quality` (bandingkan ke literal waktu). → K-19
 
+### T-18 · 7.260 baris "Fitco User" staging tak ter-resolve ke `master_customer` — DATA, tidak diremediasi
+**Ditemukan 14 Agu (migrasi 16, kolom cermin Fitco).** `staging_20fit_data` memuat **74.914**
+baris bertanda `"Fitco User" = 'Fitco User'` (**74.913 email unik**). Dicocokkan ke
+`master_customer` lewat email `lower(btrim)`: **67.653 cocok**, **7.260 TIDAK** — email staging
+tanpa padanan di `master_customer`. Kolom `crm_customer_mirror.is_fitco_member_matched` karena itu
+hanya melihat 67.653; namanya memakai `_matched` untuk **jujur soal batas ini**. **Cermin tak bisa
+memperbaikinya** — ini celah *identity resolution* di jalur ingestion (email tak ter-resolve saat
+`master_customer` dibangun), **bukan** cacat matview. **Sengaja tidak diselesaikan di migrasi 16**;
+memperbaikinya berarti menyentuh ingestion/identitas — tugas tersendiri dengan gate-nya. Konsekuensi
+UI: label Fitco **dilarang** tampil polos "67.653" — wajib menyebut konteks "67.653 tercocokkan dari
+74.914". → K-06 (satu kanon), K-08 (`0` vs `—`). **Nomor T-18 dirujuk komentar kolom
+`crm_customer_mirror.is_fitco_member_matched` di DB** — itulah yang mengunci nomor ini lewat
+tie-break saat konsolidasi 2026-08-21; lihat "Catatan penomoran".
+
 ### T-19 · RFM `staging_20fit_data` praktis tak bisa menyegmentasi — 92% dalam satu keranjang — DATA, tidak diremediasi
 **Ditemukan 12 Agu (Sprint 3Y, diangkat dari laporan).** Sebaran `RFM per paid order`:
 `New User` **81.213 (91,7%)** · `Potensial user` 7.057 · `-` 200 · `Loyal user` 65 ·
@@ -271,7 +298,7 @@ ditindaklanjuti**. Ini **kali kedua** jawabannya sudah ada di tempat yang sudah 
 tabel kini **wajib** menyebut RLS **dan** policy **dan** grant (K-23), dan kueri klasifikasinya
 masuk monitoring supaya bisa dijalankan ulang, bukan diandalkan pada ingatan.
 
-## T-18 · Produksi menjalankan kode BRANCH, bukan `main` — dokumentasi deploy salah
+## T-22 · Produksi menjalankan kode BRANCH, bukan `main` — dokumentasi deploy salah
 > **DITUTUP (Sprint 3Y, 12 Agu 2026).** Pemilik produk **menerima secara sadar** bahwa produksi
 > men-deploy dari branch untuk sekarang (kecepatan > gate merge; belum ada pengguna eksternal),
 > dengan syarat pembalikan tercatat: begitu staf luar memakai sistem rutin → arahkan ke `main`
@@ -378,3 +405,27 @@ yang perlu dikasarkan.
 
 **Konsekuensi tercatat di K-31** (sisa "sinyal-lunak keanggotaan klinik" sprint sebelumnya kini punya
 jawaban). Remediasi = kode ini; tak ada perubahan data.
+
+---
+
+## Catatan penomoran — penyelarasan T-18/T-19 saat konsolidasi (2026-08-21)
+
+Dua jalur kerja paralel (`main`/`mno804` dan `sprint-1`) menomori temuan secara **independen**, lalu
+bertemu saat konsolidasi ke `main`. Diselaraskan **2026-08-21** dengan tie-break yang sudah
+ditetapkan: **nomor yang dirujuk dari komentar DB menang atas teks dokumen.**
+
+- **T-18** sempat dipakai untuk temuan *deploy-from-branch* di dokumen `main`, dan untuk *celah Fitco
+  7.260* di jalur `sprint-1`. Diselaraskan ke **Fitco = T-18** karena nomor itu dirujuk komentar
+  kolom `crm_customer_mirror.is_fitco_member_matched` di DB; temuan **deploy dipindah ke T-22**,
+  **anon-views ke T-23**.
+- **T-19** tetap = *RFM `staging_20fit_data` tak bisa menyegmentasi* (temuan `main`, tak dikontes
+  komentar DB). Temuan **anon-SELECT view** yang di `sprint-1` bernomor T-19 → **T-23**.
+- **Referensi lama tetap "T-18"** di arsip prompt (`sprint-3v/`, `sprint-3y/`, `sprint-deploy/`,
+  `PR-*.md`) dan beberapa dokumen `main` (README, KEPUTUSAN, PANDUAN-LANJUTAN, KOREKSI-DEPLOY): itu
+  **rekaman bertanggal** yang memang menulis "T-18" untuk temuan deploy pada saat itu — **sengaja
+  TIDAK ditulis ulang** (menulis ulang arsip = memalsukan catatan). Catatan ini jembatannya: di
+  dokumen lama, "T-18 = deploy-from-branch" kini berarti **T-22**.
+- Jejak lebih lama: di gate migrasi 16, Fitco sempat bernomor **T-25** dan anon-views **T-24**
+  sebelum direkonsiliasi ke T-18/T-19 di `sprint-1` (lalu ke **T-18 / T-23** di sini).
+
+**Tanpa catatan ini, orang yang membaca transkrip lama akan mengira ada temuan yang hilang.**
