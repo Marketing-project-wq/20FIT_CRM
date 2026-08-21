@@ -408,6 +408,67 @@ jawaban). Remediasi = kode ini; tak ada perubahan data.
 
 ---
 
+## T-24 · Form pendaftaran event mengumpulkan waiver kesehatan, BUKAN consent pemasaran (Sprint identitas-A+, 2026-08-21)
+
+**Konteks:** saat memetakan `rc_ticket_invites.form_data` untuk backfill demografi (Migrasi 23),
+diperiksa apakah pembeli/peserta tiket pernah memberi izin dihubungi untuk pemasaran.
+
+**Temuan (TERBUKTI, dibaca dari data):** satu-satunya field mirip-consent di form adalah
+`ticket_fields.health_fitness_declaration_*` — sebuah **waiver risiko kesehatan/olahraga**
+("…I voluntarily participate at my own risk…"), hadir di 374 dari 410 undangan terisi. **Tidak ada**
+checkbox "boleh dihubungi untuk promosi/pemasaran" di mana pun di form. Allowlist peserta yang diambil =
+name/email/phone/gender/DOB; field terlarang (NIK, golongan darah, kontak darurat) tak diambil — dan
+**nol field consent pemasaran** ada untuk diambil.
+
+**Konsekuensi:** membeli tiket / mengisi form event = **hubungan kontraktual**, **bukan** opt-in
+pemasaran. Maka seluruh identitas dari sumber-sumber ini (termasuk 2.797 kandidat `crm_identity_candidate`
+dan 248 peserta yang di-backfill demografinya) tetap **`legacy_import_unverified`** — ada di pool/kandidat,
+**tidak boleh** dikirimi pemasaran — sama seperti 82.253 lainnya. Menaikkan basis di atas itu butuh bukti
+titik consent eksplisit yang **tidak ada** di data ini.
+
+**Sifat:** DATA/kebijakan, tidak diremediasi — ini batas hukum, bukan bug. Menyambung ke sprint
+opt-out/unsubscribe (basis per populasi menunggu sign-off legal) dan ke rekomendasi berulang "tambah satu
+checkbox consent pemasaran di form event" (form ini terbukti mengumpulkan gender 100% & DOB 92% dengan
+baik — satu checkbox lagi menghasilkan `explicit_opt_in` sejak hari pertama, jauh lebih bernilai daripada
+backfill apa pun).
+
+---
+
+## T-25 · INSIDEN — saturasi pool koneksi Supabase mengganggu PRODUKSI (~10:09 UTC, 21 Agu 2026)
+
+**Dicatat sebagai bukti nyata untuk batas K-24 — bukan untuk menyalahkan; supaya batasnya tak abstrak.**
+
+**Apa yang terjadi:** saat memvalidasi query backfill Migrasi 23 lewat Supabase MCP `execute_sql`, sebuah
+query berat memakai **OR-join** (`email = ek OR phone = pk`) yang mematikan hash-join → timeout **klien**
+60 dtk, sementara backend Postgres **terus berjalan** (K-24: klien putus ≠ query batal). Lalu beberapa
+poll pendek (`select 1`, cek indeks) saat menunggu **ikut timeout karena tak dapat koneksi** — tiap poll
+gagal meninggalkan backend hidup, **menahan pemulihan**. Persis langkah-3 K-24 yang melarang poll berulang.
+Instance kecil → pool koneksi jenuh.
+
+**Dampak PRODUKSI (dilaporkan + diverifikasi eksternal oleh pemilik):** `/health` →
+`{"ok":false,"supabase":"unreachable"}` **HTTP 503**, tiga kali berturut ~4,2 dtk; `select 1` dari sisi
+pemilik juga timeout. Saturasi **sampai ke pengguna**, bukan hanya sesi agen. **Jendela gangguan
+~10:09–14:19 UTC 21 Agu 2026 — ≈4 JAM**, bukan beberapa menit: perkiraan awalku ("menit") **KELIRU** dan
+dikoreksi di sini. Pool **tidak** pulih instan setelah backend mati; butuh ~4 jam sampai `/health`
+`ok:true` stabil (0,65 → 0,29 dtk, membaik). **Untuk penilaian risiko ke depan: skala pemulihan = JAM,
+bukan menit.** Catatan penting: MCP `execute_sql` menyentuh instance Supabase yang **SAMA** dengan
+produksi — **tak ada isolasi** antara "sesi agen" dan "produksi".
+
+**Akar:** (1) query berat non-optimal (OR-join) dijalankan langsung di DB produksi bersama tanpa `explain`/
+`limit` lebih dulu; (2) poll berulang saat menunggu — memperpanjang saturasi.
+
+**Remediasi saat kejadian:** BERHENTI total menyentuh DB; pantau pemulihan lewat `/health` **eksternal**
+(bukan query); konfirmasi pulih dengan DUA bukti (`/health` `ok:true` reachable **dan** satu `select 1`
+berhasil) sebelum menyentuh DB lagi. Query OR-join sudah diganti equi-join `UNION ALL` + CTE `materialized`.
+
+**Pelajaran (memperkuat K-24):** untuk DB produksi bersama — (a) uji query berat dengan `explain`/`limit`
+dulu, jangan langsung jalankan bentuk yang bisa seq-scan berulang; (b) saat menunggu, **diamkan DB**, jangan
+poll; (c) apply operasi besar **hindari jendela cron** (refresh cermin 20:00 UTC / 03:00 WIB, K-30). Sifat:
+INSIDEN operasional; tertutup setelah pool pulih; **tak ada perubahan data** (semua query gagal = rollback
+bersih / read-only).
+
+---
+
 ## Catatan penomoran — penyelarasan T-18/T-19 saat konsolidasi (2026-08-21)
 
 Dua jalur kerja paralel (`main`/`mno804` dan `sprint-1`) menomori temuan secara **independen**, lalu
@@ -427,5 +488,10 @@ ditetapkan: **nomor yang dirujuk dari komentar DB menang atas teks dokumen.**
   dokumen lama, "T-18 = deploy-from-branch" kini berarti **T-22**.
 - Jejak lebih lama: di gate migrasi 16, Fitco sempat bernomor **T-25** dan anon-views **T-24**
   sebelum direkonsiliasi ke T-18/T-19 di `sprint-1` (lalu ke **T-18 / T-23** di sini).
+- **T-24 kini permanen (2026-08-21, Sprint identitas-A+)** = temuan *waiver-bukan-consent* (di atas).
+  Label transien lamanya (anon-views) sudah pensiun ke **T-23**, jadi nomor T-24 bebas dipakai ulang
+  untuk temuan baru ini; tak ada tabrakan yang tersisa.
+- **T-25 kini permanen (2026-08-21)** = INSIDEN saturasi pool (di atas). Label transien lamanya (Fitco)
+  sudah pensiun ke **T-18**, jadi nomor T-25 bebas untuk insiden ini; tak ada tabrakan tersisa.
 
 **Tanpa catatan ini, orang yang membaca transkrip lama akan mengira ada temuan yang hilang.**

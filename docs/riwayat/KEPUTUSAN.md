@@ -541,3 +541,65 @@ tak menyimpan state terlihat antar sesi (risiko bahu-orang-lain).
 **Syarat pembalikan:** kembalikan `data-theme="dark"` + `BrandLogo variant="white"` di ketiga halaman
 dan hapus `AuthControls`/`ThemeLogo`/`PasswordInput` (dipakai hanya di halaman auth). Nol perubahan
 data, nol sentuhan alur auth.
+
+## K-34 · NIK → provinsi TIDAK diturunkan; "terjemahkan NIK" sudah terpenuhi via field eksplisit (Sprint identitas-A+, 2026-08-21)
+
+**Latar:** instruksi pemilik "NIK tidak perlu utuh, diterjemahkan jadi data profil". Yang secara teknis
+bisa "diterjemahkan" dari NIK hanya **tiga** hal: gender, tanggal lahir (keduanya terkodekan di digit
+7–12), dan **wilayah** (6 digit pertama = kode provinsi/kabupaten/kecamatan saat KTP diterbitkan).
+
+**Keputusan (disetujui pemilik):** **jangan turunkan apa pun dari NIK.**
+- **Gender & tanggal lahir** sudah ada dari **field eksplisit** yang diisi sendiri pesertanya
+  (`rc_ticket_invites.form_data.participants[]`: gender 819/819, DOB 752/819) — lebih akurat daripada
+  turunan NIK, dan **field eksplisit selalu menang atas turunan**. Maka instruksi "terjemahkan NIK"
+  **sebagian besar sudah terpenuhi tanpa menyentuh NIK sama sekali**.
+- **Wilayah (provinsi KTP): SKIP.** (a) tak ada tabel referensi wilayah di DB — harus membuat & merawat
+  peta kode-provinsi statis; (b) nilainya "domisili saat KTP terbit", belum tentu kota tinggal kini —
+  nilai CRM tipis; (c) menurunkannya berarti **menyentuh NIK** (walau transien), menambah permukaan
+  risiko demi field marginal. Tak sepadan.
+
+**Ditegakkan (Migrasi 23):** NIK, golongan darah, kontak darurat, waiver kesehatan → **nol** di kolom,
+jsonb, metadata audit, dan ekspor — di cermin, `crm_identity_candidate`, maupun `crm_profile_demographic`.
+Allowlist ekstraksi dari form peserta = **name / email / phone / gender / date_of_birth saja**.
+
+**Konsisten dengan K-31** (NIK = identitas, gerbang `view_contact`): K-31 mengatur *tingkat gerbang* bila
+turunan NIK ADA; K-34 memutuskan untuk sprint ini **tak membuat** turunan wilayah sama sekali. Provenance
+`crm_profile_demographic.province_source` (nilai `backfill_nik_region`) tetap ada sebagai jalur sah bila
+kelak diaktifkan — tak dipakai sekarang.
+
+**Syarat pembalikan:** bila pemilik ingin wilayah juga, aktifkan derivasi **2 digit pertama** (kode
+provinsi → nama provinsi, peta statis 34 entri), provenance `backfill_nik_region`, NIK tetap **tak pernah
+disimpan** (baca-hitung-buang dalam satu ekspresi, tak ke kolom/jsonb/audit). Catat tanggal persetujuan di sini.
+
+## K-35 · `normalize_email` adalah kanon email tunggal, sejajar `crm_norm_phone` (K-06) (Sprint identitas-A+, 2026-08-21)
+
+**Latar:** Migrasi 23 sempat membawa DUA kanon email dalam satu berkas — flag matview memakai
+`lower(btrim(email))` (disalin verbatim dari definisi cermin lama), backfill §6 memakai `normalize_email()`.
+Keduanya berbeda: `normalize_email` juga memvalidasi format dan menolak placeholder
+(`anonymous@anonymous.com`, `-`, `none`) → NULL. Kelas divergensi yang sama dengan kanon telepon yang
+disatukan di Migrasi 17 (K-06).
+
+**Keputusan (disetujui pemilik):** **`normalize_email` = kanon email tunggal** untuk pencocokan identitas.
+Semua subquery FLAG di cermin (`has_hyrox`, `has_my20fit`, `has_arena`, `has_gym`, `has_clinic`, dan 6 flag
+baru) diseragamkan dari `lower(btrim())` ke `normalize_email()`. **Jangan pakai `lower(btrim())` lepas untuk
+email di kode atau SQL baru** — pakai `normalize_email` (SQL) / `normalizeEmail` (TS), sejajar
+`crm_norm_phone` / `normalizePhoneID` untuk telepon (K-06).
+
+**Kenapa sekarang:** hari ini hasilnya **identik** (diukur: master 0 placeholder / 0 beda dari `lower(btrim)`;
+event_transaction 4.790 baris, hanya 2 ditolak `normalize_email`, 0 placeholder). Justru karena identik,
+menyatukan **gratis** & **terverifikasi** — bila ditunda, perbaikan nanti akan menggeser angka dan sulit
+dibedakan dari perubahan data. Verifikasi wajib pra-apply: keenam flag baru tetap **1.314 / 248 / 175 / 114 /
+77 / 118** dan sidik jari 21 kolom lama tak berubah; satu bergeser → berhenti (asumsi salah, bukan kosmetik).
+
+**Detail teknis penting:** `normalize_email` bisa mengembalikan NULL, dan NULL di dalam `IN (…)` mengubah
+flag dari `false` jadi `NULL`. Maka tiap subquery difilter `WHERE normalize_email(x) IS NOT NULL` (bukan
+`WHERE x IS NOT NULL`) supaya daftar IN bebas-NULL dan flag tetap boolean.
+
+**Pengecualian tercatat:** join staging `st` di cermin (`lower(btrim(staging."Email"))` → `staging_rfm`,
+`staging_dob`, `is_fitco_member_matched`) **TIDAK** ikut diubah di sprint ini — itu jalur enrichment
+fitco/rfm/dob, bukan "flag", disimpan verbatim. Menyatukannya butuh verifikasi terpisah (fitco tetap
+67.653); diangkat ke pemilik, menunggu keputusan.
+
+**Syarat pembalikan:** rollback Migrasi 23 mengembalikan definisi cermin migrasi 16 (kanon `lower(btrim)`
+pra-K-35) — revert penuh yang disengaja. K-35 sebagai *aturan* (kanon tunggal untuk kode baru) tetap berlaku
+terlepas dari status Migrasi 23.
