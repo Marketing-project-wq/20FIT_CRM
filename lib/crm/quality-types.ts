@@ -266,5 +266,38 @@ export const VERIFIED_ARTIFACTS = [
   // sebagai temuan aktif. Riwayatnya ada di normalize.ts dan normalize.test.ts.
 ] as const;
 
-/** Date the artifacts above were checked against the live database. */
-export const ARTIFACTS_VERIFIED_ON = "11 Agustus 2026";
+/** Date the artifacts above were checked against the live database. ISO so the client formats it
+ *  per language (formatDate) — the header shows "11 Agustus 2026" (id) / "11 August 2026" (en). */
+export const ARTIFACTS_VERIFIED_ON_ISO = "2026-08-11";
+
+/**
+ * CANONICAL KEY LISTS (Sprint 5B). The display STRINGS for these rows moved to the dictionary
+ * (quality.fill / issue / satellite / warn / artifact), keyed by the literals below. Listing the
+ * keys HERE — importable by the client component AND by quality-i18n.test.ts without a database —
+ * is what lets the data-driven test fail when a row exists in the server snapshot (or in
+ * VERIFIED_ARTIFACTS) but has no dictionary entry in BOTH languages. Pure literals: no query,
+ * filter, order, or value depends on them (the server in quality.ts still owns those verbatim).
+ */
+export const FILL_KEYS = [
+  "full_name", "phone", "email", "first_unit", "segment",
+  "city", "gender", "date_of_birth", "address", "lifetime_value",
+] as const;
+
+/** Every IssueCount key across identifiers + anomalies + duplicates + queues (all one shape). */
+export const ISSUE_KEYS = [
+  "phone_not_62", "email_no_at", "email_known_typo_domain",
+  "ltv_negative", "name_with_digits",
+  "flagged_duplicate", "merged",
+  "orphan", "excluded",
+] as const;
+
+export const SATELLITE_KEYS = ["demographic", "behavior", "scores"] as const;
+
+/** Artifact keys, derived from the single source above so the two can never drift. */
+export const ARTIFACT_KEYS = VERIFIED_ARTIFACTS.map((a) => a.key);
+
+/** Fill keys that carry a warning note (the rest are label-only). Used to scope the data-driven
+ *  test to exactly the notes that must exist in both languages. */
+export const FILL_WARN_KEYS = [
+  "city", "gender", "date_of_birth", "address", "lifetime_value",
+] as const;

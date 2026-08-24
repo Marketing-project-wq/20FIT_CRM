@@ -34,15 +34,15 @@ export const BILINGUAL_SCREENS: ReadonlySet<ScreenId> = new Set<ScreenId>([
   "consent", // /consent — register + suppression list + record/lift dialogs + write-path API messages (Sprint 4D)
   "segments", // /segments — builder + AI assistant + AND/OR tree (readback + validator lang-aware) + 2 API routes (Sprint 4E)
   "audit", // /settings governance page — audit log panel + RBAC roles panel + retention/gap/artifact notes + api/audit (Sprint 4E)
+  "quality", // /quality — full body: fill/issue/satellite/artifact rows + ecosystem/staging/clinic panels + denial (Sprint 5B). Data keys guarded by quality-i18n.test.ts.
 ]);
 
 /** Screens that render the marker but are NOT bilingual yet — a LABELLED work-in-progress, never
  *  a silent mix. Every ScreenId must be here or in BILINGUAL_SCREENS (coverage.test.ts enforces it).
  *  Move an id from here to BILINGUAL_SCREENS the moment its screen is fully translated. */
 export const PENDING_SCREENS: ReadonlySet<ScreenId> = new Set<ScreenId>([
-  "quality", // /quality — largest surface; not yet translated (Sprint 4F+)
-  "profile", // /audience/[id] profile detail — not yet translated (Sprint 4F+)
-  "diagnostik", // /settings/diagnostik — verification status page; marked, translation deferred (Sprint 4F)
+  "profile", // /audience/[id] profile detail — not yet translated (Sprint 5B+)
+  "diagnostik", // /settings/diagnostik — verification status page; marked, translation still deferred (decided Sprint 5B: out of the /quality scope, stays a labelled work-in-progress)
 ]);
 
 export function isScreenBilingual(screen: ScreenId): boolean {

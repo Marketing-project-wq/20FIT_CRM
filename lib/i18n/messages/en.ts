@@ -640,6 +640,237 @@ export const en: Messages = {
     },
   },
 
+  quality: {
+    title: "Quality",
+    subtitlePre: "The data exactly as it is in",
+    subtitlePost: "— recomputed every time the page opens, no figure written by hand.",
+    recompute: "Recompute",
+    computing: "Computing aggregates…",
+    loadFailed: "Failed to load",
+    connectFailed: "Failed to reach the server.",
+    deniedBadge: "Access denied",
+    deniedScope:
+      "The unit_manager role is limited to the units it manages, but the unit-scope table does not exist yet — access is denied (fail-closed) until that table is built.",
+    deniedRole:
+      "Your role is not permitted to see profile data quality. If RBAC is not provisioned yet, all access is denied — the correct fail-closed behaviour.",
+
+    reachTitle: "Has an identifier ≠ contactable",
+    reachBody1: "All",
+    reachBody2:
+      "profiles have at least one contact identifier, but the number that may be contacted is still zero: the consent register does not exist yet (the",
+    reachBody3: "migration is held pending legal approval) and",
+    reachBody4:
+      "is still empty. The numbers on this page measure data completeness, not permission to send.",
+
+    panel: {
+      fillTitle: "Fill rate",
+      identifiersTitle: "Invalid identifiers",
+      anomaliesTitle: "Value anomalies",
+      duplicatesTitle: "Duplicates",
+      queuesTitle: "Orphan & exclusion queues",
+      satellitesTitle: "Curation & scores",
+      ecosystemTitle: "20FIT ecosystem — customer_engagement",
+      stagingTitle: "Import coverage — staging_20fit_data ★",
+      enrichmentTitle: "Unmatched ecosystem-source coverage",
+      multisourceTitle: "Other-source coverage — arena / gym",
+      clinicTitle: "Clinic coverage",
+      artifactsTitle: "Findings that cannot be computed live",
+    },
+
+    caption: {
+      fillPre: "What percentage of",
+      fillPost:
+        "profiles have a value in each field. “Filled” means NOT NULL — no judgement of content quality here. The colour thresholds (≥95% green, ≥60% amber) are a display convention, not an SLA from the PRD.",
+      identifiers:
+        "Shape checks, not verification that a number or email is actually reachable. Zero here is no guarantee of deliverability.",
+      anomalies:
+        "Values that pass every shape check yet make no business sense — and, most importantly, are not caught by the filters on other screens.",
+      duplicates:
+        "The flagging comes from an old import process. No merge/unmerge flow is built, so this count can only go up.",
+      queues:
+        "Rows that did not make it into master. The percentage is taken against the master profile count as a scale comparison, not as part of master.",
+      satellites:
+        "The crm_* satellite tables exist but are not filled in. This is not a “stale score” — the scores have never been computed at all.",
+      ecosystem:
+        "Engagement traces across units from the customer_engagement table — read in place, never copied into crm_*. Only what can be computed live shows here; the two most important figures (% load-stamp and profile coverage) are in the dated panel below.",
+      staging:
+        "The SAME import as master_customer, matched via normalised email (K-06). This is the source that fills date of birth (master_customer: 0), city, RFM, and programme participation. Zero writes, zero copies.",
+      enrichment:
+        "Other sources (Hyrox, my20fit) are linked to profiles via normalised email (K-06). “Match” = distinct master profile (one email can back many source rows). rc_team_members is excluded (name-keyed).",
+      multisource:
+        "Linked via normalised email (K-06). Zero-valued rows are still shown (measured zero, not the absence of a source).",
+      clinic:
+        "Clinic is matched by PHONE first (K-06): email finds only a small part because many patients have no email — not because they are absent from master.",
+      artifactsPre: "The following were verified directly against the database on",
+      artifactsPost:
+        "but cannot be recomputed through the read API this page uses (no column-to-column comparison and no regex). The numbers are static and deliberately dated — do not read them as today’s figures.",
+    },
+
+    fillLabel: {
+      full_name: "Name",
+      phone: "Phone",
+      email: "Email",
+      first_unit: "First unit",
+      segment: "Segment",
+      city: "City",
+      gender: "Gender",
+      date_of_birth: "Date of birth",
+      address: "Address",
+      lifetime_value: "Lifetime value > 0",
+    },
+    issueLabel: {
+      phone_not_62: "Phone not prefixed 62",
+      email_no_at: "Email without @domain.tld pattern",
+      email_known_typo_domain: "Mistyped email domain (known list)",
+      ltv_negative: "Negative lifetime value",
+      name_with_digits: "Name contains a digit",
+      flagged_duplicate: "Flagged as possible duplicate",
+      merged: "Already merged",
+      orphan: "Orphan queue",
+      excluded: "Excluded from master",
+    },
+    satelliteLabel: {
+      demographic: "Demographic curation",
+      behavior: "Behaviour satellite",
+      scores: "Derived scores",
+    },
+    artifactLabel: {
+      last_activity: "“Last active” is not activity data",
+      segment_inverted: "Inverted segment",
+      source_two_batches: "“live_txn_ingest” is a batch load, not a live feed",
+      first_seen_is_load_stamp: "“first_seen_at” is a load timestamp for 98.7% of the pool",
+      first_seen_after_created: "14 rows “first seen” after they were created (a logical contradiction)",
+      nik_derivation: "Hyrox NIK → gender + date of birth (fills fields that are 0% filled in)",
+      nik_date_swap: "321 dates of birth stored with day-month SWAPPED (NIK is correct)",
+      ecosystem_last_seen_load_stamp: "ecosystem “last_seen_at” is a load timestamp for 99.51% of rows",
+      ecosystem_coverage: "82,089 of 82,253 profiles (99.80%) have an ecosystem trace",
+      staging_email_match: "staging_20fit_data matches 98.6% to master via email",
+      staging_dob_ambiguity: "Import dates of birth: 0 proven swapped, 2,232 day-month ambiguous",
+    },
+
+    eco: {
+      totalRows: "Total engagement rows",
+      spreadNote: "Spread per unit (rows, not customers — one customer can have several products in the same unit):",
+      futureLabel: "last_seen_at rows in the future",
+    },
+    staging: {
+      rowsImport: "Import rows",
+      hasEmail: "Have email",
+      hasDob: "Have date of birth",
+      dobParseTitle: "Date-of-birth parsing",
+      parsed: "parsed successfully",
+      failed: "failed (flagged, not dropped)",
+      ambiguous: "day-month ambiguous (≤12 in both positions — order cannot be verified)",
+      swapped: "proven swapped (month > 12)",
+      implausible: "implausible age (<10 / >100 / future)",
+      umurPre: "Umur cross-check (as-of the 20 Apr 2026 snapshot, validating the YEAR only — swapping day-month does not change age):",
+      umurChecked: "checked",
+      umurExact: "exact match",
+      umurOff1: "off by 1 year (snapshot drift, expected)",
+      umurConflict: "conflict ≥2 years (a real year conflict)",
+      rfmTitle: "RFM per paid order",
+      noBucket: "− (no bucket)",
+      programTitle: "Programme participation",
+    },
+    enrich: {
+      matchedFrom: "profiles matched from",
+      sourceRows: "source rows",
+      unmatched: "not linked to master",
+    },
+    multi: {
+      matched: "profiles matched",
+      hasEmail: "have email",
+      rows: "rows",
+      noEmailPre: "rows without email (identifier not filled in)",
+      allHaveEmail: "every row has email",
+      hasEmailNoMaster: "have email but are absent from master",
+    },
+    clinic: {
+      matchedPhone: "matched via phone",
+      matchedEmail: "via email",
+      fromPatients: "of",
+      patients: "patients",
+      hasPhone: "have phone",
+      hasEmail: "have email",
+      txTitle: "clinic_transactions — patient link",
+      txLinked: "linked",
+      txNullFk: "patient_id NULL",
+      txFrom: "of",
+      sparsePre: "Too thin to show per profile (recorded here):",
+    },
+    footer: {
+      computedPre: "Computed",
+      computedPost: "· aggregates only, no individual row is read · aggregates stay parameter-free — not audited",
+    },
+    fillBarAria: "filled",
+
+    warn: {
+      fill_city:
+        "The only geographic signal that exists. While it stays below 10%, per-city targeting cannot be justified.",
+      fill_gender:
+        "Not filled in at all in the old system. It has to be filled through the curation layer (crm_profile_demographic), not by guessing from the name.",
+      fill_date_of_birth:
+        "Not filled in at all in master_customer. Without it there is no birthday campaign and no age segmentation.",
+      fill_address: "Not filled in at all in master_customer — not a single row has a value.",
+      fill_lifetime_value:
+        "This is not a not-filled-in field: the values exist, but they are zero. The rest have never been recorded paying — “Rp 0” is a measured fact, not missing data.",
+      issue_phone_not_62:
+        "phone_normalized IS NOT NULL AND NOT LIKE '62%'. A prefix-shape check only — length and operator prefix are not validated here (PostgREST has no regex).",
+      issue_email_no_at:
+        "email_normalized IS NOT NULL AND NOT LIKE '%@%.%'. This is the loosest shape test; zero here does NOT mean every email is valid or deliverable.",
+      issue_email_known_typo_domain:
+        "email_normalized ends in a known typo domain (gmaol.com, gmail.con, …). gmaol.com alone = 986 rows, ALL from the single 20 April 2026 import instant — systematic corruption, not 986 independent typos. FLAGGED, not auto-corrected: changing an email on a guess could send personal data to someone else.",
+      issue_ltv_negative:
+        "lifetime_value < 0. These rows are NOT VISIBLE in the revenue filter on the Audience page — “has revenue” filters > 0 and “no revenue” filters 0/NULL, so a negative value falls outside both and only appears under “All”. It is raised here precisely because it vanishes there.",
+      issue_name_with_digits:
+        "full_name contains at least one digit 0–9. Most likely junk data (e.g. a queue number carried into the name column). FLAGGED, not fixed: master_customer is read-only, and name tidying happens in the display layer, not by guessing the correct name.",
+      issue_flagged_duplicate:
+        "is_potential_duplicate = true. Flagged by the old import process; there is no merge/unmerge flow in this app yet.",
+      issue_merged: "is_merged = true. Zero means not one duplicate has been resolved yet.",
+      issue_orphan:
+        "Rows in customer_orphan — data that cannot be linked to a single master profile.",
+      issue_excluded:
+        "Rows in customer_excluded. The count is large and the exclusion reasons have not been re-reviewed this sprint.",
+      satellite_demographic: "The table exists, not filled in yet — ingestion is still held.",
+      satellite_behavior:
+        "Not filled in yet. The available behaviour source is still off-limits until it is remediated.",
+      satellite_scores:
+        "Not filled in yet. No profile has been scored — not a “stale score”, but a score that has never existed.",
+      ecoSpreadFuture:
+        "last_seen_at > now — a data defect (a date that has not happened cannot be activity). Alongside negative LTV and first_seen_at > created_at: shown, not fixed (K-20). This is the ONLY load-stamp part of the ecosystem computable live (a comparison to a time literal, not column-to-column).",
+      stagingRfm:
+        "The stored spelling is kept (Campion user), not “corrected”. RFM per revenue is 0% filled in — so the buckets are computed from paid orders, not revenue.",
+      stagingProgram:
+        "“−” means did not take part, NULL means not filled in (the two are distinguished). Arena / GYM / Paid Shop are a measured zero — their rows are still shown (K-08).",
+      clinicPhoneWhy:
+        "Far more patients have a phone than an email — that is why phone matching is much higher, not because email is cleaner.",
+      clinicTxWhy:
+        "A different cause: a spreadsheet import that was never linked to a patient — not the match rate. The rows that are linked are 100% valid.",
+      artifact_last_activity:
+        "81,944 of 82,253 rows (99.62%) have last_activity_at exactly equal to first_seen_at — an import artefact, not an activity trace. This column is deliberately not shown anywhere.",
+      artifact_segment_inverted:
+        "1,242 profiles with no segment (NULL) actually have the HIGHEST average lifetime value — that unsegmented group is not “missing data” but the most valuable customers. Shown as-is; no rule “tidies” this.",
+      artifact_source_two_batches:
+        "master_customer arrived as TWO batch loads, not one import and not a continuous pipeline: 20fit_data_import 81,178 rows (all created_at 2026-04-20) and live_txn_ingest 1,075 rows (all created_at 2026-07-31 — a single instant, not a week). So the card “Profiles last added: 31 July” = the date of the last batch load, NOT a lagging pipeline — the name “live_txn_ingest” for a source that runs only once is a misleading label.",
+      artifact_first_seen_is_load_stamp:
+        "first_seen_at carries real information only on the 1,075 live_txn_ingest rows. For the 81,178 20fit_data_import rows (98.69%) it is a single instant (2026-04-20), i.e. a load timestamp — not “first seen”. The consequence: recency-based segmentation CANNOT be honest with today’s data. Details in docs/KOLOM-WAKTU.md.",
+      artifact_first_seen_after_created:
+        "14 rows have first_seen_at LATER than created_at (largest gap 7 days 11 hours), all in live_txn_ingest. A row “first seen” after the row itself was created is a contradiction, not merely dirty data. Like negative LTV, it appears in no on-screen filter — PostgREST has no column-to-column comparison — so it is raised here as a verified finding. Verified 11 August 2026.",
+      artifact_nik_derivation:
+        "Of 1,030 NIK in cf_hyrox_participants, 971 parse (16 valid digits); 59 are the wrong length, not parsed. They yield gender (486 female / 484 male) and date of birth + province — three fields that are 0% filled in master_customer. Explicit century rule: yy≤11 → 2000s, otherwise 1900s; results outside 1946–2011 are FLAGGED, not guessed. Derived at display time (profile.view_health gate), ZERO writes. Verified 11 August 2026.",
+      artifact_nik_date_swap:
+        "Of 967 parsed NIK that have a stored date of birth: 614 match exactly, 321 have DAY and MONTH swapped in the stored column, 32 differ for other reasons. The 321 are not independent typos — a DD/MM import parsing bug, the SAME systematic pattern as gmaol.com (T-16). For those 321 rows, the NIK date is more trustworthy than the stored column. The screen shows BOTH with their origin. Verified 11 August 2026.",
+      artifact_ecosystem_last_seen_load_stamp:
+        "customer_engagement: 89,974 of 90,419 rows (99.51%) have last_seen_at = first_seen_at — a load timestamp, not activity. Only 444 rows (0.49%) carry real activity, ALL from live_txn_sync and concentrated in Clinic Transactions (274) and Arena Transactions (170). This is the FOURTH time a time column turns out to be a load timestamp — a pattern, not a surprise. Consequence: there are NO time criteria in the segment builder for the ecosystem (K-19). Verified 11 August 2026.",
+      artifact_ecosystem_coverage:
+        "customer_engagement covers 82,089 distinct master profiles of 82,253 (99.80%; count distinct — cannot run live via PostgREST), across 90,419 rows, 0 orphan rows. 164 profiles do not appear in the ecosystem at all. The spread is dominated by one product: membership/Fitco User = 67,828 rows (75%). Verified 11 August 2026.",
+      artifact_staging_email_match:
+        "staging_20fit_data is the SAME import as master_customer: 88,536 rows, 88,445 have email; 81,079 of 82,253 master profiles (98.62%) match via normalised email (count distinct — cannot run live via PostgREST). A sharp contrast with every other ecosystem source combined (922 profiles, 1.12%). This is the source that brings date of birth (5,467 rows — master_customer has 0), city, RFM, and programmes. Zero writes, zero copies. Verified 12 August 2026.",
+      artifact_staging_dob_ambiguity:
+        "All 5,467 dates of birth in staging_20fit_data are ISO yyyy-mm-dd and 0 have a month field > 12 — so NO row is proven swapped (unlike cf_hyrox_participants: 321 swapped, T-16). But 2,232 have month AND day both ≤ 12: the order cannot be verified from the values, so they are FLAGGED ambiguous, never guessed. Umur validates the YEAR only (swapping day-month does not change age): 0 rows off by ≥ 2 years. Umur is NOT used as the displayed age; age is always recomputed from the date. Verified 12 August 2026.",
+    },
+  },
+
   stubs: {
     comingSoon: "Coming soon",
     phase3: "Phase 3",

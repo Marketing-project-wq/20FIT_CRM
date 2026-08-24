@@ -717,6 +717,246 @@ export const id = {
     },
   },
 
+  // /quality — data-quality dashboard (Sprint 5B). The app's largest warning surface: fill-rate
+  // notes, defect definitions, and the "cannot be computed live" artifacts are all load-bearing
+  // prose, so every one of them sits under quality.warn.* where the length + forbidden-term guards
+  // measure it. Short labels/titles/captions stay outside .warn.. Structured rows are keyed by the
+  // data key (fill/issue/satellite/artifact) so the client resolves label + warning by key, with
+  // the server's Indonesian text as the fallback. Stored data values (Campion user, table/column
+  // names, program names) are NOT translated — they are data, verbatim in both languages.
+  quality: {
+    title: "Quality",
+    subtitlePre: "Kondisi data apa adanya di",
+    subtitlePost: "— dihitung ulang tiap halaman dibuka, tak ada angka yang ditulis tangan.",
+    recompute: "Hitung ulang",
+    computing: "Menghitung agregat…",
+    loadFailed: "Gagal memuat",
+    connectFailed: "Gagal terhubung ke server.",
+    deniedBadge: "Akses ditolak",
+    deniedScope:
+      "Peran unit_manager dibatasi pada unit yang dikelola, tetapi tabel unit-scope belum ada — akses ditolak (fail-closed) sampai tabel itu dibangun.",
+    deniedRole:
+      "Peran Anda tidak berizin melihat kualitas data profil. Bila RBAC belum di-provision, semua akses ditolak — perilaku fail-closed yang benar.",
+
+    reachTitle: "Punya identifier ≠ bisa dihubungi",
+    reachBody1: "Seluruh",
+    reachBody2:
+      "profil punya setidaknya satu identifier kontak, tetapi jumlah yang boleh dihubungi masih nol: register consent belum ada (migrasi",
+    reachBody3: "ditahan menunggu persetujuan legal) dan",
+    reachBody4:
+      "masih kosong. Angka di halaman ini mengukur kelengkapan data, bukan izin mengirim.",
+
+    panel: {
+      fillTitle: "Fill rate",
+      identifiersTitle: "Identifier tidak valid",
+      anomaliesTitle: "Anomali nilai",
+      duplicatesTitle: "Duplikat",
+      queuesTitle: "Antrean orphan & pengecualian",
+      satellitesTitle: "Kurasi & skor",
+      ecosystemTitle: "Ekosistem 20FIT — customer_engagement",
+      stagingTitle: "Cakupan data impor — staging_20fit_data ★",
+      enrichmentTitle: "Cakupan sumber ekosistem tak-tercocok",
+      multisourceTitle: "Cakupan sumber lain — arena / gym",
+      clinicTitle: "Cakupan klinik",
+      artifactsTitle: "Temuan yang tidak bisa dihitung live",
+    },
+
+    caption: {
+      fillPre: "Berapa persen dari",
+      fillPost:
+        "profil yang punya isi di tiap field. “Terisi” berarti NOT NULL — tidak ada penilaian mutu isi di sini. Ambang warna (≥95% hijau, ≥60% kuning) adalah konvensi tampilan, bukan SLA dari PRD.",
+      identifiers:
+        "Pemeriksaan bentuk, bukan verifikasi bahwa nomor atau email benar-benar aktif. Nol di sini bukan jaminan keterkiriman.",
+      anomalies:
+        "Nilai yang lolos semua pemeriksaan bentuk tetapi tidak masuk akal secara bisnis — dan yang paling penting, tidak tertangkap oleh filter di layar lain.",
+      duplicates:
+        "Penandaan berasal dari proses impor lama. Alur merge/unmerge belum dibangun, jadi angka ini hanya bisa naik.",
+      queues:
+        "Baris yang tidak masuk ke master. Persentase dihitung terhadap jumlah profil master sebagai pembanding skala, bukan sebagai bagian dari master.",
+      satellites:
+        "Tabel satelit crm_* sudah ada tetapi belum terisi. Ini bukan “skor basi” — skornya belum pernah dihitung sama sekali.",
+      ecosystem:
+        "Jejak keterlibatan lintas unit dari tabel customer_engagement — dibaca di tempat, tanpa disalin ke crm_*. Yang tampil di sini hanya yang bisa dihitung live; dua angka terpenting (% cap muat dan cakupan profil) ada di panel bertanggal di bawah.",
+      staging:
+        "Impor yang SAMA dengan master_customer, dicocokkan lewat email ternormalisasi (K-06). Inilah sumber yang mengisi tanggal lahir (master_customer: 0), kota, RFM, dan keikutsertaan program. Nol tulis, nol salin.",
+      enrichment:
+        "Sumber lain (Hyrox, my20fit) dikaitkan ke profil lewat email ternormalisasi (K-06). “Cocok” = profil master berbeda (satu email bisa banyak baris sumber). rc_team_members dikecualikan (berkunci nama).",
+      multisource:
+        "Dikaitkan lewat email ternormalisasi (K-06). Baris bernilai nol tetap ditampilkan (0 terukur, bukan tak ada sumber).",
+      clinic:
+        "Klinik dicocokkan TELEPON dulu (K-06): email hanya menemukan sebagian kecil karena banyak pasien tak punya email — bukan karena mereka tak ada di master.",
+      artifactsPre: "Hal-hal berikut sudah diverifikasi langsung ke database pada",
+      artifactsPost:
+        "tetapi tidak bisa dihitung ulang lewat API baca yang dipakai halaman ini (tidak ada perbandingan antar-kolom maupun regex). Angkanya statis dan sengaja diberi tanggal — jangan dibaca sebagai angka hari ini.",
+    },
+
+    fillLabel: {
+      full_name: "Nama",
+      phone: "Telepon",
+      email: "Email",
+      first_unit: "Unit pertama",
+      segment: "Segment",
+      city: "Kota",
+      gender: "Gender",
+      date_of_birth: "Tanggal lahir",
+      address: "Alamat",
+      lifetime_value: "Lifetime value > 0",
+    },
+    issueLabel: {
+      phone_not_62: "Telepon tidak berawalan 62",
+      email_no_at: "Email tanpa pola @domain.tld",
+      email_known_typo_domain: "Domain email salah ketik (daftar dikenal)",
+      ltv_negative: "Lifetime value negatif",
+      name_with_digits: "Nama mengandung angka",
+      flagged_duplicate: "Ditandai kemungkinan duplikat",
+      merged: "Sudah di-merge",
+      orphan: "Antrean orphan",
+      excluded: "Dikecualikan dari master",
+    },
+    satelliteLabel: {
+      demographic: "Kurasi demografis",
+      behavior: "Satelit perilaku",
+      scores: "Skor turunan",
+    },
+    artifactLabel: {
+      last_activity: "“Terakhir aktif” bukan data aktivitas",
+      segment_inverted: "Segment terbalik",
+      source_two_batches: "“live_txn_ingest” adalah muatan batch, bukan feed hidup",
+      first_seen_is_load_stamp: "“first_seen_at” adalah cap muat untuk 98,7% pool",
+      first_seen_after_created: "14 baris “pertama terlihat” setelah dibuat (kontradiksi logis)",
+      nik_derivation: "NIK Hyrox → gender + tanggal lahir (mengisi field yang 0% terisi)",
+      nik_date_swap: "321 tanggal lahir tersimpan hari-bulan TERTUKAR (NIK yang benar)",
+      ecosystem_last_seen_load_stamp: "“last_seen_at” ekosistem adalah cap muat untuk 99,51% baris",
+      ecosystem_coverage: "82.089 dari 82.253 profil (99,80%) punya jejak ekosistem",
+      staging_email_match: "staging_20fit_data cocok 98,6% ke master lewat email",
+      staging_dob_ambiguity: "Tanggal lahir impor: 0 tertukar terbukti, 2.232 hari-bulan ambigu",
+    },
+
+    eco: {
+      totalRows: "Total baris engagement",
+      spreadNote: "Sebaran per unit (baris, bukan pelanggan — satu pelanggan bisa punya beberapa produk di unit yang sama):",
+      futureLabel: "Baris last_seen_at di masa depan",
+    },
+    staging: {
+      rowsImport: "Baris impor",
+      hasEmail: "Punya email",
+      hasDob: "Punya tgl lahir",
+      dobParseTitle: "Penguraian tanggal lahir",
+      parsed: "berhasil diurai",
+      failed: "gagal (ditandai, bukan dibuang)",
+      ambiguous: "hari-bulan ambigu (≤12 di dua posisi — tak bisa dipastikan)",
+      swapped: "terbukti tertukar (bulan > 12)",
+      implausible: "umur mustahil (<10 / >100 / masa depan)",
+      umurPre: "Silang Umur (as-of snapshot 20 Apr 2026, memvalidasi TAHUN saja — menukar hari-bulan tak mengubah umur):",
+      umurChecked: "diperiksa",
+      umurExact: "sama persis",
+      umurOff1: "beda 1 tahun (drift snapshot, wajar)",
+      umurConflict: "bentrok ≥2 tahun (konflik tahun nyata)",
+      rfmTitle: "RFM per paid order",
+      noBucket: "− (tanpa bucket)",
+      programTitle: "Keikutsertaan program",
+    },
+    enrich: {
+      matchedFrom: "profil cocok dari",
+      sourceRows: "baris sumber",
+      unmatched: "tak tersambung ke master",
+    },
+    multi: {
+      matched: "profil cocok",
+      hasEmail: "punya email",
+      rows: "baris",
+      noEmailPre: "baris tanpa email (identifier kosong)",
+      allHaveEmail: "semua baris punya email",
+      hasEmailNoMaster: "punya email tapi tak ada di master",
+    },
+    clinic: {
+      matchedPhone: "cocok via telepon",
+      matchedEmail: "via email",
+      fromPatients: "dari",
+      patients: "pasien",
+      hasPhone: "punya telepon",
+      hasEmail: "punya email",
+      txTitle: "clinic_transactions — tautan pasien",
+      txLinked: "tertaut",
+      txNullFk: "patient_id NULL",
+      txFrom: "dari",
+      sparsePre: "Terlalu tipis untuk ditampilkan per-profil (dicatat di sini):",
+    },
+    footer: {
+      computedPre: "Dihitung",
+      computedPost: "· agregat saja, tak ada baris individual dibaca · agregat tetap tanpa parameter pengguna — tidak diaudit",
+    },
+    fillBarAria: "terisi",
+
+    // Every load-bearing warning sentence lives here (path contains ".warn.") so the length +
+    // forbidden-term guards measure it. Keys mirror the data key of the row they explain.
+    warn: {
+      fill_city:
+        "Satu-satunya sinyal geografis yang ada. Selama masih di bawah 10%, penargetan per kota tidak bisa dipertanggungjawabkan.",
+      fill_gender:
+        "Kosong total di sistem lama. Perlu diisi lewat lapisan kurasi (crm_profile_demographic), bukan dengan menebak dari nama.",
+      fill_date_of_birth:
+        "Kosong total di master_customer. Tanpa ini tidak ada kampanye ulang tahun dan tidak ada segmentasi usia.",
+      fill_address: "Kosong total di master_customer — belum terisi satu baris pun.",
+      fill_lifetime_value:
+        "Bukan field kosong: nilainya ada, tetapi nol. Sisanya belum pernah tercatat membayar — “Rp 0” adalah fakta yang terukur, bukan data yang hilang.",
+      issue_phone_not_62:
+        "phone_normalized IS NOT NULL AND NOT LIKE '62%'. Pemeriksaan bentuk awalan saja — panjang dan prefiks operator tidak divalidasi di sini (PostgREST tanpa regex).",
+      issue_email_no_at:
+        "email_normalized IS NOT NULL AND NOT LIKE '%@%.%'. Ini uji bentuk paling longgar; nol di sini TIDAK berarti semua email valid atau terkirim.",
+      issue_email_known_typo_domain:
+        "email_normalized berakhir pada domain typo yang dikenal (gmaol.com, gmail.con, …). gmaol.com sendiri = 986 baris, SEMUANYA dari impor 20 April 2026 satu instan — kerusakan sistematis, bukan 986 salah ketik independen. DITANDAI, bukan diperbaiki otomatis: mengubah email atas tebakan bisa mengirim data pribadi ke orang lain.",
+      issue_ltv_negative:
+        "lifetime_value < 0. Baris ini TIDAK TERLIHAT di filter revenue halaman Audience — “punya revenue” menyaring > 0 dan “tanpa revenue” menyaring 0/NULL, jadi nilai negatif jatuh di luar keduanya dan hanya muncul saat filter “Semua”. Diangkat di sini justru karena di sana ia menghilang.",
+      issue_name_with_digits:
+        "full_name mengandung minimal satu digit 0–9. Kemungkinan besar data sampah (mis. nomor antrean ikut ke kolom nama). DITANDAI, bukan diperbaiki: master_customer read-only, dan perapian nama terjadi di lapisan tampilan, bukan dengan menebak nama yang benar.",
+      issue_flagged_duplicate:
+        "is_potential_duplicate = true. Ditandai oleh proses impor lama; belum ada alur merge/unmerge di aplikasi ini.",
+      issue_merged: "is_merged = true. Nol berarti belum satu pun duplikat diselesaikan.",
+      issue_orphan:
+        "Baris di customer_orphan — data yang tidak bisa dikaitkan ke satu profil master.",
+      issue_excluded:
+        "Baris di customer_excluded. Jumlahnya besar dan alasan pengecualian belum ditinjau ulang di sprint ini.",
+      satellite_demographic: "Tabel sudah ada, belum diisi — ingestion masih ditahan.",
+      satellite_behavior:
+        "Belum diisi. Sumber perilaku yang tersedia masih terlarang sampai diremediasi.",
+      satellite_scores:
+        "Belum diisi. Semua profil belum terskor — bukan “skor basi”, melainkan skor yang belum pernah ada.",
+      ecoSpreadFuture:
+        "last_seen_at > sekarang — cacat data (tanggal yang belum terjadi tak bisa jadi aktivitas). Sejajar dengan LTV negatif dan first_seen_at > created_at: ditampilkan, bukan diperbaiki (K-20). Ini SATU-satunya bagian cap-muat ekosistem yang bisa dihitung live (perbandingan ke literal waktu, bukan antar-kolom).",
+      stagingRfm:
+        "Ejaan tersimpan dipertahankan (Campion user), tidak “diperbaiki”. RFM per revenue 0% terisi — jadi bucket dihitung dari paid order, bukan revenue.",
+      stagingProgram:
+        "“−” berarti tidak ikut, NULL berarti belum terisi (dibedakan). Arena / GYM / Paid Shop nol terukur — barisnya tetap ditampilkan (K-08).",
+      clinicPhoneWhy:
+        "Jauh lebih banyak pasien punya telepon daripada email — itu sebabnya kecocokan telepon jauh lebih tinggi, bukan karena email lebih bersih.",
+      clinicTxWhy:
+        "Sebab yang berbeda: impor spreadsheet yang tak pernah ditautkan ke pasien — bukan tingkat kecocokan. Baris yang tertaut valid 100%.",
+      artifact_last_activity:
+        "81.944 dari 82.253 baris (99,62%) punya last_activity_at yang persis sama dengan first_seen_at — artefak impor, bukan jejak aktivitas. Kolom ini sengaja tidak ditampilkan di mana pun.",
+      artifact_segment_inverted:
+        "1.242 profil tanpa segment (NULL) justru memiliki rata-rata lifetime value TERTINGGI — kelompok kosong itu bukan “data hilang” melainkan pelanggan paling bernilai. Ditampilkan apa adanya; tidak ada aturan yang “merapikan” ini.",
+      artifact_source_two_batches:
+        "master_customer datang sebagai DUA muatan batch, bukan satu impor dan bukan pipeline berkelanjutan: 20fit_data_import 81.178 baris (semua created_at 2026-04-20) dan live_txn_ingest 1.075 baris (semua created_at 2026-07-31 — satu instan, bukan sepekan). Jadi kartu “Profil terakhir bertambah: 31 Juli” = tanggal muatan batch terakhir, BUKAN pipeline yang telat — nama “live_txn_ingest” untuk sumber yang hanya berjalan sekali adalah label yang menyesatkan.",
+      artifact_first_seen_is_load_stamp:
+        "first_seen_at hanya membawa informasi nyata pada 1.075 baris live_txn_ingest. Untuk 81.178 baris 20fit_data_import (98,69%) ia satu instan (2026-04-20), yakni cap waktu muat — bukan “pertama terlihat”. Konsekuensinya: segmentasi berbasis recency TIDAK bisa jujur dengan data hari ini. Rinciannya di docs/KOLOM-WAKTU.md.",
+      artifact_first_seen_after_created:
+        "14 baris punya first_seen_at LEBIH BARU dari created_at (selisih terbesar 7 hari 11 jam), semuanya di live_txn_ingest. Sebuah baris yang “pertama terlihat” setelah barisnya sendiri dibuat adalah kontradiksi, bukan sekadar data kotor. Seperti LTV negatif, ia tak muncul di filter layar mana pun — PostgREST tak punya perbandingan antar-kolom — jadi diangkat di sini sebagai temuan terverifikasi. Diverifikasi 11 Agustus 2026.",
+      artifact_nik_derivation:
+        "Dari 1.030 NIK di cf_hyrox_participants, 971 bisa diurai (16 digit valid); 59 panjang salah, tak diurai. Menghasilkan gender (486 perempuan / 484 laki-laki) dan tanggal lahir + provinsi — tiga field yang 0% terisi di master_customer. Aturan abad eksplisit: yy≤11 → 2000-an, selebihnya 1900-an; hasil di luar 1946–2011 DITANDAI, bukan ditebak. Diturunkan saat tampil (gerbang profile.view_health), NOL tulis. Diverifikasi 11 Agustus 2026.",
+      artifact_nik_date_swap:
+        "Dari 967 NIK terurai yang punya tgl_lahir tersimpan: 614 cocok persis, 321 punya HARI dan BULAN tertukar di kolom tersimpan, 32 beda karena hal lain. 321 bukan salah ketik independen — bug parsing DD/MM saat impor, pola SISTEMATIS sama seperti gmaol.com (T-16). Untuk 321 baris itu, tanggal dari NIK lebih dapat dipercaya daripada kolom tersimpan. Layar menampilkan KEDUANYA beserta asalnya. Diverifikasi 11 Agustus 2026.",
+      artifact_ecosystem_last_seen_load_stamp:
+        "customer_engagement: 89.974 dari 90.419 baris (99,51%) punya last_seen_at = first_seen_at — cap waktu muat, bukan aktivitas. Hanya 444 baris (0,49%) membawa aktivitas nyata, SEMUANYA dari live_txn_sync dan terpusat di Transaksi Clinic (274) dan Transaksi Arena (170). Ini KALI KEEMPAT sebuah kolom waktu ternyata cap muat — pola, bukan kejutan. Konsekuensi: TIDAK ada kriteria waktu di segment builder untuk ekosistem (K-19). Diverifikasi 11 Agustus 2026.",
+      artifact_ecosystem_coverage:
+        "customer_engagement mencakup 82.089 profil master berbeda dari 82.253 (99,80%; count distinct — tak bisa live via PostgREST), lewat 90.419 baris, 0 baris yatim. 164 profil tidak muncul sama sekali di ekosistem. Sebaran didominasi satu produk: membership/Fitco User = 67.828 baris (75%). Diverifikasi 11 Agustus 2026.",
+      artifact_staging_email_match:
+        "staging_20fit_data adalah impor yang SAMA dengan master_customer: 88.536 baris, 88.445 punya email; 81.079 dari 82.253 profil master (98,62%) cocok lewat email ternormalisasi (count distinct — tak bisa live via PostgREST). Kontras tajam dengan seluruh sumber ekosistem lain digabung (922 profil, 1,12%). Sumber inilah yang membawa tanggal lahir (5.467 baris — master_customer 0), kota, RFM, dan program. Nol tulis, nol salin. Diverifikasi 12 Agustus 2026.",
+      artifact_staging_dob_ambiguity:
+        "Seluruh 5.467 tgl lahir di staging_20fit_data berbentuk ISO yyyy-mm-dd dan 0 punya field bulan > 12 — jadi TIDAK ada baris yang terbukti tertukar (beda dari cf_hyrox_participants: 321 tertukar, T-16). Namun 2.232 punya field bulan DAN hari sama-sama ≤ 12: urutannya tak bisa dipastikan dari nilainya, jadi DITANDAI ambigu, tak pernah ditebak. Umur hanya memvalidasi TAHUN (menukar hari-bulan tak mengubah umur): 0 baris meleset ≥ 2 tahun. Umur TIDAK dipakai sebagai umur yang ditampilkan; umur selalu dihitung ulang dari tanggal. Diverifikasi 12 Agustus 2026.",
+    },
+  },
+
   // ComingSoon nav stubs (Sprint 4F) — user-openable routes that were hardcoded Indonesian with
   // no marker. Translated (short text) rather than marked. Titles stay proper nav names.
   stubs: {
