@@ -1,6 +1,8 @@
 -- ============================================================================
 -- crm_purge_audit_log — tambah famili 'campaign.%' ke denylist KEPATUHAN.
--- GATED: SQL DITUNJUKKAN, BELUM DIJALANKAN (menunggu konfirmasi). create or replace
+-- APPLIED 20260824160306 · proacl {postgres, service_role} · uji kering: crm_purge_audit_log(true)
+-- → matched_count 0, dan predikat pemangkas mengecualikan 'campaign.sent' (would_purge=false).
+-- (Berkas lokal semula 20260824150000, di-rename ke stempel ledger.) create or replace
 -- (migrasi 8 & …113518 TIDAK disentuh). Satu perubahan vs …113518: baris
 --   or action like 'campaign.%'
 -- ditambahkan di KEDUA blok `and not (...)` (query hitung + query delete).

@@ -756,9 +756,10 @@ parity test kini membaca berkas migrasi baru. `campaign.%` (bukan `message.%`) k
 audit adalah **per RUN kirim (satu kampanye)**, bukan per pesan — telemetri per-pesan ada di
 `crm_message_log`, bukan audit. Aksi persis: **`campaign.sent`**, dikunci `send-constants.test.ts`.
 
-**Status:** SQL migrasi **DITUNJUKKAN, BELUM DIJALANKAN** (`…150000_crm_purge_audit_log_add_campaign_compliance.sql`)
-— menunggu konfirmasi untuk apply. Aman ditunda: `campaign.%` toh tak di allowlist operasional, jadi
-tak pernah dipangkas walau denylist DB belum diperbarui; kode + berkas + test sudah sinkron.
+**Status:** **DITERAPKAN** 2026-08-24 (ledger `20260824160306`). proacl `{postgres, service_role}`.
+**Uji kering** (`crm_purge_audit_log(true)` → matched 0) + predikat pemangkas dievaluasi atas sampel:
+`campaign.sent` → `would_purge=false` (dikecualikan), sementara `login.*`/`profile.viewed`/`search.*`
+→ purge. Perilaku terbukti, bukan sekadar create-or-replace lulus.
 **Pembalikan:** hapus baris `campaign.%` di kedua blok + `COMPLIANCE_RULES` + kembalikan parity target.
 
 ## K-40 · Segmen TERSIMPAN — 3M diperbarui (bukan dibatalkan): simpan KRITERIA, bukan daftar orang
@@ -777,6 +778,6 @@ identitas. Jadi 3M **diperbarui**, dengan penjaga yang mempertahankan alasannya:
   bisa dibuat peran berwenang lalu dipakai peran lain untuk memutari gerbang.
 - **Gerbang peran** mengikuti yang ada untuk segment builder (`segment.build`).
 
-**Status:** SQL `crm_segment` **DITUNJUKKAN, BELUM DIJALANKAN** (`docs/RENCANA-simpan-segmen.md`).
-Form susun-kampanye (TUGAS 3) menunggu tabel ini di-apply. **Pembalikan:** `drop table crm_segment` —
-aditif, nol data pelanggan (hanya kriteria + metadata).
+**Status:** **DITERAPKAN** 2026-08-24 (ledger `20260824160409`): RLS on, 0 policy, relacl
+`{postgres, service_role}`, 8 kolom, 0 baris. **Pembalikan:** `drop table crm_segment` — aditif, nol
+data pelanggan (hanya kriteria + metadata).
