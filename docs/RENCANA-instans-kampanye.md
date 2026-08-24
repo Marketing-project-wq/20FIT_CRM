@@ -57,9 +57,13 @@ create table if not exists public.crm_campaign_run (
 -- untuk idempotency_key). Pola crm_*: RLS on / 0 policy / service_role.
 ```
 
-## BERHENTI
+## BERHENTI — bentuk B DISETUJUI, SQL ditunjukkan, belum dijalankan
 
-Sesuai instruksi: bentuk diusulkan (disarankan B), invarian resume-dalam-instans dijelaskan,
-**belum dibangun**. Menunggu pilihan bentuk sebelum: migrasi `crm_campaign_run` (gated), ubah
-`sendCampaignAction` agar `campaignId` menyertakan `instance`, dan composer menawarkan
-resume-vs-mulai-baru.
+Bentuk **B (baris run) disetujui** (K-41). Migrasi ditulis, **belum diterapkan**:
+`supabase/migrations/20260824170000_crm_campaign_run.sql` (nama file akan diselaraskan ke stempel
+ledger saat diterapkan). Ini **harus mendarat sebelum kampanye pertama**: tanpanya, kampanye kedua
+ke segmen+template yang sama diam-diam tak mengirim apa pun (kunci idempotensi identik → dilewati).
+
+Menunggu konfirmasi untuk: terapkan migrasi (via `apply_migration`, verifikasi biasa), lalu ubah
+`sendCampaignAction` agar `campaignId = crm_campaign_run.id`, dan composer menawarkan
+**resume run yang ada** (status `sending`, sudah N terkirim) **vs mulai run baru**.

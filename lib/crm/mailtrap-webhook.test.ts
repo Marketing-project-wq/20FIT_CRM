@@ -1,6 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { createHmac } from "node:crypto";
-import { verifyWebhookSignature, mapWebhookEvent, parseWebhookEvents } from "./mailtrap-webhook";
+import {
+  verifyWebhookSignature,
+  mapWebhookEvent,
+  parseWebhookEvents,
+  readSignatureHeader,
+  isEventTooOld,
+} from "./mailtrap-webhook";
 
 const SECRET = "webhook-secret-at-least-16-chars";
 const sign = (body: string) => createHmac("sha256", SECRET).update(body).digest("hex");
@@ -23,6 +29,36 @@ describe("mailtrap-webhook — signature verification (untrusted input, fail-clo
   });
   it("rejects a length-mismatched signature without throwing", () => {
     expect(verifyWebhookSignature('{"events":[]}', "short", SECRET)).toBe(false);
+  });
+});
+
+describe("mailtrap-webhook — reads BOTH signature header names (Mailtrap-Signature / X-Mt-Signature)", () => {
+  // Fetch headers are case-insensitive; simulate a case-insensitive getter over a header map.
+  const getter = (headers: Record<string, string>) => (name: string) =>
+    headers[name.toLowerCase()] ?? null;
+
+  it("accepts Mailtrap-Signature", () => {
+    expect(readSignatureHeader(getter({ "mailtrap-signature": "abc" }))).toBe("abc");
+  });
+  it("accepts X-Mt-Signature (the CVE-2026-45755 / Symfony-bridge name)", () => {
+    expect(readSignatureHeader(getter({ "x-mt-signature": "def" }))).toBe("def");
+  });
+  it("returns null when neither is present (→ verification fails closed)", () => {
+    expect(readSignatureHeader(getter({ "x-other": "z" }))).toBeNull();
+  });
+});
+
+describe("mailtrap-webhook — event age (anti-replay)", () => {
+  const now = Date.parse("2026-08-24T16:00:00.000Z");
+  it("accepts a fresh event", () => {
+    expect(isEventTooOld("2026-08-24T15:58:00.000Z", now, 15)).toBe(false);
+  });
+  it("rejects an event older than the window", () => {
+    expect(isEventTooOld("2026-08-24T15:40:00.000Z", now, 15)).toBe(true);
+  });
+  it("does not judge a missing/invalid timestamp as old (idempotency guards those)", () => {
+    expect(isEventTooOld(null, now, 15)).toBe(false);
+    expect(isEventTooOld("not-a-date", now, 15)).toBe(false);
   });
 });
 

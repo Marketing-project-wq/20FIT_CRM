@@ -6,13 +6,52 @@ import { createHmac, timingSafeEqual } from "node:crypto";
  * public internet: the payload is NOT believed until its signature verifies, and even then only the
  * send-cycle timestamp columns of crm_message_log are ever written (never message content).
  *
- * NOTE ON THE SIGNATURE SCHEME: Mailtrap's exact header name + signing algorithm must be confirmed
- * against the current Mailtrap webhook docs before this is enabled in production (the doc host is
- * egress-blocked from the build environment). This implements the safe, common shape — HMAC-SHA256
- * of the RAW request body, hex, constant-time compared to a signature header — and FAILS CLOSED
- * (rejects) when the secret is unset or the signature is absent/mismatched. If Mailtrap's scheme
- * differs, only verifyWebhookSignature changes; the mapping + route stay the same.
+ * SIGNATURE SCHEME (confirmed 2026-08-24): header `Mailtrap-Signature`, HMAC-SHA256 of the RAW
+ * body, hex, constant-time compared. The Symfony bridge + CVE-2026-45755 show the SAME provider also
+ * emitting `X-Mt-Signature`, so BOTH names are read (case-insensitive) — if only one were checked and
+ * Mailtrap sent the other, every webhook would 401 and the bounce columns would simply never fill,
+ * silently. FAILS CLOSED: secret unset or signature absent/mismatched → reject.
+ *
+ * WHY VERIFICATION IS MANDATORY — DO NOT "SIMPLIFY" THIS AWAY. CVE-2026-45755 is exactly this
+ * endpoint's failure mode: the Symfony Mailtrap bridge accepted a webhook secret but never used it,
+ * so anyone could POST forged bounces and poison the suppression list. This route DOES verify, which
+ * is the only thing separating it from that CVE. A future edit that drops the check, trusts the
+ * payload "just to get it working", or downgrades a mismatch from reject to accept re-opens it.
+ *
+ * REPLAY: an HMAC-valid payload captured off the wire can be re-sent and still verifies. For this
+ * system a replayed BOUNCE could inflate the bounce ratio and trip the 5% auto-stop. Two defences,
+ * both in the route: (1) events older than MAX_EVENT_AGE_MINUTES are skipped (isEventTooOld);
+ * (2) each cycle column is filled only when currently NULL (idempotent — a re-sent event updates 0
+ * rows), and a late `delivered` never overwrites a terminal bounced/complained status.
  */
+
+/** Both header names the provider is known to emit. Header lookup is case-insensitive per the
+ *  Fetch spec, so lower-case keys match any casing Mailtrap sends. */
+export const SIGNATURE_HEADERS = ["mailtrap-signature", "x-mt-signature"] as const;
+
+/** First present signature header value, trying both known names. */
+export function readSignatureHeader(getHeader: (name: string) => string | null): string | null {
+  for (const name of SIGNATURE_HEADERS) {
+    const v = getHeader(name);
+    if (v) return v;
+  }
+  return null;
+}
+
+export const MAX_EVENT_AGE_MINUTES = 15;
+
+/** True when an event is older than the allowed window (anti-replay). A missing timestamp is NOT
+ *  treated as old — time can't judge it, so idempotency (fill-if-null) is the defence there. */
+export function isEventTooOld(
+  timestampIso: string | null,
+  nowMs: number,
+  maxAgeMinutes: number = MAX_EVENT_AGE_MINUTES,
+): boolean {
+  if (!timestampIso) return false;
+  const t = Date.parse(timestampIso);
+  if (Number.isNaN(t)) return false;
+  return nowMs - t > maxAgeMinutes * 60_000;
+}
 
 /** Constant-time verify of an HMAC-SHA256(hex) signature over the raw body. Fail-closed. */
 export function verifyWebhookSignature(
