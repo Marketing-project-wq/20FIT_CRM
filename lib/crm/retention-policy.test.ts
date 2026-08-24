@@ -28,7 +28,7 @@ describe("classifyAction (single source)", () => {
     expect(classifyAction("login.password_reset_requested")).toBe("operational");
   });
   it("compliance = the permanently-excluded categories", () => {
-    for (const a of ["consent.x", "suppression.x", "role.granted", "profile.deleted", "export.x", "retention.x"]) {
+    for (const a of ["consent.x", "suppression.x", "role.granted", "profile.deleted", "export.x", "retention.x", "campaign.sent"]) {
       expect(classifyAction(a)).toBe("compliance");
     }
   });
@@ -76,7 +76,7 @@ describe("toPostgrestOr derivation", () => {
       "action.eq.profile.viewed,action.eq.list.viewed,action.like.search.*,action.like.login.*",
     );
     expect(toPostgrestOr(COMPLIANCE_RULES)).toBe(
-      "action.like.consent.*,action.like.suppression.*,action.like.role.*,action.eq.profile.deleted,action.eq.profile.demographic_updated,action.like.export.*,action.like.retention.*",
+      "action.like.consent.*,action.like.suppression.*,action.like.role.*,action.eq.profile.deleted,action.eq.profile.demographic_updated,action.like.export.*,action.like.retention.*,action.like.campaign.*",
     );
   });
 });

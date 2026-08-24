@@ -173,6 +173,12 @@ export async function sendCampaign(input: CampaignSendInput, nowIso: string): Pr
     hashIdentity(r.identityKind, r.destination, identitySecret);
 
   const ports: SendPorts = {
+    // SUPPRESSION STALENESS BOUND: the suppressed set is snapshotted ONCE here, at the START of the
+    // send run (not when the segment was counted). So the maximum staleness is exactly ONE RUN'S
+    // DURATION — an unsubscribe that lands after this snapshot but before the run finishes is caught
+    // on the NEXT run. That window is bounded, not open-ended: the daily limit caps a run at
+    // `config.dailyLimit` sends (default 1,000), sent sequentially, so a run is minutes, not hours.
+    // Stated, not left implicit (RENCANA-message-log "Batas keusangan suppression").
     async isSuppressed(customerId) {
       return suppressed.has(customerId);
     },
@@ -210,15 +216,14 @@ export async function sendCampaign(input: CampaignSendInput, nowIso: string): Pr
       return message;
     },
     async send(r, message) {
-      await sendTransactionalEmail({
-        to: r.destination,
-        subject: message.subject ?? "",
-        text: message.text,
-        html: message.html,
-      });
-      // Mailtrap's minimal client returns void; a provider message id would come from a richer
-      // response or the delivery webhook. Null for now (hanging item), recorded honestly.
-      return { providerMessageId: null };
+      // Mailtrap's documented success body carries `message_ids`; the client returns the first one
+      // (SendReceipt). Storing the provider's own id makes webhook correlation reliable instead of
+      // depending on a hashed-address match. It is null only if the body lacks an id.
+      const receipt = await sendTransactionalEmail(
+        { to: r.destination, subject: message.subject ?? "", text: message.text, html: message.html },
+        "crm-campaign",
+      );
+      return { providerMessageId: receipt.providerMessageId };
     },
     async record(key, outcome: RecordOutcome) {
       const patch: Record<string, unknown> = { status: outcome.status };

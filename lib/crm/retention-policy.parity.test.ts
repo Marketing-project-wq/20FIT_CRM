@@ -27,7 +27,13 @@ import {
 
 const MIGRATION = fileURLToPath(
   new URL(
-    "../../supabase/migrations/20260819113518_crm_purge_audit_log_add_demographic_compliance.sql",
+    // The CURRENT purge definition. …150000 is a create-or-replace that added the `campaign.%`
+    // compliance family (K-39); the parity target moves to it, exactly as it moved to …113518 when
+    // `profile.demographic_updated` was added (K-09). GATED: this migration file is committed but
+    // NOT YET APPLIED to the DB — the reclassification is behaviour-neutral (campaign.% is not on
+    // the operational allowlist, so it is never purged regardless), so file+code+test agreeing is
+    // safe ahead of the apply.
+    "../../supabase/migrations/20260824150000_crm_purge_audit_log_add_campaign_compliance.sql",
     import.meta.url,
   ),
 );

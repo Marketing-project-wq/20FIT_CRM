@@ -716,10 +716,9 @@ nyata ke pelanggan tetap diblokir prasyarat.
    **pemutusan sungguhan** (jalankan sebagian → ulang penuh → nol kirim ganda), bukan sisip dua baris
    kembar (`lib/crm/send-run.test.ts`). Bentuk dicatat di `comment on column`.
 
-3. **Aksi audit `export.campaign_sent` — prefiks `export.` YANG SUDAH ADA (compliance/permanen),**
-   bukan famili baru yang jatuh di antara allowlist/denylist. Satu baris audit per RUN (bukan per
-   penerima), seperti `export.performed`. Klasifikasi dikunci test paritas dengan nama persis
-   (`lib/crm/send-constants.test.ts`).
+3. ~~**Aksi audit `export.campaign_sent` — prefiks `export.` YANG SUDAH ADA.**~~ **DIBALIK 2026-08-24
+   (K-39).** Refleks "pakai ulang prefiks" salah di sini: mengirim BUKAN mengekspor. Famili sendiri
+   `campaign.sent` — lihat K-39. Satu baris audit per RUN tetap berlaku.
 
 4. **Sebab gagal DIBEDAKAN (pelajaran reset).** `invalid_address` / `hard_bounce` /
    `provider_rejected` / `unknown` sebagai kolom kelas satu (`failure_cause`), plus batas harian =
@@ -740,3 +739,44 @@ disimpan (`RENCANA-simpan-segmen`, belum) dan (b) dua prasyarat kirim. Layar Cam
 konsol yang menampilkan alur + batas + blok pra-luncur; layar Messages membaca log apa adanya
 (termasuk `skipped_suppressed` dan `failed`). Kirim internal **belum diuji live** dari lingkungan
 ini — token bocor tak boleh dijalankan, dan app tak berjalan di sini.
+
+## K-39 · Aksi audit kirim = famili `campaign.%` sendiri, bukan `export.%` (koreksi K-38 #3)
+
+Membalik K-38 #3 **selagi murah** (nol baris audit memakai `export.campaign_sent`, nol baris
+`crm_message_log` — diverifikasi 2026-08-24). Refleks memakai ulang prefiks yang ada (benar 5×
+sebelumnya) di sini **satu langkah terlalu jauh**: `export.%` menjawab "data apa yang keluar sebagai
+BERKAS"; sebuah pengiriman kampanye adalah keputusan kontak keluar, bukan berkas. Menaruhnya di
+`export.%` membuat layar audit yang menyaring "ekspor" menampilkan pengiriman. Test paritas lama
+lulus — tapi yang lulus **klasifikasi retensinya, bukan maknanya**.
+
+Perbaikan mengikuti presedent **K-09** (`profile.demographic_updated`): famili baru `campaign.%`
+ditambahkan ke denylist kepatuhan **dengan benar** — fungsi `crm_purge_audit_log` (create-or-replace),
+`lib/crm/retention-policy.ts` `COMPLIANCE_RULES`, dan test paritas **bergerak bersama satu commit**;
+parity test kini membaca berkas migrasi baru. `campaign.%` (bukan `message.%`) karena granularitas
+audit adalah **per RUN kirim (satu kampanye)**, bukan per pesan — telemetri per-pesan ada di
+`crm_message_log`, bukan audit. Aksi persis: **`campaign.sent`**, dikunci `send-constants.test.ts`.
+
+**Status:** SQL migrasi **DITUNJUKKAN, BELUM DIJALANKAN** (`…150000_crm_purge_audit_log_add_campaign_compliance.sql`)
+— menunggu konfirmasi untuk apply. Aman ditunda: `campaign.%` toh tak di allowlist operasional, jadi
+tak pernah dipangkas walau denylist DB belum diperbarui; kode + berkas + test sudah sinkron.
+**Pembalikan:** hapus baris `campaign.%` di kedua blok + `COMPLIANCE_RULES` + kembalikan parity target.
+
+## K-40 · Segmen TERSIMPAN — 3M diperbarui (bukan dibatalkan): simpan KRITERIA, bukan daftar orang
+
+Sprint 3M sengaja membuat segmen **ephemeral** karena segmen tersimpan yang basi menargetkan orang
+yang sudah tak memenuhi kriteria. **Alasan itu tetap berlaku.** Yang berubah: mengirim kampanye butuh
+menyebut segmen mana yang dipakai, dan `crm_message_log.campaign_id` sudah mengandaikan segmen punya
+identitas. Jadi 3M **diperbarui**, dengan penjaga yang mempertahankan alasannya:
+
+- **Simpan kriteria (pohon filter tervalidasi jsonb), BUKAN daftar anggota.** Anggota **dihitung
+  ulang saat dipakai** → segmen bulan lalu yang dikirimi hari ini menargetkan siapa yang memenuhi
+  kriteria **hari ini** (inilah yang menjaga alasan 3M). Jumlah anggota **tak pernah** kolom tersimpan;
+  ditampilkan dengan **penanda kesegaran** (LARANGAN: jangan tampilkan angka beku yang terlihat hidup).
+- **Gerbang klinis tidak boleh dimutari.** Segmen dengan kriteria klinis diberi flag `requires_clinical`
+  saat simpan; jalur PAKAI (hitung/kirim) tetap memeriksa `view_health` peran yang memakai — jadi tak
+  bisa dibuat peran berwenang lalu dipakai peran lain untuk memutari gerbang.
+- **Gerbang peran** mengikuti yang ada untuk segment builder (`segment.build`).
+
+**Status:** SQL `crm_segment` **DITUNJUKKAN, BELUM DIJALANKAN** (`docs/RENCANA-simpan-segmen.md`).
+Form susun-kampanye (TUGAS 3) menunggu tabel ini di-apply. **Pembalikan:** `drop table crm_segment` —
+aditif, nol data pelanggan (hanya kriteria + metadata).
