@@ -89,6 +89,7 @@ Full spec: `PRD — 20FIT Audience Data & CRM System v1.1`.
 > | 22 | `…20260821041044_pin_search_path_crm_audit_log_no_mutate` | `20260821041044` | `pin_search_path_crm_audit_log_no_mutate` (K-15 hardening — pins `search_path` on the append-only guard `crm_audit_log_no_mutate`; applied 2026-08-21, both triggers verified still reject UPDATE+DELETE) |
 > | 23 | `…20260821154415_unify_identity_sources_aplus` | `20260821154415` | `unify_identity_sources_aplus` (Migrasi 23 / jalur A+ — unifies identity sources into the mirror; merged via PR #14) |
 > | 24 | `…20260824135604_crm_message_template` | `20260824135604` | `crm_message_template` (contacting-half — message-template storage: append-version, bilingual, email+WhatsApp with `wa_approval_status`; RLS on / 0 policy, relacl `{postgres, service_role}`. Applied + verified this session) |
+> | 25 | `…20260824145501_crm_message_log` | `20260824145501` | `crm_message_log` (send path — one row per send attempt, keyed `customer_id`; mirrors `my20fit_message_log` cycle stamps; identity stored only as keyed-HMAC `identity_hash` (no raw PII), deterministic `idempotency_key`; RLS on / 0 policy, relacl `{postgres, service_role}`, 22 cols / 4 checks. Applied + verified this session. **Local file `20260824160000` renamed to the ledger stamp `20260824145501`.**) |
 >
 > **Count reconciliation (re-checked against `schema_migrations` on 2026-08-21): 22 CRM
 > migration files on `main` → 24 CRM ledger entries in the DB.** The gap between files and

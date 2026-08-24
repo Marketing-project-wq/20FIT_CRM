@@ -1,8 +1,37 @@
-# RENCANA — crm_message_log (log pengiriman) — GATED, SQL DITUNJUKKAN, BELUM DIJALANKAN
+# RENCANA — crm_message_log (log pengiriman) — DISETUJUI + DITERAPKAN (dgn dua koreksi)
 
-Langkah 1 dari urutan pengiriman (pemilik produk, 24 Agu). **Berhenti di sini** untuk tinjauan
-SQL — jalur kirim manual (langkah 2) dan layar Campaigns/Messages (langkah 3) menyusul setelah
-skema ini disetujui.
+Langkah 1 dari urutan pengiriman (pemilik produk, 24 Agu). **Disetujui dengan dua koreksi**
+(identity disimpan sebagai hash, bukan mentah; bentuk `idempotency_key` dibuat deterministik).
+Migrasi final: `supabase/migrations/20260824160000_crm_message_log.sql` — diterapkan lewat
+`apply_migration`, verifikasi di bawah.
+
+## Dua koreksi (tinjauan 24 Agu)
+
+**1. `identity_key` mentah → `identity_hash` (HMAC berkunci).** Tabel ini tumbuh satu baris per
+kirim, dibaca layar Messages, tak pernah dipangkas. Menyimpan email/telepon mentah menjadikannya
+**salinan kedua daftar kontak** dan pintu belakang yang melewati masking. Tiga pilihan ditimbang:
+
+| Pilihan | Bounce bisa ditelusuri? | Jadi daftar kontak plaintext? | Putusan |
+|---|---|---|---|
+| Simpan mentah | ya | **ya** — harus diandalkan masking+ekspor-exclude tiap saat | ditolak |
+| Simpan tersamar (`j***@d***`) | **tidak** cocok webhook penyedia | sebagian | ditolak |
+| **Simpan hash berkunci (HMAC)** | **ya** (hash alamat masuk → cocokkan) | **tidak** | **dipilih** |
+
+Alasan hash cukup: (a) **"ke siapa"** dijawab `customer_id` yang lewat masking `view_contact`
+yang sudah ada — log tak perlu alamat terbaca untuk ditampilkan; (b) **penelusuran bounce**
+mencocokkan `provider_message_id` (disimpan) atau, cadangan, hash alamat yang dipantulkan penyedia
+— hash deterministik tetap cocok; (c) **korelasi unsubscribe** lewat `customer_id`+channel (token
+tanda tangan membawa `customer_id`), bukan alamat. Jadi privasi *by construction*, bukan privasi
+*karena ingat menyamarkan*. Tetap **dikecualikan dari ekspor** dan **tak pernah dirender** (bela
+berlapis). Kunci: `UNSUBSCRIBE_TOKEN_SECRET` dengan pemisah domain `msglog-identity:` (lihat
+`lib/crm/identity-hash.ts`); tabel mulai kosong, jadi rotasi kunci nanti = epoch baru tanpa migrasi.
+
+**2. `idempotency_key` acak → deterministik.** Bentuknya **`{campaign_id}:{customer_id}:{channel}`**
+(lihat `buildIdempotencyKey`, dan `comment on column` di migrasi). Karena murni turunan kampanye +
+penerima + channel, **menjalankan ulang kirim yang terputus menghasilkan kunci yang sama**, dan
+indeks unik melewati penerima yang sudah terkirim. Diuji dengan **pemutusan sungguhan** (jalankan
+sebagian → ulang penuh → nol kirim ganda), bukan menyisipkan dua baris kembar — lihat
+`lib/crm/send-run.test.ts`.
 
 ## Kenapa meniru `my20fit_message_log`, tapi berkunci `customer_id`
 
@@ -24,71 +53,38 @@ Kolom `my20fit_message_log` dibaca dari `information_schema` (bukan diingat). Pe
 | `campaign_id (text)` | **ditiru tipe `text`** | dipertahankan `text` (bukan uuid) agar union lintas-tim tak perlu cast |
 | `template_id (text)` | **diganti** → `template_key text` + `template_version integer` | template CRM **berversi**; "apa yang benar-benar diterima" butuh versi eksak |
 | `meal_window (text)` | **dibuang** | spesifik my20fit, tak relevan CRM |
-| — | **ditambah** `identity_kind, identity_key` | tujuan ternormalisasi → korelasi unsubscribe (K-06) |
-| `idempotency_key` **nullable** | **diperkuat** → `not null` + `unique` | idempotensi wajib untuk resume-aman (langkah 2) |
+| — | **ditambah** `identity_hash` (HMAC, koreksi 1) | tujuan tercocokkan tapi tak terbaca (bukan salinan kontak) |
+| — | **ditambah** `failure_cause` (check) | sebab gagal dibedakan (pelajaran reset), bukan satu status |
+| `idempotency_key` **nullable** | **diperkuat** → `not null` + `unique` + **bentuk deterministik** | idempotensi resume-aman (koreksi 2) |
 | `status` (bebas) | **dibatasi** `check(...)` + nilai `skipped_suppressed` | bukti pemeriksaan suppression **saat kirim** |
 
-## SQL yang diusulkan (BELUM dijalankan)
+## SQL final (DITERAPKAN — ledger `20260824145501`)
 
-```sql
--- crm_message_log — satu BARIS per upaya kirim ke satu penerima. Append-only (K-14 semangat):
--- INSERT saat dikirim; UPDATE hanya untuk cap-waktu siklus (delivered/opened/bounced/…) via
--- webhook penyedia. RLS ON / 0 policy / service_role only (pola crm_*, seperti crm_message_template).
-create table if not exists public.crm_message_log (
-  id                   uuid primary key default gen_random_uuid(),
-  customer_id          uuid not null,                 -- KUNCI CRM (master_customer.customer_id), bukan user_id
-  channel              text not null check (channel in ('email','whatsapp')),
-  campaign_id          text,                           -- kampanye/aksi pemicu (text agar berbaris dgn my20fit; null = ad-hoc)
-  template_key         text,                           -- template + versi yang BENAR-BENAR dikirim
-  template_version     integer,                        --   → "apa yang sebenarnya diterima orang itu"
-  identity_kind        text check (identity_kind in ('email','phone')),
-  identity_key         text,                           -- tujuan ternormalisasi (K-06) — korelasi unsubscribe
-  subject              text,                           -- email saja
-  language             text check (language in ('id','en')),
-  -- Anti kirim-ganda: bila proses putus di baris 6.000 dari 10.000, kirim ulang tak boleh
-  -- menghasilkan baris kedua untuk 6.000 pertama. UNIQUE menegakkan idempotensi.
-  idempotency_key      text not null,
-  provider_message_id  text,                           -- id dari Mailtrap / Meta
-  status               text not null default 'queued'
-    check (status in ('queued','sent','delivered','bounced','complained','failed','skipped_suppressed')),
-  error_message        text,                           -- alasan gagal per-penerima (PII-free)
-  -- Cap waktu siklus kirim (ditiru dari my20fit_message_log; diisi webhook penyedia):
-  sent_at              timestamptz,
-  delivered_at         timestamptz,
-  opened_at            timestamptz,
-  clicked_at           timestamptz,
-  bounced_at           timestamptz,
-  complained_at        timestamptz,
-  unsubscribed_at      timestamptz,
-  created_at           timestamptz not null default now(),
-  constraint crm_message_log_idem_unique unique (idempotency_key)
-);
+File: `supabase/migrations/20260824145501_crm_message_log.sql` (identik dengan yang diterapkan).
+Verifikasi: RLS on, 0 policy, `relacl {postgres, service_role}`, 22 kolom, 4 check, 0 baris.
+Poin skema (lihat file untuk SQL lengkap + `comment on column`):
 
-create index if not exists crm_message_log_customer_idx on public.crm_message_log (customer_id);
-create index if not exists crm_message_log_campaign_idx on public.crm_message_log (campaign_id);
-create index if not exists crm_message_log_status_idx   on public.crm_message_log (status);
-
-alter table public.crm_message_log enable row level security;
-revoke all on public.crm_message_log from public, anon, authenticated;
-grant select, insert, update on public.crm_message_log to service_role;
-```
-
-**Catatan `update`:** berbeda dari `crm_message_template` (select+insert saja), log ini butuh
-`update` untuk cap-waktu siklus (`delivered_at`, `opened_at`, `bounced_at`, …) yang datang dari
-**webhook penyedia** setelah baris dibuat. Isi pesan tak pernah di-UPDATE; hanya kolom siklus.
-
-**`status = 'skipped_suppressed'`** adalah bukti bahwa pemeriksaan suppression **saat kirim**
-(bukan saat segmen dihitung) berjalan: penerima yang unsubscribe di antara "hitung segmen" dan
-"kirim" menghasilkan baris `skipped_suppressed`, bukan email terkirim.
+- `identity_hash text` — HMAC berkunci tujuan ternormalisasi (koreksi 1); **bukan** alamat mentah.
+- `idempotency_key text not null unique` — bentuk **`{campaign_id}:{customer_id}:{channel}`**
+  (koreksi 2), didokumentasikan di `comment on column`.
+- `failure_cause` ∈ {`invalid_address`,`hard_bounce`,`provider_rejected`,`daily_limit`,`unknown`}
+  — sebab gagal dibedakan (pelajaran reset).
+- `status` ∈ {`queued`,`sent`,`delivered`,`bounced`,`complained`,`failed`,`skipped_suppressed`}.
+- Cap waktu siklus ditiru dari `my20fit_message_log`; diisi webhook penyedia (satu-satunya alasan
+  `update` di-grant — isi pesan tak pernah di-UPDATE).
 
 ## Revert
 
 `drop table if exists public.crm_message_log;` — aditif, nol data pelanggan, aman.
 
-## BERHENTI
+## Status langkah kirim (K-38)
 
-Sesuai instruksi: SQL ditunjukkan, **belum dijalankan**. Menunggu tinjauan sebelum:
-- **Langkah 2** — jalur kirim manual ke segmen lewat Mailtrap (suppression saat-kirim,
-  idempotency, batas harian + konfirmasi >500, tautan unsubscribe bertanda tangan, kegagalan
-  per-penerima dicatat tanpa menghentikan sisanya).
-- **Langkah 3** — layar Campaigns + Messages menggantikan ComingSoon.
+- **Langkah 1 (skema):** ✅ diterapkan + diverifikasi.
+- **Langkah 2 (jalur kirim):** ✅ dibangun + diuji — `lib/crm/send-run.ts` (inti murni, port-injected),
+  `lib/crm/send-campaign.ts` (adapter Supabase+Mailtrap), `lib/crm/identity-hash.ts`,
+  `lib/crm/send-gate.ts`, `lib/crm/send-constants.ts`. Uji termasuk **resume setelah pemutusan
+  sungguhan** (nol kirim ganda). Kirim nyata ke pelanggan **diblokir** gerbang `CAMPAIGN_SEND_ENABLED`
+  sampai token Mailtrap dirotasi + DNS diatur; hanya `@20fit.id` internal yang bisa dikirimi.
+- **Langkah 3 (layar):** Messages (baca log apa adanya) + Campaigns (konsol alur+batas+blok
+  pra-luncur) menggantikan ComingSoon. Form susun-dan-kirim di layar **menyusul** (menunggu segmen
+  bisa disimpan + dua prasyarat kirim).

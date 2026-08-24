@@ -697,3 +697,46 @@ hilang untuk pembalikan itu; hanya frame yang berubah.
 5. **WA = permukaan status (env var Railway), fitpoint = kontrak dokumen, pop-up = ditunda.** Nol
    tempat kosong yang tampak siap. **Pembalikan:** buka pop-up hanya bila aplikasi 20FIT bisa
    menerima pesan; bangun pemicu fitpoint hanya bila sumber saldo+kedaluwarsa (tanggal nyata) ada.
+
+## K-38 · Jalur kirim manual — log, hash identitas, idempotensi deterministik, gerbang pra-luncur (contacting-half, langkah kirim)
+
+Skema `crm_message_log` **disetujui dengan dua koreksi**; jalur kirim dibangun dan diuji; kirim
+nyata ke pelanggan tetap diblokir prasyarat.
+
+1. **`identity_hash` (HMAC berkunci), bukan alamat mentah.** Log tumbuh satu baris per kirim,
+   dibaca layar Messages, tak pernah dipangkas — menyimpan email/telepon mentah menjadikannya
+   salinan kedua daftar kontak + pintu belakang masking. Hash berkunci cukup untuk **mencocokkan**
+   (bounce, "pernah dikirimi?") tapi tak untuk **dibaca**; "ke siapa" dijawab `customer_id` lewat
+   masking `view_contact` yang sudah ada. Dikecualikan ekspor, tak pernah dirender.
+   (`lib/crm/identity-hash.ts`.) **Pembalikan:** kolom aditif; tabel mulai kosong.
+
+2. **`idempotency_key` deterministik `{campaign_id}:{customer_id}:{channel}`.** Bentuk acak per
+   percobaan membuat indeks unik tak menahan apa pun. Karena turunan murni kampanye+penerima+channel,
+   **jalankan-ulang menghasilkan kunci sama** → penerima yang sudah terkirim dilewati. Diuji dengan
+   **pemutusan sungguhan** (jalankan sebagian → ulang penuh → nol kirim ganda), bukan sisip dua baris
+   kembar (`lib/crm/send-run.test.ts`). Bentuk dicatat di `comment on column`.
+
+3. **Aksi audit `export.campaign_sent` — prefiks `export.` YANG SUDAH ADA (compliance/permanen),**
+   bukan famili baru yang jatuh di antara allowlist/denylist. Satu baris audit per RUN (bukan per
+   penerima), seperti `export.performed`. Klasifikasi dikunci test paritas dengan nama persis
+   (`lib/crm/send-constants.test.ts`).
+
+4. **Sebab gagal DIBEDAKAN (pelajaran reset).** `invalid_address` / `hard_bounce` /
+   `provider_rejected` / `unknown` sebagai kolom kelas satu (`failure_cause`), plus batas harian =
+   **deferred** (bukan gagal) dan auto-stop bounce 5%. Menyatukan jadi satu status menyembunyikan
+   bug berikutnya persis seperti reset.
+
+5. **Suppression diperiksa SAAT KIRIM** (awal run, bukan saat segmen dihitung); **tautan unsubscribe
+   = prasyarat keras** (run batal sebelum kirim bila tak ada); **batas harian dari log**, bukan
+   penghitung terpisah.
+
+6. **Gerbang pra-luncur di KODE, bukan konvensi.** `CAMPAIGN_SEND_ENABLED` off → hanya alamat
+   internal `@20fit.id` yang dikirimi; alamat pelanggan **ditahan** (tak dikirim, tak dilog) sampai
+   token Mailtrap dirotasi + DNS diatur (`lib/crm/send-gate.ts`). **Pembalikan:** flip env setelah
+   dua prasyarat beres.
+
+**Yang TIDAK dibangun (jujur):** form susun-dan-kirim di layar Campaigns menunggu (a) segmen bisa
+disimpan (`RENCANA-simpan-segmen`, belum) dan (b) dua prasyarat kirim. Layar Campaigns kini adalah
+konsol yang menampilkan alur + batas + blok pra-luncur; layar Messages membaca log apa adanya
+(termasuk `skipped_suppressed` dan `failed`). Kirim internal **belum diuji live** dari lingkungan
+ini — token bocor tak boleh dijalankan, dan app tak berjalan di sini.

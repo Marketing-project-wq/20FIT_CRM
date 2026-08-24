@@ -1005,6 +1005,58 @@ export const id = {
     workflows: "Mesin workflow marketing dengan sembilan guard. Diblokir sampai consent register aktif.",
   },
 
+  // Messages screen (send path) — read-only log of every send. Born bilingual.
+  messagesPage: {
+    subtitle: "Setiap pengiriman — kanal, status, dan sebab gagal — ditampilkan apa adanya.",
+    deniedRole: "Peran Anda tidak memiliki akses ke log pengiriman.",
+    lastSend: "Pengiriman terakhir",
+    never: "Belum ada",
+    emptyTitle: "Belum ada pengiriman.",
+    emptyBody: "Log terisi begitu kampanye pertama berjalan. Kirim nyata masih diblokir sampai token Mailtrap dirotasi.",
+    breakdownTitle: "Ringkasan status",
+    colWho: "Pelanggan",
+    colChannel: "Kanal",
+    colStatus: "Status",
+    colCause: "Sebab",
+    colWhen: "Waktu",
+    identityNote: "Alamat tujuan tidak ditampilkan — disimpan hanya sebagai hash untuk penelusuran, tak pernah dibaca (sama seperti masking di layar lain).",
+    stQueued: "Antre",
+    stSent: "Terkirim",
+    stDelivered: "Sampai",
+    stBounced: "Bounce",
+    stComplained: "Komplain",
+    stFailed: "Gagal",
+    stSkipped: "Dilewati (suppress)",
+    causeInvalid: "Alamat tak valid",
+    causeHardBounce: "Bounce keras",
+    causeProvider: "Ditolak penyedia",
+    causeDaily: "Batas harian",
+    causeUnknown: "Tak diketahui",
+  },
+
+  // Campaigns console (send path) — compose flow + pre-launch block. Born bilingual.
+  campaignsPage: {
+    subtitle: "Susun kirim: pilih segmen, pilih template, lihat penerima setelah suppression, konfirmasi, kirim.",
+    deniedRole: "Peran Anda tidak memiliki akses untuk menyusun pengiriman.",
+    blockTitle: "Kirim nyata masih diblokir",
+    blockBody: "Nol email kampanye ke alamat pelanggan sampai dua prasyarat beres: rotasi token Mailtrap dan SPF/DKIM/DMARC untuk 20fit.id. Sampai itu, hanya alamat internal @20fit.id yang bisa dikirimi.",
+    flowTitle: "Alur kirim",
+    flow1: "Pilih segmen dan lihat berapa penerima setelah suppression dikurangkan.",
+    flow2: "Pilih template email aktif (versi yang benar-benar dikirim tercatat).",
+    flow3: "Untuk lebih dari 500 penerima, konfirmasi kedua sebelum tombol kirim aktif.",
+    flow4: "Setiap email memuat tautan unsubscribe bertanda tangan — syarat, bukan kebiasaan.",
+    flow5: "Kirim; kegagalan per penerima tercatat dengan sebabnya, tak menghentikan sisanya.",
+    limitsTitle: "Batas yang berlaku",
+    limit1: "Batas harian mulai 1.000/hari, dihitung dari log pengiriman (bukan penghitung terpisah).",
+    limit2: "Konfirmasi kedua wajib di atas 500 penerima.",
+    limit3: "Auto-stop bila bounce keras melewati 5% (disetujui 24 Agu).",
+    suppressionNote: "Suppression diperiksa SAAT KIRIM, bukan saat segmen dihitung — unsubscribe yang masuk di antaranya tetap dihormati.",
+    templatesActive: "Template email aktif",
+    templatesNone: "Belum ada template email aktif — buat dulu di Templates.",
+    pendingTitle: "Form kirim langsung menyusul",
+    pendingBody: "Menyusun-dan-kirim di layar menyusul setelah segmen bisa disimpan dan kedua prasyarat kirim terpenuhi. Jalur kirim sendiri sudah dibangun dan teruji.",
+  },
+
   // Auth pages (Sprint 4F) — /login, /forgot-password, /reset-password. Pre-session so they default
   // to Indonesian; translated so a persisted "en" cookie (an en user who logged out) is honoured.
   // Server pages read getServerDict; the reset FORM (client) reads a LangProvider the page wraps it in.
