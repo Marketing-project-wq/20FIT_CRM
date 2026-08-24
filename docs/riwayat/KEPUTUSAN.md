@@ -808,3 +808,25 @@ Tiga item yang tak butuh kirim, dikerjakan sambil menunggu rotasi token (reset T
    kampanye yang baru mulai). `dataSufficient` (attempted ≥ minSample) menjaga itu — di bawahnya
    `wouldStop` selalu false. Aktifkan hanya setelah ada data bounce sungguhan; aritmetikanya sudah
    benar + teruji. **Pembalikan:** semuanya aditif; hapus berkas = tak ada efek (belum diwire ke apa pun).
+
+## K-42 · Detektor untuk terjemahan yang terlewat — kelengkapan jadi terbukti, bukan dipercaya
+
+Masalah yang membuat 5B-T2 mahal dan tertunda tujuh kali: "string yang terlewat menghasilkan
+campuran bahasa senyap yang tak ada test menangkapnya" — kelengkapan bergantung pada teliti-manual.
+Diperbaiki dengan pagar pemindai-sumber (pola yang sama dengan pagar reset), bukan disiasati.
+
+- `lib/i18n/untranslated-scan.ts` + test: memindai berkas komponen setiap layar di
+  `BILINGUAL_SCREENS` untuk daftar kata Indonesia yang tak-ambigu (whole-word, komentar dibuang).
+  Ada hit → gagal. `SCREEN_FILES` memetakan layar→berkas (audience/ campur search vs profile, jadi
+  daftar eksplisit); layar `PENDING` (profile, diagnostik) tak dipindai sampai di-flip.
+- **Terbukti menggigit di berkas nyata:** disisipkan satu string Indonesia ke `quality-dashboard`
+  (dwibahasa) → gagal; dikembalikan → lolos. Plus tiga bite-test sintetis permanen.
+- **Temuan hari pertama:** layar `search` (`app/(app)/audience/page.tsx`) memuat blok akses-ditolak
+  **Indonesia keras** meski sudah di `BILINGUAL_SCREENS` — persis "campuran senyap" itu. Diperbaiki
+  (dialihkan ke `t.access.audienceDenied*`). `/quality` **dikonfirmasi bersih** oleh pagar (bukan
+  sekadar diklaim).
+
+**Efeknya untuk 5B-T2:** terjemahan profil berubah dari "harus 100% teliti manual" jadi "kerjakan,
+lalu pagar memberi tahu yang terlewat". Flip `profile` `PENDING`→`BILINGUAL` nanti = tambah berkasnya
+sudah ada di `SCREEN_FILES`, terjemahkan, dan pagar membuktikan flip itu. Berguna untuk tiap layar
+berikutnya, bukan sekali pakai.

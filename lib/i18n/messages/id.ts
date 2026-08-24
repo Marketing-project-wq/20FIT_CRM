@@ -63,6 +63,10 @@ export const id = {
       "Peran unit_manager dibatasi pada unit yang dikelola, tetapi tabel unit-scope belum ada — akses ditolak (fail-closed).",
     segmentsDeniedRole:
       "Membangun segmen butuh peran segment.build (super_admin, crm_manager, crm_operator, analyst). data_steward tidak berhak.",
+    audienceDeniedScope:
+      "Peran unit_manager dibatasi pada unit yang dikelola, tetapi tabel unit-scope belum ada — akses ditolak (fail-closed) sampai tabel itu dibangun.",
+    audienceDeniedRole:
+      "Peran Anda tidak memiliki izin untuk melihat daftar profil. Bila RBAC belum di-provision, semua akses ditolak — ini perilaku fail-closed yang benar.",
   },
 
   dashboard: {

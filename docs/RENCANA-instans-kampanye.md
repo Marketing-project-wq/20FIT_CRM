@@ -57,11 +57,11 @@ create table if not exists public.crm_campaign_run (
 -- untuk idempotency_key). Pola crm_*: RLS on / 0 policy / service_role.
 ```
 
-## BERHENTI — bentuk B DISETUJUI, SQL ditunjukkan, belum dijalankan
+## DITERAPKAN — bentuk B, ledger 20260824180426
 
-Bentuk **B (baris run) disetujui** (K-41). Migrasi ditulis, **belum diterapkan**:
-`supabase/migrations/20260824170000_crm_campaign_run.sql` (nama file akan diselaraskan ke stempel
-ledger saat diterapkan). Ini **harus mendarat sebelum kampanye pertama**: tanpanya, kampanye kedua
+Bentuk **B (baris run) disetujui + DITERAPKAN** (K-41). Migrasi:
+`supabase/migrations/20260824180426_crm_campaign_run.sql` (RLS on, 0 policy, relacl {postgres,
+service_role}, 7 kolom, 0 baris; FK ke crm_segment on delete restrict). Ini **harus mendarat sebelum kampanye pertama**: tanpanya, kampanye kedua
 ke segmen+template yang sama diam-diam tak mengirim apa pun (kunci idempotensi identik → dilewati).
 
 Menunggu konfirmasi untuk: terapkan migrasi (via `apply_migration`, verifikasi biasa), lalu ubah

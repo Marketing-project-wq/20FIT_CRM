@@ -52,6 +52,10 @@ export const en: Messages = {
       "The unit_manager role is limited to the units it manages, but the unit-scope table doesn't exist yet — access denied (fail-closed).",
     segmentsDeniedRole:
       "Building a segment needs the segment.build role (super_admin, crm_manager, crm_operator, analyst). data_steward is not entitled.",
+    audienceDeniedScope:
+      "The unit_manager role is limited to the units it manages, but the unit-scope table doesn't exist yet — access denied (fail-closed) until that table is built.",
+    audienceDeniedRole:
+      "Your role has no permission to view the profile list. If RBAC is not yet provisioned, all access is denied — this is the correct fail-closed behaviour.",
   },
 
   dashboard: {

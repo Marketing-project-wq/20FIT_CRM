@@ -1,5 +1,7 @@
 -- crm_campaign_run — one row per campaign INSTANCE (an "issue"), form B (K-41 approved).
--- GATED: SQL shown, NOT yet applied.
+-- Applied + verified 2026-08-24 (ledger 20260824180426): RLS on, 0 policy, relacl
+-- {postgres, service_role}, 7 cols, 0 rows. README ledger row 28. Local file renamed from
+-- 20260824170000 to the ledger stamp.
 --
 -- WHY THIS MUST LAND BEFORE THE FIRST CAMPAIGN. The send idempotency_key is
 -- {campaign_id}:{customer_id}:{channel}. Today campaign_id = {segment}:{template}, so a SECOND send
