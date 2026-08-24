@@ -415,3 +415,21 @@ kirim satu email kampanye pun** sampai token dirotasi.
 
 _(Sumber angka: dasbor Mailtrap, dilaporkan pemilik produk; dicatat sebagai fakta yang dilaporkan,
 bukan hasil kueri DB kami.)_
+
+## Reset kata sandi — TERBUKTI ujung ke ujung di produksi (24 Agu 2026)
+
+Jalur reset terbukti bekerja end-to-end di produksi (bukti `auth.users`, `tifany@20fit.id`,
+dilaporkan pemilik produk 24 Agu 2026):
+
+- `recovery_sent_at = null` — token dibersihkan **setelah** dipakai (verifyOtp mengonsumsinya).
+- `last_sign_in_at = 2026-08-24 16:21:21.448` → `updated_at = 2026-08-24 16:21:21.840` — **392 ms**
+  setelahnya. Urutannya benar: **verifyOtp sukses → updateUser sukses**.
+- Email dari `crm@20fit.id` mendarat di **Inbox**, kode terverifikasi, kata sandi berubah.
+
+**Perbaikan empat-keadaan terbukti.** Kegagalan sehari sebelumnya memang **"kata sandi baru sama
+dengan yang lama"** (updateUser 422) — persis diagnosis kami. Pesan lama menyembunyikannya sebagai
+"kode salah"; kini penolakan kata sandi punya pesan sendiri (K-38, `lib/auth/reset-verify.ts`).
+
+**Konsekuensi untuk kampanye:** ini juga membuktikan **Mailtrap + DNS bekerja untuk pengiriman
+NYATA** (bukan hanya reset). Satu-satunya penghalang kampanye yang tersisa = **rotasi token**.
+Butir "reset belum terbukti" **diturunkan** dari daftar yang menggantung.

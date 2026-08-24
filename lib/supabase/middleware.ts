@@ -18,7 +18,10 @@ export function isPublicPath(pathname: string): boolean {
     pathname === "/forgot-password" ||
     pathname === "/reset-password" ||
     pathname === "/unsubscribe" ||
-    pathname === "/api/unsubscribe"
+    pathname === "/api/unsubscribe" ||
+    // Mailtrap delivery webhook: an external POST with no CRM session — its authorization is the
+    // request SIGNATURE (verified in the route), the same shape as the unsubscribe token.
+    pathname === "/api/mailtrap/webhook"
   );
 }
 

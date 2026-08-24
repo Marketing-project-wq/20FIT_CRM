@@ -10,6 +10,7 @@ describe("isPublicPath — the no-session allowlist (Sprint 3T)", () => {
   it("allows the public self-service unsubscribe page + its API (link recipients have no session)", () => {
     expect(isPublicPath("/unsubscribe")).toBe(true);
     expect(isPublicPath("/api/unsubscribe")).toBe(true);
+    expect(isPublicPath("/api/mailtrap/webhook")).toBe(true);
   });
   it("does NOT make protected pages public", () => {
     for (const p of ["/", "/audience", "/quality", "/settings", "/segments", "/consent"]) {

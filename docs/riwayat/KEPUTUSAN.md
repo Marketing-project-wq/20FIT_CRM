@@ -781,3 +781,30 @@ identitas. Jadi 3M **diperbarui**, dengan penjaga yang mempertahankan alasannya:
 **Status:** **DITERAPKAN** 2026-08-24 (ledger `20260824160409`): RLS on, 0 policy, relacl
 `{postgres, service_role}`, 8 kolom, 0 baris. **Pembalikan:** `drop table crm_segment` — aditif, nol
 data pelanggan (hanya kriteria + metadata).
+
+## K-41 · Pasca-kirim: webhook Mailtrap, monitor bounce (belum aktif), id instans kampanye (usulan)
+
+Tiga item yang tak butuh kirim, dikerjakan sambil menunggu rotasi token (reset TERBUKTI di produksi
+24 Agu → Mailtrap+DNS bekerja untuk kirim nyata; tinggal token).
+
+1. **Id instans kampanye — DIUSULKAN, belum dibangun** (`docs/RENCANA-instans-kampanye.md`).
+   `campaignId` sekarang `{segment}:{template}` → run ulang = resume, jadi newsletter tak bisa
+   dikirim 2× ke orang sama. Usul: `campaignId = {segment}:{template}:{instance}` dengan `instance`
+   **stabil sepanjang satu terbitan** (bukan acak per percobaan — itu merusak resume, larangan sama
+   dgn K-38 koreksi 2). Disarankan **baris run (`crm_campaign_run`, uuid)**. Ditunjukkan + berhenti.
+
+2. **Webhook Mailtrap** (`app/api/mailtrap/webhook/route.ts` + `lib/crm/mailtrap-webhook.ts`) mengisi
+   kolom siklus `crm_message_log` (delivered/bounced/complained/…). **Input tak dipercaya**: tanda
+   tangan diverifikasi (HMAC atas RAW body, konstan-waktu) **sebelum** apa pun diparse/ditulis; gagal
+   → 401, nol sentuhan. Hanya kolom cap-waktu siklus (+ status/failure_cause terminal) yang ditulis,
+   tak pernah isi pesan. Korelasi: `provider_message_id` dulu, `identity_hash` cadangan (alasan hash
+   disimpan). Event tak dikenal/transien (soft_bounce) **dilewati**, bukan ditebak. **Fail-closed**:
+   `MAILTRAP_WEBHOOK_SECRET` unset → semua request ditolak. Skema tanda tangan/nama header persis
+   **harus dikonfirmasi ke dok Mailtrap** sebelum diaktifkan (host dok diblokir egress di sini).
+
+3. **Monitor bounce 5% — DIBANGUN, BELUM DIAKTIFKAN** (`lib/crm/bounce-monitor.ts`). Setelah webhook
+   mengisi `bounced_at`, `campaignBounceStatus` membaca rasio bounce keras nyata. `active` **selalu
+   false** hari ini: ambang dari nol/near-nol kirim berperilaku absurd (1/3 = 33% "menghentikan"
+   kampanye yang baru mulai). `dataSufficient` (attempted ≥ minSample) menjaga itu — di bawahnya
+   `wouldStop` selalu false. Aktifkan hanya setelah ada data bounce sungguhan; aritmetikanya sudah
+   benar + teruji. **Pembalikan:** semuanya aditif; hapus berkas = tak ada efek (belum diwire ke apa pun).
