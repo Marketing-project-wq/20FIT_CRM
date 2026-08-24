@@ -66,3 +66,21 @@ belum diterapkan dan menjalankan ulang semuanya.
 > Nol baris audit dari `/` dan `/quality` adalah perilaku yang **benar** (aturan Sprint 3E:
 > agregat tanpa parameter pengguna tidak diaudit). Itu **bukan** bukti keduanya berjalan.
 > Satu-satunya bukti untuk keduanya adalah log Railway atau mata orang.
+
+---
+
+## 24 Agu 2026 — separuh "menghubungi" terbangun (kode), belum satu jalur pun dilalui
+
+5 migrasi diterapkan (`crm_message_template`, `crm_message_log`,
+`crm_purge_audit_log_add_campaign_compliance`, `crm_segment`, `crm_campaign_run`). **Lima
+tabel menunggu baris pertamanya** — semua 0 baris: `crm_message_log`, `crm_segment`,
+`crm_campaign_run`, `crm_suppression`, audit `campaign.%`. Jalur kirim + webhook Mailtrap +
+monitor bounce (belum aktif) + template + unsubscribe semuanya dibangun & teruji di sisi kode;
+**tak ada yang pernah dijalankan** karena kirim diblokir rotasi token.
+
+- **Reset kata sandi TERBUKTI ujung-ke-ujung di produksi** (fitur pertama yang benar-benar dipakai).
+- **Pagar terjemahan** (`untranslated-scan`) dipasang; menangkap layar `search` yang tayang dengan
+  blok Indonesia hardcode padahal sudah di `BILINGUAL_SCREENS`.
+- **Detail profil diterjemahkan** (5B-T2); `profile` di-flip ke `BILINGUAL_SCREENS`. Hanya
+  `/settings/diagnostik` yang masih `PENDING`.
+- Ikhtisar penuh + yang belum dikerjakan: `RANGKUMAN-24agu.md`.

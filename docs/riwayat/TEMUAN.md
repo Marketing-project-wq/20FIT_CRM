@@ -601,3 +601,22 @@ konfirmasi manusia di Railway"**, bukan kesimpulan berbungkus rapi.
 
 **Konsekuensi gate:** larangan "jangan merge ke `main` tanpa izin eksplisit" **tetap** dan kini
 **lebih penting** — dengan model yang benar, **merge = deploy produksi seketika**.
+
+---
+
+## Temuan 24 Agu 2026 (separuh "menghubungi")
+
+- **Pagar terjemahan menggigit di hari pertama:** layar `search` (`app/(app)/audience/page.tsx`)
+  merender blok akses-ditolak berbahasa Indonesia yang di-hardcode **padahal sudah di
+  `BILINGUAL_SCREENS`** — campuran-bahasa senyap yang sudah tayang di produksi tanpa disadari.
+  Ini persis alasan pagar `untranslated-scan` dibangun lebih dulu. Diperbaiki.
+- **Prefiks audit `export.campaign_sent` → `campaign.sent` (K-39).** Mengirim bukan mengekspor:
+  memakai `export.%` membuat layar audit yang menyaring "ekspor" menampilkan kampanye. `campaign.%`
+  jadi famili kepatuhan sendiri (ditambah ke denylist pemangkas dengan cara K-09).
+- **Dua dari tujuh pemicu workflow tak punya sumber data:** "tidak kembali" (recency nyata hanya
+  ~47 profil my20fit) dan "fitpoint kedaluwarsa" (tak ada tabelnya). Arsitektur pemicu (polling vs
+  webhook vs tabel kejadian) belum diputuskan — snapshot harian tak bisa menjawab "baru saja login".
+- **CVE-2026-45755 (bridge Mailtrap Symfony)** = mode kegagalan webhook ini persis: secret diterima
+  tapi tak dipakai → bounce palsu bisa meracuni suppression. Webhook CRM **memverifikasi** (HMAC dua
+  nama header + anti-replay isi-hanya-bila-NULL), jadi aman; alasan itu dicatat di komentar agar tak
+  "disederhanakan" nanti.

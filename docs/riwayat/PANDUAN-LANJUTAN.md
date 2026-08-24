@@ -14,6 +14,13 @@ Terakhir diperbarui: **24 Agustus 2026.**
 > satunya gerbang**; snapshot harian tak bisa menjawab pemicu berbasis kejadian; tiap pengiriman
 > meninggalkan catatan audit. Lihat K-36 (consent bukan gerbang).
 
+> ## 📌 Rangkuman hari re-scoping — [`RANGKUMAN-24agu.md`](RANGKUMAN-24agu.md)
+>
+> Ikhtisar 24 Agu 2026: perpindahan dari separuh "mengenali" ke separuh "menghubungi", 5 migrasi
+> diterapkan (semua tabelnya 0 baris), reset kata sandi terbukti di produksi, pagar terjemahan,
+> dan **apa yang belum dikerjakan** (rotasi token Mailtrap = satu-satunya penghalang kampanye).
+> Angkanya diverifikasi ulang terhadap DB langsung.
+
 ---
 
 ## 1. Apa yang sedang dikerjakan
