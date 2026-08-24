@@ -1,6 +1,23 @@
 # Koreksi model deploy — urutan yang TIDAK boleh dibalik
 
-> **Temuan (T-18, K-25, 12 Agu 2026):** produksi menjalankan kode **branch**
+> # ⛔ SELURUH DOKUMEN INI DITARIK (24 Agu 2026)
+> **Premisnya salah.** Produksi **tidak** men-deploy dari branch — ia dari **`main`**,
+> auto-deploy saat push (dashboard Railway, Settings → Source, dikonfirmasi 24 Agu 2026).
+> Karena itu **tak ada** "selisih 6 commit", **tak ada** risiko "repoint ke `main` memundurkan
+> produksi", dan urutan "merge dulu, repoint kemudian" **tak relevan** — Railway sudah menunjuk
+> `main`. Yang benar sederhana: **merge ke `main` = deploy ke produksi.** Larangan merge tanpa
+> izin tetap, dan kini lebih penting.
+>
+> Bukti bahwa dokumen ini keliru: `git log -S` yang jadi dasarnya dijalankan atas ref
+> `origin/main` **basi** — commit aksi audit sudah masuk `main` lewat PR #10 (04:41 UTC), 7 menit
+> sebelum reset produksi (04:48 UTC). Lihat **T-22 (dikoreksi)**, **T-27**, **K-25 (dikoreksi)**,
+> **K-27 (dibatalkan)** di `docs/riwayat/`.
+>
+> _Isi di bawah disimpan sebagai jejak keputusan yang keliru. Jangan dijadikan panduan tindakan._
+
+---
+
+> **Temuan (T-18, K-25, 12 Agu 2026) — KELIRU, lihat penarikan di atas:** produksi menjalankan kode **branch**
 > `claude/lanjutkan-pekerjaan-mno804`, **bukan `main`**. Terbukti: aksi audit
 > `login.password_reset_requested` ada **hanya** di commit branch (nol di `origin/main`),
 > tetapi produksi menulisnya. Selama ~10 sprint dokumentasi menulis "push ke `main` memicu

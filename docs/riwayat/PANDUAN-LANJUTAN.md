@@ -111,8 +111,10 @@ segmentasi berbasis waktu (K-19).
 
 **Jangan pakai `pg_class.reltuples`.** Estimasi perencana bergeser sendiri; selalu `count(*)`.
 
-**Produksi men-deploy dari branch kerja, bukan `main`** (T-18, diterima sadar di K-27). Push
-ke branch langsung tayang.
+**Produksi men-deploy dari `main`, auto-deploy saat push** (dashboard Railway, dikonfirmasi
+24 Agu 2026). **Merge ke `main` = deploy ke produksi seketika** — jadi jangan merge tanpa izin.
+_(Koreksi: catatan lama "deploy dari branch, K-27" **salah** — ref `origin/main` basi; K-27
+dibatalkan, lihat T-22/T-27/K-25 yang dikoreksi.)_
 
 **`supabase db push` jangan pernah dijalankan.** Ledger diverge dan punya entri ganda; semua
 migrasi lewat `apply_migration` satu per satu.

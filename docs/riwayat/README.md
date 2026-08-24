@@ -13,6 +13,23 @@ dalam repo, tempat ia ikut ter-review dan ikut ter-revert.
 
 ---
 
+## ⚠️ Koreksi model deploy (24 Agustus 2026) — berlaku surut ke arsip prompt
+
+**Arsip prompt & laporan dari ~12 Agu 2026 (Sprint 3Y / `sprint-deploy/`) sampai 23 Agu 2026
+membawa model deploy yang SALAH:** banyak menulis "produksi men-deploy dari branch kerja, bukan
+`main`" (T-22/K-25/K-27). **Itu keliru.** Dashboard Railway (Settings → Source) menunjukkan
+produksi dari **`main`**, auto-deploy saat push — **merge ke `main` = deploy ke produksi.** Sebab
+kekeliruan: `git log -S` atas ref `origin/main` **basi** (pola S-05); commit rujukan sudah di
+`main` lewat PR #10, 7 menit sebelum jejak produksi yang dipakai sebagai bukti.
+
+Koreksi resmi ada di **`TEMUAN.md` T-22 (dikoreksi) + T-27 (baru)**, **`KEPUTUSAN.md` K-25
+(dikoreksi) + K-27 (dibatalkan)**, `README.md` (root), dan `docs/KOREKSI-DEPLOY.md` (ditarik
+seluruhnya). **Arsip prompt lama di `sprint-*/` sengaja TIDAK diedit** — ia rekaman bertanggal
+dari apa yang diyakini saat itu. Baca setiap "deploy dari branch" di `sprint-*/` sebagai keliru,
+per catatan ini.
+
+---
+
 ## ⚠️ Peringatan keamanan aktif (per 11 Agustus 2026)
 
 Temuan keamanan tidak boleh terkubur di poin 5 sebuah laporan sprint. Yang terbuka **sekarang**,

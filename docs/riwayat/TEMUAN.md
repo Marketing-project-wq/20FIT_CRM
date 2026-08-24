@@ -253,6 +253,12 @@ Sprint 3B menyimpulkan `main` di `d92a92e` dan Sprint 3A belum di produksi, pada
 sudah ter-merge. Penyebabnya remote-tracking ref basi tanpa `git fetch`. Kesimpulan itu
 sempat mengubah penilaian risiko merge. Sejak 3C, `git fetch` + melaporkan tiga keluaran
 `git log` jadi langkah pertama wajib.
+**Terulang, lebih mahal (24 Agu 2026):** ref basi yang sama menyesatkan `git log -S
+"login.password_reset_requested" origin/main` → "nol", memicu kesimpulan **salah** "produksi =
+branch" yang bertahan 5 hari (T-22/K-25/K-27, semua kini dikoreksi/dibatalkan). Commit itu sudah
+di `main` lewat PR #10, 7 menit sebelum jejak yang dirujuk. Pelajaran S-05 **sudah ada** sejak 3C
+namun tetap terlewat — jadi `git log -S ... origin/main` kini **tak sah sebagai bukti** tanpa
+`git fetch` lebih dulu **dan** membandingkan waktu-merge PR dengan timestamp jejak. Lihat **T-27**.
 
 ### S-06 · Celah verifikasi sudah tertutup tanpa disadari
 Lima sprint melaporkan "runtime belum pernah terbukti". Ketika laporan 3G ditulis,
@@ -298,13 +304,32 @@ ditindaklanjuti**. Ini **kali kedua** jawabannya sudah ada di tempat yang sudah 
 tabel kini **wajib** menyebut RLS **dan** policy **dan** grant (K-23), dan kueri klasifikasinya
 masuk monitoring supaya bisa dijalankan ulang, bukan diandalkan pada ingatan.
 
-## T-22 · Produksi menjalankan kode BRANCH, bukan `main` — dokumentasi deploy salah
-> **DITUTUP (Sprint 3Y, 12 Agu 2026).** Pemilik produk **menerima secara sadar** bahwa produksi
-> men-deploy dari branch untuk sekarang (kecepatan > gate merge; belum ada pengguna eksternal),
-> dengan syarat pembalikan tercatat: begitu staf luar memakai sistem rutin → arahkan ke `main`
-> (merge dulu, repoint kemudian). Lihat **K-27**. Pertanyaan "branch atau main?" kini
-> **diketahui (branch) dan diterima** — bukan lagi kondisi tak disadari. Konfirmasi dashboard
-> Railway turun jadi kebersihan (MENUNGGU #3/#4), bukan penghalang. Detail bukti tetap di bawah.
+## T-22 · Produksi menjalankan kode BRANCH, bukan `main` — **KESIMPULAN SALAH, DIKOREKSI 24 Agu 2026**
+> **KOREKSI (24 Agu 2026) — kesimpulan ini terbalik dan ditarik.** Dashboard Railway
+> (Settings → Source) menunjukkan produksi tersambung ke **`main`** dengan **auto-deploy saat
+> push** — bukti dari luar repo yang tak pernah bisa saya lihat dari sandbox. Jadi produksi
+> **selalu** dari `main`; kalimat asli README "push ke `main` memicu deploy" **benar sejak
+> awal**, dan koreksi 12 Agu yang menandainya "salah" itulah yang keliru.
+>
+> **Bagaimana bukti 12 Agu menyesatkan (terbukti dari git, bukan tebakan):** temuan bersandar
+> pada `git log -S "login.password_reset_requested" origin/main` → **nol**, lalu menyimpulkan
+> "aksi ini hanya ada di branch, maka produksi menjalankan branch." Tetapi commit yang
+> memperkenalkan aksi itu (`a9602d5`) **sudah masuk `main` lewat PR #10** — merge `1b13fa8`
+> tercatat **12 Agu 04:41:32 UTC**, sedangkan baris audit reset produksi ditulis **04:48:41 /
+> 04:48:44 / 04:57:35 UTC**, yaitu **7 menit setelah** kode itu ada di `main`. `git merge-base
+> --is-ancestor a9602d5 1b13fa8` = **YA**. Maka "nol di `origin/main`" hanya mungkin bila
+> `git log -S` dijalankan atas **ref `origin/main` basi** (belum di-fetch setelah PR #10 merge) —
+> **pola S-05 (ref remote basi)**. Produksi menjalankan `main` yang baru saja di-deploy PR #10;
+> reset mendarat di sana. Temuan menggambarkan keadaan `main` **sebelum** PR #10 sambil reset
+> berjalan atas `main` **sesudah** PR #10.
+>
+> **Status:** kesimpulan "produksi = branch" **DITARIK.** K-25 dikoreksi, **K-27 dibatalkan
+> seluruhnya** (keputusan "menerima deploy-from-branch" tak pernah punya kondisi yang
+> diterimanya). Analisis kenapa ini lolos DUA kali → **T-27** (baru). Larangan "jangan merge ke
+> `main` tanpa izin" **tetap** — kini lebih penting, karena **merge = deploy**.
+>
+> _Teks di bawah ini adalah rekaman asli (yang keliru), disimpan utuh agar jejak keputusan
+> terbaca. Jangan dibaca sebagai keadaan sekarang._
 
 **Migrasi 11/12 (12 Agu 2026).** Reset kata sandi nyata berhasil di produksi
 (marketing@20fit.id masuk 04:58:21 UTC) dengan tiga baris audit
@@ -523,3 +548,56 @@ kelihatan di layar, jangan andalkan konteks di luar gambar.**
 **Pelajaran.** Data pratinjau yang makin akurat makin berbahaya kalau tak ditandai — sebab ia makin
 meyakinkan sebagai produksi. Fixture apa pun yang bisa masuk screenshot keputusan HARUS membawa
 penanda yang ikut ter-render.
+
+---
+
+## T-27 · Model deploy tercatat salah DUA kali — pertanyaan yang tak boleh dijawab dari dalam repo (2026-08-24)
+
+**Apa yang terjadi (dua kali, arah berlawanan).** Sumber deploy produksi salah dicatat dua kali:
+1. **~12 sprint pertama:** dokumen menulis "auto-deploy dari `main`" — **benar**, tapi ditulis
+   sebagai asumsi tanpa bukti.
+2. **12 Agu 2026 (T-22/K-25/K-27):** "koreksi" menyimpulkan produksi menjalankan **branch** —
+   **salah**, dan bertahan 5 hari lintas puluhan prompt sampai dashboard Railway (24 Agu)
+   membalikkannya kembali ke `main`.
+
+Pola berulang-terbalik itu sendiri adalah temuannya.
+
+**Apa yang terlewat (terbukti, bukan tebakan).** Bukti 12 Agu terasa kuat: aksi audit
+`login.password_reset_requested` tampak "hanya di branch" per `git log -S origin/main`, padahal
+produksi menulisnya. Yang terlewat: commit itu (`a9602d5`) **sudah** di `main` lewat **PR #10**
+(merge `1b13fa8`, **04:41:32 UTC**) — **7 menit sebelum** baris audit reset ditulis (04:48–04:57
+UTC). `git merge-base --is-ancestor a9602d5 1b13fa8` = **YA**. Jadi "nol di `origin/main`" hanya
+mungkin dari **ref `origin/main` basi** (belum di-fetch setelah PR #10) — **pola S-05**. Reset
+mendarat di `main` yang baru saja di-deploy, bukan di kode branch.
+
+**Kesalahan penalaran yang lebih dalam (ini yang harus tak terulang).** Bahkan seandainya ref
+tidak basi, bukti baris-audit **secara struktural tak bisa** menjawab pertanyaannya. Yang
+dibuktikan bukti itu paling jauh adalah **"kode branch pernah menyentuh DB produksi"** — dan itu
+bisa terjadi lewat **beberapa** mekanisme yang tak terbedakan dari dalam repo: (a) service
+produksi memang dari branch; (b) **deploy preview PR** dari branch menulis ke Supabase produksi
+yang **dibagi**; (c) kode branch dijalankan **lokal** terhadap DB produksi. T-22 sendiri
+**menyebut** alternatif (b) ("service produksi tetap `main`") lalu tetap menyimpulkan (a) sebagai
+fakta. Pertanyaan sebenarnya — **"branch mana yang disetel service produksi?"** — jawabannya ada
+**satu** tempat: **Railway → Settings → Source**, satu screenshot, **di luar repo dan diblokir
+egress dari sandbox**. Menutup pertanyaan empiris memakai bukti yang tak sanggup menjawabnya
+itulah cacatnya, bukan sekadar ref basi.
+
+**Pelajaran permanen (→ K-25 dikoreksi, K-27 dibatalkan, S-05 diperkuat).** Kelas pertanyaan
+"apa yang sebenarnya berjalan di produksi / setelan platform mana yang aktif" **tidak boleh
+dijawab dari dalam kode.** Bukti dari-dalam-repo (git log, isi audit, migrasi) bisa **menyanggah**
+sebuah klaim tapi jarang bisa **memastikan** setelan platform. Bila jawabannya butuh satu layar
+dashboard yang tak bisa saya lihat, hasil yang benar adalah **"belum diketahui — butuh
+konfirmasi manusia di Railway"**, bukan kesimpulan berbungkus rapi.
+
+**Bukti yang harus dicari lain kali (checklist verifikasi sumber deploy):**
+- **Railway → service produksi → Settings → Source** — branch tersambung + "auto deploy on push".
+  Ini otoritatif; semua yang lain turunan. (Diblokir dari sandbox → minta screenshot pemilik.)
+- Sebelum `git log -S` menyimpulkan "hanya di branch": **`git fetch origin main` dulu**, lalu
+  bandingkan **waktu merge PR** (`git show -s --format=%cd <merge>`) dengan **timestamp jejak
+  produksi**. Bila kode sudah di `main` sebelum jejak, "hanya di branch" itu artefak ref basi.
+- Ingat DB Supabase **dibagi** semua environment: baris di DB produksi **tak** membuktikan
+  environment mana yang menulisnya. Untuk memisah preview vs produksi butuh sinyal sisi-Railway
+  (log deploy, domain yang memanggil), bukan sinyal sisi-DB.
+
+**Konsekuensi gate:** larangan "jangan merge ke `main` tanpa izin eksplisit" **tetap** dan kini
+**lebih penting** — dengan model yang benar, **merge = deploy produksi seketika**.

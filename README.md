@@ -37,11 +37,16 @@ Full spec: `PRD — 20FIT Audience Data & CRM System v1.1`.
 > lockout is immediate. This warning is here, not only in `lib/auth/current-role.ts`,
 > because whoever merges is reading this file, not the auth code.
 >
-> **CORRECTION (2026-08-12, T-18/K-25):** the deployed branch is **not confirmed to be `main`** —
-> evidence shows production serving *feature-branch* code (an audit action present only in the
-> branch was written by production). So "a push to `main`" above may actually be "a push to the
-> connected feature branch." The lockout risk is identical either way; the trigger branch must
-> be confirmed in the Railway dashboard.
+> **RETRACTION (2026-08-24):** the 2026-08-12 "CORRECTION" that once stood here — claiming the
+> deployed branch was *not* `main` — was **wrong and is withdrawn**. The Railway dashboard
+> (Settings → Source) shows production connected to **`main`** with auto-deploy on push, exactly
+> as the original text above says. The 12 Aug "branch code serves production" reasoning rested on
+> a `git log -S` run against a **stale `origin/main` ref**: the audit action's commit (`a9602d5`)
+> was already merged into `main` via **PR #10 at 04:41 UTC**, seven minutes *before* the
+> production reset wrote those audit rows at 04:48 UTC. Production ran freshly-deployed `main`, not
+> branch code. See T-22 (corrected) and T-27 in `docs/riwayat/TEMUAN.md`. **Merge to `main` = a
+> production deploy** — the "do NOT merge until steps 1–2 are done" order above stands, and is now
+> confirmed to be the exact and only trigger.
 
 > ## ⚠️ Migration ledger diverged — do NOT run `supabase db push`
 >
@@ -192,11 +197,13 @@ reverse it in **both** aggregate endpoints, never leave two answers.
 - Tailwind CSS 3 + shadcn/ui (restyled to the 20FIT design tokens)
 - Supabase Auth via `@supabase/ssr` (cookie-based sessions, no localStorage)
 - Self-hosted fonts via `next/font` (Barlow Condensed, JetBrains Mono, Manrope)
-- Deploy: Railway (source = GitHub). **The connected branch is NOT confirmed to be `main`.**
-  Evidence (2026-08-12, T-18/K-25) shows **branch code serving production**: production wrote
-  an audit action that exists only in the feature branch, never in `main`. Confirm the actual
-  deploy branch in the Railway dashboard (service → Settings → Source); until then, treat
-  every push to the feature branch as potentially live in production.
+- Deploy: Railway (source = GitHub), **connected branch = `main`, auto-deploy on push**
+  (confirmed in the Railway dashboard, Settings → Source, 2026-08-24). The 2026-08-12 claim that
+  "branch code serves production" was **wrong** — it came from a `git log -S` on a stale
+  `origin/main` ref (the audit-action commit had already merged to `main` via PR #10, minutes
+  before the reset it pointed to). Withdrawn; see T-22 (corrected) and T-27 in
+  `docs/riwayat/TEMUAN.md`. **Merge to `main` = deploy to production** — that is the single
+  trigger, so the merge gate below matters more, not less.
 
 ## Run locally
 

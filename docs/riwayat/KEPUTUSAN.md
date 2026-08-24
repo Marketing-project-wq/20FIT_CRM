@@ -230,9 +230,20 @@ menjalankan ulang aman; untuk operasi **non-idempoten non-atomik**, langkah 2 (c
 **Membalikkan:** tidak ada — ini pengetahuan operasional, bukan perubahan sistem.
 
 ## K-25 · Sumber deploy = pertanyaan empiris, bukan asumsi dari README
+> **KOREKSI (24 Agu 2026).** Premis di bawah — "bukti menunjukkan kode branch melayani produksi"
+> — **salah**. Dashboard Railway (Settings → Source) menunjukkan produksi dari **`main`**,
+> auto-deploy saat push; kalimat README yang dulu dianggap keliru **benar sejak awal**. "Bukti"
+> itu adalah `git log -S` atas ref `origin/main` **basi**: commit aksi audit sudah masuk `main`
+> lewat PR #10 (04:41 UTC), 7 menit sebelum reset produksi (04:48 UTC). Lihat **T-22 (dikoreksi)**
+> dan **T-27**. **Yang tetap benar dari K-25:** prinsip metodologisnya — "sumber deploy adalah
+> pertanyaan empiris, jawab dengan bukti, bukan asumsi." Yang salah cuma **jawaban** yang ditarik
+> saat itu (branch), plus keyakinan bahwa bukti dari-dalam-repo sanggup menjawabnya (tak sanggup —
+> T-27). Diskriminator sah bukan `git log -S` melainkan **Railway → Settings → Source**.
+
 **Migrasi 11/12.** README menyatakan "auto-deploy on `main`" dan "push ke `main` memicu
 deploy" — tapi bukti menunjukkan **kode branch melayani produksi** (aksi audit yang hanya ada
 di branch tertulis oleh produksi; `main` bahkan tak menulis audit reset). → T-18.
+_(Alinea ini adalah rekaman asli yang keliru; lihat koreksi di atas.)_
 
 **Keputusan:** status deploy **diturunkan dari bukti**, bukan dari klaim dokumen. Diskriminator
 yang sah: **siapa yang menulis baris audit** (`git log -S` pada string aksi → cek apakah commit
@@ -275,7 +286,15 @@ tak punya granularitas purpose untuk dibedakan.
 `isContactableForPurpose` DAN `crm_contactable_counts` — atau keduanya diverge diam-diam lagi.
 **Membalikkan:** ubah kedua tempat itu bersama + perbarui test pengunci; jangan satu saja.
 
-## K-27 · Produksi men-deploy dari branch kerja — keputusan sadar pemilik produk (Sprint 3Y)
+## K-27 · ~~Produksi men-deploy dari branch kerja — keputusan sadar pemilik produk~~ — **DIBATALKAN 24 Agu 2026**
+> **DIBATALKAN SELURUHNYA (24 Agu 2026).** Keputusan ini "menerima secara sadar" sebuah kondisi
+> yang **tak pernah ada**: produksi tak pernah men-deploy dari branch — ia dari `main` sejak awal
+> (dashboard Railway, Settings → Source). Karena premisnya (K-25 versi lama, T-22) terbukti salah,
+> tak ada yang tersisa untuk "diterima". Jangan pakai K-27 sebagai preseden untuk apa pun. Model
+> yang benar: **`main` = produksi, merge = deploy.** Larangan merge tanpa izin **tetap** dan
+> makin penting. Lihat T-22 (dikoreksi), T-27, K-25 (dikoreksi). Teks asli disimpan di bawah
+> sebagai jejak, bukan sebagai keputusan yang berlaku.
+
 **Latar:** K-25 (Sprint 3Y sebelumnya) **menurunkan dari bukti** bahwa produksi Railway
 menjalankan kode **branch**, bukan `main` — dan T-18 mengangkat "sumber deploy mana yang
 benar" sebagai pertanyaan terbuka. Sprint ini pemilik produk **memutuskan dan menerima**

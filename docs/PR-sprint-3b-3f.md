@@ -143,6 +143,10 @@ Postgres — keputusan tersendiri), nol sentuh tabel di luar `crm_*`.
 > **KOREKSI (12 Agu 2026, T-18/K-25):** model "push ke `main` memicu deploy" **tidak sesuai
 > bukti** — produksi terbukti menjalankan kode *branch*, bukan `main`. Yang menahan produksi
 > bukan hanya merge; **setiap push ke branch bisa langsung live**. Lihat `docs/KOREKSI-DEPLOY.md`.
+>
+> **RE-KOREKSI (24 Agu 2026):** koreksi 12 Agu di atas **sendiri keliru dan ditarik**. Produksi
+> men-deploy dari **`main`** (dashboard Railway); "push ke `main` memicu deploy" **benar sejak
+> awal**. Sebab kekeliruan 12 Agu: ref `origin/main` basi (S-05). Lihat T-22/T-27, K-25/K-27.
 
 ---
 

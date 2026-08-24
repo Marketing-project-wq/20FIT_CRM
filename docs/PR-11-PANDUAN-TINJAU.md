@@ -142,8 +142,10 @@ pagar panjang/terlarang. Baca judul doc untuk konteks, jangan audit tiap kalimat
 1. **Migrasi berlaku terlepas dari merge kode.** Semua migrasi PR ini **sudah** di DB. Merge/revert
    kode **tidak** menerapkan atau membatalkan migrasi. Membalikkan skema = migrasi terbalik terpisah
    (via `apply_migration`), **bukan** `git revert`.
-2. **Merge:** izin di tangan pemilik repo (agen tidak merge sendiri). Karena prod deploy dari branch,
-   merge hanya menyelaraskan `main` — aman kapan saja setelah tinjauan + gate hijau.
+2. **Merge:** izin di tangan pemilik repo (agen tidak merge sendiri). ~~Karena prod deploy dari branch,
+   merge hanya menyelaraskan `main` — aman kapan saja setelah tinjauan + gate hijau.~~ **KOREKSI
+   (24 Agu 2026):** prod deploy dari **`main`**, jadi **merge = deploy** — bukan "aman kapan saja".
+   Merge hanya setelah gate hijau + izin eksplisit. Lihat T-22/T-27, K-27 (dibatalkan).
 3. **Revert kode:** `git revert` mengembalikan lapisan baca/layar/i18n ke `main` lama. Migrasi tetap
    di DB (matview, RPC, cron tetap ada) — jalur baca lama tetap kompatibel dengannya.
 4. **JANGAN arahkan Railway ke `main` sebelum merge** — itu memundurkan produksi ke jalur baca lama
