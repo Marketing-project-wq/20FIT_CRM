@@ -82,7 +82,7 @@ export const en: Messages = {
       "staging_20fit_data rows have a birth date (master_customer: 0) · ~98.6% matched to a profile (measured manually · 12 Aug 2026)",
     rfmTitle: "RFM spread · 20FIT import data",
     rfmNote:
-      'From staging_20fit_data."RFM per paid order". “−” = no bucket (not empty). Stored spelling kept as-is. RFM per revenue 0% filled.',
+      'From the mirror (82,253 matched profiles · snapshot) — same as the segment builder, so the numbers differ from the raw staging import (88,536). “−” = no bucket (not empty). Every closed-vocabulary bucket always shows (0 = measured, not missing). Stored spelling kept as-is.',
     rfmNoBucket: "− (no bucket)",
     liveTitle: "Live sources vs the frozen pool",
     liveNote: "The CRM pool is a frozen snapshot — its last load was 31 Jul 2026, and no pipeline feeds new registrants into it. The sources below are counted live per request, so the “not yet in pool” gap rises on its own as people register — the honest answer to “does it update automatically”.",

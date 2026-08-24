@@ -22,12 +22,14 @@ const FIXTURE = {
   contactableService: 81760,
   lastProfileAt: "2026-07-31T00:00:00.000Z",
   importDob: 5467,
+  // Cermin RFM (dashboard_stats.rfm) expanded against the closed vocabulary — the real production
+  // shape: "Campion user" is 0 (1 in staging, 0 matched into the mirror) and MUST still appear.
   importRfm: [
     { value: "New User", count: 74021 },
-    { value: "-", count: 7058 },
-    { value: "Campion user", count: 612 },
-    { value: "Fitco User", count: 448 },
-    { value: "Loyal", count: 114 },
+    { value: "Potensial user", count: 6837 },
+    { value: "-", count: 1332 },
+    { value: "Loyal user", count: 63 },
+    { value: "Campion user", count: 0 },
   ],
   contactCoverage: { both: 80999, emailOnly: 638, phoneOnly: 616, neither: 0 },
   unitSpread: [

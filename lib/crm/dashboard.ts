@@ -1,16 +1,54 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { fetchStagingImportDob, fetchStagingRfm } from "./staging";
+import { fetchStagingImportDob } from "./staging";
+import { STAGING_RFM_VALUES } from "./staging-constants";
 import {
   fetchContactCoverage,
-  fetchUnitSpread,
+  fetchShopProfilesLive,
   fetchEventRegistrations,
   type ContactCoverage,
   type UnitCount,
   type ProductCount,
 } from "./dashboard-viz";
 import { fetchLiveSourceGaps, type SourceGap } from "./dashboard-sources";
-import { fetchMirrorMeta } from "./mirror";
+import { fetchMirrorDashboardStats, type MirrorDashboardStats } from "./mirror";
+
+/** The 5 ecosystem units the mirror precompute (dashboard_stats.engagement) carries, in a FIXED
+ *  order so a unit is never dropped just because the blob happens not to key it. */
+export const MIRROR_ENGAGEMENT_UNITS = ["membership", "event", "arena", "clinic", "gym"] as const;
+
+/**
+ * Build the unit-spread rows from the precompute engagement block + the live `shop` count. Every
+ * mirror unit ALWAYS appears (from the closed list above; a missing key reads as 0-measured, K-08),
+ * and `shop` is appended as a live row. Sorted by profiles desc — pure, so it has a test.
+ */
+export function unitSpreadFromEngagement(
+  engagement: Record<string, number>,
+  shopProfiles: number,
+): UnitCount[] {
+  const rows: UnitCount[] = MIRROR_ENGAGEMENT_UNITS.map((unit) => ({
+    unit,
+    profiles: Number(engagement[unit] ?? 0),
+    source: "mirror" as const,
+  }));
+  rows.push({ unit: "shop", profiles: shopProfiles, source: "live" });
+  return rows.sort((a, b) => b.profiles - a.profiles);
+}
+
+/**
+ * RFM spread from the precompute, expanded against the CLOSED vocabulary. THE POINT (K-08): the
+ * precompute's `buckets` are a GROUP BY, so a bucket with zero rows is simply ABSENT — e.g.
+ * "Campion user" (1 person in staging, 0 matched into the mirror) has no row. Building the display
+ * list from the blob's buckets would make that category VANISH from the screen instead of showing
+ * 0. So every closed-vocabulary value is listed unconditionally (0 when absent), the stored
+ * misspelling "Campion user" is kept verbatim, and the "no bucket" total (`-`) is appended. Pure.
+ */
+export function rfmFromPrecompute(rfm: MirrorDashboardStats["rfm"]): { value: string; count: number }[] {
+  const byLabel = new Map((rfm.buckets ?? []).map((b) => [b.label, Number(b.count) || 0]));
+  const named = STAGING_RFM_VALUES.map((value) => ({ value, count: byLabel.get(value) ?? 0 }));
+  const rows = [...named, { value: "-", count: Number(rfm.tanpa) || 0 }];
+  return rows.sort((a, b) => b.count - a.count);
+}
 
 /**
  * Dashboard KPI stats — READ-ONLY aggregates over master_customer + crm_consent +
@@ -138,14 +176,24 @@ export async function fetchContactableBlock(admin: SupabaseClient): Promise<Cont
   return { contactableMarketing: c.marketing ?? 0, contactableService: c.transactional ?? 0 };
 }
 
-/** MIRROR — the snapshot block: unit spread + RFM + freshness, in parallel. */
+/**
+ * MIRROR — the snapshot block, now served from the PRECOMPUTE (dashboard_stats). One blob read
+ * (~0.14ms) replaces the five per-unit matview COUNT scans (~55ms each) AND the five staging RFM
+ * COUNT scans (~249ms each). `shop` has no precompute column, so it stays a live count (tiny). The
+ * reader fails hard if the precompute is absent (never zeros — see fetchMirrorDashboardStats), so
+ * this block shows its own failure state rather than fake all-zero unit/RFM figures. RFM is
+ * expanded against the closed vocabulary so a zero bucket (Campion user) shows 0, never vanishes.
+ */
 export async function fetchMirrorBlock(admin: SupabaseClient): Promise<MirrorBlock> {
-  const [unitSpread, importRfm, mirrorMeta] = await Promise.all([
-    fetchUnitSpread(admin),
-    fetchStagingRfm(admin),
-    fetchMirrorMeta(admin),
+  const [stats, shopProfiles] = await Promise.all([
+    fetchMirrorDashboardStats(admin),
+    fetchShopProfilesLive(admin),
   ]);
-  return { unitSpread, importRfm, mirror: { refreshedAt: mirrorMeta.refreshedAt, rowCount: mirrorMeta.rowCount } };
+  return {
+    unitSpread: unitSpreadFromEngagement(stats.engagement, shopProfiles),
+    importRfm: rfmFromPrecompute(stats.rfm),
+    mirror: { refreshedAt: stats.refreshedAt, rowCount: stats.rowCount },
+  };
 }
 
 /** EVENTS — the live per-product registration tally (the ~20-page read). */

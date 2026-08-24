@@ -457,11 +457,12 @@ export function DashboardContent(
         </section>
       )}
 
-      {/* ── RFM spread (live, from staging via the mirror block). 0 = measured zero (K-08). ──── */}
+      {/* ── RFM spread — SNAPSHOT, from the cermin precompute (dashboard_stats.rfm). 0 = measured
+          zero (K-08); zero buckets are re-expanded from the closed vocabulary so none vanish. ──── */}
       {!denied && (
         <section className="space-y-2">
           <h2 className="font-display text-[15px] font-semibold text-ink-soft">
-            {t.dashboard.rfmTitle} <FreshTag>{t.dashboard.freshLive}</FreshTag>
+            {t.dashboard.rfmTitle} <FreshTag>{t.dashboard.freshSnapshot}{mirrorAt ? ` · ${formatDateTime(mirrorAt, lang)}` : ""}</FreshTag>
           </h2>
           <p className="max-w-3xl font-body text-[12px] leading-relaxed text-ink-faint">{t.dashboard.rfmNote}</p>
           {mirrorB.status === "ready" && mirrorB.data ? (

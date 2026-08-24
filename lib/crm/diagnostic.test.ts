@@ -42,8 +42,29 @@ function spyClient() {
     update() { return this.rec("update"); }
     upsert() { return this.rec("upsert"); }
     delete() { return this.rec("delete"); }
-    // terminals
-    maybeSingle() { this.rec("maybeSingle"); return Promise.resolve({ data: null, error: null }); }
+    // terminals — crm_mirror_meta serves the precompute blob so the dashboard's fail-hard mirror
+    // reader (which throws on an absent block) sees a complete dashboard_stats and passes.
+    maybeSingle() {
+      this.rec("maybeSingle");
+      if (this.table === "crm_mirror_meta") {
+        return Promise.resolve({
+          data: {
+            dashboard_stats: {
+              engagement: { membership: 1, event: 1, arena: 1, clinic: 1, gym: 1 },
+              rfm: { buckets: [{ label: "New User", count: 1 }], tanpa: 0 },
+              fitco: { matched: 1, unmatched: 0, staging_rows: 1, staging_unique: 1 },
+              ecosystem: { gym: 1 },
+              candidates: { total: 1, by_source: {} },
+              sources: {},
+            },
+            refreshed_at: "2026-08-24T00:00:00Z",
+            row_count: 1,
+          },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: null, error: null });
+    }
     single() { this.rec("single"); return Promise.resolve({ data: null, error: null }); }
     // make the builder awaitable -> empty successful result
     then(resolve: (v: unknown) => void) {

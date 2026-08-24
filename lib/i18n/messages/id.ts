@@ -95,7 +95,7 @@ export const id = {
     rfmTitle: "Sebaran RFM · data impor 20FIT",
     // The RFM note keeps the "− = no bucket, not empty" nuance and the "spelling kept" rule.
     rfmNote:
-      'Dari staging_20fit_data."RFM per paid order". “−” = tanpa bucket (bukan kosong). Ejaan tersimpan dipertahankan apa adanya. RFM per revenue 0% terisi.',
+      'Dari cermin (82.253 profil tercocokkan · snapshot) — sama dengan segment builder, jadi angkanya beda dari impor mentah staging (88.536). “−” = tanpa bucket (bukan kosong). Setiap bucket kosakata tertutup selalu tampil (0 = terukur, bukan hilang). Ejaan tersimpan dipertahankan apa adanya.',
     rfmNoBucket: "− (tanpa bucket)",
     // Dashboard Visual sprint — tiga lapis, visualisasi, kesegaran.
     liveTitle: "Sumber hidup versus pool beku",

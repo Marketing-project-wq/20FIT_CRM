@@ -100,6 +100,76 @@ export async function fetchMirrorMeta(admin: SupabaseClient): Promise<MirrorMeta
 }
 
 /**
+ * The precomputed dashboard aggregates (crm_mirror_meta.dashboard_stats, Migrasi 23). One blob
+ * read (~0.14ms) replaces the slow-and-static mirror-derived reads on the dashboard: the five
+ * per-unit matview COUNT scans (~55ms each) AND the five staging RFM COUNT scans (~249ms each).
+ *
+ * FAIL-HARD, BY CONSTRUCTION — this is the point of the function, not an afterthought:
+ * crm_mirror_meta is RLS-on / 0-policy / SELECT granted to service_role ONLY (verified). A wrong
+ * (anon / authenticated) client therefore reads NOTHING — `data` comes back null, not an error.
+ * If this returned zeros on that path, a "0" born of a wrong client would be indistinguishable
+ * from a measured 0, and the whole K-08 discipline collapses silently. So: it THROWS when the blob
+ * is absent, and THROWS when any expected block is missing (a half-populated precompute is a bug,
+ * not a reason to show zeros). It NEVER substitutes zeros for absence. The caller must use
+ * createAdminClient(); a block-level failure surfaces as the block's on-screen failure state.
+ */
+export interface MirrorDashboardStats {
+  /** distinct profiles per ecosystem unit (5 mirror units; shop is NOT here — counted live). */
+  engagement: Record<string, number>;
+  /** RFM spread — buckets that HAVE rows, plus the "no bucket" total. A bucket with zero rows is
+   *  ABSENT here (group-by), so the reader re-expands it against the closed vocabulary (K-08). */
+  rfm: { buckets: { label: string; count: number }[]; tanpa: number };
+  /** Fitco participation: matched to a profile vs unmatched. */
+  fitco: { matched: number; unmatched: number; staging_rows: number; staging_unique: number };
+  /** Distinct profiles already in the pool, per ecosystem source. */
+  ecosystem: Record<string, number>;
+  /** Deduped people across source systems NOT yet in the pool ("candidates"), + per-source split. */
+  candidates: { total: number; by_source: Record<string, number> };
+  /** Per raw source: how many of its people are matched into the pool (snapshot). */
+  sources: Record<string, { matched: number }>;
+  refreshedAt: string | null;
+  rowCount: number | null;
+}
+
+/** The blocks the dashboard depends on — every one must be present or the read fails hard. */
+export const DASHBOARD_STATS_BLOCKS = [
+  "engagement",
+  "rfm",
+  "fitco",
+  "ecosystem",
+  "candidates",
+  "sources",
+] as const;
+
+export async function fetchMirrorDashboardStats(admin: SupabaseClient): Promise<MirrorDashboardStats> {
+  const { data, error } = await admin.from(META).select("dashboard_stats, refreshed_at, row_count").maybeSingle();
+  if (error) throw error;
+  const row = data as
+    | { dashboard_stats: Record<string, unknown> | null; refreshed_at: string | null; row_count: number | null }
+    | null;
+  const blob = row?.dashboard_stats;
+  if (!blob || typeof blob !== "object") {
+    // No blob → wrong client (RLS denied → null) or the mirror was never refreshed. Refuse zeros.
+    throw new Error("crm_mirror_meta.dashboard_stats absent — precompute not readable (needs the service-role client) or never populated");
+  }
+  for (const b of DASHBOARD_STATS_BLOCKS) {
+    if (blob[b] == null) {
+      throw new Error(`crm_mirror_meta.dashboard_stats.${b} absent — refusing to render zeros for a missing precompute block`);
+    }
+  }
+  return {
+    engagement: blob.engagement as Record<string, number>,
+    rfm: blob.rfm as MirrorDashboardStats["rfm"],
+    fitco: blob.fitco as MirrorDashboardStats["fitco"],
+    ecosystem: blob.ecosystem as Record<string, number>,
+    candidates: blob.candidates as MirrorDashboardStats["candidates"],
+    sources: blob.sources as Record<string, { matched: number }>,
+    refreshedAt: row?.refreshed_at ?? null,
+    rowCount: row?.row_count ?? null,
+  };
+}
+
+/**
  * The set of master customer_ids matching ALL active mirror-served presence flags (AND), in one
  * paginated query against crm_customer_mirror. Returns null when NO mirror-served flag is active
  * (so the caller's non-mirror resolvers and master-column filters are untouched). By construction

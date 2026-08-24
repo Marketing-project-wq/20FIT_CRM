@@ -22,14 +22,30 @@ function recordingFake() {
   const tables = new Set<string>();
   const rpcs = new Set<string>();
 
+  // The precompute blob crm_mirror_meta serves (fail-hard reader throws if any block is absent).
+  const META_ROW = {
+    dashboard_stats: {
+      engagement: { membership: 1, event: 1, arena: 1, clinic: 1, gym: 1 },
+      rfm: { buckets: [{ label: "New User", count: 1 }], tanpa: 0 },
+      fitco: { matched: 1, unmatched: 0, staging_rows: 1, staging_unique: 1 },
+      ecosystem: { gym: 1 },
+      candidates: { total: 1, by_source: {} },
+      sources: {},
+    },
+    refreshed_at: "2026-08-24T00:00:00Z",
+    row_count: 1,
+  };
+
   // A permissive chainable builder: every filter/select returns itself; awaiting yields empty.
-  function builder() {
+  // crm_mirror_meta.maybeSingle serves the precompute row so the fail-hard reader doesn't throw.
+  function builder(table: string) {
     const api: Record<string, unknown> = {};
     const ret = () => api;
     for (const m of ["select", "eq", "not", "is", "gt", "lt", "ilike", "in", "order", "range", "limit"]) {
       api[m] = ret;
     }
-    api.maybeSingle = () => ({ then: (r: (v: unknown) => void) => r({ data: null, error: null }) });
+    const single = table === "crm_mirror_meta" ? META_ROW : null;
+    api.maybeSingle = () => ({ then: (r: (v: unknown) => void) => r({ data: single, error: null }) });
     api.then = (r: (v: unknown) => void) => r({ data: [], count: 0, error: null });
     return api;
   }
@@ -37,7 +53,7 @@ function recordingFake() {
   const admin = {
     from: (t: string) => {
       tables.add(t);
-      return builder();
+      return builder(t);
     },
     rpc: (name: string) => {
       rpcs.add(name);
@@ -76,11 +92,13 @@ describe("dashboard block cost boundaries (progressive-load)", () => {
     expect(rpcs.size).toBe(0);
   });
 
-  it("MIRROR block reads the snapshot (mirror + meta), not the contactable RPC", async () => {
+  it("MIRROR block reads the PRECOMPUTE blob (crm_mirror_meta) + live shop, not the contactable RPC", async () => {
     const { admin, tables, rpcs } = recordingFake();
     await fetchMirrorBlock(admin);
-    expect(tables.has("crm_customer_mirror")).toBe(true);
+    // Unit spread + RFM now come from one dashboard_stats blob read, not the 5 matview scans.
     expect(tables.has("crm_mirror_meta")).toBe(true);
+    // shop has no precompute column, so it stays a live count on customer_engagement.
+    expect(tables.has("customer_engagement")).toBe(true);
     expect(rpcs.size).toBe(0);
   });
 
