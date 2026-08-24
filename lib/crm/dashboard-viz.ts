@@ -82,6 +82,13 @@ const MIRROR_UNIT_COL: Record<string, string> = {
   gym: "engagement_gym",
 };
 
+/** `shop` distinct profiles, counted LIVE — the precompute (dashboard_stats.engagement) has the
+ *  five mirror units but no `shop` column, and `shop` is tiny (a paged dedup). Exported so the
+ *  precompute unit-spread path can keep the shop row (dropping a measured unit would violate K-08). */
+export async function fetchShopProfilesLive(admin: SupabaseClient): Promise<number> {
+  return distinctUnit(admin, "shop");
+}
+
 /** Distinct profiles per unit. Five from the mirror snapshot; `shop` (no mirror column) live. */
 export async function fetchUnitSpread(admin: SupabaseClient): Promise<UnitCount[]> {
   const mirrorUnits = Object.keys(MIRROR_UNIT_COL);

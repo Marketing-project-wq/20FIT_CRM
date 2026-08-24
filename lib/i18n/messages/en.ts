@@ -63,6 +63,10 @@ export const en: Messages = {
     freshLive: "computed on page load",
     freshSnapshot: "mirror snapshot", // + refresh date-time
     freshManual: "measured manually", // + measurement date
+    computing: "Computing…",
+    previewBanner: "PREVIEW · FIXTURE DATA — NOT PRODUCTION FIGURES",
+    blockFailed: "This section failed to load.",
+    blockRetry: "Retry",
     audienceSize: "Audience size",
     audienceSizeHint: "master_customer (read-only)",
     contactableMarketing: "Contactable · marketing",
@@ -76,10 +80,10 @@ export const en: Messages = {
       "date of the last batch load (2 loads: 20 Apr & 31 Jul 2026) — not a continuous feed",
     importDob: "Date of birth · import data",
     importDobHint:
-      "staging_20fit_data rows have a birth date (master_customer: 0) · ~98.6% matched to a profile (measured manually · 12 Aug 2026)",
+      "staging_20fit_data rows have a birth date (master_customer: 0) · ~99.5% matched to a profile (measured manually · 24 Aug 2026)",
     rfmTitle: "RFM spread · 20FIT import data",
     rfmNote:
-      'From staging_20fit_data."RFM per paid order". “−” = no bucket (not empty). Stored spelling kept as-is. RFM per revenue 0% filled.',
+      'From the mirror (82,253 matched profiles · snapshot) — same as the segment builder, so the numbers differ from the raw staging import (88,536). “−” = no bucket (not empty). Every closed-vocabulary bucket always shows (0 = measured, not missing). Stored spelling kept as-is.',
     rfmNoBucket: "− (no bucket)",
     liveTitle: "Live sources vs the frozen pool",
     liveNote: "The CRM pool is a frozen snapshot — its last load was 31 Jul 2026, and no pipeline feeds new registrants into it. The sources below are counted live per request, so the “not yet in pool” gap rises on its own as people register — the honest answer to “does it update automatically”.",
@@ -120,6 +124,19 @@ export const en: Messages = {
     coveragePhoneOnlyWarn: "The “phone only” category has no email — this list cannot be used for an email campaign.",
     coverageExportNote: "Exports through the same segment engine: suppression is excluded, role gates apply, NIK & clinical data never enter the file, and the real row count is written at the end of the file.",
     coverageExportFailed: "Export failed.",
+    summaryTitle: "Pool & reach",
+    summaryPoolLabel: "CRM pool (master_customer)",
+    summaryReachAll: "whole pool contactable · zero suppression",
+    gapTableSource: "Source",
+    candTitle: "Candidates not yet in the pool",
+    candLabel: "not yet an audience · not the pool · not marketable",
+    candNote:
+      "This number DIFFERS from the live gap above: the source populations are different (e.g. here arena_bookings 4; the live arena gap counts a different arena table). Candidates = mirror snapshot (deduped across sources); gap = computed on page load. Both are correct; they count different things.",
+    candSourceCol: "Source (raw)",
+    candCountCol: "Candidates",
+    fitcoTitle: "Fitco participation",
+    fitcoMatched: "matched to a profile",
+    fitcoUnmatched: "not matched",
   },
 
   audience: {

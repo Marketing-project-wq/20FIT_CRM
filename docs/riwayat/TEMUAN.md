@@ -495,3 +495,31 @@ ditetapkan: **nomor yang dirujuk dari komentar DB menang atas teks dokumen.**
   sudah pensiun ke **T-18**, jadi nomor T-25 bebas untuk insiden ini; tak ada tabrakan tersisa.
 
 **Tanpa catatan ini, orang yang membaca transkrip lama akan mengira ada temuan yang hilang.**
+
+---
+
+## T-26 · Screenshot fixture `/dev/preview` salah dibaca sebagai PRODUKSI — kemiripan terlalu sempurna (2026-08-24)
+
+**Apa yang terjadi.** Saat tinjauan dashboard C+D, screenshot pratinjau menampilkan "bisa
+dihubungi · marketing 82.089 / layanan 81.760". Peninjau mencocokkannya ke DB — `crm_contactable_counts()`
+mengembalikan **82.253/82.253**, suppression 0 — dan wajar menduga ada **bug produksi** atau jalur
+perhitungan kedua. Ditelusuri dari kode: jalur dashboard tunggal (`fetchContactableBlock` → RPC saja,
+diteruskan apa adanya; test mengunci ini). Angka 82.089/81.760 **tidak pernah dihasilkan kode apa pun**
+— itu **konstanta fixture** di `app/dev/preview/page.tsx`, usang. Produksi selalu benar.
+
+**Sebab sesungguhnya — bukan angkanya, tapi ketaktampakannya.** Fixture `/dev/preview` memakai angka
+nyata untuk hampir semua blok (my20fit 919, kandidat 2.799, RFM cermin) supaya render realistis. Itu
+membuat screenshot fixture **tak bisa dibedakan** dari screenshot produksi tanpa memeriksa DB. Ketika
+nilai contactable yang usang "diperbaiki" jadi 82.253 agar cocok produksi, kemiripan malah **makin
+sempurna** — jebakan yang sama akan terulang pada peninjau berikutnya.
+
+**Penutupan.** Penanda pratinjau yang **ikut ter-render** di dalam `DashboardContent` sendiri (bukan
+hanya di URL `/dev/preview`): pita amber "⚠ PRATINJAU · DATA FIXTURE — BUKAN ANGKA PRODUKSI", tampil
+HANYA saat `isPreview` (yang hanya pernah true di `/dev/preview`, 404 di produksi). Karena screenshot
+memotret elemen `DashboardContent`, pitanya ikut di setiap gambar fixture. Pola sama dengan
+`CoverageNotice` ("belum tersedia dalam Inggris") dan penanda kesegaran per blok: **buat keadaan
+kelihatan di layar, jangan andalkan konteks di luar gambar.**
+
+**Pelajaran.** Data pratinjau yang makin akurat makin berbahaya kalau tak ditandai — sebab ia makin
+meyakinkan sebagai produksi. Fixture apa pun yang bisa masuk screenshot keputusan HARUS membawa
+penanda yang ikut ter-render.

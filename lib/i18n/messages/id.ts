@@ -74,6 +74,13 @@ export const id = {
     freshLive: "dihitung saat halaman dibuka",
     freshSnapshot: "snapshot cermin", // + tanggal-waktu refresh
     freshManual: "diukur manual", // + tanggal pengukuran
+    // Progressive-load: skeleton = sedang dihitung; state gagal per bagian; tombol coba lagi.
+    computing: "Sedang menghitung…",
+    // Penanda pratinjau — IKUT ter-render (bukan hanya di URL /dev/preview), supaya screenshot
+    // fixture tak pernah lagi salah dibaca sebagai produksi. Hanya muncul saat isPreview.
+    previewBanner: "PRATINJAU · DATA FIXTURE — BUKAN ANGKA PRODUKSI",
+    blockFailed: "Bagian ini gagal dimuat.",
+    blockRetry: "Coba lagi",
     audienceSize: "Ukuran audiens",
     audienceSizeHint: "master_customer (baca saja)",
     contactableMarketing: "Bisa dihubungi · marketing",
@@ -87,11 +94,11 @@ export const id = {
       "tanggal muatan batch terakhir (2 muatan: 20 Apr & 31 Jul 2026) — bukan feed berkelanjutan",
     importDob: "Tanggal lahir · data impor",
     importDobHint:
-      "baris staging_20fit_data punya tgl lahir (master_customer: 0) · ~98,6% cocok ke profil (diukur manual · 12 Agu 2026)",
+      "baris staging_20fit_data punya tgl lahir (master_customer: 0) · ~99,5% cocok ke profil (diukur manual · 24 Agu 2026)",
     rfmTitle: "Sebaran RFM · data impor 20FIT",
     // The RFM note keeps the "− = no bucket, not empty" nuance and the "spelling kept" rule.
     rfmNote:
-      'Dari staging_20fit_data."RFM per paid order". “−” = tanpa bucket (bukan kosong). Ejaan tersimpan dipertahankan apa adanya. RFM per revenue 0% terisi.',
+      'Dari cermin (82.253 profil tercocokkan · snapshot) — sama dengan segment builder, jadi angkanya beda dari impor mentah staging (88.536). “−” = tanpa bucket (bukan kosong). Setiap bucket kosakata tertutup selalu tampil (0 = terukur, bukan hilang). Ejaan tersimpan dipertahankan apa adanya.',
     rfmNoBucket: "− (tanpa bucket)",
     // Dashboard Visual sprint — tiga lapis, visualisasi, kesegaran.
     liveTitle: "Sumber hidup versus pool beku",
@@ -133,6 +140,20 @@ export const id = {
     coveragePhoneOnlyWarn: "Kategori “telepon saja” tak punya email — daftar ini tak bisa dipakai untuk kampanye email.",
     coverageExportNote: "Ekspor lewat mesin segmen yang sama: suppression dikecualikan, gerbang peran berlaku, NIK & data klinis tak pernah masuk berkas, dan jumlah baris nyata ditulis di akhir berkas.",
     coverageExportFailed: "Ekspor gagal.",
+    // D redesign — satu kartu ringkas (pool + jangkauan), tabel selisih, kartu kandidat, Fitco.
+    summaryTitle: "Pool & jangkauan",
+    summaryPoolLabel: "Pool CRM (master_customer)",
+    summaryReachAll: "seluruh pool dapat dihubungi · nol suppression",
+    gapTableSource: "Sumber",
+    candTitle: "Kandidat belum di pool",
+    candLabel: "belum jadi audiens · bukan pool · bukan bisa dipasarkan",
+    candNote:
+      "Angka ini BEDA dari selisih live di atas: populasi sumbernya berbeda (mis. di sini arena_bookings 4; di selisih live arena dihitung dari tabel arena lain). Kandidat = snapshot cermin (dedup lintas sumber); selisih = dihitung saat halaman dibuka. Keduanya benar, menghitung hal berbeda.",
+    candSourceCol: "Sumber (mentah)",
+    candCountCol: "Kandidat",
+    fitcoTitle: "Partisipasi Fitco",
+    fitcoMatched: "tercocokkan ke profil",
+    fitcoUnmatched: "belum tercocokkan",
   },
 
   // /audience page (Sprint 4D screen 1) — browse pool + single-person search + quality banner.

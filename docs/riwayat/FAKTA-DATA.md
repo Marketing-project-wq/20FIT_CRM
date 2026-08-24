@@ -368,3 +368,27 @@ proyek ini: kanon telepon, daftar retensi, paritas `crm_norm_phone`).
 untuk pemilik produk (email-only, harap `# EOF total_baris=638`, + SQL cek satu `export.performed`)
 di `docs/VERIFIKASI-ekspor-per-kategori.md`. Ekspor sintetis **tidak** ditulis (audit append-only,
 non-atribusi).
+
+---
+
+## Cron cermin — lima malam berturut, precompute utuh (diverifikasi 24 Agu 2026)
+
+Job pg_cron `crm-refresh-customer-mirror` (jobid 9, `0 20 * * *` = 03:00 WIB) telah berjalan
+**lima malam berturut-turut**, semuanya `status=succeeded`, semuanya tepat 20:00:00 UTC:
+
+| start_time (UTC) | status |
+|---|---|
+| 2026-08-19 20:00 | succeeded |
+| 2026-08-20 20:00 | succeeded |
+| 2026-08-21 20:00 | succeeded |
+| 2026-08-22 20:00 | succeeded |
+| **2026-08-23 20:00** | **succeeded** (refresh terakhir) |
+
+`crm_mirror_meta.refreshed_at` = **2026-08-23 20:00:00 UTC**, dan **keenam blok
+`dashboard_stats` utuh**: `candidates, ecosystem, engagement, fitco, rfm, sources`. Ini yang
+dipakai dashboard C (pembaca precompute fail-hard) — sekarang selalu punya blob lengkap untuk
+dibaca; bila suatu malam gagal atau sebuah blok hilang, pembaca melempar dan blok snapshot di
+dashboard menampilkan keadaan gagalnya sendiri (bukan halaman kosong, bukan nol palsu).
+
+_(Catatan: sempat disebut "empat malam" — pengukuran langsung menunjukkan **lima** malam, 19–23
+Agu; angka terverifikasi yang dicatat.)_

@@ -305,15 +305,25 @@ export interface StagingDashboard {
   importRfm: { value: string; count: number }[];
 }
 
+/** staging rows carrying a birth date — ONE head:true count (cheap: the dashboard's immediate
+ *  block, Progressive-load sprint). Split out from fetchStagingDashboard so the fast figure need
+ *  not wait for the RFM spread. */
+export async function fetchStagingImportDob(admin: SupabaseClient): Promise<number> {
+  return count(admin, (query) => query.not(q(STAGING_COLUMNS.dob), "is", null));
+}
+
+/** RFM ("per paid order") spread incl the "-" absence bucket — one head:true count per bucket, in
+ *  parallel. Deferred (grouped with the mirror block) so the immediate block stays quick. */
+export async function fetchStagingRfm(admin: SupabaseClient): Promise<{ value: string; count: number }[]> {
+  return Promise.all(
+    [...STAGING_RFM_VALUES, "-"].map(async (value) => ({
+      value,
+      count: await count(admin, (query) => query.eq(q(STAGING_COLUMNS.rfmPaidOrder), value)),
+    })),
+  );
+}
+
 export async function fetchStagingDashboard(admin: SupabaseClient): Promise<StagingDashboard> {
-  const [importDob, importRfm] = await Promise.all([
-    count(admin, (query) => query.not(q(STAGING_COLUMNS.dob), "is", null)),
-    Promise.all(
-      [...STAGING_RFM_VALUES, "-"].map(async (value) => ({
-        value,
-        count: await count(admin, (query) => query.eq(q(STAGING_COLUMNS.rfmPaidOrder), value)),
-      })),
-    ),
-  ]);
+  const [importDob, importRfm] = await Promise.all([fetchStagingImportDob(admin), fetchStagingRfm(admin)]);
   return { importDob, importRfm };
 }
