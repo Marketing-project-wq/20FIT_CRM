@@ -12,6 +12,22 @@ analitik lintas-tim berbaris), **kuncinya diganti** ke `master_customer.customer
 Kolom my20fit-spesifik (`meal_window`) dibuang; ditambah yang CRM butuh (identitas tujuan +
 referensi template + status `skipped_suppressed`).
 
+## Diverifikasi terhadap skema langsung (24 Agu 2026)
+
+Kolom `my20fit_message_log` dibaca dari `information_schema` (bukan diingat). Perbandingan:
+
+| Kolom my20fit | Aksi di CRM | Alasan |
+|---|---|---|
+| `id, channel, subject, idempotency_key, provider_message_id, status, error_message` | **ditiru apa adanya** | inti jalur kirim + korelasi penyedia |
+| `sent_at … unsubscribed_at, created_at, language` | **ditiru apa adanya** | cap-waktu siklus + bahasa; analitik lintas-tim berbaris |
+| `user_id (uuid)` | **diganti** → `customer_id (uuid) not null` | K-37 #1: kunci CRM, bukan auth my20fit |
+| `campaign_id (text)` | **ditiru tipe `text`** | dipertahankan `text` (bukan uuid) agar union lintas-tim tak perlu cast |
+| `template_id (text)` | **diganti** → `template_key text` + `template_version integer` | template CRM **berversi**; "apa yang benar-benar diterima" butuh versi eksak |
+| `meal_window (text)` | **dibuang** | spesifik my20fit, tak relevan CRM |
+| — | **ditambah** `identity_kind, identity_key` | tujuan ternormalisasi → korelasi unsubscribe (K-06) |
+| `idempotency_key` **nullable** | **diperkuat** → `not null` + `unique` | idempotensi wajib untuk resume-aman (langkah 2) |
+| `status` (bebas) | **dibatasi** `check(...)` + nilai `skipped_suppressed` | bukti pemeriksaan suppression **saat kirim** |
+
 ## SQL yang diusulkan (BELUM dijalankan)
 
 ```sql
@@ -22,7 +38,7 @@ create table if not exists public.crm_message_log (
   id                   uuid primary key default gen_random_uuid(),
   customer_id          uuid not null,                 -- KUNCI CRM (master_customer.customer_id), bukan user_id
   channel              text not null check (channel in ('email','whatsapp')),
-  campaign_id          uuid,                           -- kampanye/aksi yang memicunya (null = kirim ad-hoc)
+  campaign_id          text,                           -- kampanye/aksi pemicu (text agar berbaris dgn my20fit; null = ad-hoc)
   template_key         text,                           -- template + versi yang BENAR-BENAR dikirim
   template_version     integer,                        --   → "apa yang sebenarnya diterima orang itu"
   identity_kind        text check (identity_kind in ('email','phone')),
