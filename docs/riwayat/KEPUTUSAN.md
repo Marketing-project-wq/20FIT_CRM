@@ -664,14 +664,18 @@ hilang untuk pembalikan itu; hanya frame yang berubah.
 
 **Keputusan-keputusan (dengan syarat pembalikan):**
 
-1. **CRM berdiri sendiri di `crm_*`, TIDAK memakai tabel kirim/template tim lain.** Investigasi
-   (24 Agu): `my20fit_message_log`/`campaign_enrollments`/`email_templates` **nol baris** dan
-   **di-key pada `user_id` (auth my20fit)**, bukan `master_customer.customer_id` (pool CRM 82.253,
-   hanya ~47 pengguna my20fit). Jadi tak bisa dipakai bersama. **Tapi skema `my20fit_message_log`
-   ditiru** untuk `crm_message_log` kelak (idempotency_key, provider_message_id, status, cap waktu
-   siklus, unsubscribed_at, language) — meniru bentuk baik, bukan membuat yang berbeda (anti
-   "satu-aturan-dua-implementasi"). **Pembalikan:** keputusan "pakai bersama satu log" adalah
-   wewenang lintas-tim pemilik produk, bukan kode — diangkat sebagai pertanyaan.
+1. **CRM berdiri sendiri di `crm_*`, TIDAK memakai tabel kirim/template tim lain.**
+   **Alasan yang harus dicatat BUKAN kepemilikan tabel, melainkan KUNCI YANG TIDAK SAMA**
+   (dipertegas pemilik produk, 24 Agu): `my20fit_message_log.user_id` menunjuk **auth my20fit**,
+   sedangkan pool CRM berkunci **`master_customer.customer_id`**, dan **hanya ~47 dari 82.253
+   profil punya keduanya**. Memakai log itu berarti **99,9% pengiriman CRM tak punya tempat
+   dicatat** — bukan sekadar "tabel milik tim lain". (Tabel-tabel itu juga nol baris / rancangan
+   belum diwiring, tapi kunci-beda itulah yang menutup opsi pakai-bersama.) **Skema
+   `my20fit_message_log` tetap ditiru** untuk `crm_message_log` — berkunci `customer_id` —
+   (idempotency_key, provider_message_id, status, cap waktu siklus, unsubscribed_at, language):
+   meniru bentuk baik, bukan membuat yang berbeda (anti "satu-aturan-dua-implementasi"). Pemilik
+   produk **menyetujui CRM berdiri sendiri** (24 Agu). **Pembalikan:** hanya bila kelak ada kunci
+   pemetaan yang mencakup seluruh pool CRM di satu log bersama — keputusan lintas-tim, bukan kode.
 
 2. **Unsubscribe pakai jalur suppression yang ADA (3H), bukan jalur kedua.** Halaman publik
    `/unsubscribe` + token HMAC bertanda tangan (customer_id + kind, PII tak masuk URL) →

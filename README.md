@@ -87,6 +87,8 @@ Full spec: `PRD — 20FIT Audience Data & CRM System v1.1`.
 > | 20 | `…20260819113518_crm_purge_audit_log_add_demographic_compliance` | `20260819113518` | `crm_purge_audit_log_add_demographic_compliance` (Opsi 2 / K-09 — adds `profile.demographic_updated` to the compliance denylist; migration 8 untouched) |
 > | 21 | `…20260819113649_create_crm_upsert_profile_demographic` | `20260819113452` **+** `20260819113649` | `create_crm_upsert_profile_demographic` (×2 — first apply hit an `array_cat` bug, re-applied fixed) |
 > | 22 | `…20260821041044_pin_search_path_crm_audit_log_no_mutate` | `20260821041044` | `pin_search_path_crm_audit_log_no_mutate` (K-15 hardening — pins `search_path` on the append-only guard `crm_audit_log_no_mutate`; applied 2026-08-21, both triggers verified still reject UPDATE+DELETE) |
+> | 23 | `…20260821154415_unify_identity_sources_aplus` | `20260821154415` | `unify_identity_sources_aplus` (Migrasi 23 / jalur A+ — unifies identity sources into the mirror; merged via PR #14) |
+> | 24 | `…20260824135604_crm_message_template` | `20260824135604` | `crm_message_template` (contacting-half — message-template storage: append-version, bilingual, email+WhatsApp with `wa_approval_status`; RLS on / 0 policy, relacl `{postgres, service_role}`. Applied + verified this session) |
 >
 > **Count reconciliation (re-checked against `schema_migrations` on 2026-08-21): 22 CRM
 > migration files on `main` → 24 CRM ledger entries in the DB.** The gap between files and

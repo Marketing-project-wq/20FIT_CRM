@@ -1,17 +1,19 @@
-# RENCANA — penyimpanan template (crm_message_template) — GATED
+# RENCANA — penyimpanan template (crm_message_template) — ✅ SUDAH DITERAPKAN
 
-Storage untuk TUGAS 2 (template). **SQL DITUNJUKKAN, BELUM DIJALANKAN** — migrasi di proyek ini
-lewat gerbang satu-per-satu (peringatan ledger di README). Inti murni yang tak butuh tabel sudah
-dibangun & diuji: `lib/crm/template.ts` (kosakata variabel tertutup, validasi saat simpan, render,
-pratinjau). Yang di bawah menunggu persetujuan untuk `apply_migration`.
+Storage untuk TUGAS 2 (template). **DITERAPKAN 24 Agu 2026** atas izin pemilik produk — ledger
+`20260824135604`, RLS on / 0 policy, relacl `{postgres, service_role}`, 0 baris (aditif). Ledger
+README baris 24. Inti murni: `lib/crm/template.ts` (kosakata variabel tertutup, validasi saat
+simpan, render, pratinjau) + test. SQL di bawah adalah yang dijalankan (rekaman).
 
 ## Kenapa CRM berdiri sendiri (bukan pakai tabel tim lain)
 
 Temuan investigasi (24 Agu 2026, lihat `EVALUASI-LINGKUP-24agu.md` + laporan sprint):
 `my20fit_message_log`, `my20fit_campaign_enrollments`, `my20fit_email_templates` semuanya
 **nol baris** (rancangan matang, belum diwiring) dan **di-key pada `user_id` (auth my20fit)**,
-bukan `master_customer.customer_id`. Pool CRM 82.253 profil, hanya ~47 pengguna my20fit. Jadi
-tabel-tabel itu **tak bisa dipakai bersama** (key beda + milik tim lain + RLS-on/0-policy). CRM
+bukan `master_customer.customer_id`. **Alasan yang dicatat: KUNCI YANG TIDAK SAMA** — `user_id` (auth my20fit) vs `customer_id` (pool
+CRM), hanya ~47 dari 82.253 profil punya keduanya; memakai log itu = **99,9% pengiriman CRM tak
+punya tempat dicatat** (bukan sekadar kepemilikan tabel). Pemilik produk menyetujui CRM berdiri
+sendiri (24 Agu). CRM
 menulis hanya ke `crm_*` (aturan tetap). **Tapi skema `my20fit_message_log` ditiru** untuk
 `crm_message_log` kelak (kolom `idempotency_key`, `provider_message_id`, `status`, cap waktu
 siklus kirim, `unsubscribed_at`, `language`) — meniru bentuk yang baik, bukan membangun yang
