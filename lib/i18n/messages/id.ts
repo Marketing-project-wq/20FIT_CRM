@@ -91,7 +91,7 @@ export const id = {
       "tanggal muatan batch terakhir (2 muatan: 20 Apr & 31 Jul 2026) — bukan feed berkelanjutan",
     importDob: "Tanggal lahir · data impor",
     importDobHint:
-      "baris staging_20fit_data punya tgl lahir (master_customer: 0) · ~98,6% cocok ke profil (diukur manual · 12 Agu 2026)",
+      "baris staging_20fit_data punya tgl lahir (master_customer: 0) · ~99,5% cocok ke profil (diukur manual · 24 Agu 2026)",
     rfmTitle: "Sebaran RFM · data impor 20FIT",
     // The RFM note keeps the "− = no bucket, not empty" nuance and the "spelling kept" rule.
     rfmNote:
@@ -137,6 +137,20 @@ export const id = {
     coveragePhoneOnlyWarn: "Kategori “telepon saja” tak punya email — daftar ini tak bisa dipakai untuk kampanye email.",
     coverageExportNote: "Ekspor lewat mesin segmen yang sama: suppression dikecualikan, gerbang peran berlaku, NIK & data klinis tak pernah masuk berkas, dan jumlah baris nyata ditulis di akhir berkas.",
     coverageExportFailed: "Ekspor gagal.",
+    // D redesign — satu kartu ringkas (pool + jangkauan), tabel selisih, kartu kandidat, Fitco.
+    summaryTitle: "Pool & jangkauan",
+    summaryPoolLabel: "Pool CRM (master_customer)",
+    summaryReachAll: "seluruh pool dapat dihubungi · nol suppression",
+    gapTableSource: "Sumber",
+    candTitle: "Kandidat belum di pool",
+    candLabel: "belum jadi audiens · bukan pool · bukan bisa dipasarkan",
+    candNote:
+      "Angka ini BEDA dari selisih live di atas: populasi sumbernya berbeda (mis. di sini arena_bookings 4; di selisih live arena dihitung dari tabel arena lain). Kandidat = snapshot cermin (dedup lintas sumber); selisih = dihitung saat halaman dibuka. Keduanya benar, menghitung hal berbeda.",
+    candSourceCol: "Sumber (mentah)",
+    candCountCol: "Kandidat",
+    fitcoTitle: "Partisipasi Fitco",
+    fitcoMatched: "tercocokkan ke profil",
+    fitcoUnmatched: "belum tercocokkan",
   },
 
   // /audience page (Sprint 4D screen 1) — browse pool + single-person search + quality banner.

@@ -57,7 +57,9 @@ function recordingFake() {
     },
     rpc: (name: string) => {
       rpcs.add(name);
-      return { then: (r: (v: unknown) => void) => r({ data: { marketing: 0, transactional: 0 }, error: null }) };
+      // Distinct, recognisable values so a test can prove the block passes the RPC output THROUGH
+      // verbatim (no second calculation that would return something else).
+      return { then: (r: (v: unknown) => void) => r({ data: { marketing: 42, transactional: 43 }, error: null }) };
     },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any;
@@ -79,10 +81,19 @@ describe("dashboard block cost boundaries (progressive-load)", () => {
     expect(tables.has("crm_mirror_meta")).toBe(false);
   });
 
-  it("CONTACTABLE block calls exactly the live RPC (never precomputed)", async () => {
-    const { admin, rpcs } = recordingFake();
-    await fetchContactableBlock(admin);
+  it("CONTACTABLE block comes ONLY from crm_contactable_counts — passed through, never recomputed", async () => {
+    const { admin, tables, rpcs } = recordingFake();
+    const out = await fetchContactableBlock(admin);
+    // The dashboard's contactable numbers have ONE source: the RPC. This guards against a second
+    // calculation path (the "one rule, two implementations" pattern that bit phone canon, the
+    // retention list, and the export's phone vs phone_normalized). The segment BUILDER computes its
+    // own contactable via the consent embed (segment-read.ts) — that is a different screen, with
+    // criteria, and must never leak into the dashboard block.
     expect(rpcs.has("crm_contactable_counts")).toBe(true);
+    expect(rpcs.size).toBe(1); // exactly the RPC — no other RPC
+    expect(tables.size).toBe(0); // NO table read → nothing is recomputed from consent/suppression here
+    // The RPC's output is returned verbatim (marketing→marketing, transactional→service).
+    expect(out).toEqual({ contactableMarketing: 42, contactableService: 43 });
   });
 
   it("EVENTS block does the event tally on customer_engagement (and the RPC does not)", async () => {

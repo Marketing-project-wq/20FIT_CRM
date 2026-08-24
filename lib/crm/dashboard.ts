@@ -97,6 +97,11 @@ export interface DashboardStats {
   eventRegistrations: ProductCount[];
   /** Per-source: people in the live source vs how many are not yet in the frozen pool. LIVE. */
   liveSources: SourceGap[];
+  /** Deduped candidates not yet in the pool (snapshot) + per-source split. DIFFERENT population
+   *  from liveSources (per-source, live) — labelled distinctly on screen. */
+  candidates: { total: number; bySource: { source: string; count: number }[] };
+  /** Fitco participation (snapshot): matched into the pool vs not. */
+  fitco: { matched: number; unmatched: number };
   /** Mirror freshness: when the snapshot was last refreshed, and its row count. */
   mirror: { refreshedAt: string | null; rowCount: number | null };
 }
@@ -133,6 +138,12 @@ export interface ContactableBlock {
 export interface MirrorBlock {
   unitSpread: UnitCount[];
   importRfm: { value: string; count: number }[];
+  /** Deduped people across source systems NOT yet in the pool (snapshot). DIFFERENT population from
+   *  SourcesBlock.liveSources (which is per-source, live) — the two are shown side by side, each
+   *  labelled with what it counts + its freshness (candidates = snapshot, gap = live). */
+  candidates: { total: number; bySource: { source: string; count: number }[] };
+  /** Fitco participation (snapshot): matched into the pool vs not. */
+  fitco: { matched: number; unmatched: number };
   mirror: { refreshedAt: string | null; rowCount: number | null };
 }
 export interface EventsBlock {
@@ -192,8 +203,21 @@ export async function fetchMirrorBlock(admin: SupabaseClient): Promise<MirrorBlo
   return {
     unitSpread: unitSpreadFromEngagement(stats.engagement, shopProfiles),
     importRfm: rfmFromPrecompute(stats.rfm),
+    candidates: candidatesFromPrecompute(stats.candidates),
+    fitco: { matched: Number(stats.fitco.matched ?? 0), unmatched: Number(stats.fitco.unmatched ?? 0) },
     mirror: { refreshedAt: stats.refreshedAt, rowCount: stats.rowCount },
   };
+}
+
+/** Candidate breakdown from the precompute — total + per-source, sorted desc. Pure. The per-source
+ *  keys are precompute source names (e.g. `event_transaction`), kept verbatim; the UI labels them. */
+export function candidatesFromPrecompute(
+  c: MirrorDashboardStats["candidates"],
+): { total: number; bySource: { source: string; count: number }[] } {
+  const bySource = Object.entries(c.by_source ?? {})
+    .map(([source, count]) => ({ source, count: Number(count) || 0 }))
+    .sort((a, b) => b.count - a.count);
+  return { total: Number(c.total) || 0, bySource };
 }
 
 /** EVENTS — the live per-product registration tally (the ~20-page read). */
@@ -226,6 +250,8 @@ export async function fetchDashboardStats(admin: SupabaseClient): Promise<Dashbo
     unitSpread: mirror.unitSpread,
     eventRegistrations: events.eventRegistrations,
     liveSources: sources.liveSources,
+    candidates: mirror.candidates,
+    fitco: mirror.fitco,
     mirror: mirror.mirror,
   };
 }

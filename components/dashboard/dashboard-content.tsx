@@ -32,11 +32,13 @@ interface UnitCount { unit: string; profiles: number; source: "mirror" | "live" 
 interface ProductCount { product: string; registrations: number }
 interface ContactCoverage { both: number; emailOnly: number; phoneOnly: number; neither: number }
 interface MirrorMeta { refreshedAt: string | null; rowCount: number | null }
+interface Candidates { total: number; bySource: { source: string; count: number }[] }
+interface Fitco { matched: number; unmatched: number }
 
 // The blocks the dashboard loads independently (mirror lib/crm/dashboard.ts server shapes).
 interface ImmediateBlock { audienceSize: number; lastProfileAt: string | null; contactCoverage: ContactCoverage; importDob: number }
 interface ContactableBlock { contactableMarketing: number; contactableService: number }
-interface MirrorBlock { unitSpread: UnitCount[]; importRfm: { value: string; count: number }[]; mirror: MirrorMeta }
+interface MirrorBlock { unitSpread: UnitCount[]; importRfm: { value: string; count: number }[]; candidates: Candidates; fitco: Fitco; mirror: MirrorMeta }
 interface EventsBlock { eventRegistrations: ProductCount[] }
 interface SourcesBlock { liveSources: SourceGap[] }
 
@@ -72,7 +74,7 @@ function blocksFromStats(s: DashboardStats) {
   return {
     immediate: { audienceSize: s.audienceSize, lastProfileAt: s.lastProfileAt, contactCoverage: s.contactCoverage, importDob: s.importDob } as ImmediateBlock,
     contactable: { contactableMarketing: s.contactableMarketing, contactableService: s.contactableService } as ContactableBlock,
-    mirror: { unitSpread: s.unitSpread, importRfm: s.importRfm, mirror: s.mirror } as MirrorBlock,
+    mirror: { unitSpread: s.unitSpread, importRfm: s.importRfm, candidates: s.candidates, fitco: s.fitco, mirror: s.mirror } as MirrorBlock,
     events: { eventRegistrations: s.eventRegistrations } as EventsBlock,
     sources: { liveSources: s.liveSources } as SourcesBlock,
   };
@@ -106,6 +108,128 @@ function SkelBars({ rows, label }: { rows: number; label: string }) {
           <Skeleton className="h-3 flex-1" />
         </div>
       ))}
+    </div>
+  );
+}
+
+type Dict = ReturnType<typeof useI18n>["t"];
+type Lang = ReturnType<typeof useI18n>["lang"];
+
+/**
+ * D2 — the pool + reach SUMMARY card (replaces three near-identical big-number cards). Pool is the
+ * headline (from the fast IMMEDIATE block); the two contactable figures are sub-lines (from the
+ * slower live RPC), so they carry their own skeleton until it lands. When all three are equal it
+ * collapses to one honest phrase ("whole pool contactable · zero suppression") instead of three
+ * copies of the same number.
+ */
+function PoolReachCard({
+  imm, con, immStatus, conStatus, t, lang,
+}: {
+  imm: ImmediateBlock | null; con: ContactableBlock | null;
+  immStatus: Status; conStatus: Status; t: Dict; lang: Lang;
+}) {
+  const allEqual = imm != null && con != null &&
+    imm.audienceSize === con.contactableMarketing && con.contactableMarketing === con.contactableService;
+  return (
+    <div className="glass shadow-glass relative overflow-hidden p-5 sm:col-span-2">
+      <span className="absolute left-0 top-0 h-full w-1 bg-red" aria-hidden />
+      <p className="font-display text-[12px] font-semibold uppercase tracking-wide text-ink-soft">{t.dashboard.summaryTitle}</p>
+      {immStatus === "loading" ? (
+        <Skeleton className="mt-2 h-[26px] w-1/2" label={t.dashboard.computing} />
+      ) : immStatus === "error" ? (
+        <p className="mt-2 font-body text-[13px] font-semibold text-red">{t.dashboard.blockFailed}</p>
+      ) : (
+        <p className="mt-2 font-display text-[34px] font-black leading-none text-ink">{imm ? formatCount(imm.audienceSize, lang) : DASH}</p>
+      )}
+      <p className="mt-1 font-mono text-[11px] text-ink-faint">{t.dashboard.summaryPoolLabel}</p>
+
+      <div className="mt-4 border-t border-glass-border pt-3">
+        {conStatus === "loading" ? (
+          <div className="space-y-2"><Skeleton className="h-3.5 w-2/3" label={t.dashboard.computing} /><Skeleton className="h-3.5 w-1/2" /></div>
+        ) : conStatus === "error" ? (
+          <p className="font-body text-[12px] font-semibold text-red">{t.dashboard.blockFailed}</p>
+        ) : allEqual ? (
+          <p className="font-body text-[12px] text-ink">{t.dashboard.summaryReachAll}</p>
+        ) : (
+          <div className="space-y-1.5">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="font-body text-[12px] text-ink-soft">{t.dashboard.contactableMarketing}</span>
+              <span className="font-display text-[15px] font-bold tabular-nums text-ink">{con ? formatCount(con.contactableMarketing, lang) : DASH}</span>
+            </div>
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="font-body text-[12px] text-ink-soft">{t.dashboard.contactableService}</span>
+              <span className="font-display text-[15px] font-bold tabular-nums text-ink">{con ? formatCount(con.contactableService, lang) : DASH}</span>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** D2 — the five live-source gaps as ONE compact table instead of five cards. */
+function GapTable({ sources, t, lang }: { sources: SourceGap[]; t: Dict; lang: Lang }) {
+  return (
+    <div className="glass rounded-card overflow-x-auto p-1">
+      <table className="w-full min-w-[22rem] border-collapse">
+        <thead>
+          <tr className="border-b border-glass-border text-left">
+            <th className="px-3 py-2 font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{t.dashboard.gapTableSource}</th>
+            <th className="px-3 py-2 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{t.dashboard.totalLabel}</th>
+            <th className="px-3 py-2 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{t.dashboard.gapLabel}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sources.map((s) => (
+            <tr key={s.key} className="border-b border-glass-border/60 last:border-0">
+              <td className="px-3 py-2 font-body text-[13px] text-ink">{srcLabel(t, s.key)}</td>
+              <td className="px-3 py-2 text-right font-display text-[14px] font-bold tabular-nums text-ink">{formatCount(s.total, lang)}</td>
+              <td className={`px-3 py-2 text-right font-display text-[14px] font-bold tabular-nums ${s.gap > 0 ? "text-amber" : "text-ink"}`}>{formatCount(s.gap, lang)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** D — the deduped "candidates not yet in the pool" card (snapshot). Explicitly labelled as NOT the
+ *  pool and NOT the live gap (different population), with its own snapshot freshness. */
+function CandidateCard({ candidates, fitco, t, lang, mirrorAt }: {
+  candidates: Candidates; fitco: Fitco; t: Dict; lang: Lang; mirrorAt: string | null;
+}) {
+  return (
+    <div className="glass rounded-card p-5">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="font-display text-[14px] font-bold text-ink">{t.dashboard.candTitle}</h3>
+        {mirrorAt && <FreshTag>{t.dashboard.freshSnapshot} · {formatDateTime(mirrorAt, lang)}</FreshTag>}
+      </div>
+      <p className="mt-2 font-display text-[30px] font-black leading-none text-ink">{formatCount(candidates.total, lang)}</p>
+      <p className="mt-1 font-mono text-[11px] text-amber">{t.dashboard.candLabel}</p>
+      <div className="mt-3 overflow-x-auto">
+        <table className="w-full min-w-[18rem] border-collapse">
+          <thead>
+            <tr className="border-b border-glass-border text-left">
+              <th className="px-2 py-1.5 font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{t.dashboard.candSourceCol}</th>
+              <th className="px-2 py-1.5 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{t.dashboard.candCountCol}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {candidates.bySource.map((r) => (
+              <tr key={r.source} className="border-b border-glass-border/60 last:border-0">
+                <td className="px-2 py-1.5 font-mono text-[12px] text-ink-soft">{r.source}</td>
+                <td className="px-2 py-1.5 text-right font-display text-[13px] font-bold tabular-nums text-ink">{formatCount(r.count, lang)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-3 font-body text-[12px] leading-relaxed text-ink-faint">
+        {t.dashboard.fitcoTitle}: <span className="font-semibold text-ink">{formatCount(fitco.matched, lang)}</span> {t.dashboard.fitcoMatched} · <span className="font-semibold text-ink">{formatCount(fitco.unmatched, lang)}</span> {t.dashboard.fitcoUnmatched}
+      </p>
+      <Why>
+        <p className="text-[12px] leading-relaxed text-ink-soft">{t.dashboard.candNote}</p>
+      </Why>
     </div>
   );
 }
@@ -232,9 +356,6 @@ export function DashboardContent(
     errorLabel: !denied && blockStatus === "error" ? t.dashboard.blockFailed : undefined,
   });
 
-  const audienceKpi = kpi(immediate.status, denied ? DASH : imm ? formatCount(imm.audienceSize, lang) : DASH);
-  const mktKpi = kpi(contactable.status, denied ? DASH : con ? formatCount(con.contactableMarketing, lang) : DASH);
-  const svcKpi = kpi(contactable.status, denied ? DASH : con ? formatCount(con.contactableService, lang) : DASH);
   const freshKpi = kpi(immediate.status, denied ? DASH : imm ? formatDate(imm.lastProfileAt, lang) : DASH);
   const dobKpi = kpi(immediate.status, denied ? DASH : imm ? formatCount(imm.importDob, lang) : DASH);
 
@@ -262,14 +383,13 @@ export function DashboardContent(
 
       {denied && <p className="font-body text-[13px] text-ink-soft">{t.access.dashboardHidden}</p>}
 
-      {/* KPI cards. Pool/freshness/DOB come from the IMMEDIATE block (fast); the two contactable
-          cards come from the LIVE RPC (slower) — so they carry a skeleton until it lands, while the
-          rest are already readable. "Workflow aktif" is a hard `—` (no table): a REAL value that
-          must stay visibly distinct from the pulsing skeletons around it (K-08). */}
+      {/* KPI row (D2): pool + the two contactable figures are ONE summary card (pool is the
+          headline from the fast IMMEDIATE block; the contactable sub-figures arrive with the live
+          RPC). The remaining cards stay separate. "Workflow aktif" is a hard `—` (no table): a REAL
+          value that must stay visibly distinct from the pulsing skeletons around it (K-08). */}
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <StatCard label={t.dashboard.audienceSize} {...audienceKpi} hint={t.dashboard.audienceSizeHint} computingLabel={t.dashboard.computing} />
-        <StatCard label={t.dashboard.contactableMarketing} {...mktKpi} hint={t.dashboard.contactableMarketingHint} computingLabel={t.dashboard.computing} />
-        <StatCard label={t.dashboard.contactableService} {...svcKpi} hint={t.dashboard.contactableServiceHint} computingLabel={t.dashboard.computing} />
+        <PoolReachCard imm={denied ? null : imm} con={denied ? null : con}
+          immStatus={denied ? "ready" : immediate.status} conStatus={denied ? "ready" : contactable.status} t={t} lang={lang} />
         <StatCard label={t.dashboard.lastProfile} {...freshKpi} hint={t.dashboard.lastProfileHint} computingLabel={t.dashboard.computing} />
         <StatCard label={t.dashboard.workflowActive} value={DASH} hint={t.dashboard.workflowActiveHint} />
         <StatCard label={t.dashboard.importDob} {...dobKpi} hint={t.dashboard.importDobHint} computingLabel={t.dashboard.computing} />
@@ -302,42 +422,36 @@ export function DashboardContent(
             )}
           </div>
 
-          {/* Layers 2+3: per live source — total (live) and how many are not yet in the pool. */}
+          {/* Layers 2+3: per live source as ONE table (D2) — total (live) + how many not yet pooled. */}
           {sources.status === "ready" && sources.data ? (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {sources.data.liveSources.map((s) => (
-                <div key={s.key} className="glass rounded-card p-4">
-                  <p className="font-body text-[13px] font-semibold text-ink">{srcLabel(t, s.key)}</p>
-                  <div className="mt-2 flex items-baseline justify-between gap-2">
-                    <span className="font-body text-[12px] text-ink-faint">{t.dashboard.totalLabel}</span>
-                    <span className="font-display text-[18px] font-bold tabular-nums text-ink">{formatCount(s.total, lang)}</span>
-                  </div>
-                  <div className="mt-1 flex items-baseline justify-between gap-2">
-                    <span className="font-body text-[12px] text-ink-faint">{t.dashboard.gapLabel}</span>
-                    <span className={`font-display text-[18px] font-bold tabular-nums ${s.gap > 0 ? "text-amber" : "text-ink"}`}>
-                      {formatCount(s.gap, lang)}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <GapTable sources={sources.data.liveSources} t={t} lang={lang} />
           ) : sources.status === "error" ? (
             <BlockFail t={t} onRetry={isPreview ? undefined : () => loadBlock("sources")} />
           ) : (
-            // Reserve the same 5-card grid height so the section does not jump when sources land.
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="glass rounded-card p-4">
               {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="glass rounded-card p-4">
-                  <Skeleton className="h-3.5 w-24" label={i === 0 ? t.dashboard.computing : undefined} />
-                  <Skeleton className="mt-3 h-4 w-full" />
-                  <Skeleton className="mt-2 h-4 w-full" />
-                </div>
+                <Skeleton key={i} className="my-2 h-4 w-full" label={i === 0 ? t.dashboard.computing : undefined} />
               ))}
             </div>
           )}
           <Why>
             <p className="text-[12px] leading-relaxed text-ink-soft">{t.dashboard.gapWhy}</p>
           </Why>
+
+          {/* Candidate card (SNAPSHOT) — deliberately AFTER the live gap, and it states plainly that
+              it counts a DIFFERENT population (candNote in its <Why>), so the two are not misread as
+              contradicting each other. From the MIRROR block (precompute). */}
+          {mirrorB.status === "ready" && mirrorB.data ? (
+            <CandidateCard candidates={mirrorB.data.candidates} fitco={mirrorB.data.fitco} t={t} lang={lang} mirrorAt={mirrorAt} />
+          ) : mirrorB.status === "error" ? (
+            <BlockFail t={t} onRetry={isPreview ? undefined : () => loadBlock("mirror")} />
+          ) : (
+            <div className="glass rounded-card p-5">
+              <Skeleton className="h-4 w-40" label={t.dashboard.computing} />
+              <Skeleton className="mt-3 h-8 w-24" />
+              {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="my-2 h-3.5 w-full" />)}
+            </div>
+          )}
         </section>
       )}
 
@@ -359,7 +473,8 @@ export function DashboardContent(
               <>
                 <BarList lang={lang} scale="sqrt" barClass="bg-blue"
                   items={mirrorB.data.unitSpread.map((u) => ({ label: u.unit, value: u.profiles }))} />
-                <p className="mt-3 font-body text-[11px] leading-relaxed text-ink-faint">{t.dashboard.unitScaleNote}</p>
+                {/* D1: the sqrt-scale diagnostic moved behind <Why> — collapsed, not deleted. */}
+                <div className="mt-3"><Why><p className="text-[11px] leading-relaxed text-ink-soft">{t.dashboard.unitScaleNote}</p></Why></div>
               </>
             ) : mirrorB.status === "error" ? (
               <BlockFail t={t} onRetry={isPreview ? undefined : () => loadBlock("mirror")} />
@@ -446,7 +561,8 @@ export function DashboardContent(
                   <p className="mt-2 font-body text-[11px] leading-relaxed text-ink-faint">{t.dashboard.coverageExportNote}</p>
                 </div>
 
-                <p className="mt-3 font-body text-[11px] leading-relaxed text-ink-faint">{t.dashboard.coveragePhoneNote}</p>
+                {/* D1: the WhatsApp/phone caveat moved behind <Why> — collapsed, not deleted. */}
+                <div className="mt-3"><Why><p className="text-[11px] leading-relaxed text-ink-soft">{t.dashboard.coveragePhoneNote}</p></Why></div>
               </>
             ) : immediate.status === "error" ? (
               <BlockFail t={t} onRetry={isPreview ? undefined : () => loadBlock("immediate")} />
