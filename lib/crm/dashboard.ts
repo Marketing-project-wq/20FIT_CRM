@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { fetchStagingDashboard } from "./staging";
+import { fetchStagingImportDob, fetchStagingRfm } from "./staging";
 import {
   fetchContactCoverage,
   fetchUnitSpread,
@@ -68,60 +68,116 @@ interface ContactableCounts {
   transactional?: number;
 }
 
-export async function fetchDashboardStats(admin: SupabaseClient): Promise<DashboardStats> {
-  const sizeQ = admin.from("master_customer").select("*", { count: "exact", head: true });
+/**
+ * PROGRESSIVE LOADING (Dashboard progressive-load sprint). The dashboard is split into blocks by
+ * COST so the cheap figures paint in ~250ms instead of waiting on the ~2.9s contactable RPC and
+ * the ~20-page event tally. Each block is an independent fetch (its own loading boundary + its own
+ * failure state on screen). The blocks are:
+ *   - IMMEDIATE: pool size, last-load date, contact coverage, import DOB — all head:true counts.
+ *   - CONTACTABLE: the live RPC — kept live (never precomputed: a stale "contactable" would say a
+ *     person can be reached who has just asked to stop).
+ *   - MIRROR (snapshot): unit spread + RFM + mirror refreshed_at — the block carries its freshness.
+ *   - EVENTS: the live per-product registration tally.
+ *   - SOURCES: the per-source live gap vs the frozen pool.
+ * fetchDashboardStats is retained (it composes the blocks) for the fixture type + any all-at-once
+ * caller; the route serves ONE block per request via `?block=`.
+ */
+export interface ImmediateBlock {
+  audienceSize: number;
+  lastProfileAt: string | null;
+  contactCoverage: ContactCoverage;
+  importDob: number;
+}
+export interface ContactableBlock {
+  contactableMarketing: number;
+  contactableService: number;
+}
+export interface MirrorBlock {
+  unitSpread: UnitCount[];
+  importRfm: { value: string; count: number }[];
+  mirror: { refreshedAt: string | null; rowCount: number | null };
+}
+export interface EventsBlock {
+  eventRegistrations: ProductCount[];
+}
+export interface SourcesBlock {
+  liveSources: SourceGap[];
+}
 
-  const freshQ = admin
-    .from("master_customer")
-    .select("created_at")
-    .order("created_at", { ascending: false, nullsFirst: false })
-    .limit(1)
-    .maybeSingle();
+export type DashboardBlockName = "immediate" | "contactable" | "mirror" | "events" | "sources";
 
-  // Everything runs in parallel — the ~2.9s contactable RPC dominates, so the new live-source /
-  // viz reads add little wall-clock. Each new block is non-fatal on its own (a failed viz read
-  // must not blank the KPI cards), so they resolve to safe empties rather than throwing.
-  const [
-    { count, error: sizeErr },
-    { data: fresh, error: freshErr },
-    { data: counts, error: rpcErr },
-    staging,
-    contactCoverage,
-    unitSpread,
-    eventRegistrations,
-    liveSources,
-    mirrorMeta,
-  ] = await Promise.all([
-    sizeQ,
-    freshQ,
-    // Migrasi 13: distinct-then-anti-join with per-txn work_mem; suppression subtracted inside;
-    // ALWAYS returns both keys (0 = measured zero, K-08). Segment builder does NOT use this.
-    admin.rpc("crm_contactable_counts"),
-    // staging_20fit_data summary (Sprint 3Y): birth-date count + RFM spread. Read-only, no copy.
-    fetchStagingDashboard(admin),
-    fetchContactCoverage(admin).catch(() => ({ both: 0, emailOnly: 0, phoneOnly: 0, neither: 0 })),
-    fetchUnitSpread(admin).catch(() => [] as UnitCount[]),
-    fetchEventRegistrations(admin).catch(() => [] as ProductCount[]),
-    fetchLiveSourceGaps(admin).catch(() => [] as SourceGap[]),
-    fetchMirrorMeta(admin).catch(() => ({ refreshedAt: null, rowCount: null })),
+/** IMMEDIATE — the cheap head:true counts, all in parallel. Throws on error so the block shows a
+ *  failure state; these are the most reliable queries on the page. */
+export async function fetchImmediateBlock(admin: SupabaseClient): Promise<ImmediateBlock> {
+  const [size, fresh, contactCoverage, importDob] = await Promise.all([
+    admin.from("master_customer").select("*", { count: "exact", head: true }),
+    admin
+      .from("master_customer")
+      .select("created_at")
+      .order("created_at", { ascending: false, nullsFirst: false })
+      .limit(1)
+      .maybeSingle(),
+    fetchContactCoverage(admin),
+    fetchStagingImportDob(admin),
   ]);
-  if (sizeErr) throw sizeErr;
-  if (freshErr) throw freshErr;
-  if (rpcErr) throw rpcErr;
-
-  const c = (counts ?? {}) as ContactableCounts;
-
+  if (size.error) throw size.error;
+  if (fresh.error) throw fresh.error;
   return {
-    audienceSize: count ?? 0,
-    contactableMarketing: c.marketing ?? 0,
-    contactableService: c.transactional ?? 0,
-    lastProfileAt: (fresh as { created_at: string | null } | null)?.created_at ?? null,
-    importDob: staging.importDob,
-    importRfm: staging.importRfm,
+    audienceSize: size.count ?? 0,
+    lastProfileAt: (fresh.data as { created_at: string | null } | null)?.created_at ?? null,
     contactCoverage,
-    unitSpread,
-    eventRegistrations,
-    liveSources,
-    mirror: { refreshedAt: mirrorMeta.refreshedAt, rowCount: mirrorMeta.rowCount },
+    importDob,
+  };
+}
+
+/** CONTACTABLE — the live RPC (Migrasi 13). ALWAYS returns both keys (0 = measured zero, K-08). */
+export async function fetchContactableBlock(admin: SupabaseClient): Promise<ContactableBlock> {
+  const { data, error } = await admin.rpc("crm_contactable_counts");
+  if (error) throw error;
+  const c = (data ?? {}) as ContactableCounts;
+  return { contactableMarketing: c.marketing ?? 0, contactableService: c.transactional ?? 0 };
+}
+
+/** MIRROR — the snapshot block: unit spread + RFM + freshness, in parallel. */
+export async function fetchMirrorBlock(admin: SupabaseClient): Promise<MirrorBlock> {
+  const [unitSpread, importRfm, mirrorMeta] = await Promise.all([
+    fetchUnitSpread(admin),
+    fetchStagingRfm(admin),
+    fetchMirrorMeta(admin),
+  ]);
+  return { unitSpread, importRfm, mirror: { refreshedAt: mirrorMeta.refreshedAt, rowCount: mirrorMeta.rowCount } };
+}
+
+/** EVENTS — the live per-product registration tally (the ~20-page read). */
+export async function fetchEventsBlock(admin: SupabaseClient): Promise<EventsBlock> {
+  return { eventRegistrations: await fetchEventRegistrations(admin) };
+}
+
+/** SOURCES — the per-source live gap vs the frozen pool (each source already runs in parallel). */
+export async function fetchSourcesBlock(admin: SupabaseClient): Promise<SourcesBlock> {
+  return { liveSources: await fetchLiveSourceGaps(admin) };
+}
+
+/** All blocks composed — the fixture type + any caller that wants the whole thing at once. */
+export async function fetchDashboardStats(admin: SupabaseClient): Promise<DashboardStats> {
+  const [immediate, contactable, mirror, events, sources] = await Promise.all([
+    fetchImmediateBlock(admin),
+    fetchContactableBlock(admin),
+    fetchMirrorBlock(admin),
+    fetchEventsBlock(admin),
+    fetchSourcesBlock(admin),
+  ]);
+  return {
+    audienceSize: immediate.audienceSize,
+    contactableMarketing: contactable.contactableMarketing,
+    contactableService: contactable.contactableService,
+    lastProfileAt: immediate.lastProfileAt,
+    importDob: immediate.importDob,
+    importRfm: mirror.importRfm,
+    contactCoverage: immediate.contactCoverage,
+    unitSpread: mirror.unitSpread,
+    eventRegistrations: events.eventRegistrations,
+    liveSources: sources.liveSources,
+    mirror: mirror.mirror,
   };
 }

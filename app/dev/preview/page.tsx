@@ -65,10 +65,48 @@ const FIXTURE = {
   mirror: { refreshedAt: STALE_REFRESHED_AT, rowCount: 82253 },
 };
 
+/** Labelled wrapper so each screenshot names the case it exercises. */
+function Case({ title, note, children }: { title: string; note: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-3 border-t border-glass-border pt-8">
+      <div className="rounded-sm bg-glass px-3 py-2">
+        <p className="font-display text-[13px] font-bold text-ink">{title}</p>
+        <p className="font-body text-[12px] text-ink-soft">{note}</p>
+      </div>
+      {children}
+    </div>
+  );
+}
+
 export default function DevDashboardPreview() {
   return (
     <AppShell userEmail="marketing@20fit.id" activePath="/" showAllNav>
       <DashboardContent previewStats={FIXTURE} />
+
+      {/* Progressive-load states (TUGAS 4) — the three cases the sprint asks to see: everything
+          still computing, the cheap block already in while the rest load, and one section failed. */}
+      <div className="mt-12 space-y-12">
+        <Case
+          title="Muat — skeleton penuh"
+          note="Semua blok masih menghitung. Skeleton berbentuk seperti isinya (balok angka, batang). 'Workflow aktif' tetap '—' (nilai nyata, K-08), tak ikut berkedip."
+        >
+          <DashboardContent previewStatus={{ immediate: "loading", contactable: "loading", mirror: "loading", events: "loading", sources: "loading" }} />
+        </Case>
+
+        <Case
+          title="Muat — sebagian sudah terisi"
+          note="Blok murah (ukuran pool, kesegaran, cakupan, tgl lahir) sudah tampil; 'bisa dihubungi' (RPC), unit, event, dan sumber masih menyusul di tempatnya sendiri — halaman tak melompat."
+        >
+          <DashboardContent previewStats={FIXTURE} previewStatus={{ immediate: "ready", contactable: "loading", mirror: "loading", events: "loading", sources: "loading" }} />
+        </Case>
+
+        <Case
+          title="Muat — satu bagian gagal"
+          note="Blok event gagal: ia mengatakannya di tempatnya (bukan skeleton berputar selamanya) dengan tombol coba lagi; blok lain tetap tampil normal."
+        >
+          <DashboardContent previewStats={FIXTURE} previewStatus={{ immediate: "ready", contactable: "ready", mirror: "ready", events: "error", sources: "ready" }} />
+        </Case>
+      </div>
 
       {/* Profile detail fixtures (Sprint 5B TUGAS 3) — the same shape as /api/audience/[id], no
           Supabase, no PII. Each labelled so the screenshot names the case it exercises. */}

@@ -74,6 +74,10 @@ export const id = {
     freshLive: "dihitung saat halaman dibuka",
     freshSnapshot: "snapshot cermin", // + tanggal-waktu refresh
     freshManual: "diukur manual", // + tanggal pengukuran
+    // Progressive-load: skeleton = sedang dihitung; state gagal per bagian; tombol coba lagi.
+    computing: "Sedang menghitung…",
+    blockFailed: "Bagian ini gagal dimuat.",
+    blockRetry: "Coba lagi",
     audienceSize: "Ukuran audiens",
     audienceSizeHint: "master_customer (baca saja)",
     contactableMarketing: "Bisa dihubungi · marketing",

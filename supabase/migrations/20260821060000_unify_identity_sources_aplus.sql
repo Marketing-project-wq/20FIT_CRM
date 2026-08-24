@@ -490,6 +490,12 @@ begin
 end;
 $function$;
 
+-- EXECUTE lock (added to match the live grant state — the CREATE OR REPLACE above preserved
+-- migration-18's grants, so anon/authenticated already lack EXECUTE on live; this makes the file
+-- self-contained so a fresh rebuild locks it too, and satisfies the migration-execute guard).
+revoke all on function public.crm_refresh_customer_mirror() from public, anon, authenticated;
+grant execute on function public.crm_refresh_customer_mirror() to service_role;
+
 
 -- ── §6 · A3 · Backfill demografi (peserta tiket yang SUDAH di pool) ─────────
 -- Langsung INSERT (bukan crm_upsert_profile_demographic — itu mematok staff_entry + audit per

@@ -63,6 +63,9 @@ export const en: Messages = {
     freshLive: "computed on page load",
     freshSnapshot: "mirror snapshot", // + refresh date-time
     freshManual: "measured manually", // + measurement date
+    computing: "Computing…",
+    blockFailed: "This section failed to load.",
+    blockRetry: "Retry",
     audienceSize: "Audience size",
     audienceSizeHint: "master_customer (read-only)",
     contactableMarketing: "Contactable · marketing",
