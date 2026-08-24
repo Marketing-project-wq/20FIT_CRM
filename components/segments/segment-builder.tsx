@@ -9,6 +9,7 @@ import { STAGING_RFM_VALUES, STAGING_PROGRAMS } from "@/lib/crm/staging-constant
 import { EMPTY_CRITERIA, type SegmentCriteria } from "@/lib/crm/segment";
 import { describeProposal, proposalIsEmpty, type AssistProposal } from "@/lib/crm/segment-ai-shared";
 import { FilterTreeBuilder, rowsToTree, type Row } from "@/components/segments/filter-tree-builder";
+import { saveSegmentAction } from "@/app/(app)/segments/actions";
 import { Why } from "@/components/ui/why";
 import { useI18n } from "@/components/i18n/lang-provider";
 import { formatCount, formatPct, formatDateTime } from "@/lib/i18n";
@@ -67,6 +68,26 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiProposal, setAiProposal] = useState<AssistProposal | null>(null);
+  const [segName, setSegName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
+
+  // Save the DEFINITION (criteria + validated tree), never a member list (K-40). Enabled only after
+  // a compute, so a saved segment is one whose size the operator has just seen.
+  async function saveSeg() {
+    if (!segName.trim() || saving) return;
+    setSaving(true);
+    setSaveMsg(null);
+    try {
+      const res = await saveSegmentAction({ name: segName, criteria: c, tree: rowsToTree(rows) });
+      setSaveMsg(res.ok ? t.segments.saveOk : t.segments.saveFailed);
+      if (res.ok) setSegName("");
+    } catch {
+      setSaveMsg(t.segments.saveFailed);
+    } finally {
+      setSaving(false);
+    }
+  }
 
   function set<K extends keyof SegmentCriteria>(k: K, v: SegmentCriteria[K]) {
     setC((prev) => ({ ...prev, [k]: v }));
@@ -440,6 +461,22 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
             <Button variant="outline" onClick={exportCsv} disabled={exporting || !counts}>
               <Download className="h-3.5 w-3.5" /> {exporting ? t.segments.exporting : t.segments.exportBtn}
             </Button>
+          )}
+          {/* Save the definition (K-40). Enabled after a compute; saves criteria, not people. */}
+          {counts && (
+            <div className="flex w-full flex-wrap items-center gap-2">
+              <input
+                type="text"
+                value={segName}
+                onChange={(e) => setSegName(e.target.value)}
+                placeholder={t.segments.savePlaceholder}
+                className="h-9 w-56 rounded-sm border border-glass-border bg-glass px-3 font-body text-[13px] text-ink focus:outline-none focus:ring-2 focus:ring-red"
+              />
+              <Button variant="outline" onClick={saveSeg} disabled={saving || !segName.trim()}>
+                {saving ? t.segments.saving : t.segments.saveBtn}
+              </Button>
+              {saveMsg && <span className="font-body text-[12px] text-ink-soft">{saveMsg}</span>}
+            </div>
           )}
           {error && <p className="w-full font-body text-[13px] text-red">{error}</p>}
           {exportError && <p className="w-full font-body text-[13px] text-red">{exportError}</p>}

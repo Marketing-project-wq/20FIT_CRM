@@ -5,19 +5,43 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getServerDict } from "@/lib/i18n/server";
 import { Badge } from "@/components/ui/badge";
 import { realSendEnabled } from "@/lib/crm/send-gate";
+import { listSegments } from "@/lib/crm/segment-store";
+import { extractVariables } from "@/lib/crm/template";
+import { CampaignComposer, type TemplateOption } from "./campaign-composer";
 
 export const metadata: Metadata = { title: "Campaigns" };
 export const dynamic = "force-dynamic";
 
 /**
- * Campaigns — the send console. Gate: send.* != deny (same as nav).
- *
- * The compose-and-send FORM is intentionally not wired live yet: it depends on saved segments
- * (RENCANA-simpan-segmen, not built) and on the two blocking send prerequisites (token rotation +
- * DNS). Rather than ship an un-runnable "send" button, this console surfaces the flow, the limits,
- * and — front and centre — the pre-launch block, which is ALSO enforced in code (send-gate). The
- * send PATH behind it is built and unit-tested (lib/crm/send-run.ts + send-campaign.ts).
+ * Campaigns — the send console + compose form (TUGAS 2). Gate: send.* != deny.
+ * Templates are pre-filtered to those whose body carries {{unsubscribe_url}} — a template without
+ * the link cannot even be SELECTED (the send precondition, enforced at the list, not just at send).
  */
+async function loadEligibleTemplates(): Promise<TemplateOption[]> {
+  try {
+    const admin = createAdminClient();
+    const { data, error } = await admin
+      .from("crm_message_template")
+      .select("template_key, name, subject, body, version")
+      .eq("channel", "email")
+      .eq("is_active", true)
+      .order("version", { ascending: false });
+    if (error) return [];
+    const seen = new Set<string>();
+    const out: TemplateOption[] = [];
+    for (const r of (data ?? []) as { template_key: string; name: string; subject: string | null; body: string }[]) {
+      if (seen.has(r.template_key)) continue; // highest version per key (ordered desc)
+      seen.add(r.template_key);
+      if (extractVariables(`${r.subject ?? ""}\n${r.body}`).includes("unsubscribe_url")) {
+        out.push({ key: r.template_key, name: r.name });
+      }
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
 export default async function CampaignsPage() {
   const role = await getCurrentUserRole();
   const { t } = getServerDict();
@@ -36,18 +60,7 @@ export default async function CampaignsPage() {
   }
 
   const enabled = realSendEnabled();
-  const admin = createAdminClient();
-  let activeTemplates = 0;
-  try {
-    const { count } = await admin
-      .from("crm_message_template")
-      .select("id", { count: "exact", head: true })
-      .eq("channel", "email")
-      .eq("is_active", true);
-    activeTemplates = count ?? 0;
-  } catch {
-    activeTemplates = 0;
-  }
+  const [segments, templates] = await Promise.all([listSegments(), loadEligibleTemplates()]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -63,6 +76,12 @@ export default async function CampaignsPage() {
           <p className="mt-3 font-body text-[13px] leading-relaxed text-ink-soft">{c.blockBody}</p>
         </div>
       )}
+
+      <CampaignComposer
+        segments={segments.map((s) => ({ id: s.id, name: s.name, requiresClinical: s.requiresClinical }))}
+        templates={templates}
+        realSend={enabled}
+      />
 
       <div className="grid gap-4 md:grid-cols-2">
         <div className="glass-strong rounded-card p-5">
@@ -84,18 +103,7 @@ export default async function CampaignsPage() {
             <li>{c.limit2}</li>
             <li>{c.limit3}</li>
           </ul>
-          <p className="mt-4 font-body text-[13px] text-ink-soft">
-            {c.templatesActive}: <span className="font-mono text-ink">{activeTemplates}</span>
-          </p>
-          {activeTemplates === 0 && (
-            <p className="mt-1 font-body text-[12px] leading-relaxed text-ink-faint">{c.templatesNone}</p>
-          )}
         </div>
-      </div>
-
-      <div className="rounded-card border border-dashed border-glass-border p-5">
-        <p className="font-body text-[13px] font-semibold text-ink">{c.pendingTitle}</p>
-        <p className="mt-1 max-w-2xl font-body text-[13px] leading-relaxed text-ink-soft">{c.pendingBody}</p>
       </div>
     </div>
   );

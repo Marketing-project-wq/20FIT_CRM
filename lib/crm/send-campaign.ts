@@ -134,6 +134,47 @@ function startOfTodayIso(nowIso: string): string {
   return `${nowIso.slice(0, 10)}T00:00:00.000Z`;
 }
 
+export interface CampaignPreview {
+  matched: number; // profiles meeting the criteria (with or without email)
+  withEmail: number; // of those, how many have a usable canonical email
+  noContact: number; // matched but no email → cannot be emailed
+  suppressed: number; // of the with-email set, how many are currently suppressed (skipped at send)
+  sendable: number; // withEmail − suppressed → the number that would actually be emailed
+  remainingDailyBudget: number; // dailyLimit − already sent today (from the log)
+}
+
+/**
+ * Count what a send WOULD do, using the SAME resolution + suppression the real send uses — so the
+ * number the form shows can't differ from what the send targets for any reason but timing. `nowIso`
+ * fixes the daily-window read. No email is sent.
+ */
+export async function previewCampaign(
+  input: { criteria: SegmentCriteria; masterFilterExpr: string | null; dailyLimit?: number },
+  nowIso: string,
+): Promise<CampaignPreview> {
+  const admin = createAdminClient();
+  const [{ recipients, noContact }, suppressed] = await Promise.all([
+    resolveRecipients(admin, input.criteria, input.masterFilterExpr),
+    fetchSuppressedCustomerIds(admin),
+  ]);
+  const suppressedCount = recipients.reduce((n, r) => (suppressed.has(r.customerId) ? n + 1 : n), 0);
+  const withEmail = recipients.length;
+  const { count } = await admin
+    .from("crm_message_log")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "sent")
+    .gte("created_at", startOfTodayIso(nowIso));
+  const dailyLimit = input.dailyLimit ?? DEFAULT_SEND_CONFIG.dailyLimit;
+  return {
+    matched: withEmail + noContact,
+    withEmail,
+    noContact,
+    suppressed: suppressedCount,
+    sendable: withEmail - suppressedCount,
+    remainingDailyBudget: Math.max(0, dailyLimit - (count ?? 0)),
+  };
+}
+
 /**
  * Send a campaign to a segment. `nowIso` is supplied by the caller (route) so the audit + daily
  * window are deterministic and testable, matching the export path.
