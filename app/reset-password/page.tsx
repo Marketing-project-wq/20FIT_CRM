@@ -5,7 +5,7 @@ import { ThemeLogo } from "@/components/brand/theme-logo";
 import { AuthControls } from "@/components/auth/auth-controls";
 import { ResetPasswordForm } from "@/components/auth/reset-password-form";
 import { normalizeEmail } from "@/lib/crm/normalize";
-import { RECOVERY_OTP_VALIDITY_LABEL } from "@/lib/auth/recovery";
+import { RECOVERY_OTP_VALIDITY_LABEL, RECOVERY_OTP_VALIDITY_MINUTES } from "@/lib/auth/recovery";
 import { getServerDict } from "@/lib/i18n/server";
 import { LangProvider } from "@/components/i18n/lang-provider";
 import { THEME_COOKIE, resolveTheme } from "@/lib/theme";
@@ -53,7 +53,11 @@ export default function ResetPasswordPage({
           {/* Auth pages live outside the app shell, so there is no ambient LangProvider — wrap the
               client form here (lang read from the same cookie) so it can use the dictionary. */}
           <LangProvider lang={lang}>
-            <ResetPasswordForm email={email} validityLabel={RECOVERY_OTP_VALIDITY_LABEL} />
+            <ResetPasswordForm
+              email={email}
+              validityLabel={RECOVERY_OTP_VALIDITY_LABEL}
+              validityMinutes={RECOVERY_OTP_VALIDITY_MINUTES}
+            />
           </LangProvider>
         </div>
 

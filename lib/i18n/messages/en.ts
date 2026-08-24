@@ -957,8 +957,15 @@ export const en: Messages = {
     resetErrMinCharsA: "The new password must be at least ",
     resetErrMinCharsB: " characters.",
     resetErrMismatch: "The password confirmation doesn't match.",
-    resetErrWrongCode: "The code is wrong or has expired. Request a new code and try again.",
+    resetErrWrongCode: "The code is wrong. Check the digits you entered and try again.",
     resetErrSetFailed: "Failed to set the new password. Request a new code and try again.",
+    // Distinct reset-failure states (incident 24 Aug 2026 — one message hid several).
+    resetCodeAccepted: "Code accepted. Now set your new password — you don't need to enter the code again.",
+    resetErrExpired: "The code has expired (valid for 1 hour). Request a new code and enter the new one.",
+    resetErrUsed: "This code was already used to verify. You're almost done — just set the password below.",
+    resetErrPwSame: "The new password must be DIFFERENT from the old one. Enter another.",
+    resetErrPwWeak: "The new password is too weak for the system policy. Try a longer / stronger one.",
+    resetErrPwRejected: "The new password was rejected. Try another — you don't need a new code, the code was accepted.",
     resetErrConn: "Couldn't reach the server. Try again shortly.",
     // pre-auth chrome (Sprint auth-UI): placeholder, password toggle, theme toggle
     emailPlaceholder: "name@20fit.id",

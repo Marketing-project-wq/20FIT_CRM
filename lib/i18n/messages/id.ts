@@ -1054,8 +1054,15 @@ export const id = {
     resetErrMinCharsA: "Kata sandi baru minimal ",
     resetErrMinCharsB: " karakter.",
     resetErrMismatch: "Konfirmasi kata sandi tidak cocok.",
-    resetErrWrongCode: "Kode salah atau sudah kedaluwarsa. Minta kode baru lalu coba lagi.",
+    resetErrWrongCode: "Kode salah. Periksa lagi angka yang Anda masukkan lalu coba lagi.",
     resetErrSetFailed: "Gagal mengatur kata sandi baru. Minta kode baru lalu coba lagi.",
+    // Distinct reset-failure states (incident 24 Agu 2026 — one message hid several).
+    resetCodeAccepted: "Kode diterima. Sekarang atur kata sandi baru Anda — tak perlu memasukkan kode lagi.",
+    resetErrExpired: "Kode sudah kedaluwarsa (berlaku 1 jam). Minta kode baru lalu masukkan yang baru.",
+    resetErrUsed: "Kode ini sudah dipakai untuk verifikasi. Kata sandi hampir selesai — cukup atur kata sandinya di bawah.",
+    resetErrPwSame: "Kata sandi baru harus BERBEDA dari kata sandi lama. Masukkan yang lain.",
+    resetErrPwWeak: "Kata sandi baru terlalu lemah untuk kebijakan sistem. Coba yang lebih panjang / lebih kuat.",
+    resetErrPwRejected: "Kata sandi baru ditolak. Coba kata sandi lain — tak perlu kode baru, kodenya sudah diterima.",
     resetErrConn: "Tidak dapat terhubung ke server. Coba lagi sebentar lagi.",
     // pre-auth chrome (Sprint auth-UI): placeholder, password toggle, theme toggle
     emailPlaceholder: "nama@20fit.id",

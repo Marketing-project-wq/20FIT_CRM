@@ -392,3 +392,26 @@ dashboard menampilkan keadaan gagalnya sendiri (bukan halaman kosong, bukan nol 
 
 _(Catatan: sempat disebut "empat malam" — pengukuran langsung menunjukkan **lima** malam, 19–23
 Agu; angka terverifikasi yang dicatat.)_
+
+---
+
+## Mailtrap — domain 20fit.id terverifikasi, prasyarat DNS kampanye terpenuhi (dilaporkan 24 Agu 2026)
+
+Kabar baik dari dasbor Mailtrap (dilaporkan pemilik produk 24 Agu 2026), relevan untuk separuh
+"menghubungi" yang akan dibangun:
+
+- **Domain `20fit.id` berstatus _Verified_** di Mailtrap — SPF/DKIM/DMARC yang dibutuhkan sudah
+  terpasang. Ini **prasyarat DNS untuk kampanye** yang selama ini dicatat sebagai belum tuntas;
+  kini terpenuhi.
+- **14.041 email terkirim dalam 30 hari terakhir** lewat domain ini — pipeline kirim nyata sudah
+  jalan di produksi (bukan hanya sandbox).
+- **Email reset kata sandi kini mendarat di _Inbox_** dari pengirim yang benar
+  (`20FIT CRM <crm@20fit.id>`), bukan spam — jalur `sendRecoveryCode → Mailtrap` (lib/auth/recovery)
+  bekerja end-to-end.
+
+**Yang masih tersisa sebelum kampanye boleh dikirim:** hanya **rotasi token Mailtrap** (token lama
+pernah terekspos; lihat MENUNGGU). DNS **bukan lagi** penghambat. Aturan tetap berlaku: **jangan
+kirim satu email kampanye pun** sampai token dirotasi.
+
+_(Sumber angka: dasbor Mailtrap, dilaporkan pemilik produk; dicatat sebagai fakta yang dilaporkan,
+bukan hasil kueri DB kami.)_
