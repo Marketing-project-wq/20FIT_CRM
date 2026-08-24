@@ -84,9 +84,9 @@ export const id = {
     audienceSize: "Ukuran audiens",
     audienceSizeHint: "master_customer (baca saja)",
     contactableMarketing: "Bisa dihubungi · marketing",
-    contactableMarketingHint: "consent marketing aktif − suppression",
+    contactableMarketingHint: "seluruh pool − yang berhenti berlangganan",
     contactableService: "Bisa dihubungi · layanan",
-    contactableServiceHint: "consent transactional aktif − suppression (untuk CS/operasional)",
+    contactableServiceHint: "seluruh pool − yang berhenti berlangganan (untuk CS/operasional)",
     workflowActive: "Workflow aktif",
     workflowActiveHint: "belum ada tabel workflow",
     lastProfile: "Profil terakhir bertambah",
@@ -143,7 +143,7 @@ export const id = {
     // D redesign — satu kartu ringkas (pool + jangkauan), tabel selisih, kartu kandidat, Fitco.
     summaryTitle: "Pool & jangkauan",
     summaryPoolLabel: "Pool CRM (master_customer)",
-    summaryReachAll: "seluruh pool dapat dihubungi · nol suppression",
+    summaryReachAll: "seluruh pool dapat dihubungi · nol berhenti berlangganan",
     gapTableSource: "Sumber",
     candTitle: "Kandidat belum di pool",
     candLabel: "belum jadi audiens · bukan pool · bukan bisa dipasarkan",
@@ -263,7 +263,7 @@ export const id = {
   consent: {
     title: "Consent",
     // subtitle split around the mono doc PATH (a file path — kept verbatim, never translated).
-    subtitleA: "Register dasar hukum kontak & daftar do-not-contact — baca saja. Fase 2 dibuka; jalur tulis ditunda.",
+    subtitleA: "Daftar berhenti berlangganan (unsubscribe) — satu-satunya gerbang kontak (K-36). Register consent tetap disimpan sebagai catatan dasar hukum, baca-saja.",
     // basis vocabulary block. The `value`s (legacy_import_unverified, explicit_opt_in) are STORED
     // vocabulary and stay verbatim; only these explanatory NOTES follow the language.
     basisHeadingA: "Kosakata ",
@@ -271,8 +271,8 @@ export const id = {
     basisNoteLegacy: "impor lama; sejak keputusan pemilik produk (12 Agu 2026) mengizinkan marketing + transactional (docs/SIGNOFF-legal-consent.md)",
     basisNoteOptin: "opt-in eksplisit tercatat — dasar terkuat, mengizinkan semua purpose",
     basisFooter: "Dua nilai ini bukan daftar lengkap. Status sign-off: docs/SIGNOFF-legal-consent.md.",
-    sectionConsent: "Register consent",
-    sectionSuppression: "Daftar suppression",
+    sectionConsent: "Catatan consent (arsip dasar hukum)",
+    sectionSuppression: "Daftar berhenti berlangganan (unsubscribe)",
     thProfile: "Profil",
     thChannel: "Channel",
     thPurpose: "Purpose",
@@ -365,10 +365,10 @@ export const id = {
       // ZeroMeaning banner. ID below; EN in en.ts. Nuance at risk: "0 rows" is NOT "no data yet" —
       // it is "no lawful basis for ANYONE", the correct FAIL-CLOSED answer. Softening it to "empty"
       // would read as a data gap to fix, not a deliberate contact ban.
-      zeroTitle: "Nol baris consent = nol orang boleh dikirimi marketing",
-      zeroBodyA: "Ini bukan “belum ada data”. Ini “tidak ada dasar hukum untuk siapa pun”. Ketiadaan baris consent adalah jawaban fail-closed yang benar: tanpa baris consent ",
+      zeroTitle: "Consent bukan gerbang — nol baris consent tidak menahan kontak (K-36)",
+      zeroBodyA: "Sejak pemilik produk menyatakan seluruh pengguna boleh dihubungi (24 Agu 2026, K-36), consent berhenti jadi gerbang. Baris consent kini catatan dasar hukum, bukan penentu boleh-tidaknya kontak. Yang menahan kontak untuk ",
       zeroBodyB: " ",
-      zeroBodyC: ", seseorang tidak boleh dihubungi untuk marketing. Kartu “Bisa dihubungi” di dashboard menghitung dari aturan ini — hasilnya 0 terukur, bukan 0 yang ditulis tangan.",
+      zeroBodyC: " hanyalah berhenti berlangganan (unsubscribe). Kartu “Bisa dihubungi” di dashboard menghitung seluruh pool dikurangi yang berhenti berlangganan — hasilnya angka terukur, bukan yang ditulis tangan.",
       // Backfilled banner. Nuance at risk: the backfill is REVERSIBLE and honestly labelled
       // "unverified per person"; suppression still WINS. Dropping "reversible"/"suppression wins"
       // would overstate the strength of a legacy consent basis.
@@ -388,8 +388,8 @@ export const id = {
       winsBodyD: ", supaya bertahan lintas penghapusan profil & impor ulang.",
       // Empty-state explanations. Nuance at risk (suppression): zero suppression is NOT "safe to
       // contact" — the thing holding contact is the ABSENCE OF CONSENT above, not absence of suppression.
-      emptyConsentWhy: "Belum ada satu baris pun. Backfill legacy sudah disetujui pemilik produk tapi belum dijalankan di lingkungan ini; sampai dijalankan, nol tetap jawaban fail-closed yang benar. Basis yang akan dipakai: legacy_import_unverified (jujur menandai “belum diverifikasi per orang”).",
-      emptySuppWhy: "Belum ada satu baris pun. Nol suppression bukan berarti aman untuk mengontak — yang menahan kontak adalah ketiadaan consent (di atas), bukan ketiadaan suppression.",
+      emptyConsentWhy: "Catatan consent kosong di lingkungan ini. Itu tidak lagi menahan kontak siapa pun (K-36 — consent bukan gerbang): baris consent adalah arsip dasar hukum, dan gerbang sesungguhnya hanyalah berhenti berlangganan (unsubscribe) di daftar bawah.",
+      emptySuppWhy: "Belum ada satu baris pun. Nol berhenti berlangganan berarti seluruh pool boleh dihubungi — unsubscribe adalah satu-satunya gerbang, dan consent bukan gerbang (K-36).",
       footer: "Suppression: catat & cabut (atomik dengan audit, nol DELETE) · consent tetap baca-saja (menunggu kanal opt-in) · dibaca via service role server-side · pembukaan halaman ini tercatat (list.viewed, crm_consent).",
       // Record-dialog description. Nuance at risk: recording a stop-request PROTECTS the person; it
       // is not a punishment, and there is no delete button — a lift goes through its own audited path.
@@ -404,7 +404,7 @@ export const id = {
       // Lift-dialog description. Nuance at risk: lifting RE-ENABLES contact (still subject to consent);
       // the row is not deleted — status flips to lifted and the lift itself is audited.
       liftDescA: "Mencabut suppression ",
-      liftDescB: " mengembalikan kemungkinan menghubungi orang ini (tetap tunduk pada status consent). Barisnya tidak dihapus — statusnya menjadi lifted dan pencabutan ini tercatat di audit.",
+      liftDescB: " mengembalikan kemungkinan menghubungi orang ini kembali. Barisnya tidak dihapus — statusnya menjadi lifted dan pencabutan ini tercatat di audit.",
       // Server write-path consequences (returned by the API, shown in the dialog). Same nuance:
       // "cannot be contacted, whatever the consent status" must survive translation.
       srvSuppressed: "Permintaan berhenti dicatat. Orang ini kini TIDAK bisa dihubungi, apa pun status consent-nya.",
@@ -412,7 +412,7 @@ export const id = {
       srvNoop: "Sudah ada suppression aktif untuk identitas ini — tidak ada perubahan.",
       srvWriteFailedRecord: "Gagal mencatat suppression. Tidak ada baris separuh jadi.",
       srvWriteFailedLift: "Gagal mencabut suppression. Tidak ada perubahan separuh jadi.",
-      srvLiftSuccess: "Suppression dicabut. Orang ini kini BISA dihubungi kembali (tunduk pada status consent).",
+      srvLiftSuccess: "Suppression dicabut. Orang ini kini BISA dihubungi kembali.",
     },
   },
 
@@ -741,10 +741,10 @@ export const id = {
     reachTitle: "Punya identifier ≠ bisa dihubungi",
     reachBody1: "Seluruh",
     reachBody2:
-      "profil punya setidaknya satu identifier kontak, tetapi jumlah yang boleh dihubungi masih nol: register consent belum ada (migrasi",
-    reachBody3: "ditahan menunggu persetujuan legal) dan",
+      "profil dianggap boleh dihubungi (K-36). Catatan dasar hukum di",
+    reachBody3: "bukan gerbang; satu-satunya yang menghapus seseorang adalah berhenti berlangganan di",
     reachBody4:
-      "masih kosong. Angka di halaman ini mengukur kelengkapan data, bukan izin mengirim.",
+      "— halaman ini mengukur kelengkapan data, bukan izin mengirim.",
 
     panel: {
       fillTitle: "Fill rate",

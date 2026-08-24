@@ -70,9 +70,9 @@ export const en: Messages = {
     audienceSize: "Audience size",
     audienceSizeHint: "master_customer (read-only)",
     contactableMarketing: "Contactable · marketing",
-    contactableMarketingHint: "active marketing consent − suppression",
+    contactableMarketingHint: "whole pool − those who unsubscribed",
     contactableService: "Contactable · service",
-    contactableServiceHint: "active transactional consent − suppression (for CS/ops)",
+    contactableServiceHint: "whole pool − those who unsubscribed (for CS/ops)",
     workflowActive: "Active workflows",
     workflowActiveHint: "no workflow table yet",
     lastProfile: "Profiles last added",
@@ -126,7 +126,7 @@ export const en: Messages = {
     coverageExportFailed: "Export failed.",
     summaryTitle: "Pool & reach",
     summaryPoolLabel: "CRM pool (master_customer)",
-    summaryReachAll: "whole pool contactable · zero suppression",
+    summaryReachAll: "whole pool contactable · zero unsubscribed",
     gapTableSource: "Source",
     candTitle: "Candidates not yet in the pool",
     candLabel: "not yet an audience · not the pool · not marketable",
@@ -226,14 +226,14 @@ export const en: Messages = {
 
   consent: {
     title: "Consent",
-    subtitleA: "The lawful-basis register for contact & the do-not-contact list — read-only. Phase 2 is open; the write path is deferred.",
+    subtitleA: "The unsubscribe list — the only contact gate (K-36). The consent register is still kept as a lawful-basis archive, read-only.",
     basisHeadingA: "Vocabulary for ",
     basisProvisional: "provisional — awaiting the final legal list",
     basisNoteLegacy: "legacy import; since the product owner's decision (12 Aug 2026) it allows marketing + transactional (docs/SIGNOFF-legal-consent.md)",
     basisNoteOptin: "an explicit opt-in on record — the strongest basis, allowing every purpose",
     basisFooter: "These two values are not the complete list. Sign-off status: docs/SIGNOFF-legal-consent.md.",
-    sectionConsent: "Consent register",
-    sectionSuppression: "Suppression list",
+    sectionConsent: "Consent record (lawful-basis archive)",
+    sectionSuppression: "Unsubscribe list",
     thProfile: "Profile",
     thChannel: "Channel",
     thPurpose: "Purpose",
@@ -319,10 +319,10 @@ export const en: Messages = {
     warn: {
       // Nuance kept: "0 rows" is not "no data yet" — it is "no lawful basis for ANYONE", the correct
       // fail-closed answer. Never "empty" or "no data".
-      zeroTitle: "Zero consent rows = zero people may be sent marketing",
-      zeroBodyA: "This is not “data we are still missing”. It is “no lawful basis for anyone”. The absence of consent rows is the correct fail-closed answer: with no consent row ",
+      zeroTitle: "Consent is not a gate — zero consent rows do not hold back contact (K-36)",
+      zeroBodyA: "Since the product owner stated every user may be contacted (24 Aug 2026, K-36), consent stopped being a gate. A consent row is now a lawful-basis record, not what decides whether contact is allowed. What holds contact back for ",
       zeroBodyB: " ",
-      zeroBodyC: ", a person may not be contacted for marketing. The dashboard's “Contactable” card counts from this rule — the result is 0 (measured), not a 0 written by hand.",
+      zeroBodyC: " is only an unsubscribe. The dashboard's “Contactable” card counts the whole pool minus those who unsubscribed — the result is a measured figure, not one written by hand.",
       // Nuance kept: reversible + honestly "unverified per person" + suppression still wins.
       backfilledTitleA: "Legacy consent has been backfilled — basis ",
       backfilledBodyA: "Backfill recorded active consent for the legacy import on the product owner's decision (12 Aug 2026): marketing + transactional, with basis ",
@@ -338,8 +338,8 @@ export const en: Messages = {
       winsBodyD: ", so it survives profile deletion & re-import.",
       // Nuance kept: zero suppression is NOT "safe to contact" — the absence of consent above is what
       // holds contact, not the absence of suppression.
-      emptyConsentWhy: "Not a single row yet. The legacy backfill is approved by the product owner but has not been run in this environment; until it is, zero remains the correct fail-closed answer. The basis it will use: legacy_import_unverified (honestly marking it “not verified per person”).",
-      emptySuppWhy: "Not a single row yet. Zero suppression does not mean it is safe to contact — what holds contact back is the absence of consent (above), not the absence of suppression.",
+      emptyConsentWhy: "The consent record holds no rows in this environment. That no longer holds anyone back from contact (K-36 — consent is not a gate): a consent row is a lawful-basis archive, and the real gate is only an unsubscribe in the list below.",
+      emptySuppWhy: "Not a single row yet. Zero unsubscribed means the whole pool may be contacted — an unsubscribe is the only gate, and consent is not a gate (K-36).",
       footer: "Suppression: record & lift (atomic with an audit row, zero DELETE) · consent stays read-only (awaiting an opt-in channel) · read via the service role server-side · opening this page is recorded (list.viewed, crm_consent).",
       // Nuance kept: recording a stop-request PROTECTS the person, is not a punishment, and has no
       // delete button — a lift goes through its own audited path.
@@ -353,13 +353,13 @@ export const en: Messages = {
       // Nuance kept: lifting RE-ENABLES contact (still subject to consent); the row is not deleted —
       // status flips to lifted and the lift itself is audited.
       liftDescA: "Lifting the suppression ",
-      liftDescB: " restores the possibility of contacting this person (still subject to their consent status). The row is not deleted — its status becomes lifted and this lift is recorded in the audit trail.",
+      liftDescB: " restores the possibility of contacting this person again. The row is not deleted — its status becomes lifted and this lift is recorded in the audit trail.",
       srvSuppressed: "The stop request is recorded. This person now CANNOT be contacted, whatever their consent status.",
       srvReactivated: "The suppression is re-activated. This person now CANNOT be contacted, whatever their consent status.",
       srvNoop: "There is already an active suppression for this identity — nothing changed.",
       srvWriteFailedRecord: "Failed to record the suppression. No half-written row was left behind.",
       srvWriteFailedLift: "Failed to lift the suppression. No half-applied change was left behind.",
-      srvLiftSuccess: "The suppression is lifted. This person CAN now be contacted again (subject to their consent status).",
+      srvLiftSuccess: "The suppression is lifted. This person CAN now be contacted again.",
     },
   },
 
@@ -657,10 +657,10 @@ export const en: Messages = {
     reachTitle: "Has an identifier ≠ contactable",
     reachBody1: "All",
     reachBody2:
-      "profiles have at least one contact identifier, but the number that may be contacted is still zero: the consent register does not exist yet (the",
-    reachBody3: "migration is held pending legal approval) and",
+      "profiles are considered contactable (K-36). The lawful-basis record in",
+    reachBody3: "is not a gate; the only thing that removes someone is an unsubscribe in",
     reachBody4:
-      "is still empty. The numbers on this page measure data completeness, not permission to send.",
+      "— this page measures data completeness, not permission to send.",
 
     panel: {
       fillTitle: "Fill rate",

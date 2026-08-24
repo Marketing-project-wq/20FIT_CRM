@@ -622,3 +622,38 @@ fitco/rfm/dob, bukan "flag", disimpan verbatim. Menyatukannya butuh verifikasi t
 **Syarat pembalikan:** rollback Migrasi 23 mengembalikan definisi cermin migrasi 16 (kanon `lower(btrim)`
 pra-K-35) — revert penuh yang disengaja. K-35 sebagai *aturan* (kanon tunggal untuk kode baru) tetap berlaku
 terlepas dari status Migrasi 23.
+
+## K-36 · Consent bukan gerbang — unsubscribe satu-satunya penentu boleh-dihubungi (Sprint evaluasi lingkup)
+**Latar:** Pemilik produk menyatakan ulang kebutuhan sistem (`docs/KEBUTUHAN-SISTEM.md`, 24 Agu
+2026): seluruh data di Supabase milik 20FIT, sah, dan penggunanya **sudah mengizinkan** untuk
+dihubungi — "izin dan legalitas bukan hal yang perlu dipersoalkan sistem ini." Yang menentukan
+siapa **tidak** boleh dihubungi hanyalah **unsubscribe**.
+
+**Keputusan:** consent **berhenti menjadi gerbang**. Setiap pengguna dianggap boleh dihubungi.
+Satu-satunya yang menahan kontak adalah baris **`crm_suppression` aktif** (daftar unsubscribe).
+Ini menyelaraskan dengan keadaan fungsional yang **sudah** berlaku: `crm_contactable_counts()`
+mengembalikan 82.253 untuk kedua purpose (seluruh pool, nol suppression). Yang berubah sprint ini
+hanyalah **bingkai dan bahasa**, bukan angka atau logika.
+
+**Yang TIDAK berubah:**
+- **`crm_consent` (408.119 baris) TETAP** — catatan sah tentang dasar hukum & sumbernya, baca-
+  saja. Menghapusnya tak bisa dibatalkan; manfaat penghapusan hanya kerapian konseptual (D-1).
+- **Aturan "suppression menang" TETAP** dan kini **satu-satunya aturan yang tersisa**, jadi makin
+  penting: `isContactableForPurpose` + `crm_contactable_counts` tetap anti-join ke suppression
+  aktif (K-26). Nol jalur keluar boleh melewati pemeriksaan suppression.
+- **Audit pengiriman TETAP** — tiap pengiriman meninggalkan catatan (bukan demi kepatuhan, tapi
+  agar kampanye gagal bisa ditelusuri & tak dikirim dua kali).
+
+**Yang berubah (frame + bahasa, nol perubahan angka/logika):**
+- `/consent` dibingkai ulang: **daftar unsubscribe** jadi utama; register consent jadi arsip
+  dasar hukum baca-saja. Label section, subtitle, dan warn di-reframe.
+- Kartu "Bisa dihubungi" di dashboard: hint berubah dari "consent aktif − suppression" jadi
+  **"seluruh pool − yang berhenti berlangganan"**.
+- Bahasa yang menyajikan consent sebagai penghalang disapu di /consent, dashboard, dan /quality
+  (caveat "punya identifier ≠ bisa dihubungi" kini menunjuk unsubscribe, bukan consent).
+
+**Syarat pembalikan (eksplisit):** bila kelak **dasar hukum kembali menjadi pembeda** (mis.
+regulasi berubah, atau kanal opt-in per-orang diaktifkan), gerbang consent **dinyalakan lagi dari
+tabel yang sama** (`crm_consent` masih utuh) — kembalikan `isContactableForPurpose` untuk
+memeriksa consent aktif selain suppression, dan reframe balik bahasanya. Tidak ada data yang
+hilang untuk pembalikan itu; hanya frame yang berubah.

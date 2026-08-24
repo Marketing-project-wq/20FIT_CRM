@@ -2,7 +2,17 @@
 
 Berkas ini adalah titik masuk. Baca ini lebih dulu sebelum apa pun, lalu ikuti tautannya.
 
-Terakhir diperbarui: **13 Agustus 2026.**
+Terakhir diperbarui: **24 Agustus 2026.**
+
+> ## 🧭 Rujukan lingkup teratas — `docs/KEBUTUHAN-SISTEM.md`
+>
+> Pernyataan pemilik produk (24 Agu 2026) tentang apa yang sistem ini **harus** lakukan dan apa
+> yang **bukan** urusannya ada di **[`docs/KEBUTUHAN-SISTEM.md`](../KEBUTUHAN-SISTEM.md)**. **Bila
+> dokumen lain di repo bertentangan dengannya, berkas itu yang menang** — kecuali angka database,
+> yang selalu diukur ulang. Konsekuensi tetap yang mengubah panduan ini: **consent bukan
+> gerbang** (setiap pengguna dianggap boleh dihubungi); **unsubscribe (`crm_suppression`) satu-
+> satunya gerbang**; snapshot harian tak bisa menjawab pemicu berbasis kejadian; tiap pengiriman
+> meninggalkan catatan audit. Lihat K-36 (consent bukan gerbang).
 
 ---
 

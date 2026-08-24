@@ -9,7 +9,15 @@ segmentation and marketing automation for the Marketing Division.
 
 Full spec: `PRD — 20FIT Audience Data & CRM System v1.1`.
 
-> ## 📚 Project history — read before changing a "warning" comment
+> ## 🧭 Scope authority — `docs/KEBUTUHAN-SISTEM.md`
+>
+> The product owner's standing statement of what this system must do (and what is **not** its
+> job), dated 24 Aug 2026, lives in **[`docs/KEBUTUHAN-SISTEM.md`](docs/KEBUTUHAN-SISTEM.md)**.
+> **When any other document in this repo conflicts with it, that file wins** — the one exception
+> is database numbers, which are always re-measured (its §6). Read it before deciding whether a
+> feature is in scope. Key standing consequences: **consent is not a gate** (every user is
+> considered contactable); **unsubscribe (`crm_suppression`) is the only real gate**; the daily
+> snapshot cannot answer event-based triggers; every send must leave an audit record.
 >
 > `docs/riwayat/` records why this system is the way it is: every sprint's prompt,
 > the decisions taken (`KEPUTUSAN.md`) and **what would reverse each one**, the
