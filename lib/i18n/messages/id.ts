@@ -76,6 +76,9 @@ export const id = {
     freshManual: "diukur manual", // + tanggal pengukuran
     // Progressive-load: skeleton = sedang dihitung; state gagal per bagian; tombol coba lagi.
     computing: "Sedang menghitung…",
+    // Penanda pratinjau — IKUT ter-render (bukan hanya di URL /dev/preview), supaya screenshot
+    // fixture tak pernah lagi salah dibaca sebagai produksi. Hanya muncul saat isPreview.
+    previewBanner: "PRATINJAU · DATA FIXTURE — BUKAN ANGKA PRODUKSI",
     blockFailed: "Bagian ini gagal dimuat.",
     blockRetry: "Coba lagi",
     audienceSize: "Ukuran audiens",

@@ -64,6 +64,7 @@ export const en: Messages = {
     freshSnapshot: "mirror snapshot", // + refresh date-time
     freshManual: "measured manually", // + measurement date
     computing: "Computing…",
+    previewBanner: "PREVIEW · FIXTURE DATA — NOT PRODUCTION FIGURES",
     blockFailed: "This section failed to load.",
     blockRetry: "Retry",
     audienceSize: "Audience size",

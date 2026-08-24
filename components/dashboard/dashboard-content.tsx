@@ -372,6 +372,17 @@ export function DashboardContent(
 
   return (
     <div className="space-y-10">
+      {/* FIXTURE PREVIEW MARKER — renders inside the dashboard itself (not just at the /dev/preview
+          URL) so ANY screenshot of fixture data is unmistakable without checking the database. It
+          only ever shows when isPreview is true, which is only ever true on /dev/preview (404 in
+          prod). This closes the trap where the corrected-to-real fixture became indistinguishable
+          from production (see docs/riwayat/TEMUAN.md). */}
+      {isPreview && (
+        <div className="tint-amber flex items-center gap-2 rounded-sm border border-amber px-3 py-2" role="note">
+          <span aria-hidden className="font-display text-[14px] font-bold">⚠</span>
+          <span className="font-mono text-[12px] font-bold uppercase tracking-wide">{t.dashboard.previewBanner}</span>
+        </div>
+      )}
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-display text-[30px] font-extrabold leading-none text-ink">{t.dashboard.title}</h1>
