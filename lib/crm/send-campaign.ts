@@ -29,8 +29,8 @@ import {
  * recipients are WITHHELD (not sent, not logged), reported as a count. The two blocking prerequisites
  * (rotate the leaked Mailtrap token; set SPF/DKIM/DMARC) live in RENCANA-batas-kirim / MENUNGGU.
  *
- * ONE audit row per run (SEND_ACTION = export.campaign_sent, compliance-retained), never per
- * recipient — like export.performed records a count. Per-recipient detail is in crm_message_log.
+ * ONE audit row per run (SEND_ACTION = campaign.sent, compliance-retained), never per recipient —
+ * like export.performed records a count. Per-recipient detail is in crm_message_log.
  */
 
 const PAGE = 1000;

@@ -8,6 +8,15 @@ import { getSegmentById } from "@/lib/crm/segment-store";
 import { previewCampaign, sendCampaign } from "@/lib/crm/send-campaign";
 import { describeCountDrift, planDailySpread, type CountDrift, type DailySpread } from "@/lib/crm/send-plan";
 import { DEFAULT_SEND_CONFIG, requiresLargeSendConfirmation, type SendSummary } from "@/lib/crm/send-run";
+import {
+  createRun,
+  getRunForPair,
+  listResumableRuns,
+  markRunSending,
+  finalizeRunStatus,
+  type ResumableRun,
+  type RunStatus,
+} from "@/lib/crm/campaign-run";
 import { extractVariables } from "@/lib/crm/template";
 
 /**
@@ -82,14 +91,69 @@ export async function previewCampaignAction(segmentId: string, templateKey: stri
   };
 }
 
+/** A campaign run (instance) the operator may continue for the picked (segment, template). Surfaced
+ *  so "resume" is an explicit, informed choice next to "start a new run" — never implied. */
+export interface RunOption {
+  id: string;
+  label: string | null;
+  status: RunStatus;
+  sentCount: number; // already sent in this run — resuming skips these
+  loggedCount: number; // all rows already recorded for this run
+  createdAt: string;
+}
+
+export interface RunsResult {
+  ok: boolean;
+  error?: "denied" | "not_found";
+  runs?: RunOption[];
+}
+
+/** List the resumable runs for a (segment, template) so the composer can offer "continue run X
+ *  (N already sent)" distinctly from "start a new run". Read-only; creates nothing. */
+export async function listRunsAction(segmentId: string, templateKey: string): Promise<RunsResult> {
+  const role = await getCurrentUserRole();
+  if (grantFor(role, "send.at_or_below_threshold") === "deny") return { ok: false, error: "denied" };
+  const seg = await getSegmentById(segmentId);
+  if (!seg) return { ok: false, error: "not_found" };
+  const runs = await listResumableRuns(segmentId, templateKey);
+  return {
+    ok: true,
+    runs: runs.map((r: ResumableRun) => ({
+      id: r.id,
+      label: r.label,
+      status: r.status,
+      sentCount: r.sentCount,
+      loggedCount: r.loggedCount,
+      createdAt: r.createdAt,
+    })),
+  };
+}
+
+/** Which instance a send targets: continue an existing run, or open a new one. The distinction is
+ *  the whole point of crm_campaign_run — a new run re-sends to the same people (next issue); resuming
+ *  the same run skips whoever it already reached. */
+export type RunChoice = { kind: "resume"; runId: string } | { kind: "new"; label: string | null };
+
 export interface SendResult {
   ok: boolean;
-  error?: "denied" | "not_found" | "clinical_gate" | "no_unsubscribe" | "needs_confirm" | "count_changed";
+  error?:
+    | "denied"
+    | "not_found"
+    | "clinical_gate"
+    | "no_unsubscribe"
+    | "needs_confirm"
+    | "count_changed"
+    | "run_not_found"
+    | "run_create_failed";
   drift?: CountDrift; // recount at confirm vs what the operator saw
   freshSendable?: number; // the recounted number to show + re-press against (on count_changed)
   summary?: SendSummary;
   withheldPrelaunch?: number;
   realSend?: boolean;
+  runId?: string; // the instance this send targeted (crm_message_log.campaign_id)
+  runLabel?: string | null;
+  isNewRun?: boolean; // true if this send opened a fresh instance (vs continued one)
+  runStatus?: RunStatus; // where the run landed after this send (sent / sending / stopped)
 }
 
 export async function sendCampaignAction(args: {
@@ -97,6 +161,7 @@ export async function sendCampaignAction(args: {
   templateKey: string;
   confirmedLargeSend: boolean;
   shownSendable: number; // the number the operator saw when they pressed send
+  run: RunChoice; // resume an existing instance or open a new one — required, never implied
 }): Promise<SendResult> {
   const role = await getCurrentUserRole();
   if (grantFor(role, "send.at_or_below_threshold") === "deny") return { ok: false, error: "denied" };
@@ -115,13 +180,45 @@ export async function sendCampaignAction(args: {
   const drift = describeCountDrift(args.shownSendable, fresh.sendable);
 
   // DISCLOSE DRIFT BEFORE SENDING: if the recount differs from what the operator saw, DO NOT send —
-  // return the fresh number so the form can say so and require a second press against it.
+  // return the fresh number so the form can say so and require a second press against it. No run row
+  // is created on this path, so a drift bounce never leaves an orphan draft instance.
   if (drift.changed) {
     return { ok: false, error: "count_changed", drift, freshSendable: fresh.sendable };
   }
 
   if (requiresLargeSendConfirmation(fresh.sendable) && !args.confirmedLargeSend) {
     return { ok: false, error: "needs_confirm", drift };
+  }
+
+  // Resolve the INSTANCE only after all gates pass — a new run is created here (not on a drift/confirm
+  // bounce). campaignId = this run's id → the idempotency key is scoped to the instance: resuming the
+  // same run skips whoever it already reached; a new run may reach them again.
+  let runId: string;
+  let runLabel: string | null;
+  let isNewRun: boolean;
+  if (args.run.kind === "resume") {
+    const existing = await getRunForPair(args.run.runId, args.segmentId, args.templateKey);
+    if (!existing) return { ok: false, error: "run_not_found" };
+    runId = existing.id;
+    runLabel = existing.label;
+    isNewRun = false;
+  } else {
+    let actorForRun: string | null = null;
+    try {
+      actorForRun = (await createClient().auth.getUser()).data.user?.email ?? null;
+    } catch {
+      actorForRun = null;
+    }
+    const created = await createRun({
+      segmentId: args.segmentId,
+      templateKey: args.templateKey,
+      label: args.run.label,
+      createdBy: actorForRun,
+    });
+    if (!created) return { ok: false, error: "run_create_failed" };
+    runId = created.id;
+    runLabel = created.label;
+    isNewRun = true;
   }
 
   let actorId = "unknown";
@@ -133,14 +230,12 @@ export async function sendCampaignAction(args: {
   } catch {
     // fail-closed identity; the send still records a row, audit actor is 'unknown'
   }
-  // Deterministic campaign id per (segment, template): a re-run RESUMES (idempotency skips already
-  // sent) rather than re-sending — this is what lets a segment larger than the daily quota finish
-  // across days by manual re-run.
-  const campaignId = `${args.segmentId}:${args.templateKey}`;
+
+  await markRunSending(runId);
 
   const result = await sendCampaign(
     {
-      campaignId,
+      campaignId: runId,
       criteria: seg.stored.criteria,
       masterFilterExpr: seg.stored.masterFilterExpr,
       templateKey: args.templateKey,
@@ -151,11 +246,20 @@ export async function sendCampaignAction(args: {
     stamp,
   );
 
+  const runStatus = await finalizeRunStatus(runId, {
+    deferredDailyLimit: result.summary.deferredDailyLimit,
+    stoppedHighBounce: result.summary.stoppedHighBounce,
+  });
+
   return {
     ok: true,
     drift,
     summary: result.summary,
     withheldPrelaunch: result.withheldPrelaunch,
     realSend: result.realSend,
+    runId,
+    runLabel,
+    isNewRun,
+    runStatus,
   };
 }

@@ -83,4 +83,8 @@ monitor bounce (belum aktif) + template + unsubscribe semuanya dibangun & teruji
   blok Indonesia hardcode padahal sudah di `BILINGUAL_SCREENS`.
 - **Detail profil diterjemahkan** (5B-T2); `profile` di-flip ke `BILINGUAL_SCREENS`. Hanya
   `/settings/diagnostik` yang masih `PENDING`.
+- **Composer kampanye disambungkan ke `crm_campaign_run`** (TUGAS 3): `campaignId = run.id`, jadi
+  tiap instans punya kunci idempotensi sendiri. Layar menawarkan dua jalur yang jelas berbeda —
+  "lanjutkan run yang ada (N terkirim)" vs "mulai run baru" — Kirim nonaktif sampai satu dipilih.
+  Store `lib/crm/campaign-run.ts` + aturan status murni teruji (`campaign-run-status.ts`).
 - Ikhtisar penuh + yang belum dikerjakan: `RANGKUMAN-24agu.md`.

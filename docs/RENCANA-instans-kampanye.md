@@ -67,3 +67,24 @@ ke segmen+template yang sama diam-diam tak mengirim apa pun (kunci idempotensi i
 Menunggu konfirmasi untuk: terapkan migrasi (via `apply_migration`, verifikasi biasa), lalu ubah
 `sendCampaignAction` agar `campaignId = crm_campaign_run.id`, dan composer menawarkan
 **resume run yang ada** (status `sending`, sudah N terkirim) **vs mulai run baru**.
+
+## DISAMBUNGKAN — composer ke crm_campaign_run (24 Agu 2026, TUGAS 3)
+
+Composer kini **memakai run sebagai `campaignId`**, jadi dimensi instans hidup ujung-ke-ujung:
+
+- **Store baru `lib/crm/campaign-run.ts`** (server-only, pola crm_*): `createRun`, `getRunForPair`
+  (menolak run yang bukan milik pasangan segmen+template ini), `listResumableRuns` (status
+  `draft`/`sending`, tiap run diberi anotasi `sentCount`/`loggedCount` dari `crm_message_log`),
+  `markRunSending`, `finalizeRunStatus`. Aturan status murni dipisah ke
+  `lib/crm/campaign-run-status.ts` (`nextRunStatus`) + diuji (`campaign-run.test.ts`): `stopped`
+  menang atas `sending`; `sending` bila daily-limit menyisakan; selain itu `sent`.
+- **`sendCampaignAction`** kini wajib menerima `run: {kind:"resume",runId} | {kind:"new",label}`.
+  Run baru dibuat **hanya setelah semua gerbang lolos** (recount+drift, konfirmasi >500), jadi
+  pentalan drift tak meninggalkan baris draft yatim. `campaignId = run.id`.
+- **Composer** menampilkan **dua jalur yang jelas berbeda di layar** (bukan tersirat): jalur biru
+  "Lanjutkan run yang ada" (daftar radio tiap run + "N terkirim di run ini" + pil status) dan jalur
+  netral "Mulai run baru" (dengan kolom nama opsional). Tombol Kirim **nonaktif sampai satu dipilih**.
+  Hasil kirim menampilkan label run + apakah baru/lanjutan + "sudah terkirim di run ini (dilewati)".
+- **Larangan tetap dijaga:** recount+drift sebelum kirim, konfirmasi kedua di atas 500, template tanpa
+  tautan unsubscribe tak bisa dipilih, jatah harian dari log, kirim nyata tetap diblokir (token belum
+  dirotasi) sehingga alamat pelanggan ditahan.
