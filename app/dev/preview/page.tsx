@@ -1,6 +1,7 @@
 import { AppShell } from "@/components/shell/app-shell";
 import { DashboardContent } from "@/components/dashboard/dashboard-content";
 import { ProfileDetail } from "@/components/audience/profile-detail";
+import { LangProvider } from "@/components/i18n/lang-provider";
 import { PROFILE_FIXTURES } from "./profile-fixtures";
 
 export const dynamic = "force-dynamic";
@@ -144,7 +145,9 @@ export default function DevDashboardPreview() {
               <p className="font-display text-[13px] font-bold text-ink">{f.label}</p>
               <p className="font-body text-[12px] text-ink-soft">{f.note}</p>
             </div>
-            <ProfileDetail id={f.data.profile.customer_id} canEditConsent={false} previewData={f.data} />
+            <LangProvider lang="id">
+              <ProfileDetail id={f.data.profile.customer_id} canEditConsent={false} previewData={f.data} />
+            </LangProvider>
           </div>
         ))}
       </div>

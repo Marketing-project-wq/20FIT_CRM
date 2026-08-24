@@ -17,6 +17,8 @@ import {
   type GenderSource,
 } from "@/lib/crm/demographic-pick";
 import { Why } from "@/components/ui/why";
+import { useI18n } from "@/components/i18n/lang-provider";
+import type { Dict } from "@/lib/i18n";
 
 interface Profile {
   customer_id: string;
@@ -217,7 +219,8 @@ function formatDateOnly(iso: string | null): string {
 }
 
 function Empty() {
-  return <span className="font-body text-[13px] italic text-ink-faint">belum terisi</span>;
+  const { t } = useI18n();
+  return <span className="font-body text-[13px] italic text-ink-faint">{t.profile.warn.emptyField}</span>;
 }
 
 const nf = new Intl.NumberFormat("id-ID");
@@ -306,9 +309,10 @@ function ProfileTabs({
   demografi: React.ReactNode;
   perilaku: React.ReactNode;
 }) {
+  const { t } = useI18n();
   const tabs: { id: TabId; label: string; count: number; icon: React.ReactNode }[] = [
-    { id: "demografi", label: "Demografi", count: demografiCount, icon: <User className="h-4 w-4" aria-hidden /> },
-    { id: "perilaku", label: "Perilaku", count: perilakuCount, icon: <Activity className="h-4 w-4" aria-hidden /> },
+    { id: "demografi", label: t.profile.tabDemografi, count: demografiCount, icon: <User className="h-4 w-4" aria-hidden /> },
+    { id: "perilaku", label: t.profile.tabPerilaku, count: perilakuCount, icon: <Activity className="h-4 w-4" aria-hidden /> },
   ];
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
@@ -319,7 +323,7 @@ function ProfileTabs({
   };
   return (
     <div>
-      <div role="tablist" aria-label="Bagian profil" onKeyDown={onKey} className="flex gap-1 border-b border-glass-border">
+      <div role="tablist" aria-label={t.profile.tabsAria} onKeyDown={onKey} className="flex gap-1 border-b border-glass-border">
         {tabs.map((tb) => (
           <button
             key={tb.id}
@@ -367,12 +371,13 @@ function ProfileTabs({
  * "no engagement". Only a real-activity row shows a date. A future date is an anomaly.
  */
 function LastSeen({ row }: { row: EngagementRow }) {
+  const { t } = useI18n();
   switch (row.lastSeenClass) {
     case "real_activity":
       return (
         <span className="font-mono text-[13px] text-ink">
           {formatDateOnly(row.lastSeenAt)}{" "}
-          <span className="font-body text-[12px] italic text-ink-faint">· aktivitas nyata</span>
+          <span className="font-body text-[12px] italic text-ink-faint">· {t.profile.lsReal}</span>
         </span>
       );
     case "future_anomaly":
@@ -380,42 +385,38 @@ function LastSeen({ row }: { row: EngagementRow }) {
         <span className="inline-flex items-center gap-1 font-mono text-[13px] text-ink">
           <AlertTriangle className="h-3.5 w-3.5 text-red" aria-hidden />
           {formatDateOnly(row.lastSeenAt)}{" "}
-          <span className="font-body text-[12px] italic text-red">· anomali: tanggal di masa depan</span>
+          <span className="font-body text-[12px] italic text-red">· {t.profile.lsFuture}</span>
         </span>
       );
     case "missing":
-      return <span className="font-body text-[13px] italic text-ink-faint">tidak ada</span>;
+      return <span className="font-body text-[13px] italic text-ink-faint">{t.profile.lsMissing}</span>;
     default: // load_stamp
       return (
-        <span
-          className="font-body text-[13px] italic text-ink-faint"
-          title="last_seen_at = first_seen_at → cap waktu muat, bukan aktivitas"
-        >
-          tidak terekam
+        <span className="font-body text-[13px] italic text-ink-faint" title={t.profile.lsLoadStampTitle}>
+          {t.profile.lsLoadStamp}
         </span>
       );
   }
 }
 
 function EcosystemSection({ engagement }: { engagement: ProfileEngagement | null }) {
+  const { t } = useI18n();
+  const P = t.profile;
   const count = engagement?.totalRows ?? 0;
   return (
-    <Section title="Ekosistem 20FIT" count={count} icon={<Network className="h-4 w-4 text-ink-soft" aria-hidden />} open={count > 0} span2>
+    <Section title={P.secEcosystem} count={count} icon={<Network className="h-4 w-4 text-ink-soft" aria-hidden />} open={count > 0} span2>
       {engagement === null ? (
         <div className="mt-4 rounded-sm border border-dashed border-glass-border px-4 py-6 text-center">
-          <Badge tone="amber">Gagal dimuat</Badge>
+          <Badge tone="amber">{P.loadFailBadge}</Badge>
           <p className="mx-auto mt-2 max-w-xl font-body text-[13px] leading-relaxed text-ink-soft">
-            Data ekosistem gagal dimuat untuk profil ini. Sisa profil tetap tampil — bagian ini
-            dibaca terpisah dan tidak menahan pembukaan profil.
+            {P.warn.ecoLoadFail}
           </p>
         </div>
       ) : engagement.totalRows === 0 ? (
         <div className="mt-4 rounded-sm border border-dashed border-glass-border px-4 py-6 text-center">
-          <Badge tone="neutral">Tidak muncul di ekosistem</Badge>
+          <Badge tone="neutral">{P.ecoEmptyBadge}</Badge>
           <p className="mx-auto mt-2 max-w-xl font-body text-[13px] leading-relaxed text-ink-soft">
-            Profil ini tidak punya satu pun baris di <span className="font-mono text-[12px]">customer_engagement</span>
-            {" "}(arena, clinic, event, gym, membership, shop). Ini kosong yang jujur — bukan “tidak aktif”,
-            melainkan tidak tercatat di sumber ekosistem mana pun.
+            {P.warn.ecoEmptyA}<span className="font-mono text-[12px]">customer_engagement</span>{P.warn.ecoEmptyB}
           </p>
         </div>
       ) : (
@@ -424,9 +425,9 @@ function EcosystemSection({ engagement }: { engagement: ProfileEngagement | null
           {!engagement.hasRealActivity && (
             <div className="tint-blue mt-4 rounded-sm px-3 py-2">
               <p className="font-body text-[12px] leading-relaxed text-ink">
-                Semua {nf.format(engagement.totalRows)} titik ekosistem profil ini <strong>cap waktu muat</strong>
-                {" "}(<span className="font-mono">last_seen_at = first_seen_at</span>). Riwayat aktivitasnya
-                <strong> belum terekam</strong> — itu bukan sama dengan “tidak aktif”.
+                {P.warn.allLoadA}{nf.format(engagement.totalRows)}{P.warn.allLoadB}<strong>{P.warn.allLoadStrong1}</strong>
+                {" ("}<span className="font-mono">last_seen_at = first_seen_at</span>{P.warn.allLoadC}
+                <strong>{P.warn.allLoadStrong2}</strong>{P.warn.allLoadD}
               </p>
             </div>
           )}
@@ -434,8 +435,7 @@ function EcosystemSection({ engagement }: { engagement: ProfileEngagement | null
               (the load-stamp one above), so this rarer note does not add a second tint box. */}
           {engagement.hasFutureAnomaly && (
             <p className="mt-2 font-body text-[12px] leading-relaxed text-red">
-              Setidaknya satu baris punya <span className="font-mono">last_seen_at</span> di masa depan —
-              cacat data, ditampilkan apa adanya.
+              {P.warn.futureA}<span className="font-mono">last_seen_at</span>{P.warn.futureB}
             </p>
           )}
 
@@ -443,10 +443,10 @@ function EcosystemSection({ engagement }: { engagement: ProfileEngagement | null
             <table className="w-full border-collapse text-left">
               <thead>
                 <tr className="border-b border-glass-border">
-                  <th className="py-2 pr-4 font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">Unit</th>
-                  <th className="py-2 pr-4 font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">Produk</th>
-                  <th className="py-2 pr-4 font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">Jumlah</th>
-                  <th className="py-2 font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">Terakhir</th>
+                  <th className="py-2 pr-4 font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{P.ecoColUnit}</th>
+                  <th className="py-2 pr-4 font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{P.ecoColProduct}</th>
+                  <th className="py-2 pr-4 font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{P.ecoColCount}</th>
+                  <th className="py-2 font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{P.ecoColLast}</th>
                 </tr>
               </thead>
               <tbody>
@@ -466,11 +466,9 @@ function EcosystemSection({ engagement }: { engagement: ProfileEngagement | null
 
           <Why>
             <p className="text-[12px] leading-relaxed text-ink-soft">
-              “Terakhir” hanya menunjukkan tanggal bila baris membawa aktivitas nyata
-              (<span className="font-mono">last_seen_at &gt; first_seen_at</span>) — di data ini hampir seluruhnya
-              berasal dari <span className="font-mono">live_txn_sync</span> (Transaksi Arena / Transaksi Clinic).
-              Selebihnya cap waktu muat, ditandai “tidak terekam”. Dibaca-saja, tanpa <span className="font-mono">raw_value</span> /
-              NIK / data sensitif lain (Fase 0). Tautan ke profil lewat <span className="font-mono">customer_id</span>, bukan telepon/email.
+              {P.warn.ecoWhyA}<span className="font-mono">last_seen_at &gt; first_seen_at</span>{P.warn.ecoWhyB}
+              <span className="font-mono">live_txn_sync</span>{P.warn.ecoWhyC}<span className="font-mono">raw_value</span>
+              {P.warn.ecoWhyD}<span className="font-mono">customer_id</span>{P.warn.ecoWhyE}
             </p>
           </Why>
         </>
@@ -491,21 +489,21 @@ function Field({ label, children, mono }: { label: string; children: React.React
 /** A matched/unmatched source row: matched shows a check + detail; unmatched reads a plain
  *  "no data for this profile" — NEVER a blank that reads as "never participated". */
 function SourceLine({ label, matched, children }: { label: string; matched: boolean; children?: React.ReactNode }) {
+  const { t } = useI18n();
   return (
     <div className="flex flex-col gap-1 border-t border-glass-border py-3 first:border-t-0 first:pt-0">
       <span className="font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{label}</span>
       {matched ? (
         <span className="font-body text-[14px] text-ink">{children}</span>
       ) : (
-        <span className="font-body text-[13px] italic text-ink-faint">tidak ada data {label} untuk profil ini</span>
+        <span className="font-body text-[13px] italic text-ink-faint">{t.profile.warn.sourceNoData}</span>
       )}
     </div>
   );
 }
 
-
-const multiKeyLabel = (k: "email" | "phone" | null) =>
-  k === "email" ? "cocok via email" : k === "phone" ? "cocok via telepon (format, keyakinan lebih rendah)" : "";
+const multiKeyLabel = (k: "email" | "phone" | null, P: Dict["profile"]) =>
+  k === "email" ? P.keyEmail : k === "phone" ? P.keyPhone : "";
 
 /** "HH:MM" from a stored "HH:MM:SS" time string. */
 function hhmm(v: string | null): string | null {
@@ -521,6 +519,8 @@ function hhmm(v: string | null): string | null {
  * history stays folded until asked for (the screen was just simplified; don't refill it).
  */
 function ClassSourceLine({ s }: { s: MultiSourceResultT }) {
+  const { t } = useI18n();
+  const P = t.profile;
   const [open, setOpen] = useState(false);
 
   const named = new Map<string, number>();
@@ -537,8 +537,8 @@ function ClassSourceLine({ s }: { s: MultiSourceResultT }) {
   return (
     <SourceLine label={s.label} matched>
       <span>
-        {nf.format(s.count)} kehadiran
-        <span className="font-mono text-[12px] text-ink-faint"> · {multiKeyLabel(s.keyUsed)}</span>
+        {nf.format(s.count)}{P.attendanceSuffix}
+        <span className="font-mono text-[12px] text-ink-faint"> · {multiKeyLabel(s.keyUsed, P)}</span>
       </span>
 
       {/* Summary: class name × attendance. */}
@@ -549,8 +549,8 @@ function ClassSourceLine({ s }: { s: MultiSourceResultT }) {
       ))}
       {unresolved.length > 0 && (
         <span className="block font-body text-[13px] text-ink-faint italic">
-          Nama kelas tak ditemukan · {nf.format(unresolved.length)}
-          <span className="not-italic"> (kode: {unresolved.slice(0, 3).map((r) => r.label ?? "—").join(", ")}{unresolved.length > 3 ? "…" : ""})</span>
+          {P.classNotFound} · {nf.format(unresolved.length)}
+          <span className="not-italic">{P.classCodesPrefix}{unresolved.slice(0, 3).map((r) => r.label ?? "—").join(", ")}{unresolved.length > 3 ? "…" : ""})</span>
         </span>
       )}
 
@@ -560,7 +560,7 @@ function ClassSourceLine({ s }: { s: MultiSourceResultT }) {
         onClick={() => setOpen((v) => !v)}
         className="mt-1 inline-block font-display text-[11px] font-semibold uppercase tracking-wide text-ink-soft underline hover:text-ink"
       >
-        {open ? "Sembunyikan detail" : `Lihat detail (${nf.format(s.rows.length)} booking)`}
+        {open ? P.hideDetail : `${P.showDetailA}${nf.format(s.rows.length)}${P.showDetailB}`}
       </button>
       {open && (
         <span className="mt-1 block space-y-1">
@@ -569,7 +569,7 @@ function ClassSourceLine({ s }: { s: MultiSourceResultT }) {
             const time = ci ? [hhmm(ci.startTime), hhmm(ci.endTime)].filter(Boolean).join("–") : "";
             return (
               <span key={i} className="block font-body text-[12px] text-ink-soft">
-                <span className="text-ink">{ci?.resolved && ci.name ? ci.name : <span className="italic text-ink-faint">nama kelas tak ditemukan</span>}</span>
+                <span className="text-ink">{ci?.resolved && ci.name ? ci.name : <span className="italic text-ink-faint">{P.classNotFound}</span>}</span>
                 <span className="font-mono text-[11px] text-ink-faint">
                   {" · "}{r.label ?? "—"}
                   {ci?.scheduleDate ? ` · ${formatDateOnly(ci.scheduleDate)}` : ""}
@@ -589,6 +589,8 @@ function ClassSourceLine({ s }: { s: MultiSourceResultT }) {
 /** Matched arena/gym sub-sources, each as one line (Sprint 5B). Class-booking sources get the
  *  name-resolving summary + detail toggle (TUGAS 4); the rest keep the plain code line. */
 function MultiGroupLines({ rows }: { rows: MultiSourceResultT[] }) {
+  const { t } = useI18n();
+  const P = t.profile;
   return (
     <>
       {rows.map((s) =>
@@ -597,8 +599,8 @@ function MultiGroupLines({ rows }: { rows: MultiSourceResultT[] }) {
         ) : (
           <SourceLine key={s.key} label={s.label} matched>
             <span>
-              {nf.format(s.count)} baris
-              <span className="font-mono text-[12px] text-ink-faint"> · {multiKeyLabel(s.keyUsed)}</span>
+              {nf.format(s.count)}{P.rowsSuffix}
+              <span className="font-mono text-[12px] text-ink-faint"> · {multiKeyLabel(s.keyUsed, P)}</span>
             </span>
             {s.rows.slice(0, 3).map((r, i) => (
               <span key={i} className="block font-body text-[13px] text-ink-soft">
@@ -614,18 +616,20 @@ function MultiGroupLines({ rows }: { rows: MultiSourceResultT[] }) {
 
 /** my20fit membership line + its real-activity line (recency), when either matched. */
 function My20fitLines({ enrichment }: { enrichment: ProfileEnrichment }) {
+  const { t } = useI18n();
+  const P = t.profile;
   return (
     <>
       {enrichment.my20fit.matched && (
         <SourceLine label="my20fit" matched>
-          {enrichment.my20fit.isPlusMember ? "Plus member" : "Pengguna"}{enrichment.my20fit.onboardingCompleted ? " · onboarding selesai" : ""}
+          {enrichment.my20fit.isPlusMember ? P.my20Plus : P.my20User}{enrichment.my20fit.onboardingCompleted ? P.my20Onboard : ""}
         </SourceLine>
       )}
       {enrichment.activity.matched && (
-        <SourceLine label="Aktivitas nyata (my20fit)" matched>
-          {enrichment.activity.pingCount != null ? `${nf.format(enrichment.activity.pingCount)} kunjungan` : ""}
+        <SourceLine label={P.activityLabel} matched>
+          {enrichment.activity.pingCount != null ? `${nf.format(enrichment.activity.pingCount)}${P.activityVisitsSuffix}` : ""}
           {enrichment.activity.lastActiveAt ? (
-            <span className="font-mono text-[12px] text-ink-faint"> · terakhir aktif {formatDateOnly(enrichment.activity.lastActiveAt)}</span>
+            <span className="font-mono text-[12px] text-ink-faint">{P.activityLastActivePrefix}{formatDateOnly(enrichment.activity.lastActiveAt)}</span>
           ) : null}
         </SourceLine>
       )}
@@ -638,19 +642,21 @@ function My20fitLines({ enrichment }: { enrichment: ProfileEnrichment }) {
  *  they do". Only golongan darah stays here: it is MEDICAL, so it remains behind view_health (it
  *  does NOT move to Demografi, and it is NOT covered by the proposed view_contact gate). */
 function HyroxLines({ enrichment, canViewHealth }: { enrichment: ProfileEnrichment; canViewHealth: boolean }) {
+  const { t } = useI18n();
+  const P = t.profile;
   const golDarah = enrichment.hyrox.sensitive?.golDarah ?? null;
   return (
     <>
-      <SourceLine label="Hyrox" matched>
+      <SourceLine label={P.hyroxLabel} matched>
         {enrichment.hyrox.rows.map((r, i) => (
           <span key={i} className="block">
-            {r.eventName ?? "—"}{r.kategori ? ` · ${r.kategori}` : ""}{r.namaTim ? ` · tim ${r.namaTim}` : ""}
-            {r.registeredAt ? <span className="font-mono text-[12px] text-ink-faint"> · daftar {formatDateOnly(r.registeredAt)}</span> : null}
+            {r.eventName ?? "—"}{r.kategori ? ` · ${r.kategori}` : ""}{r.namaTim ? `${P.teamPrefix}${r.namaTim}` : ""}
+            {r.registeredAt ? <span className="font-mono text-[12px] text-ink-faint">{P.registerPrefix}{formatDateOnly(r.registeredAt)}</span> : null}
           </span>
         ))}
       </SourceLine>
       {canViewHealth && golDarah && (
-        <SourceLine label="Golongan darah (medis · view_health)" matched>
+        <SourceLine label={P.bloodLabel} matched>
           <span className="font-mono">{golDarah}</span>
         </SourceLine>
       )}
@@ -663,24 +669,26 @@ function HyroxLines({ enrichment, canViewHealth }: { enrichment: ProfileEnrichme
  *  (Demografi). Still view_health-gated (clinical volume is health context). No clinical content
  *  (diagnoses/results/meds) — those stay out entirely. */
 function ClinicLines({ clinic }: { clinic: ProfileClinicT }) {
+  const { t } = useI18n();
+  const P = t.profile;
   const inv = clinic.clinical;
   if (!inv) return null; // involvement is view_health-only; nothing to render without it.
-  const keyLabel = clinic.keyUsed === "phone" ? "cocok via telepon" : clinic.keyUsed === "email" ? "cocok via email" : "";
+  const keyLabel = clinic.keyUsed === "phone" ? P.keyPhonePlain : clinic.keyUsed === "email" ? P.keyEmail : "";
   return (
     <div className="space-y-4 border-t border-glass-border pt-3">
       <div className="flex items-center gap-2">
         <HeartPulse className="h-4 w-4 text-ink-soft" aria-hidden />
-        <h3 className="font-display text-[13px] font-bold uppercase tracking-wide text-ink">Klinik — keterlibatan (view_health)</h3>
+        <h3 className="font-display text-[13px] font-bold uppercase tracking-wide text-ink">{P.clinicTitle}</h3>
       </div>
-      <p className="font-mono text-[12px] text-ink-faint">Pasien {inv.patientCode ?? "—"} · {keyLabel}</p>
+      <p className="font-mono text-[12px] text-ink-faint">{P.clinicPatientPrefix}{inv.patientCode ?? "—"} · {keyLabel}</p>
       {inv.counts && (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
           {[
-            ["Booking", inv.counts.bookings],
-            ["Kunjungan", inv.counts.visits],
-            ["Assessment", inv.counts.assessments],
-            ["Skrining", inv.counts.screenings],
-            ["Transaksi", inv.counts.transactions],
+            [P.clinicBooking, inv.counts.bookings],
+            [P.clinicVisit, inv.counts.visits],
+            [P.clinicAssessment, inv.counts.assessments],
+            [P.clinicScreening, inv.counts.screenings],
+            [P.clinicTransaction, inv.counts.transactions],
           ].map(([label, n]) => (
             <div key={label as string} className="rounded-sm border border-glass-border p-3 text-center">
               <div className="font-display text-[22px] font-black leading-none text-ink">{nf.format(n as number)}</div>
@@ -691,7 +699,7 @@ function ClinicLines({ clinic }: { clinic: ProfileClinicT }) {
       )}
       {inv.latestBooking && (inv.latestBooking.bookingCode || inv.latestBooking.date) && (
         <p className="font-body text-[13px] text-ink-soft">
-          Booking terakhir: <span className="font-mono text-[12px]">{inv.latestBooking.bookingCode ?? "—"}</span>
+          {P.clinicLatestBooking}<span className="font-mono text-[12px]">{inv.latestBooking.bookingCode ?? "—"}</span>
           {inv.latestBooking.status ? ` · ${inv.latestBooking.status}` : ""}
           {inv.latestBooking.date ? ` · ${formatDateOnly(inv.latestBooking.date)}` : ""}
         </p>
@@ -723,6 +731,8 @@ function OtherSourcesSection({
   mirror: MirrorPresenceT | null;
   mirrorRefreshedAt: string | null;
 }) {
+  const { t } = useI18n();
+  const P = t.profile;
   const loadFailed = enrichment === null || multiSource === null;
 
   const arenaRows = (multiSource?.sources ?? []).filter((s) => s.key.startsWith("arena") && s.matched);
@@ -733,7 +743,7 @@ function OtherSourcesSection({
     { key: "my20fit", label: "my20fit", live: !!(enrichment?.my20fit.matched || enrichment?.activity.matched), mirror: mirror?.hasMy20fit, gated: false },
     { key: "arena", label: "arena", live: arenaRows.length > 0, mirror: mirror?.hasArena, gated: false },
     { key: "gym", label: "gym", live: gymRows.length > 0, mirror: mirror?.hasGym, gated: false },
-    { key: "clinic", label: "klinik", live: !!(clinic?.clinical && clinic.matched), mirror: mirror?.hasClinic, gated: true },
+    { key: "clinic", label: P.groupClinic, live: !!(clinic?.clinical && clinic.matched), mirror: mirror?.hasClinic, gated: true },
   ];
 
   // A source is named as "not connected" only when the snapshot marks it absent AND we are not
@@ -751,7 +761,7 @@ function OtherSourcesSection({
 
   return (
     <Section
-      title="Sumber lain 20FIT"
+      title={P.secOtherSources}
       count={liveCount}
       icon={<Network className="h-4 w-4 text-ink-soft" aria-hidden />}
       open={anyBlock}
@@ -759,14 +769,14 @@ function OtherSourcesSection({
     >
       {loadFailed && (
         <p className="mt-3 font-body text-[12px] text-ink-soft">
-          <Badge tone="amber">Sebagian gagal dimuat</Badge>{" "}
-          Satu atau lebih sumber gagal dimuat; yang berhasil tetap tampil di bawah.
+          <Badge tone="amber">{P.srcLoadFailBadge}</Badge>{" "}
+          {P.warn.sourcesLoadFail}
         </p>
       )}
 
       {!matchable && !anyBlock ? (
         <p className="mt-4 font-body text-[13px] italic text-ink-faint">
-          Profil ini tak punya email atau telepon untuk dicocokkan ke sumber lain.
+          {P.warn.unmatchableSources}
         </p>
       ) : !anyBlock ? (
         /* No live block at all — the profile is NOT connected to ANY other 20FIT source. The
@@ -777,26 +787,22 @@ function OtherSourcesSection({
            anyBlock true and take the branch below instead. */
         <div className="mt-4 space-y-3">
           <div className="rounded-sm border border-dashed border-glass-border px-4 py-6 text-center">
-            <Badge tone="neutral">Tidak tersambung ke sumber lain</Badge>
+            <Badge tone="neutral">{P.notConnectedBadge}</Badge>
             <p className="mx-auto mt-2 max-w-xl font-body text-[13px] leading-relaxed text-ink-soft">
-              Profil ini <strong>tidak tersambung</strong> ke sumber 20FIT lain mana pun
-              {absent.length > 0 ? <> — {absent.map((a) => a.label).join(", ")}</> : null}. Ini kosong
-              yang jujur: tak ada kunci (email/telepon) yang cocok ke sumber itu, bukan “belum aktif”.
+              {P.warn.notConnectedFullA}<strong>{P.warn.notConnectedFullStrong}</strong>{P.warn.notConnectedFullB}
+              {absent.length > 0 ? <> — {absent.map((a) => a.label).join(", ")}</> : null}{P.warn.notConnectedFullC}
               {mirrorRefreshedAt && (
                 <span className="mt-1 block font-body text-[11px] text-ink-faint">
-                  Dari penanda kehadiran cermin per {formatTs(mirrorRefreshedAt)} — “tidak tersambung” berasal dari snapshot ini, bukan pemeriksaan langsung.
+                  {P.warn.notConnectedSnapshotPrefix}{formatTs(mirrorRefreshedAt)}{P.warn.notConnectedSnapshotSuffix}
                 </span>
               )}
             </p>
           </div>
           <Why>
             <p className="text-[12px] leading-relaxed text-ink-soft">
-              Dicocokkan lewat <strong>email ternormalisasi</strong> dulu, lalu telepon (arena/gym/klinik) — nol
-              cocok-nama-saja. “Tidak tersambung” berarti tak ada kunci yang cocok ATAU profil memang tak ada di
-              sumber itu. Dibaca &amp; digabung saat tampil, nol tulis, nol salin ke{" "}
-              <span className="font-mono">master_customer</span>. Sumber klinis digerbangi{" "}
-              <span className="font-mono">profile.view_health</span> dan hanya membawa identitas + volume keterlibatan +
-              booking terakhir — isi klinis (diagnosa, hasil, obat) sengaja tidak dibawa.
+              {P.warn.sourcesWhyA}<strong>{P.warn.sourcesWhyStrong}</strong>{P.warn.sourcesWhyB}
+              <span className="font-mono">master_customer</span>{P.warn.sourcesWhyC}
+              <span className="font-mono">profile.view_health</span>{P.warn.sourcesWhyD}
             </p>
           </Why>
         </div>
@@ -810,21 +816,18 @@ function OtherSourcesSection({
 
           {absent.length > 0 && (
             <p className="border-t border-glass-border pt-3 font-body text-[13px] text-ink-soft">
-              <span className="italic text-ink-faint">Tidak tersambung ke: {absent.map((a) => a.label).join(", ")}.</span>
+              <span className="italic text-ink-faint">{P.warn.notConnectedLinePrefix}{absent.map((a) => a.label).join(", ")}.</span>
               {mirrorRefreshedAt && (
-                <span className="font-body text-[11px] text-ink-faint"> · penanda kehadiran cermin per {formatTs(mirrorRefreshedAt)}</span>
+                <span className="font-body text-[11px] text-ink-faint">{P.mirrorStampPrefix}{formatTs(mirrorRefreshedAt)}</span>
               )}
             </p>
           )}
 
           <Why>
             <p className="text-[12px] leading-relaxed text-ink-soft">
-              Dicocokkan lewat <strong>email ternormalisasi</strong> dulu, lalu telepon (arena/gym/klinik) — nol
-              cocok-nama-saja. “Tidak tersambung” berarti tak ada kunci yang cocok ATAU profil memang tak ada di
-              sumber itu. Dibaca &amp; digabung saat tampil, nol tulis, nol salin ke{" "}
-              <span className="font-mono">master_customer</span>. Sumber klinis digerbangi{" "}
-              <span className="font-mono">profile.view_health</span> dan hanya membawa identitas + volume keterlibatan +
-              booking terakhir — isi klinis (diagnosa, hasil, obat) sengaja tidak dibawa.
+              {P.warn.sourcesWhyA}<strong>{P.warn.sourcesWhyStrong}</strong>{P.warn.sourcesWhyB}
+              <span className="font-mono">master_customer</span>{P.warn.sourcesWhyC}
+              <span className="font-mono">profile.view_health</span>{P.warn.sourcesWhyD}
             </p>
           </Why>
         </div>
@@ -841,24 +844,25 @@ function toIsoDate(s: string | null | undefined): string | null {
   return m ? m[1] : null;
 }
 
-// Static provenance labels. The CLINIC entries are deliberately NOT here — a clinic label is
-// coarsened per the caller's medical gate (T-21), so it is supplied at render time by the
-// server-decided `clinicSourceLabel` via sourceLabel() below, never hardcoded.
-const DOB_SOURCE_LABEL: Record<Exclude<DobSource, "clinic">, string> = {
-  nik: "NIK",
-  staging: "data impor 20FIT",
-  hyrox: "Hyrox",
-  staff: "input staf",
-};
-const GENDER_SOURCE_LABEL: Record<Exclude<GenderSource, "clinic">, string> = { nik: "NIK", staff: "input staf" };
-
+// Provenance labels come from the dictionary (P). The CLINIC entry is deliberately NOT a fixed
+// label — a clinic label is coarsened per the caller's medical gate (T-21), so it is supplied at
+// render time by the server-decided `clinicSourceLabel`, never hardcoded.
 /** Provenance label for a DOB source, using the server-coarsened clinic label for "clinic". */
-function dobSourceLabel(s: DobSource, clinicLabel: string): string {
-  return s === "clinic" ? clinicLabel : DOB_SOURCE_LABEL[s];
+function dobSourceLabel(s: DobSource, clinicLabel: string, P: Dict["profile"]): string {
+  if (s === "clinic") return clinicLabel;
+  const map: Record<Exclude<DobSource, "clinic">, string> = {
+    nik: P.srcNik,
+    staging: P.srcStaging,
+    hyrox: P.srcHyrox,
+    staff: P.srcStaff,
+  };
+  return map[s];
 }
 /** Provenance label for a gender source, using the server-coarsened clinic label for "clinic". */
-function genderSourceLabel(s: GenderSource, clinicLabel: string): string {
-  return s === "clinic" ? clinicLabel : GENDER_SOURCE_LABEL[s];
+function genderSourceLabel(s: GenderSource, clinicLabel: string, P: Dict["profile"]): string {
+  if (s === "clinic") return clinicLabel;
+  const map: Record<Exclude<GenderSource, "clinic">, string> = { nik: P.srcNik, staff: P.srcStaff };
+  return map[s];
 }
 
 /**
@@ -933,8 +937,8 @@ function identityFieldCount(
 }
 
 /** Human genders. */
-function genderLabel(v: "male" | "female"): string {
-  return v === "female" ? "Perempuan" : "Laki-laki";
+function genderLabel(v: "male" | "female", P: Dict["profile"]): string {
+  return v === "female" ? P.gFemale : P.gMale;
 }
 
 /**
@@ -953,6 +957,8 @@ function DemographicFillForm({
   offerGender: boolean;
   offerDob: boolean;
 }) {
+  const { t } = useI18n();
+  const P = t.profile;
   const [gender, setGender] = useState<"" | "male" | "female">("");
   const [dob, setDob] = useState("");
   const [busy, setBusy] = useState(false);
@@ -966,7 +972,7 @@ function DemographicFillForm({
     if (offerGender && gender) payload.gender = gender;
     if (offerDob && dob) payload.date_of_birth = dob;
     if (Object.keys(payload).length === 0) {
-      setMsg({ tone: "red", text: "Isi minimal satu field." });
+      setMsg({ tone: "red", text: P.fillMinOne });
       return;
     }
     setBusy(true);
@@ -978,14 +984,14 @@ function DemographicFillForm({
       });
       const body = (await res.json().catch(() => ({}))) as { error?: string; message?: string; fields?: string[] };
       if (res.ok) {
-        setMsg({ tone: "green", text: "Tersimpan. Memuat ulang…" });
+        setMsg({ tone: "green", text: P.fillSaved });
         setTimeout(() => window.location.reload(), 600);
       } else {
-        setMsg({ tone: "red", text: body.message ?? `Gagal (${res.status}).` });
+        setMsg({ tone: "red", text: body.message ?? `${P.fillFailPrefix}${res.status}).` });
         setBusy(false);
       }
     } catch {
-      setMsg({ tone: "red", text: "Gagal menghubungi server." });
+      setMsg({ tone: "red", text: P.fillConnErr });
       setBusy(false);
     }
   }
@@ -993,27 +999,27 @@ function DemographicFillForm({
   return (
     <div className="mt-3 rounded-sm border border-dashed border-glass-border p-3">
       <p className="font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
-        Lengkapi demografi (isi yang kosong)
+        {P.fillTitle}
       </p>
       <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end">
         {offerGender && (
           <label className="flex flex-col gap-1">
-            <span className="font-body text-[11px] text-ink-soft">Gender</span>
+            <span className="font-body text-[11px] text-ink-soft">{P.fillGender}</span>
             <select
               className="rounded-sm border border-glass-border bg-transparent px-2 py-1 font-body text-[13px] text-ink"
               value={gender}
               onChange={(e) => setGender(e.target.value as "" | "male" | "female")}
               disabled={busy}
             >
-              <option value="">— pilih —</option>
-              <option value="male">Laki-laki</option>
-              <option value="female">Perempuan</option>
+              <option value="">{P.fillPick}</option>
+              <option value="male">{P.gMale}</option>
+              <option value="female">{P.gFemale}</option>
             </select>
           </label>
         )}
         {offerDob && (
           <label className="flex flex-col gap-1">
-            <span className="font-body text-[11px] text-ink-soft">Tanggal lahir</span>
+            <span className="font-body text-[11px] text-ink-soft">{P.fillDob}</span>
             <input
               type="date"
               className="rounded-sm border border-glass-border bg-transparent px-2 py-1 font-mono text-[13px] text-ink"
@@ -1024,15 +1030,14 @@ function DemographicFillForm({
           </label>
         )}
         <Button size="sm" variant="outline" onClick={submit} disabled={busy}>
-          {busy ? "Menyimpan…" : "Simpan"}
+          {busy ? P.fillSaving : P.fillSave}
         </Button>
       </div>
       {msg && (
         <p className={`mt-2 font-body text-[12px] ${msg.tone === "green" ? "text-emerald" : "text-red"}`}>{msg.text}</p>
       )}
       <p className="mt-2 font-body text-[11px] italic text-ink-faint">
-        Hanya field yang kosong di semua sumber ditawarkan; nilai tersimpan sebagai <span className="font-mono">staff_entry</span>{" "}
-        dan tercatat di audit. Mengoreksi nilai yang sudah ada bukan lewat jalur ini.
+        {P.warn.fillNoteA}<span className="font-mono">staff_entry</span>{P.warn.fillNoteB}
       </p>
     </div>
   );
@@ -1068,6 +1073,8 @@ function IdentitySection({
   /** Whether to render the empty-field fill form (profile.edit_demographic, K-32). */
   canEditDemographic: boolean;
 }) {
+  const { t } = useI18n();
+  const P = t.profile;
   const r = resolveIdentity(enrichment, clinic, importData, demographic);
   const count = identityFieldCount(enrichment, clinic, importData, demographic);
   const open = count > 0;
@@ -1078,35 +1085,33 @@ function IdentitySection({
   // The chosen DOB's own ambiguity note, worded by which source it came from.
   const dobAmbNote =
     r.dob.ambiguous && r.dob.source === "nik"
-      ? "tahun (abad) di luar rentang wajar — ditandai, tidak dipaksakan"
+      ? P.warn.dobAmbNik
       : r.dob.ambiguous && r.dob.source === "staging"
-        ? "hari & bulan sama-sama ≤ 12 — urutan tak bisa dipastikan; ditandai, tidak ditebak"
+        ? P.warn.dobAmbStaging
         : null;
-  const stagingSwapNote = r.dob.source === "staging" && r.stagingDob?.swapped
-    ? "tersimpan hari-dulu (bulan > 12) — dibaca ulang dengan benar & ditandai"
-    : null;
+  const stagingSwapNote = r.dob.source === "staging" && r.stagingDob?.swapped ? P.warn.dobSwap : null;
 
   return (
-    <Section title="Identitas" count={count} icon={<User className="h-4 w-4 text-ink-soft" aria-hidden />} open={open} span2>
+    <Section title={P.secIdentity} count={count} icon={<User className="h-4 w-4 text-ink-soft" aria-hidden />} open={open} span2>
       {/* NIK — full, view_contact (K-31). */}
       {canSeeContact && r.nik && (
-        <Field label="NIK" mono>
+        <Field label={P.fNik} mono>
           <span>
             {r.nik}
-            {r.nikSource ? <span className="font-body text-[11px] text-ink-faint"> · dari {r.nikSource === "hyrox" ? "Hyrox" : clinicSourceLabel}</span> : null}
+            {r.nikSource ? <span className="font-body text-[11px] text-ink-faint">{P.fromPrefix}{r.nikSource === "hyrox" ? P.srcHyrox : clinicSourceLabel}</span> : null}
           </span>
         </Field>
       )}
 
       {/* Tanggal lahir — ONE value from the chain, with provenance; disagreement stays findable. */}
-      <Field label="Tanggal lahir" mono>
+      <Field label={P.fDob} mono>
         {r.dob.iso ? (
           <span className="flex flex-col gap-0.5">
             <span>
               {r.dob.iso}
-              {r.dob.source ? <span className="font-body text-[11px] text-ink-faint"> · dari {dobSourceLabel(r.dob.source, clinicSourceLabel)}</span> : null}
+              {r.dob.source ? <span className="font-body text-[11px] text-ink-faint">{P.fromPrefix}{dobSourceLabel(r.dob.source, clinicSourceLabel, P)}</span> : null}
               {r.dob.conflicts.length > 0 && (
-                <span className="font-body text-[11px] not-italic text-amber"> · sumber lain berbeda</span>
+                <span className="font-body text-[11px] not-italic text-amber">{P.otherDiffer}</span>
               )}
             </span>
             {dobAmbNote && <span className="font-body text-[11px] not-italic text-amber">{dobAmbNote}</span>}
@@ -1114,11 +1119,10 @@ function IdentitySection({
             {r.dob.conflicts.length > 0 && (
               <Why>
                 <p className="text-[12px] leading-relaxed text-ink-soft">
-                  Ditampilkan satu nilai (paling andal: {dobSourceLabel(r.dob.source!, clinicSourceLabel)}), tapi sumber
-                  lain tidak sepakat — <strong>tidak dipilih diam-diam</strong>:
-                  {" "}{r.dob.conflicts.map((c) => `${c.iso} (dari ${dobSourceLabel(c.source, clinicSourceLabel)})`).join(", ")}.
-                  Prioritas: NIK (posisi digit baku, nol ambiguitas hari-bulan) → impor → sumber lain →
-                  input staf.
+                  {P.warn.dobConflictWhyA}{dobSourceLabel(r.dob.source!, clinicSourceLabel, P)}{P.warn.dobConflictWhyB}
+                  <strong>{P.warn.dobConflictWhyStrong}</strong>{": "}
+                  {r.dob.conflicts.map((c) => `${c.iso} (${P.fromWord} ${dobSourceLabel(c.source, clinicSourceLabel, P)})`).join(", ")}{". "}
+                  {P.warn.dobConflictWhyC}
                 </p>
               </Why>
             )}
@@ -1128,25 +1132,25 @@ function IdentitySection({
 
       {/* Gender — one value from the chain. */}
       {r.gender.value && (
-        <Field label="Gender">
-          {genderLabel(r.gender.value)}
-          {r.gender.source ? <span className="font-body text-[11px] text-ink-faint"> · dari {genderSourceLabel(r.gender.source, clinicSourceLabel)}</span> : null}
+        <Field label={P.fGender}>
+          {genderLabel(r.gender.value, P)}
+          {r.gender.source ? <span className="font-body text-[11px] text-ink-faint">{P.fromPrefix}{genderSourceLabel(r.gender.source, clinicSourceLabel, P)}</span> : null}
           {r.gender.conflicts.length > 0 && (
-            <span className="font-body text-[11px] not-italic text-amber"> · sumber lain berbeda ({r.gender.conflicts.map((c) => `${genderLabel(c.value)}/${genderSourceLabel(c.source, clinicSourceLabel)}`).join(", ")})</span>
+            <span className="font-body text-[11px] not-italic text-amber">{P.otherDiffer} ({r.gender.conflicts.map((c) => `${genderLabel(c.value, P)}/${genderSourceLabel(c.source, clinicSourceLabel, P)}`).join(", ")})</span>
           )}
         </Field>
       )}
 
       {/* Provinsi KTP — from NIK, SEPARATE from domicile city. */}
       {canSeeContact && (r.provinceName || r.provinceCode) && (
-        <Field label="Provinsi pendaftaran KTP (dari NIK)">
-          {r.provinceName ? r.provinceName : <span className="font-mono">kode {r.provinceCode} (referensi wilayah belum tersedia)</span>}
-          <span className="font-body text-[11px] text-ink-faint"> · tempat KTP diterbitkan, bukan domisili sekarang</span>
+        <Field label={P.fProvince}>
+          {r.provinceName ? r.provinceName : <span className="font-mono">{P.provinceCodeA}{r.provinceCode}{P.provinceCodeB}</span>}
+          <span className="font-body text-[11px] text-ink-faint">{P.provinceNote}</span>
         </Field>
       )}
 
-      {canSeeContact && r.address && <Field label="Alamat">{r.address}</Field>}
-      {canSeeContact && r.emergency && <Field label="Kontak darurat" mono>{r.emergency}</Field>}
+      {canSeeContact && r.address && <Field label={P.fAddress}>{r.address}</Field>}
+      {canSeeContact && r.emergency && <Field label={P.fEmergency} mono>{r.emergency}</Field>}
 
       {/* Fill form — only for an editor role, and only for the fields still empty everywhere. */}
       {canEditDemographic && canSeeContact && (!r.dob.iso || !r.gender.value) && (
@@ -1158,19 +1162,16 @@ function IdentitySection({
         (r.nik || r.dob.iso) && (
           <Why>
             <p className="text-[12px] leading-relaxed text-ink-soft">
-              NIK ditampilkan penuh (keputusan pemilik produk) — nilainya tetap TIDAK pernah masuk
-              audit/metadata maupun ekspor CSV, dan tak pernah jadi kunci pencocokan. Gender/tanggal
-              lahir/provinsi <strong>diturunkan dari NIK</strong> (<span className="font-mono">lib/crm/nik.ts</span>);
-              provinsi = tempat KTP diterbitkan, bukan domisili. Identitas digerbangi{" "}
-              <span className="font-mono">profile.view_contact</span> (K-31, sama seperti telepon/email);
-              golongan darah &amp; data klinis tetap <span className="font-mono">profile.view_health</span>.
+              {P.warn.identityWhyA}<strong>{P.warn.identityWhyStrong}</strong>{P.warn.identityWhyB}
+              <span className="font-mono">lib/crm/nik.ts</span>{P.warn.identityWhyC}
+              <span className="font-mono">profile.view_contact</span>{P.warn.identityWhyD}
+              <span className="font-mono">profile.view_health</span>{P.warn.identityWhyE}
             </p>
           </Why>
         )
       ) : hasGatedIdentity ? (
         <p className="font-body text-[12px] italic text-ink-faint">
-          NIK, gender, tanggal lahir, provinsi, alamat, dan kontak darurat ada tapi digerbangi — butuh
-          peran <span className="font-mono">profile.view_contact</span>.
+          {P.warn.identityGatedA}<span className="font-mono">profile.view_contact</span>{P.warn.identityGatedB}
         </p>
       ) : null}
     </Section>
@@ -1185,11 +1186,13 @@ function IdentitySection({
  * mis-filed). Clinic-patient program flags are server-omitted for non-view_health callers.
  */
 function ImportSection({ importData }: { importData: ProfileImportT | null }) {
+  const { t } = useI18n();
+  const P = t.profile;
   const imp = importData;
   const count = imp && imp.matched ? imp.programs.length + (imp.rfmPaidOrder && imp.rfmPaidOrder !== "-" ? 1 : 0) : 0;
   return (
     <Section
-      title="Data impor 20FIT — partisipasi"
+      title={P.secImport}
       count={count}
       icon={<Activity className="h-4 w-4 text-ink-soft" aria-hidden />}
       open={!!imp?.matched}
@@ -1197,44 +1200,43 @@ function ImportSection({ importData }: { importData: ProfileImportT | null }) {
     >
       {importData === null ? (
         <div className="mt-4 rounded-sm border border-dashed border-glass-border px-4 py-6 text-center">
-          <Badge tone="amber">Gagal dimuat</Badge>
-          <p className="mx-auto mt-2 max-w-xl font-body text-[13px] text-ink-soft">Data impor gagal dimuat. Sisa profil tetap tampil.</p>
+          <Badge tone="amber">{P.loadFailBadge}</Badge>
+          <p className="mx-auto mt-2 max-w-xl font-body text-[13px] text-ink-soft">{P.warn.importFail}</p>
         </div>
       ) : !importData.matchable ? (
-        <p className="mt-4 font-body text-[13px] italic text-ink-faint">Profil ini tak punya email untuk dicocokkan ke data impor.</p>
+        <p className="mt-4 font-body text-[13px] italic text-ink-faint">{P.warn.importUnmatchable}</p>
       ) : !importData.matched ? (
-        <p className="mt-4 font-body text-[13px] italic text-ink-faint">Profil ini tidak ada di data impor <span className="font-mono">staging_20fit_data</span>.</p>
+        <p className="mt-4 font-body text-[13px] italic text-ink-faint">{P.warn.importNotMatchedA}<span className="font-mono">staging_20fit_data</span>{P.warn.importNotMatchedB}</p>
       ) : (
         <div className="mt-2">
-          <Field label="RFM (per paid order)">
+          <Field label={P.impRfm}>
             {importData.rfmPaidOrder && importData.rfmPaidOrder !== "-" ? (
               <Badge tone="neutral">{importData.rfmPaidOrder}</Badge>
             ) : (
-              <span className="font-body text-[13px] italic text-ink-faint">{importData.rfmPaidOrder === "-" ? "− (tanpa bucket)" : "belum terisi"}</span>
+              <span className="font-body text-[13px] italic text-ink-faint">{importData.rfmPaidOrder === "-" ? P.impRfmNoBucket : P.warn.emptyField}</span>
             )}
           </Field>
 
-          <Field label="Program yang diikuti">
+          <Field label={P.impPrograms}>
             {importData.programs.length > 0 ? (
               <span className="flex flex-wrap gap-1.5">
                 {importData.programs.map((p) => <Badge key={p.key} tone="neutral">{p.label}</Badge>)}
               </span>
             ) : (
-              <span className="font-body text-[13px] italic text-ink-faint">tidak tercatat ikut program apa pun di data impor</span>
+              <span className="font-body text-[13px] italic text-ink-faint">{P.warn.importNoProgram}</span>
             )}
           </Field>
 
           {importData.clinicalWithheld && (
             <p className="mt-2 font-body text-[11px] italic text-ink-faint">
-              Program klinik (pasien 20FIT Clinic) disembunyikan — butuh <span className="font-mono">profile.view_health</span> (menandai pasien = status kesehatan).
+              {P.warn.importClinicalWithheldA}<span className="font-mono">profile.view_health</span>{P.warn.importClinicalWithheldB}
             </p>
           )}
           <Why>
             <p className="text-[11px] leading-relaxed text-ink-soft">
-              Dari <span className="font-mono">staging_20fit_data</span> (impor yang sama dengan master), dicocokkan lewat{" "}
-              <strong>email ternormalisasi</strong> — bukan nama. Nol tulis, nol salin: dibaca &amp; digabung saat tampil.
-              Tanggal lahir + kota dari impor ini pindah ke <strong>Identitas</strong> / <strong>Kontak</strong> (Demografi) —
-              yang tersisa di sini adalah partisipasi (RFM + program).
+              {P.warn.importWhyA}<span className="font-mono">staging_20fit_data</span>{P.warn.importWhyB}
+              <strong>{P.warn.importWhyStrong}</strong>{P.warn.importWhyC}<strong>{P.secIdentity}</strong>{P.warn.importWhyD}
+              <strong>{P.secContact}</strong>{P.warn.importWhyE}
             </p>
           </Why>
         </div>
@@ -1290,12 +1292,15 @@ export function ProfileDetail({
     return () => ac.abort();
   }, [id, previewData]);
 
+  const { t } = useI18n();
+  const P = t.profile;
+
   const BackLink = () => (
     <Link
       href="/audience"
       className="inline-flex items-center gap-1.5 font-display text-[12px] font-semibold uppercase tracking-wide text-ink-soft transition-colors hover:text-ink"
     >
-      <ArrowLeft className="h-3.5 w-3.5" aria-hidden /> Kembali ke audience
+      <ArrowLeft className="h-3.5 w-3.5" aria-hidden /> {P.back}
     </Link>
   );
 
@@ -1303,7 +1308,7 @@ export function ProfileDetail({
     return (
       <div className="space-y-6">
         <BackLink />
-        <p className="font-body text-[14px] text-ink-soft">Memuat profil…</p>
+        <p className="font-body text-[14px] text-ink-soft">{P.loading}</p>
       </div>
     );
   }
@@ -1313,8 +1318,8 @@ export function ProfileDetail({
       <div className="space-y-6">
         <BackLink />
         <div className="flex flex-col items-center justify-center gap-3 rounded-card border border-dashed border-glass-border px-6 py-20 text-center">
-          <Badge tone="neutral">Tidak ditemukan</Badge>
-          <p className="max-w-md font-body text-[14px] text-ink-soft">Profil tidak ditemukan.</p>
+          <Badge tone="neutral">{P.notFoundBadge}</Badge>
+          <p className="max-w-md font-body text-[14px] text-ink-soft">{P.notFoundText}</p>
         </div>
       </div>
     );
@@ -1325,8 +1330,8 @@ export function ProfileDetail({
       <div className="space-y-6">
         <BackLink />
         <div className="flex flex-col items-center justify-center gap-3 rounded-card border border-dashed border-glass-border px-6 py-20 text-center">
-          <Badge tone="red">Gagal</Badge>
-          <p className="max-w-md font-body text-[14px] text-ink-soft">Profil gagal dimuat.</p>
+          <Badge tone="red">{P.errorBadge}</Badge>
+          <p className="max-w-md font-body text-[14px] text-ink-soft">{P.errorText}</p>
         </div>
       </div>
     );
@@ -1366,28 +1371,28 @@ export function ProfileDetail({
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-display text-[32px] font-black uppercase leading-none text-ink">
-            {formatDisplayName(p.full_name) ?? "Tanpa nama"}
+            {formatDisplayName(p.full_name) ?? P.noName}
           </h1>
           {/* Original name kept visible when tidying changed it — search still runs over the
               SOURCE column (search-read.ts), so the raw name stays findable. */}
           {nameNeedsTidy(p.full_name) && (
             <p className="mt-1 font-body text-[12px] text-ink-faint">
-              Nama asli (dari sumber): <span className="font-mono">{p.full_name}</span>
+              {P.originalNameLabel}<span className="font-mono">{p.full_name}</span>
             </p>
           )}
           <p className="mt-2 font-mono text-[12px] text-ink-faint">{p.customer_id}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {p.masked && (
-            <Badge tone="amber" className="gap-1.5"><Lock className="h-3.5 w-3.5" /> Kontak disamarkan</Badge>
+            <Badge tone="amber" className="gap-1.5"><Lock className="h-3.5 w-3.5" /> {P.contactMasked}</Badge>
           )}
-          {p.is_merged ? <Badge tone="neutral">Sudah di-merge</Badge> : null}
-          {p.is_potential_duplicate ? <Badge tone="amber">Kemungkinan duplikat</Badge> : null}
+          {p.is_merged ? <Badge tone="neutral">{P.merged}</Badge> : null}
+          {p.is_potential_duplicate ? <Badge tone="amber">{P.possibleDup}</Badge> : null}
           {/* Write entry point — only for roles that may edit consent, and only when a
               real (unmasked) identity exists to suppress. The API re-checks the gate. */}
           {canEditConsent && !p.masked && (p.phone || p.email) && (
             <Button size="sm" variant="outline" onClick={() => setSuppressOpen(true)}>
-              <Ban className="h-3.5 w-3.5" /> Catat permintaan berhenti
+              <Ban className="h-3.5 w-3.5" /> {P.recordStop}
             </Button>
           )}
         </div>
@@ -1417,36 +1422,36 @@ export function ProfileDetail({
         perilakuCount={perilakuCount}
         demografi={
           <>
-            <Section title="Kontak" count={contactFilled} icon={<User className="h-4 w-4 text-ink-soft" aria-hidden />}>
-              <Field label="Telepon" mono>{p.phone ? p.phone : <Empty />}</Field>
-              <Field label="Email" mono>
+            <Section title={P.secContact} count={contactFilled} icon={<User className="h-4 w-4 text-ink-soft" aria-hidden />}>
+              <Field label={P.fPhone} mono>{p.phone ? p.phone : <Empty />}</Field>
+              <Field label={P.fEmail} mono>
                 {p.email ? p.email : <Empty />}
                 {/* Typo FLAG only — never an auto-fix. Runs on the real email, so it is shown
                     only to roles that see it unmasked (a masked role can't correct it anyway). */}
                 {!p.masked && emailTypo.suspect && (
                   <span className="mt-1 flex items-center gap-1.5">
                     <Badge tone="amber" className="gap-1">
-                      <AlertTriangle className="h-3 w-3" /> Mungkin salah ketik
+                      <AlertTriangle className="h-3 w-3" /> {P.typoBadge}
                     </Badge>
                     <span className="font-body text-[12px] text-ink-soft">
-                      saran: <span className="font-mono text-ink">{emailTypo.suggestion}</span>{" "}
-                      ({emailTypo.confidence === "high" ? "keyakinan tinggi" : "keyakinan sedang"}) — perlu konfirmasi manusia, tidak diperbaiki otomatis
+                      {P.typoSuggest}<span className="font-mono text-ink">{emailTypo.suggestion}</span>{" "}
+                      ({emailTypo.confidence === "high" ? P.confHigh : P.confMed}){P.typoNote}
                     </span>
                   </span>
                 )}
               </Field>
-              <Field label="Kota">{p.city ? p.city : <Empty />}</Field>
+              <Field label={P.fCity}>{p.city ? p.city : <Empty />}</Field>
             </Section>
 
-            <Section title="Atribut" count={attrFilled} icon={<User className="h-4 w-4 text-ink-soft" aria-hidden />}>
-              <Field label="Unit pertama">{p.first_unit ? p.first_unit : <Empty />}</Field>
-              <Field label="Segment">
-                {p.segment ? <Badge tone="neutral">{p.segment}</Badge> : <span className="font-body text-[13px] italic text-ink-faint">(tanpa segment)</span>}
+            <Section title={P.secAttr} count={attrFilled} icon={<User className="h-4 w-4 text-ink-soft" aria-hidden />}>
+              <Field label={P.fFirstUnit}>{p.first_unit ? p.first_unit : <Empty />}</Field>
+              <Field label={P.fSegment}>
+                {p.segment ? <Badge tone="neutral">{p.segment}</Badge> : <span className="font-body text-[13px] italic text-ink-faint">{P.noSegment}</span>}
               </Field>
-              <Field label="Lifetime value" mono>
+              <Field label={P.fLtv} mono>
                 {p.lifetime_value != null ? (p.lifetime_value > 0 ? idr.format(p.lifetime_value) : <span className="text-ink-faint">Rp 0</span>) : <Empty />}
               </Field>
-              <Field label="Sumber" mono>{p.source ? p.source : <Empty />}</Field>
+              <Field label={P.fSource} mono>{p.source ? p.source : <Empty />}</Field>
             </Section>
 
             {/* Identitas — NIK + turunannya + tanggal lahir + alamat + kontak darurat, DIGABUNG dari
@@ -1464,37 +1469,36 @@ export function ProfileDetail({
             />
 
             {/* Row metadata — closed by default (secondary to the person). */}
-            <Section title="Jejak waktu" icon={<User className="h-4 w-4 text-ink-soft" aria-hidden />} open={false}>
-              <Field label="Dibuat (cap waktu muat batch)" mono>{formatTs(p.created_at)}</Field>
+            <Section title={P.secTrail} icon={<User className="h-4 w-4 text-ink-soft" aria-hidden />} open={false}>
+              <Field label={P.tCreated} mono>{formatTs(p.created_at)}</Field>
               {p.source === "live_txn_ingest" ? (
-                <Field label="Pertama terlihat" mono>
+                <Field label={P.tFirstSeenReal} mono>
                   {formatTs(p.first_seen_at)}{" "}
-                  <span className="font-body text-[12px] italic text-ink-faint">· dari transaksi (nyata)</span>
+                  <span className="font-body text-[12px] italic text-ink-faint">{P.warn.firstSeenRealNote}</span>
                 </Field>
               ) : (
-                <Field label="First-seen" mono>
+                <Field label={P.tFirstSeen} mono>
                   {formatTs(p.first_seen_at)}{" "}
-                  <span className="font-body text-[12px] italic text-ink-faint">· cap waktu muat, BUKAN “pertama terlihat”</span>
+                  <span className="font-body text-[12px] italic text-ink-faint">{P.warn.firstSeenNote}</span>
                 </Field>
               )}
-              <Field label="Diperbarui" mono>{formatTs(p.updated_at)}</Field>
+              <Field label={P.tUpdated} mono>{formatTs(p.updated_at)}</Field>
               <Why>
                 <p className="text-[12px] leading-relaxed text-ink-soft">
-                  “First-seen” hanya bermakna pada baris <span className="font-mono">live_txn_ingest</span>;
-                  untuk <span className="font-mono">20fit_data_import</span> (98,7% pool) ia sama dengan waktu
-                  muat. Segmentasi berbasis recency tidak bisa jujur dengan data ini.
+                  {P.warn.trailWhyA}<span className="font-mono">live_txn_ingest</span>{P.warn.trailWhyB}
+                  <span className="font-mono">20fit_data_import</span>{P.warn.trailWhyC}
                 </p>
               </Why>
             </Section>
 
-            <Section title="Kurasi & duplikat" count={kurasiFilled} icon={<User className="h-4 w-4 text-ink-soft" aria-hidden />} open={false}>
-              <Field label="Catatan">{p.notes ? p.notes : <Empty />}</Field>
-              <Field label="Tag">
+            <Section title={P.secCuration} count={kurasiFilled} icon={<User className="h-4 w-4 text-ink-soft" aria-hidden />} open={false}>
+              <Field label={P.cNotes}>{p.notes ? p.notes : <Empty />}</Field>
+              <Field label={P.cTags}>
                 {p.tags && p.tags.length > 0 ? (
                   <span className="flex flex-wrap gap-1.5">{p.tags.map((t) => <Badge key={t} tone="neutral">{t}</Badge>)}</span>
                 ) : <Empty />}
               </Field>
-              <Field label="Alasan duplikat">{p.duplicate_reason ? p.duplicate_reason : <Empty />}</Field>
+              <Field label={P.cDupReason}>{p.duplicate_reason ? p.duplicate_reason : <Empty />}</Field>
             </Section>
           </>
         }
@@ -1521,15 +1525,13 @@ export function ProfileDetail({
 
             {/* Health flags — structural gate, but no source exists. */}
             {data.canViewHealth && (
-              <Section title="Health flags" icon={<HeartPulse className="h-4 w-4 text-ink-soft" aria-hidden />} open={false} span2>
+              <Section title={P.secHealth} icon={<HeartPulse className="h-4 w-4 text-ink-soft" aria-hidden />} open={false} span2>
                 <div className="rounded-sm border border-dashed border-glass-border px-4 py-6 text-center">
-                  <Badge tone="neutral">Tidak ada sumber data</Badge>
+                  <Badge tone="neutral">{P.warn.healthNoSourceBadge}</Badge>
                   <p className="mx-auto mt-2 max-w-xl font-body text-[13px] leading-relaxed text-ink-soft">
-                    <span className="font-mono text-[12px]">master_customer</span> tidak memiliki kolom kesehatan
-                    apa pun. Satu-satunya sumber (<span className="font-mono text-[12px]">clinic_*</span>) di luar
-                    lingkup dan masih RLS OFF. Ini <strong>bukan</strong> “sehat” dan bukan nol terukur — memang
-                    belum ada sumbernya. Gerbang <span className="font-mono text-[12px]">profile.view_health</span>
-                    {" "}dipertahankan agar tetap benar begitu sumbernya ada.
+                    <span className="font-mono text-[12px]">master_customer</span>{P.warn.healthNoSourceB}
+                    <span className="font-mono text-[12px]">clinic_*</span>{P.warn.healthNoSourceC}
+                    <span className="font-mono text-[12px]">profile.view_health</span>{P.warn.healthNoSourceD}
                   </p>
                 </div>
               </Section>
@@ -1538,9 +1540,7 @@ export function ProfileDetail({
         }
       />
 
-      <p className="font-mono text-[11px] text-ink-faint">
-        Baca saja · nol tombol edit/hapus/merge · pembukaan profil ini tercatat sekali (profile.viewed) — pindah tab bukan pembacaan baru · kontak & data sensitif ditahan di server untuk peran tanpa izin (tab hanya tata letak).
-      </p>
+      <p className="font-mono text-[11px] text-ink-faint">{P.footer}</p>
     </div>
   );
 }
