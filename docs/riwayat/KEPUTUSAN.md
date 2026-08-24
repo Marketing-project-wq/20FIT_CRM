@@ -657,3 +657,39 @@ regulasi berubah, atau kanal opt-in per-orang diaktifkan), gerbang consent **din
 tabel yang sama** (`crm_consent` masih utuh) — kembalikan `isContactableForPurpose` untuk
 memeriksa consent aktif selain suppression, dan reframe balik bahasanya. Tidak ada data yang
 hilang untuk pembalikan itu; hanya frame yang berubah.
+
+## K-37 · Fondasi separuh "menghubungi" — CRM berdiri sendiri, tiru skema tim lain, gerbang dibuka (contacting-half)
+**Latar:** pemilik produk menerapkan jawaban (kanal WA, pop-up ditunda, fitpoint kontrak-saja,
+"tidak kembali" ditunda, gerbang ekspor dibuka) dan meminta fondasi separuh "menghubungi".
+
+**Keputusan-keputusan (dengan syarat pembalikan):**
+
+1. **CRM berdiri sendiri di `crm_*`, TIDAK memakai tabel kirim/template tim lain.** Investigasi
+   (24 Agu): `my20fit_message_log`/`campaign_enrollments`/`email_templates` **nol baris** dan
+   **di-key pada `user_id` (auth my20fit)**, bukan `master_customer.customer_id` (pool CRM 82.253,
+   hanya ~47 pengguna my20fit). Jadi tak bisa dipakai bersama. **Tapi skema `my20fit_message_log`
+   ditiru** untuk `crm_message_log` kelak (idempotency_key, provider_message_id, status, cap waktu
+   siklus, unsubscribed_at, language) — meniru bentuk baik, bukan membuat yang berbeda (anti
+   "satu-aturan-dua-implementasi"). **Pembalikan:** keputusan "pakai bersama satu log" adalah
+   wewenang lintas-tim pemilik produk, bukan kode — diangkat sebagai pertanyaan.
+
+2. **Unsubscribe pakai jalur suppression yang ADA (3H), bukan jalur kedua.** Halaman publik
+   `/unsubscribe` + token HMAC bertanda tangan (customer_id + kind, PII tak masuk URL) →
+   `crm_record_suppression` (reason `user_request`, source `unsubscribe_link`). Suppression menang
+   di tiap jalur keluar tetap berlaku. **Pembalikan:** tak ada; jalur tunggal itu inti.
+
+3. **Template: kosakata variabel TERTUTUP, divalidasi saat SIMPAN.** `{{var}}` di luar
+   `TEMPLATE_VARIABLES` ditolak saat simpan, bukan saat kirim (gagal saat kirim ke 10.000 orang
+   mahal). Riwayat versi = INSERT append (yang dipakai kemarin harus terbaca apa adanya). Storage
+   = migrasi `crm_message_template` **GATED, ditunjukkan belum dijalankan** (`RENCANA-template-simpan.md`);
+   inti murni (`lib/crm/template.ts`) sudah dibangun & diuji. **Pembalikan:** tambah variabel =
+   edit satu daftar; drop tabel = revert bersih (tabel kosong).
+
+4. **Gerbang ekspor dibuka untuk `crm_operator` ≤ ambang** (`approval`→`allow`); > ambang tetap
+   `super_admin`/`crm_manager`; `unit_manager` tetap `approval` (fail-closed, tabel scope belum
+   ada). Suppression tetap dikecualikan dari tiap ekspor (4A). **Pembalikan:** kembalikan ke
+   `approval` bila alur persetujuan dibangun.
+
+5. **WA = permukaan status (env var Railway), fitpoint = kontrak dokumen, pop-up = ditunda.** Nol
+   tempat kosong yang tampak siap. **Pembalikan:** buka pop-up hanya bila aplikasi 20FIT bisa
+   menerima pesan; bangun pemicu fitpoint hanya bila sumber saldo+kedaluwarsa (tanggal nyata) ada.

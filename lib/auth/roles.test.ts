@@ -37,7 +37,7 @@ const PRD_17_2: Record<(typeof PRD_ACTIONS)[number], Record<Role, Grant>> = {
     unit_manager: "own_unit", analyst: "allow", data_steward: "deny",
   },
   "export.at_or_below_threshold": {
-    super_admin: "allow", crm_manager: "allow", crm_operator: "approval",
+    super_admin: "allow", crm_manager: "allow", crm_operator: "allow",
     unit_manager: "approval", analyst: "deny", data_steward: "deny",
   },
   "export.above_threshold": {
@@ -142,9 +142,15 @@ describe("fail-closed resolution", () => {
     expect(isPermitted("unit_manager", "profile.view_list", { hasUnitScope: true })).toBe(true);
   });
 
+  it("crm_operator may now export at or below threshold (opened 24 Aug 2026), but NOT above", () => {
+    expect(isPermitted("crm_operator", "export.at_or_below_threshold")).toBe(true);
+    expect(isPermitted("crm_operator", "export.above_threshold")).toBe(false);
+  });
+
   it("deferred grants are not 'permitted now'", () => {
-    expect(resolveGrant("crm_operator", "export.at_or_below_threshold")).toBe("needs_approval");
-    expect(isPermitted("crm_operator", "export.at_or_below_threshold")).toBe(false);
+    // unit_manager keeps the approval grant (fail-closed: no unit-scope table exists yet).
+    expect(resolveGrant("unit_manager", "export.at_or_below_threshold")).toBe("needs_approval");
+    expect(isPermitted("unit_manager", "export.at_or_below_threshold")).toBe(false);
     expect(resolveGrant("crm_operator", "workflow.create")).toBe("draft_only");
     expect(isPermitted("crm_operator", "workflow.create")).toBe(false);
     expect(resolveGrant("data_steward", "profile.delete")).toBe("request_only");

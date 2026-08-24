@@ -150,7 +150,11 @@ const MATRIX: Record<Role, Record<Action, Grant>> = {
     "profile.view_contact": "allow",
     "profile.view_health": "deny",
     "segment.build": "allow",
-    "export.at_or_below_threshold": "approval",
+    // OPENED (contacting-half, product-owner decision 24 Aug 2026): crm_operator may export AT OR
+    // BELOW threshold — the approval flow was never built and the requirements doc does not ask for
+    // one, so "approval" was refusing a routine op. ABOVE threshold stays super_admin / crm_manager
+    // only. Suppression is still excluded from every export (4A); this only changes who may run one.
+    "export.at_or_below_threshold": "allow",
     "export.above_threshold": "deny",
     "workflow.create": "draft",
     "workflow.activate": "deny",

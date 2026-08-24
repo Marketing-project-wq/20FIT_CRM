@@ -6,6 +6,7 @@ import { isPermitted, resolveGrant } from "@/lib/auth/roles";
 import { Badge } from "@/components/ui/badge";
 import { RolesPanel } from "@/components/settings/roles-panel";
 import { AuditLogPanel } from "@/components/settings/audit-log-panel";
+import { WhatsappPanel } from "@/components/settings/whatsapp-panel";
 import { CoverageNotice } from "@/components/i18n/coverage-notice";
 import { getServerDict } from "@/lib/i18n/server";
 
@@ -64,6 +65,7 @@ export default async function SettingsPage() {
       <CoverageNotice screen="audit" />
       <AuditLogPanel />
       <RolesPanel />
+      <WhatsappPanel />
     </div>
   );
 }

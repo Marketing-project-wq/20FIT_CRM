@@ -871,6 +871,36 @@ export const en: Messages = {
     },
   },
 
+  messaging: {
+    waTitle: "WhatsApp Business API",
+    waSubtitle: "The chat channel for sending. Credentials are stored as environment variables in Railway (like the Mailtrap token), never shown back. Credential setup comes later.",
+    waNotConnected: "Not connected",
+    waConnected: "Connected",
+    waFieldToken: "Access token",
+    waFieldPhone: "Sender number (phone number id)",
+    waFieldAccount: "Business Account id",
+    waConfigured: "configured",
+    waNotSet: "not set",
+    waNote: "Until all three are configured, no WhatsApp message can be sent. This is a status, not a form — credentials are set in Railway, not here.",
+  },
+
+  unsubscribe: {
+    title: "Unsubscribe",
+    checking: "Checking the link…",
+    invalidTitle: "Link not valid",
+    invalidBody: "This link is not valid or is no longer active. If you would like to stop being contacted, reply to the email you received or contact the 20FIT team.",
+    unavailableBody: "The service is currently unavailable. Please try again later.",
+    promptEmail: "You are about to stop receiving emails from the 20FIT CRM at:",
+    promptPhone: "You are about to stop receiving messages from the 20FIT CRM at:",
+    confirmButton: "Yes, unsubscribe",
+    working: "Processing…",
+    doneTitle: "You have unsubscribed",
+    doneBody: "Your request is recorded. You will no longer receive marketing messages from the 20FIT CRM at this contact.",
+    alreadyBody: "This contact was already unsubscribed — nothing changed.",
+    resubscribe: "Changed your mind? Contact the 20FIT team to subscribe again.",
+    failed: "Could not process the request. Please try again later.",
+  },
+
   stubs: {
     comingSoon: "Coming soon",
     phase3: "Phase 3",

@@ -957,6 +957,41 @@ export const id = {
     },
   },
 
+  // WhatsApp Business API connection status on /settings (contacting-half TUGAS 4). Shows PRESENCE
+  // of the env-var credentials only, never a value; today all absent → honest "not connected".
+  messaging: {
+    waTitle: "WhatsApp Business API",
+    waSubtitle: "Kanal chat untuk pengiriman. Kredensial disimpan sebagai environment variable di Railway (seperti token Mailtrap), tidak pernah ditampilkan kembali. Penyetelan kredensial menyusul.",
+    waNotConnected: "Belum tersambung",
+    waConnected: "Tersambung",
+    waFieldToken: "Access token",
+    waFieldPhone: "Nomor pengirim (phone number id)",
+    waFieldAccount: "Business Account id",
+    waConfigured: "terpasang",
+    waNotSet: "belum diatur",
+    waNote: "Sampai ketiganya terpasang, tidak ada pesan WhatsApp yang bisa dikirim. Ini status, bukan formulir — kredensial diatur di Railway, bukan di sini.",
+  },
+
+  // Public self-service unsubscribe page (contacting-half TUGAS 3). Reached from a link in an
+  // email — no session — so it reads the language from ?lang (default id) and pulls these strings
+  // directly from the dictionary. Recipients are mixed-language, hence both are kept complete.
+  unsubscribe: {
+    title: "Berhenti berlangganan",
+    checking: "Memeriksa tautan…",
+    invalidTitle: "Tautan tidak berlaku",
+    invalidBody: "Tautan ini tidak sah atau sudah tidak berlaku. Bila Anda ingin berhenti dihubungi, balas email yang Anda terima atau hubungi tim 20FIT.",
+    unavailableBody: "Layanan sedang tidak tersedia. Coba lagi nanti.",
+    promptEmail: "Anda akan berhenti menerima email dari CRM 20FIT di alamat:",
+    promptPhone: "Anda akan berhenti menerima pesan dari CRM 20FIT di nomor:",
+    confirmButton: "Ya, berhenti berlangganan",
+    working: "Memproses…",
+    doneTitle: "Anda telah berhenti berlangganan",
+    doneBody: "Permintaan Anda tercatat. Anda tidak akan lagi menerima pesan pemasaran dari CRM 20FIT lewat kontak ini.",
+    alreadyBody: "Kontak ini memang sudah berhenti berlangganan sebelumnya — tidak ada yang berubah.",
+    resubscribe: "Berubah pikiran? Hubungi tim 20FIT untuk berlangganan kembali.",
+    failed: "Gagal memproses permintaan. Coba lagi nanti.",
+  },
+
   // ComingSoon nav stubs (Sprint 4F) — user-openable routes that were hardcoded Indonesian with
   // no marker. Translated (short text) rather than marked. Titles stay proper nav names.
   stubs: {

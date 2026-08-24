@@ -50,9 +50,16 @@ merge, bukan sesudah.
 
 ## B. TIDAK MEMBLOKIR MERGE — penting, jalan paralel
 
-Tak satu pun menahan merge (K-27). Diurut dari paling mendesak (keamanan) ke opsional.
+Tak satu pun menahan merge. Diurut dari paling mendesak (keamanan) ke opsional.
 
-### B1. Rotasi `MAILTRAP_API_TOKEN` (BOCOR) — paling mendesak (KEAMANAN, bukan merge)
+> ### 🚫 MEMBLOKIR PENGIRIMAN KAMPANYE PERTAMA (dinaikkan 24 Agu 2026, contacting-half TUGAS 1)
+> **B1 (rotasi token) + B3 (SPF/DKIM/DMARC), dengan B2 (verifikasi domain) sebagai prasyaratnya,
+> MEMBLOKIR pengiriman email kampanye pertama** — meski tak memblokir merge. Nol email kampanye
+> boleh dikirim sebelum ketiganya beres: volume besar dari domain tanpa riwayat + token bocor
+> merusak reputasi `20fit.id` untuk seterusnya, **termasuk email reset kata sandi yang sudah
+> jalan**. Rincian + rencana ramp: `docs/RENCANA-batas-kirim.md`.
+
+### B1. Rotasi `MAILTRAP_API_TOKEN` (BOCOR) — 🚫 MEMBLOKIR KIRIM PERTAMA + paling mendesak (KEAMANAN)
 - **Siapa:** pemegang akun Mailtrap + pemegang Variables Railway.
 - **Langkah:** cabut token bocor → terbitkan baru → perbarui `MAILTRAP_API_TOKEN` di Railway (redeploy
   otomatis) → uji token lama ditolak. Rincian: `docs/SETUP-reset-password.md` §0.
@@ -65,7 +72,7 @@ Tak satu pun menahan merge (K-27). Diurut dari paling mendesak (keamanan) ke ops
   Rincian: `docs/SETUP-reset-password.md` §2–§3.
 - **Kalau dilewati:** pengiriman dari `crm@20fit.id` ditolak — pengguna dapat halaman kode tapi email tak datang.
 
-### B3. SPF, DKIM, DMARC di DNS `20fit.id`
+### B3. SPF, DKIM, DMARC di DNS `20fit.id` — 🚫 MEMBLOKIR KIRIM PERTAMA
 - **Siapa:** pemegang DNS `20fit.id`.
 - **Langkah:** tambah record dari Mailtrap; mulai DMARC `p=none`; verifikasi via `dig` + Gmail "Show
   original" (PASS). Rincian: `docs/SETUP-reset-password.md` §3.
