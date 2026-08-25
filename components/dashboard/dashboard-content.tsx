@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { Clock, GitBranch, Cake } from "lucide-react";
 import { StatCard } from "./stat-card";
 import { BarList } from "./bar-list";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -112,19 +113,18 @@ function PoolReachCard({
   const allEqual = imm != null && con != null &&
     imm.audienceSize === con.contactableMarketing && con.contactableMarketing === con.contactableService;
   return (
-    <div className="glass shadow-glass relative overflow-hidden p-5 sm:col-span-2">
-      <span className="absolute left-0 top-0 h-full w-1 bg-red" aria-hidden />
+    <div className="card p-5 sm:col-span-2">
       <p className="font-display text-[12px] font-semibold uppercase tracking-wide text-ink-soft">{t.dashboard.summaryTitle}</p>
       {immStatus === "loading" ? (
         <Skeleton className="mt-2 h-[26px] w-1/2" label={t.dashboard.computing} />
       ) : immStatus === "error" ? (
         <p className="mt-2 font-body text-[13px] font-semibold text-red">{t.dashboard.blockFailed}</p>
       ) : (
-        <p className="mt-2 font-display text-[34px] font-black leading-none text-ink">{imm ? formatCount(imm.audienceSize, lang) : DASH}</p>
+        <p className="mt-2 font-display text-[32px] font-semibold leading-none text-ink">{imm ? formatCount(imm.audienceSize, lang) : DASH}</p>
       )}
       <p className="mt-1 font-mono text-[11px] text-ink-faint">{t.dashboard.summaryPoolLabel}</p>
 
-      <div className="mt-4 border-t border-glass-border pt-3">
+      <div className="mt-4 border-t border-surface-border pt-3">
         {conStatus === "loading" ? (
           <div className="space-y-2"><Skeleton className="h-3.5 w-2/3" label={t.dashboard.computing} /><Skeleton className="h-3.5 w-1/2" /></div>
         ) : conStatus === "error" ? (
@@ -151,10 +151,10 @@ function PoolReachCard({
 /** D2 — the five live-source gaps as ONE compact table instead of five cards. */
 function GapTable({ sources, t, lang }: { sources: SourceGap[]; t: Dict; lang: Lang }) {
   return (
-    <div className="glass rounded-card overflow-x-auto p-1">
+    <div className="card overflow-x-auto p-1">
       <table className="w-full min-w-[22rem] border-collapse">
         <thead>
-          <tr className="border-b border-glass-border text-left">
+          <tr className="border-b border-surface-border text-left">
             <th className="px-3 py-2 font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{t.dashboard.gapTableSource}</th>
             <th className="px-3 py-2 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{t.dashboard.totalLabel}</th>
             <th className="px-3 py-2 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{t.dashboard.gapLabel}</th>
@@ -162,7 +162,7 @@ function GapTable({ sources, t, lang }: { sources: SourceGap[]; t: Dict; lang: L
         </thead>
         <tbody>
           {sources.map((s) => (
-            <tr key={s.key} className="border-b border-glass-border/60 last:border-0">
+            <tr key={s.key} className="border-b border-surface-border/60 last:border-0">
               <td className="px-3 py-2 font-body text-[13px] text-ink">{srcLabel(t, s.key)}</td>
               <td className="px-3 py-2 text-right font-display text-[14px] font-bold tabular-nums text-ink">{formatCount(s.total, lang)}</td>
               <td className={`px-3 py-2 text-right font-display text-[14px] font-bold tabular-nums ${s.gap > 0 ? "text-amber" : "text-ink"}`}>{formatCount(s.gap, lang)}</td>
@@ -180,7 +180,7 @@ function CandidateCard({ candidates, fitco, t, lang, mirrorAt }: {
   candidates: Candidates; fitco: Fitco; t: Dict; lang: Lang; mirrorAt: string | null;
 }) {
   return (
-    <div className="glass rounded-card p-5">
+    <div className="card p-5">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="font-display text-[14px] font-bold text-ink">{t.dashboard.candTitle}</h3>
         {mirrorAt && <FreshTag>{t.dashboard.freshSnapshot} · {formatDateTime(mirrorAt, lang)}</FreshTag>}
@@ -190,14 +190,14 @@ function CandidateCard({ candidates, fitco, t, lang, mirrorAt }: {
       <div className="mt-3 overflow-x-auto">
         <table className="w-full min-w-[18rem] border-collapse">
           <thead>
-            <tr className="border-b border-glass-border text-left">
+            <tr className="border-b border-surface-border text-left">
               <th className="px-2 py-1.5 font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{t.dashboard.candSourceCol}</th>
               <th className="px-2 py-1.5 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{t.dashboard.candCountCol}</th>
             </tr>
           </thead>
           <tbody>
             {candidates.bySource.map((r) => (
-              <tr key={r.source} className="border-b border-glass-border/60 last:border-0">
+              <tr key={r.source} className="border-b border-surface-border/60 last:border-0">
                 <td className="px-2 py-1.5 font-mono text-[12px] text-ink-soft">{r.source}</td>
                 <td className="px-2 py-1.5 text-right font-display text-[13px] font-bold tabular-nums text-ink">{formatCount(r.count, lang)}</td>
               </tr>
@@ -348,9 +348,9 @@ export function DashboardContent(
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <PoolReachCard imm={denied ? null : imm} con={denied ? null : con}
           immStatus={denied ? "ready" : immediate.status} conStatus={denied ? "ready" : contactable.status} t={t} lang={lang} />
-        <StatCard label={t.dashboard.lastProfile} {...freshKpi} hint={t.dashboard.lastProfileHint} computingLabel={t.dashboard.computing} />
-        <StatCard label={t.dashboard.workflowActive} value={DASH} hint={t.dashboard.workflowActiveHint} />
-        <StatCard label={t.dashboard.importDob} {...dobKpi} hint={t.dashboard.importDobHint} computingLabel={t.dashboard.computing} />
+        <StatCard label={t.dashboard.lastProfile} {...freshKpi} hint={t.dashboard.lastProfileHint} computingLabel={t.dashboard.computing} icon={<Clock className="h-4 w-4" />} />
+        <StatCard label={t.dashboard.workflowActive} value={DASH} hint={t.dashboard.workflowActiveHint} icon={<GitBranch className="h-4 w-4" />} />
+        <StatCard label={t.dashboard.importDob} {...dobKpi} hint={t.dashboard.importDobHint} computingLabel={t.dashboard.computing} icon={<Cake className="h-4 w-4" />} />
       </section>
 
       {/* ── Frozen pool vs live sources vs gap. Pool line = IMMEDIATE; per-source cards = SOURCES. ── */}
@@ -364,7 +364,7 @@ export function DashboardContent(
           </div>
 
           {/* Layer 1: the frozen pool (immediate). */}
-          <div className="glass rounded-card p-5">
+          <div className="card p-5">
             {immediate.status === "ready" && imm ? (
               <p className="font-body text-[13px] text-ink-soft">
                 {t.dashboard.poolLayerA}
@@ -386,7 +386,7 @@ export function DashboardContent(
           ) : sources.status === "error" ? (
             <BlockFail t={t} onRetry={isPreview ? undefined : () => loadBlock("sources")} />
           ) : (
-            <div className="glass rounded-card p-4">
+            <div className="card p-4">
               {Array.from({ length: 5 }).map((_, i) => (
                 <Skeleton key={i} className="my-2 h-4 w-full" label={i === 0 ? t.dashboard.computing : undefined} />
               ))}
@@ -404,7 +404,7 @@ export function DashboardContent(
           ) : mirrorB.status === "error" ? (
             <BlockFail t={t} onRetry={isPreview ? undefined : () => loadBlock("mirror")} />
           ) : (
-            <div className="glass rounded-card p-5">
+            <div className="card p-5">
               <Skeleton className="h-4 w-40" label={t.dashboard.computing} />
               <Skeleton className="mt-3 h-8 w-24" />
               {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="my-2 h-3.5 w-full" />)}
@@ -426,7 +426,7 @@ export function DashboardContent(
               {t.dashboard.staleA}{STALE_THRESHOLD_HOURS}{t.dashboard.staleB}
             </p>
           )}
-          <div className="glass rounded-card p-5">
+          <div className="card p-5">
             {mirrorB.status === "ready" && mirrorB.data ? (
               <>
                 <BarList lang={lang} scale="sqrt" barClass="bg-blue"
@@ -450,7 +450,7 @@ export function DashboardContent(
             {t.dashboard.eventTitle} <FreshTag>{t.dashboard.freshLive}</FreshTag>
           </h2>
           <p className="max-w-3xl font-body text-[12px] leading-relaxed text-ink-faint">{t.dashboard.eventNote}</p>
-          <div className="glass rounded-card p-5">
+          <div className="card p-5">
             {events.status === "ready" ? (
               <>
                 <BarList lang={lang} scale="linear" barClass="bg-green"
@@ -477,22 +477,25 @@ export function DashboardContent(
           <h2 className="font-display text-[16px] font-bold text-ink">
             {t.dashboard.coverageTitle} <FreshTag>{t.dashboard.freshLive}</FreshTag>
           </h2>
-          <div className="glass rounded-card p-5">
+          <div className="card p-5">
             {immediate.status === "ready" && cov ? (
               <>
-                <BarList lang={lang} scale="linear" barClass="bg-blue"
+                {/* Coverage is a reachability gradient, so the bars carry meaning: green = fully
+                    reachable (both channels), amber = one channel only, red = unreachable. Numbers
+                    unchanged. */}
+                <BarList lang={lang} scale="linear"
                   items={[
-                    { label: t.dashboard.coverageBoth, value: cov.both },
-                    { label: t.dashboard.coverageEmailOnly, value: cov.emailOnly },
-                    { label: t.dashboard.coveragePhoneOnly, value: cov.phoneOnly },
-                    { label: t.dashboard.coverageNeither, value: cov.neither },
+                    { label: t.dashboard.coverageBoth, value: cov.both, barClass: "bg-green" },
+                    { label: t.dashboard.coverageEmailOnly, value: cov.emailOnly, barClass: "bg-amber" },
+                    { label: t.dashboard.coveragePhoneOnly, value: cov.phoneOnly, barClass: "bg-amber" },
+                    { label: t.dashboard.coverageNeither, value: cov.neither, barClass: "bg-red" },
                   ]} />
 
                 {/* Phone-only cohort caveat — a measurement note about the card (kept); the per-category
                     CSV export buttons were removed with the Exports feature (CSV was the only data exit
                     that did not honour unsubscribe). */}
                 {cov.phoneOnly > 0 && (
-                  <p className="mt-4 border-t border-glass-border pt-3 font-body text-[11px] leading-relaxed text-amber">{t.dashboard.coveragePhoneOnlyWarn}</p>
+                  <p className="mt-4 border-t border-surface-border pt-3 font-body text-[11px] leading-relaxed text-amber">{t.dashboard.coveragePhoneOnlyWarn}</p>
                 )}
 
                 {/* D1: the WhatsApp/phone caveat moved behind <Why> — collapsed, not deleted. */}
@@ -518,7 +521,7 @@ export function DashboardContent(
           {mirrorB.status === "ready" && mirrorB.data ? (
             <div className="mt-1 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
               {mirrorB.data.importRfm.map((r) => (
-                <div key={r.value} className="glass rounded-card p-4">
+                <div key={r.value} className="card p-4">
                   <div className="font-display text-[24px] font-bold leading-none text-ink">{formatCount(r.count, lang)}</div>
                   <div className="mt-1 font-mono text-[11px] text-ink-faint">{r.value === "-" ? t.dashboard.rfmNoBucket : r.value}</div>
                 </div>
@@ -529,7 +532,7 @@ export function DashboardContent(
           ) : (
             <div className="mt-1 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
               {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="glass rounded-card p-4">
+                <div key={i} className="card p-4">
                   <Skeleton className="h-6 w-16" label={i === 0 ? t.dashboard.computing : undefined} />
                   <Skeleton className="mt-2 h-3 w-12" />
                 </div>
