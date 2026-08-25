@@ -55,6 +55,9 @@ export function SendTestPanel() {
           setNotice(`${st.errMissingEnv}${r.missingEnv.join(", ")}`);
         } else if (r.error === "send_threw" && "detail" in r) {
           setNotice(`${st.errSendThrew}${r.detail ?? ""}`);
+        } else if (r.error === "unsubscribe_host_mismatch") {
+          const hosts = "linkHost" in r ? ` (${r.linkHost ?? "?"} ≠ ${r.servingHost ?? "?"})` : "";
+          setNotice(`${st.errHostMismatch}${hosts}`);
         } else {
           setNotice(errText(r.error));
         }

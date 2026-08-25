@@ -18,7 +18,8 @@ import {
   type ResumableRun,
   type RunStatus,
 } from "@/lib/crm/campaign-run";
-import { classifySendThrow } from "@/lib/crm/send-env";
+import { classifySendThrow, unsubscribeHostServable } from "@/lib/crm/send-env";
+import { headers } from "next/headers";
 import { runInternalSendTest, cleanupInternalSendTest, type SendTestResult, type SendTestCleanupResult } from "@/lib/crm/send-test-harness";
 import { extractVariables } from "@/lib/crm/template";
 
@@ -30,6 +31,26 @@ import { extractVariables } from "@/lib/crm/template";
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+/** Serving host from the request, or undefined if unavailable. */
+function servingHost(): string | undefined {
+  try {
+    return headers().get("host") ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Pre-send gate: refuse if the unsubscribe link's host ≠ the host actually serving the app. An email
+ * whose unsubscribe link is dead (points at a domain not yet resolving) is WORSE than not sending —
+ * recipients who want out can't, and mark it spam. Owner request 25 Aug 2026. Best-effort: skips only
+ * when the serving host can't be read (never blocks on "unknown").
+ */
+function unsubscribeHostBlocked(): { linkHost: string | null; servingHost: string | null } | null {
+  const r = unsubscribeHostServable(process.env.NEXT_PUBLIC_APP_URL, servingHost());
+  return r.ok ? null : { linkHost: r.linkHost, servingHost: r.servingHost };
 }
 
 /** An email template is eligible only if its body references {{unsubscribe_url}} — a campaign email
@@ -148,8 +169,11 @@ export interface SendResult {
     | "count_changed"
     | "run_not_found"
     | "run_create_failed"
-    | "send_threw"; // sendCampaign threw; the run is marked stopped + last_error (see detail)
+    | "send_threw" // sendCampaign threw; the run is marked stopped + last_error (see detail)
+    | "unsubscribe_host_mismatch"; // unsubscribe link host ≠ serving host → dead link, refuse
   detail?: string; // on 'send_threw': PII-free classified cause (also written to run.last_error)
+  linkHost?: string | null; // on 'unsubscribe_host_mismatch': the host the unsubscribe link points to
+  servingHost?: string | null; // on 'unsubscribe_host_mismatch': the host actually serving the app
   drift?: CountDrift; // recount at confirm vs what the operator saw
   freshSendable?: number; // the recounted number to show + re-press against (on count_changed)
   summary?: SendSummary;
@@ -175,6 +199,10 @@ export async function sendCampaignAction(args: {
   if (!seg) return { ok: false, error: "not_found" };
   if (seg.requiresClinical && !isPermitted(role, "profile.view_health")) return { ok: false, error: "clinical_gate" };
   if (!(await templateHasUnsubscribe(args.templateKey))) return { ok: false, error: "no_unsubscribe" };
+
+  // Refuse before any run is created if the unsubscribe link would be dead (host ≠ serving host).
+  const hostBlock = unsubscribeHostBlocked();
+  if (hostBlock) return { ok: false, error: "unsubscribe_host_mismatch", linkHost: hostBlock.linkHost, servingHost: hostBlock.servingHost };
 
   const stamp = nowIso();
   // RECOUNT at confirm — the shown number may be stale. Disclose any drift BEFORE the send counts.
@@ -287,6 +315,9 @@ export type InternalTestResult = SendTestResult | { ok: false; error: "denied" }
 export async function runInternalSendTestAction(): Promise<InternalTestResult> {
   const role = await getCurrentUserRole();
   if (grantFor(role, "send.at_or_below_threshold") === "deny") return { ok: false, error: "denied" };
+  // Same host gate as the real send: refuse if the test email's unsubscribe link would be dead.
+  const hostBlock = unsubscribeHostBlocked();
+  if (hostBlock) return { ok: false, error: "unsubscribe_host_mismatch", linkHost: hostBlock.linkHost, servingHost: hostBlock.servingHost };
   let actorId = "unknown";
   let actorEmail: string | null = null;
   try {

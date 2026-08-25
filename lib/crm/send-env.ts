@@ -54,3 +54,41 @@ export function classifySendThrow(e: unknown): string {
   if (msg.includes("No active email template")) return "no_active_template";
   return "unexpected_error";
 }
+
+/** The base URL a send falls back to when NEXT_PUBLIC_APP_URL is unset. MUST match send-campaign's
+ *  fallback — the unsubscribe link is built from it, so the host check must judge the same value. */
+export const DEFAULT_APP_URL = "https://crm.20fit.id";
+
+/** Hostname (lowercased, no scheme/port/path) of a URL or bare host string. Null if unparseable. */
+export function hostOf(url: string | undefined | null): string | null {
+  if (!url || !url.trim()) return null;
+  const raw = url.trim();
+  try {
+    const h = new URL(raw).hostname.toLowerCase();
+    if (h) return h; // a bare "host:port" parses with an empty hostname → fall through to manual
+  } catch {
+    // not a full URL → manual parse below
+  }
+  return raw.replace(/^https?:\/\//i, "").split("/")[0].split(":")[0].trim().toLowerCase() || null;
+}
+
+/**
+ * The unsubscribe link a campaign sends is built from NEXT_PUBLIC_APP_URL (or the crm.20fit.id
+ * fallback). If that host is NOT the host actually serving the app, the link is DEAD — a recipient
+ * who wants to unsubscribe can't, and marks the mail spam instead. That is the most damaging failure
+ * in a campaign email, so a send whose unsubscribe host ≠ the serving host must be REFUSED (an email
+ * with a dead unsubscribe link is worse than not sending). Reuse: set NEXT_PUBLIC_APP_URL to the host
+ * you actually serve from (the Railway host until DNS for crm.20fit.id resolves), then it matches.
+ *
+ * Best-effort on the serving host: if it can't be determined (no Host header), we do NOT block —
+ * the check needs a real host to compare against, and refusing on "unknown" would be its own footgun.
+ */
+export function unsubscribeHostServable(
+  appUrl: string | undefined,
+  servingHost: string | undefined | null,
+): { ok: boolean; linkHost: string | null; servingHost: string | null } {
+  const linkHost = hostOf(appUrl && appUrl.trim() ? appUrl : DEFAULT_APP_URL);
+  const serving = servingHost ? servingHost.split(",")[0].split(":")[0].trim().toLowerCase() || null : null;
+  if (!serving) return { ok: true, linkHost, servingHost: null }; // can't compare → don't block
+  return { ok: linkHost === serving, linkHost, servingHost: serving };
+}

@@ -40,6 +40,7 @@ export const ROLES = [
   "unit_manager",
   "analyst",
   "data_steward",
+  "viewer",
 ] as const;
 
 export type Role = (typeof ROLES)[number];
@@ -82,8 +83,14 @@ export const PRD_ACTIONS = [
  *     K-32). NOT in PRD 17.2. Writing customer data is a larger authority than reading it, but
  *     this write CANNOT overwrite (fill-empty-only, K-14) and every write is audited as
  *     staff_entry — so it is the lowest-authority write path. Pending Jeff approval.
+ *
+ *   role.granted — grant/change a CRM role (write to crm_user_role). NOT in PRD 17.2 (which never
+ *     modeled role administration). SUPER-ADMIN EXCLUSIVE (K-43): the ability to hand out roles is
+ *     the ability to hand out every other permission, so it sits above the whole matrix and is
+ *     denied to EVERY other role — CRM Manager and Viewer included. The three-role model (K-43)
+ *     states this explicitly. canManageRoles() is the one predicate that gates it.
  */
-export const EXTENSION_ACTIONS = ["profile.edit_demographic"] as const;
+export const EXTENSION_ACTIONS = ["profile.edit_demographic", "role.granted"] as const;
 
 export const ACTIONS = [...PRD_ACTIONS, ...EXTENSION_ACTIONS] as const;
 
@@ -107,6 +114,7 @@ export type Grant =
 const MATRIX: Record<Role, Record<Action, Grant>> = {
   super_admin: {
     "profile.edit_demographic": "allow", // EXTENSION (not PRD 17.2) — see EXTENSION_ACTIONS / K-32
+    "role.granted": "allow", // EXTENSION — the ONLY role that may hand out roles (K-43)
     "profile.view_list": "allow",
     "profile.view_contact": "allow",
     "profile.view_health": "allow",
@@ -125,6 +133,7 @@ const MATRIX: Record<Role, Record<Action, Grant>> = {
   },
   crm_manager: {
     "profile.edit_demographic": "allow", // EXTENSION (not PRD 17.2) — see EXTENSION_ACTIONS / K-32
+    "role.granted": "deny", // K-43 — CRM Manager may NOT add/change roles (super-admin exclusive)
     "profile.view_list": "allow",
     "profile.view_contact": "allow",
     "profile.view_health": "allow",
@@ -146,6 +155,7 @@ const MATRIX: Record<Role, Record<Action, Grant>> = {
     // on the call who actually obtains a birth date from the customer; excluding them makes the
     // feature rarely usable, and the write is fill-empty-only + audited (lowest-authority write).
     "profile.edit_demographic": "allow",
+    "role.granted": "deny", // K-43 — super-admin exclusive
     "profile.view_list": "allow",
     "profile.view_contact": "allow",
     "profile.view_health": "deny",
@@ -170,6 +180,7 @@ const MATRIX: Record<Role, Record<Action, Grant>> = {
     // "own unit" everywhere the PRD grants scoped access. scopeRequired -> until a
     // unit scope exists, resolveGrant turns every own_unit into needs_scope = DENY.
     "profile.edit_demographic": "own_unit", // EXTENSION (not PRD 17.2) — fail-closed until scope exists
+    "role.granted": "deny", // K-43 — super-admin exclusive
     "profile.view_list": "own_unit",
     "profile.view_contact": "own_unit",
     "profile.view_health": "deny",
@@ -188,6 +199,7 @@ const MATRIX: Record<Role, Record<Action, Grant>> = {
   },
   analyst: {
     "profile.edit_demographic": "deny", // EXTENSION (not PRD 17.2) — analyst has no contact/write access
+    "role.granted": "deny", // K-43 — super-admin exclusive
     "profile.view_list": "masked", // sees the list; phone/email masked server-side
     "profile.view_contact": "deny",
     "profile.view_health": "deny",
@@ -206,6 +218,7 @@ const MATRIX: Record<Role, Record<Action, Grant>> = {
   },
   data_steward: {
     "profile.edit_demographic": "allow", // EXTENSION (not PRD 17.2) — the data-curation role; NIK/DOB dedup
+    "role.granted": "deny", // K-43 — super-admin exclusive
     "profile.view_list": "allow",
     "profile.view_contact": "allow",
     "profile.view_health": "deny",
@@ -219,6 +232,34 @@ const MATRIX: Record<Role, Record<Action, Grant>> = {
     "consent.edit": "allow",
     "profile.merge": "allow",
     "profile.delete": "request",
+    "audit.view": "deny",
+    killswitch: "deny",
+  },
+  // VIEWER (K-43, three-role model). STRICTLY view-only — "hanya melihat data". Every write/execute
+  // action is deny: no segment SAVE (a saved segment is a write → separates Viewer from analyst,
+  // which allows segment.build), no export (so clear-or-masked contact can be READ but never
+  // EXTRACTED in bulk), no send, no template edit, no consent, no merge/delete, no role admin.
+  // CONTACT: MASKED (view_contact = deny). Decision K-43: the only clear-contact grant is
+  // profile.view_contact, but per K-31 that gate ALSO reveals NIK/DOB/gender/province/address/
+  // emergency-contact — far more than "verify a phone/email" needs, to the lowest-trust role. So
+  // Viewer ships masked; if verification genuinely needs clear phone/email, the right fix is a
+  // NARROW contact-only gate (a deliberate proposal), not handing Viewer the whole identity gate.
+  viewer: {
+    "profile.edit_demographic": "deny",
+    "role.granted": "deny", // K-43 — super-admin exclusive (the WAJIB: Viewer must never touch this)
+    "profile.view_list": "masked",
+    "profile.view_contact": "deny", // masked in the list (see decision above)
+    "profile.view_health": "deny",
+    "segment.build": "deny", // saving a segment is a write — Viewer only looks
+    "export.at_or_below_threshold": "deny",
+    "export.above_threshold": "deny",
+    "workflow.create": "deny",
+    "workflow.activate": "deny",
+    "send.at_or_below_threshold": "deny",
+    "send.above_threshold": "deny",
+    "consent.edit": "deny",
+    "profile.merge": "deny",
+    "profile.delete": "deny",
     "audit.view": "deny",
     killswitch: "deny",
   },
@@ -338,6 +379,16 @@ export function canSeeContactPII(role: unknown, ctx: AccessContext = {}): boolea
 
 export function canSeeMedical(role: unknown, ctx: AccessContext = {}): boolean {
   return isPermitted(role, "profile.view_health", ctx);
+}
+
+/**
+ * THE role-administration gate, in ONE place (K-43). May this role grant/change CRM roles? SUPER
+ * ADMIN ONLY — handing out roles is handing out every other permission, so it sits above the whole
+ * matrix. CRM Manager and Viewer (and everyone else) are denied. Every server path that writes
+ * crm_user_role MUST gate on this; a UI that merely hides the control is not enough. Fail-closed.
+ */
+export function canManageRoles(role: unknown, ctx: AccessContext = {}): boolean {
+  return isPermitted(role, "role.granted", ctx);
 }
 
 /**

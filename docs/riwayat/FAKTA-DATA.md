@@ -433,3 +433,34 @@ dengan yang lama"** (updateUser 422) — persis diagnosis kami. Pesan lama menye
 **Konsekuensi untuk kampanye:** ini juga membuktikan **Mailtrap + DNS bekerja untuk pengiriman
 NYATA** (bukan hanya reset). Satu-satunya penghalang kampanye yang tersisa = **rotasi token**.
 Butir "reset belum terbukti" **diturunkan** dari daftar yang menggantung.
+
+## Rantai kirim kampanye — TERBUKTI ujung ke ujung di produksi, termasuk webhook (25 Agu 2026)
+
+Kirim internal pertama berhasil dan **diverifikasi independen dari DB produksi** (bukan dashboard):
+
+| Bukti | Nilai |
+|---|---|
+| `crm_message_log` | **1 baris**, `status = delivered` |
+| `provider_message_id` | `bf46a730-a05c-11f1-0040-f1e5b703f128` — **nilai nyata pertama** (sebelumnya hanya kontrak) |
+| `sent_at` | 2026-08-25 08:12:42 |
+| `delivered_at` | 2026-08-25 08:12:43 — **webhook Mailtrap BEKERJA** |
+| audit `campaign.sent` | **tepat 1** |
+| `crm_campaign_run` | `status = sent` |
+| `crm_suppression` | **0** (tautan unsubscribe belum bisa diklik — DNS, lihat bawah) |
+
+**`delivered_at` terisi membuktikan jalur webhook end-to-end:** tanda tangan HMAC lolos, korelasi
+lewat `provider_message_id` menemukan barisnya, cap waktu ditulis. Itu jalur yang sebelumnya hanya
+kontrak terdokumentasi (CVE-2026-45755 dihindari — secret benar-benar dipakai).
+
+**Butir "belum pernah dijalankan" DITURUNKAN** (menumpuk sejak contacting-half dibangun): jalur kirim,
+idempotensi/resume (`crm_campaign_run` sent), audit `campaign.sent`, `crm_message_log` +
+`provider_message_id`, dan **webhook delivered** — semuanya kini terbukti dengan baris nyata.
+
+**Satu yang MASIH menunggu — unsubscribe (DNS):** tautan menunjuk `https://crm.20fit.id/unsubscribe`
+sementara domain itu belum resolve ("Waiting for DNS update"), jadi tak bisa diklik dan
+`crm_suppression` tetap 0 — konsisten. **Pengaman ditambah (25 Agu):** kirim kini DITOLAK bila host
+tautan unsubscribe ≠ host yang melayani aplikasi (email dengan unsubscribe mati lebih buruk daripada
+tak mengirim). Owner harus set `NEXT_PUBLIC_APP_URL` ke host yang benar (host Railway sampai DNS beres).
+
+**Bug jejak yang ikut diperbaiki:** `template_key` sempat NULL di baris itu (harness melewatinya);
+kini diisi saat `claim` untuk SEMUA kirim, dan baris historis di-backfill (`__uji_internal__` v1).

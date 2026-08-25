@@ -78,6 +78,7 @@ export function CampaignComposer({
       case "run_not_found": return cc.errRunNotFound;
       case "run_create_failed": return cc.errRunCreate;
       case "send_threw": return cc.errSendThrew;
+      case "unsubscribe_host_mismatch": return cc.errHostMismatch;
       default: return cc.errNotFound;
     }
   };

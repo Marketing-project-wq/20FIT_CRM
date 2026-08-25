@@ -33,6 +33,7 @@ export type SendTestFailure =
   | "no_target_configured" // SEND_TEST_INTERNAL_ADDRESS unset
   | "target_not_internal" // env target is not an @20fit.id address
   | "missing_env" // one or more required send vars unset — ALL reported at once (see missingEnv)
+  | "unsubscribe_host_mismatch" // unsubscribe link host ≠ serving host → dead link, refuse
   | "template_seed_failed"
   | "segment_seed_failed"
   | "run_create_failed"
@@ -52,6 +53,8 @@ export interface SendTestResult {
   error?: SendTestFailure;
   missingEnv?: string[]; // on 'missing_env': the FULL list of missing required vars, not just the first
   detail?: string; // on 'send_threw': the PII-free classified cause (also written to run.last_error)
+  linkHost?: string | null; // on 'unsubscribe_host_mismatch'
+  servingHost?: string | null; // on 'unsubscribe_host_mismatch'
   // Artifacts for the 7-point report (all read back from the real tables after the send):
   targetMasked?: string; // the internal address, lightly masked for display
   runId?: string;

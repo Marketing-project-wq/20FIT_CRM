@@ -237,6 +237,12 @@ export async function sendCampaign(input: CampaignSendInput, nowIso: string): Pr
       return suppressed.has(customerId);
     },
     async claim(key, meta) {
+      // template_key/version are stamped AT CLAIM so "what this person actually received" is
+      // answerable years later (the column's whole purpose). The key is known up front; the version
+      // is the one that will render for this recipient's language (templates loaded above). Filling
+      // it here covers BOTH the real campaign path and the internal harness (shared adapter) — the
+      // harness previously left it NULL.
+      const tplForRow = templates[meta.language] ?? templates.id ?? templates.en;
       const { error } = await admin.from("crm_message_log").insert({
         idempotency_key: key,
         customer_id: meta.customerId,
@@ -244,6 +250,8 @@ export async function sendCampaign(input: CampaignSendInput, nowIso: string): Pr
         campaign_id: meta.campaignId,
         identity_hash: meta.identityHash,
         language: meta.language,
+        template_key: input.templateKey,
+        template_version: tplForRow?.version ?? null,
         status: "queued",
       });
       if (!error) return true;

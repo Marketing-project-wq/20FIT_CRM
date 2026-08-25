@@ -830,3 +830,37 @@ Diperbaiki dengan pagar pemindai-sumber (pola yang sama dengan pagar reset), buk
 lalu pagar memberi tahu yang terlewat". Flip `profile` `PENDING`→`BILINGUAL` nanti = tambah berkasnya
 sudah ada di `SCREEN_FILES`, terjemahkan, dan pagar membuktikan flip itu. Berguna untuk tiap layar
 berikutnya, bukan sekali pakai.
+
+## K-43 · Model tiga peran (Super Admin / CRM Manager / Viewer) + pemberian peran eksklusif Super Admin
+
+Pemilik produk (25 Agu 2026) menyatakan sistem ini mengekspos **tiga peran**. Dipetakan ke matriks
+PRD 17.2 yang ada — **tidak membuat peran baru bila yang ada cocok** — plus satu peran baru untuk
+Viewer dan satu aksi baru untuk administrasi peran:
+
+- **Super Admin = `super_admin`** (cocok persis).
+- **CRM Manager = `crm_manager`** (nyaris persis: baca semua layar, kirim email+WA, susun workflow,
+  consent; TIDAK merge/delete). **Selisih yang dilaporkan:** matriks memberi `crm_manager`
+  `killswitch = allow` — uraian tiga-peran diam soal kill switch; dibiarkan sesuai PRD (mengubahnya =
+  perubahan PRD, bukan kode).
+- **Viewer = peran BARU `viewer`.** `analyst` yang paling dekat (list masked, view-only) **tapi
+  `analyst` boleh `segment.build`** — menyimpan segmen adalah tulis, melanggar "hanya melihat". Jadi
+  Viewer = analyst **minus** `segment.build`; setiap aksi tulis/eksekusi `deny`.
+
+**Keputusan Viewer melihat kontak tersamar atau terang → TERSAMAR (masked).** Argumen: satu-satunya
+gerbang kontak-terang adalah `profile.view_contact`, tapi lewat **K-31** gerbang itu **juga**
+membuka NIK/DOB/gender/provinsi/alamat/kontak darurat — jauh lebih dari "memastikan nomor/email
+benar", ke peran paling rendah kepercayaannya. Biaya itu tak sepadan. Kalau verifikasi memang butuh
+telepon/email terang, perbaikan yang benar adalah **gerbang kontak-sempit baru** (usulan tersendiri),
+bukan menyerahkan seluruh gerbang identitas ke Viewer. Bisa dibalik pemilik produk: satu sel
+(`viewer.profile.view_contact` → `allow`) menerima biaya NIK, atau minta gerbang sempit.
+
+**Aksi baru `role.granted` (EXTENSION, bukan PRD) — EKSKLUSIF SUPER ADMIN.** Memberi peran = memberi
+seluruh izin peran itu, jadi ia duduk di atas seluruh matriks: `super_admin = allow`, **semua** yang
+lain (termasuk CRM Manager dan Viewer) `deny`. Digerbang oleh satu predikat `canManageRoles()`; jalur
+tulis `crm_user_role` (server action `grantRoleAction`) memeriksanya ulang di server (UI yang
+menyembunyikan kontrol bukan gerbang) dan mengaudit `role.granted` (sudah famili `role.` yang
+disimpan permanen). Test mengunci bahwa CRM Manager & Viewer tak bisa menyentuhnya (terbukti bergigit).
+
+**Status:** peran + aksi ini EXTENSION di luar PRD 17.2, dicatat terpisah (seperti K-32), **menunggu
+persetujuan Jeff**. Ketiga akun produksi masih `super_admin`; cara memberi peran disiapkan tapi
+**tidak dijalankan agen** (tindakan pemilik produk).

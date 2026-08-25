@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getCurrentUserRole } from "@/lib/auth/current-role";
-import { isPermitted, resolveGrant } from "@/lib/auth/roles";
+import { isPermitted, resolveGrant, canManageRoles } from "@/lib/auth/roles";
 import { Badge } from "@/components/ui/badge";
 import { RolesPanel } from "@/components/settings/roles-panel";
+import { RoleGrantForm } from "@/components/settings/role-grant-form";
 import { getServerDict } from "@/lib/i18n/server";
 
 export const metadata: Metadata = { title: "Roles" };
@@ -49,6 +50,9 @@ export default async function RolesPage() {
         </Link>
       </div>
       <RolesPanel />
+      {/* Role granting is SUPER-ADMIN EXCLUSIVE (K-43). CRM Manager can see this page (audit.view) but
+          NOT this form; the server action re-checks canManageRoles regardless. */}
+      {canManageRoles(role) && <RoleGrantForm />}
     </div>
   );
 }
