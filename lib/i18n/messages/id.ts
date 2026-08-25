@@ -646,7 +646,8 @@ export const id = {
   // literal ", " separators, so only the prose is a dict key.
   audit: {
     settingsTitle: "Settings",
-    settingsSubtitle: "Tata kelola: peran RBAC dan jejak audit. Keduanya read-only di sprint ini.",
+    settingsSubtitle: "Tata kelola: peran RBAC (beri, ubah, cabut — khusus Super Admin), jejak audit (baca), arsip consent (baca), dan status WhatsApp Business API.",
+    emailUnresolved: "email tak teresolusi",
     diagnostikLink: "Buka Diagnostik — status verifikasi & pemeriksaan lapisan baca",
     pageDeniedRole: "Pengaturan (peran & audit log) hanya untuk super_admin dan crm_manager. Bila RBAC belum di-provision, semua akses ditolak — ini perilaku fail-closed yang benar.",
     // roles panel

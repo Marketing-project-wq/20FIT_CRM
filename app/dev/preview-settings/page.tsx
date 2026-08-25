@@ -27,11 +27,26 @@ const AUDIT_ROWS = [
   { t: "25 Agu 07:48", actor: "tifany@20fit.id", action: "list.viewed", ret: "Operasional", target: "master_customer" },
   { t: "24 Agu 14:02", actor: "system:password-reset", action: "login.password_reset_requested", ret: "Operasional", target: "auth.users" },
 ];
-const ROLE_ROWS = [
-  { email: "tifany@20fit.id", role: "super_admin", granted: "2026-08-11" },
-  { email: "zidni@20fit.id", role: "super_admin", granted: "2026-08-11" },
-  { email: "marketing@20fit.id", role: "super_admin", granted: "2026-08-12" },
+const ROLE_ROWS: { email?: string; userId: string; role: string; granted: string }[] = [
+  { email: "tifany@20fit.id", userId: "…", role: "super_admin", granted: "2026-08-11" },
+  { email: "zidni@20fit.id", userId: "…", role: "super_admin", granted: "2026-08-11" },
+  { email: "marketing@20fit.id", userId: "…", role: "super_admin", granted: "2026-08-12" },
+  // Honest handling when an email genuinely can't be resolved (T-33): the uuid is shown WITH a tag, not
+  // passed off as the answer. (Illustrative row — not a real member.)
+  { userId: "61a71f7f-1840-4226-9747-2e0b0ec70ebe", role: "viewer", granted: "2026-08-25" },
 ];
+
+function Ident({ email, userId }: { email?: string; userId: string }) {
+  if (email) return <>{email}</>;
+  return (
+    <span className="text-ink-faint">
+      {userId}
+      <span className="ml-1.5 rounded-sm bg-glass px-1.5 py-0.5 font-display text-[10px] font-bold uppercase tracking-wide text-ink-soft">
+        email tak teresolusi
+      </span>
+    </span>
+  );
+}
 
 function SectionLabel({ title, note }: { title: string; note: string }) {
   return (
@@ -117,8 +132,8 @@ export default function PreviewSettings() {
                 </thead>
                 <tbody className="font-body text-[14px] text-ink">
                   {ROLE_ROWS.map((r) => (
-                    <tr key={r.email} className="border-b border-glass-border last:border-0">
-                      <td className="px-4 py-3 font-mono text-[13px]">{r.email}</td>
+                    <tr key={r.userId + r.granted} className="border-b border-glass-border last:border-0">
+                      <td className="px-4 py-3 font-mono text-[13px]"><Ident email={r.email} userId={r.userId} /></td>
                       <td className="px-4 py-3"><Badge tone="neutral">{r.role}</Badge></td>
                       <td className="px-4 py-3 font-mono text-[12px] text-ink-soft">{r.granted}</td>
                     </tr>
@@ -129,9 +144,9 @@ export default function PreviewSettings() {
             {/* Narrow: cards */}
             <div className="flex flex-col gap-2 md:hidden">
               {ROLE_ROWS.map((r) => (
-                <div key={r.email} className="rounded-card border border-glass-border p-3">
+                <div key={r.userId + r.granted} className="rounded-card border border-glass-border p-3">
                   <div className="flex items-start justify-between gap-2">
-                    <span className="min-w-0 break-all font-mono text-[13px] text-ink">{r.email}</span>
+                    <span className="min-w-0 break-all font-mono text-[13px] text-ink"><Ident email={r.email} userId={r.userId} /></span>
                     <Badge tone="neutral">{r.role}</Badge>
                   </div>
                   <p className="mt-1 font-mono text-[12px] text-ink-faint">Diberikan: {r.granted}</p>

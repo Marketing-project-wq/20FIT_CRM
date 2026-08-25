@@ -11,12 +11,13 @@
  * state-dependent guards.
  */
 
-import { isRole, ROLES, type Role } from "./roles";
+import { isActiveRole, ACTIVE_ROLES, type Role } from "./roles";
 
-/** Roles offered in the grant/change dropdown. Lives HERE (a plain module), not in the "use server"
- *  actions file — a "use server" module may only export async functions, so a const exported from it
- *  becomes an unusable stub on the client. The form imports this and the types below from here. */
-export const GRANTABLE_ROLES = ROLES;
+/** Roles offered in the grant/change dropdown — the THREE active roles only (K-44), not all seven.
+ *  Lives HERE (a plain module), not in the "use server" actions file — a "use server" module may only
+ *  export async functions, so a const exported from it becomes an unusable stub on the client (T-32).
+ *  The form imports this and the types below from here. */
+export const GRANTABLE_ROLES = ACTIVE_ROLES;
 
 export type RoleChangeError = "bad_role" | "self_demote" | "last_super_admin" | "not_assigned";
 
@@ -50,7 +51,7 @@ export interface RoleState {
  * Re-granting yourself super_admin is a no-op and allowed; promoting anyone is always allowed.
  */
 export function evaluateGrant(newRole: string, s: RoleState): RoleChangeError | null {
-  if (!isRole(newRole)) return "bad_role";
+  if (!isActiveRole(newRole)) return "bad_role"; // only the three active roles may be granted (K-44)
   const isSelf = s.targetUserId === s.actorUserId;
   const demotes = newRole !== "super_admin";
   if (isSelf && demotes && s.targetCurrentRole === "super_admin") return "self_demote";

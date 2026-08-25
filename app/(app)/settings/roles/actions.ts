@@ -3,8 +3,9 @@
 import { getCurrentUserRole } from "@/lib/auth/current-role";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { canManageRoles, isRole, type Role } from "@/lib/auth/roles";
+import { canManageRoles, isActiveRole, isRole, type Role } from "@/lib/auth/roles";
 import { evaluateGrant, evaluateRevoke, type RoleState, type RoleActionResult } from "@/lib/auth/role-admin";
+import { findUserIdByEmail } from "@/lib/auth/user-directory";
 import { logApiFailure } from "@/lib/crm/failure-log";
 
 // NOTE: a "use server" module may ONLY export async functions. GRANTABLE_ROLES, RoleActionError, and
@@ -39,19 +40,6 @@ async function resolveActor(): Promise<Actor> {
     return { id: data.user?.id ?? "unknown", email: data.user?.email ?? null };
   } catch {
     return { id: "unknown", email: null };
-  }
-}
-
-/** Resolve an email to an EXISTING auth.users id. Returns null if no account has that email — we do
- *  not create accounts from the CRM. */
-async function resolveEmailToUserId(email: string): Promise<string | null> {
-  try {
-    const admin = createAdminClient();
-    const { data: list } = await admin.auth.admin.listUsers();
-    const match = (list?.users ?? []).find((u) => (u.email ?? "").toLowerCase() === email);
-    return match?.id ?? null;
-  } catch {
-    return null;
   }
 }
 
@@ -96,13 +84,15 @@ async function writeAudit(actor: Actor, action: "role.granted" | "role.revoked",
 export async function grantRoleAction(input: { email: string; role: string }): Promise<RoleActionResult> {
   const actorRole = await getCurrentUserRole();
   if (!canManageRoles(actorRole)) return { ok: false, error: "denied" };
-  if (!isRole(input.role)) return { ok: false, error: "bad_role" };
+  // Only ACTIVE roles may be granted (K-44): a retired PRD role can't be handed out via crafted input,
+  // even though it still exists in the matrix for parity. Defense-in-depth over the dropdown.
+  if (!isActiveRole(input.role)) return { ok: false, error: "bad_role" };
 
   const email = input.email.trim().toLowerCase();
   if (!email) return { ok: false, error: "user_not_found" };
 
   const actor = await resolveActor();
-  const targetUserId = await resolveEmailToUserId(email);
+  const targetUserId = await findUserIdByEmail(email);
   if (!targetUserId) return { ok: false, error: "user_not_found" };
 
   const state = await loadRoleState(actor.id, targetUserId);
@@ -148,7 +138,7 @@ export async function revokeRoleAction(input: { email: string }): Promise<RoleAc
   if (!email) return { ok: false, error: "user_not_found" };
 
   const actor = await resolveActor();
-  const targetUserId = await resolveEmailToUserId(email);
+  const targetUserId = await findUserIdByEmail(email);
   if (!targetUserId) return { ok: false, error: "user_not_found" };
 
   const state = await loadRoleState(actor.id, targetUserId);

@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { resolveUserEmails } from "@/lib/auth/user-directory";
 import { Badge } from "@/components/ui/badge";
 import { getServerDict } from "@/lib/i18n/server";
 
@@ -25,17 +26,27 @@ async function loadRoleRows(): Promise<LoadResult> {
     if (error) return { state: "not_provisioned" };
 
     const rows = (data ?? []) as RoleRow[];
-    const emails: Record<string, string> = {};
-    try {
-      const { data: list } = await admin.auth.admin.listUsers();
-      for (const u of list?.users ?? []) if (u.email) emails[u.id] = u.email;
-    } catch {
-      // Email resolution is best-effort; fall back to the user_id.
-    }
+    // Resolve each member's email by ITS id (getUserById), not a page-1 listUsers() dump — the shared
+    // 935-account pool put members past page 1 and made the table show UUIDs (T-33).
+    const emails = await resolveUserEmails(rows.map((r) => r.user_id));
     return { state: "ready", rows, emails };
   } catch {
     return { state: "not_provisioned" };
   }
+}
+
+/** Show the member's email. If it truly can't be resolved, SAY SO (a tagged uuid) rather than passing
+ *  the uuid off as the answer (LARANGAN / T-33). */
+function Identity({ email, userId, unresolvedLabel }: { email?: string; userId: string; unresolvedLabel: string }) {
+  if (email) return <>{email}</>;
+  return (
+    <span className="text-ink-faint">
+      {userId}
+      <span className="ml-1.5 rounded-sm bg-glass px-1.5 py-0.5 font-display text-[10px] font-bold uppercase tracking-wide not-italic text-ink-soft">
+        {unresolvedLabel}
+      </span>
+    </span>
+  );
 }
 
 export async function RolesPanel() {
@@ -67,8 +78,9 @@ export async function RolesPanel() {
         </div>
       ) : (
         <>
-          {/* Wide: table. Identity shown as EMAIL (resolved from auth.users for THIS user only, never a
-              directory dump); the uuid is only a fallback when the email can't be resolved. TUGAS 3. */}
+          {/* Wide: table. Identity shown as EMAIL, resolved by getUserById for THIS member only (never a
+              directory dump). If it truly can't resolve, the cell says so — it does not pass a uuid off
+              as the answer (T-33). */}
           <div className="hidden overflow-x-auto rounded-card border border-glass-border md:block">
             <table className="w-full border-collapse text-left">
               <thead>
@@ -81,7 +93,9 @@ export async function RolesPanel() {
               <tbody className="font-body text-[14px] text-ink">
                 {result.rows.map((r) => (
                   <tr key={r.user_id} className="border-b border-glass-border last:border-0">
-                    <td className="px-4 py-3 font-mono text-[13px]">{result.emails[r.user_id] ?? r.user_id}</td>
+                    <td className="px-4 py-3 font-mono text-[13px]">
+                      <Identity email={result.emails[r.user_id]} userId={r.user_id} unresolvedLabel={t.audit.emailUnresolved} />
+                    </td>
                     <td className="px-4 py-3">
                       <Badge tone="neutral">{r.role}</Badge>
                     </td>
@@ -99,7 +113,7 @@ export async function RolesPanel() {
               <div key={r.user_id} className="rounded-card border border-glass-border p-3">
                 <div className="flex items-start justify-between gap-2">
                   <span className="min-w-0 break-all font-mono text-[13px] text-ink">
-                    {result.emails[r.user_id] ?? r.user_id}
+                    <Identity email={result.emails[r.user_id]} userId={r.user_id} unresolvedLabel={t.audit.emailUnresolved} />
                   </span>
                   <Badge tone="neutral">{r.role}</Badge>
                 </div>

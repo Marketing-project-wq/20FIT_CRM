@@ -864,3 +864,28 @@ disimpan permanen). Test mengunci bahwa CRM Manager & Viewer tak bisa menyentuhn
 **Status:** peran + aksi ini EXTENSION di luar PRD 17.2, dicatat terpisah (seperti K-32), **menunggu
 persetujuan Jeff**. Ketiga akun produksi masih `super_admin`; cara memberi peran disiapkan tapi
 **tidak dijalankan agen** (tindakan pemilik produk).
+
+## K-44 · Tiga peran AKTIF saja (Super Admin / CRM Manager / Viewer) — empat peran PRD 17.2 lain dipensiunkan, TAPI tetap di matriks
+
+**Keputusan pemilik produk (25 Agu 2026):** hanya tiga peran yang dipakai — `super_admin`,
+`crm_manager`, `viewer`. Empat lainnya (`crm_operator`, `unit_manager`, `analyst`, `data_steward`)
+dipensiunkan dari pemakaian.
+
+**Pilihan implementasi (dipertimbangkan, dan alasannya):** ada dua cara — (A) hapus keempat peran dari
+`ROLES`/`MATRIX`, atau (B) biarkan di matriks tapi tak bisa diberikan. **Dipilih B.** Alasan: matriks
+sengaja dijaga sama-persis dengan PRD 17.2 (enam peran, disetujui Jeff 10 Agu) sejak Sprint 3A —
+menghapus empat baris membuat matriks tak lagi mencerminkan PRD, dan pembalikannya mahal. B menjaga
+paritas PRD dan membuat pembalikan **satu baris** (`ACTIVE_ROLES`), dengan ongkos: empat baris matriks
+jadi kode tak-terpakai (dianggap sepadan demi paritas + reversibilitas).
+
+**Penyimpangan dari PRD — DITANDAI, bukan diselundupkan:** ini deviasi dari PRD 17.2, dicatat
+bertanggal dan **menunggu Jeff**, persis seperti K-32 (`profile.edit_demographic`) dan K-43 (`viewer`).
+Matriks tetap enam peran; yang berubah hanya: peran pensiunan (a) **tak ditawarkan** — `GRANTABLE_ROLES
+= ACTIVE_ROLES` (dropdown tiga), dan (b) **tak dihormati** — `effectiveRole()` memetakan peran
+tersimpan yang tak-aktif ke `null`.
+
+**Yang WAJIB (fail-closed):** bila suatu saat ada baris `crm_user_role` berisi peran pensiunan (mis.
+`analyst`), sistem memperlakukannya **sebagai tanpa akses**, bukan peran dikenal yang lolos.
+`getCurrentUserRole()` menjalankan tiap nilai tersimpan lewat `effectiveRole()`; test mengunci ini
+(retired → `null` → ditolak di setiap aksi). Tidak ada baris `crm_user_role` yang dihapus — ketiga
+akun produksi `super_admin`, aman.

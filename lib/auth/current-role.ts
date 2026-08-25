@@ -2,7 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { isRole, type Role } from "./roles";
+import { effectiveRole, type Role } from "./roles";
 
 /**
  * Resolve the signed-in user's CRM role. FAIL-CLOSED: any uncertainty resolves to
@@ -40,7 +40,10 @@ export const getCurrentUserRole = cache(async (): Promise<Role | null> => {
       .eq("user_id", userId)
       .maybeSingle();
     if (error || !data) return null; // missing table / no row / query error -> fail closed
-    return isRole(data.role) ? data.role : null; // unknown stored value -> deny
+    // FAIL-CLOSED on the stored value. effectiveRole() denies BOTH an unknown string AND a retired
+    // PRD role (analyst / crm_operator / unit_manager / data_steward) that is no longer active (K-44):
+    // a stale grant must read as no-access, never quietly grant the retired role's permissions.
+    return effectiveRole(data.role);
   } catch {
     return null; // admin client unavailable (e.g. no service-role key) -> fail closed
   }

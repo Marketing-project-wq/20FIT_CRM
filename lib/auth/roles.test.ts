@@ -8,6 +8,9 @@ import {
   canSeeMedical,
   canManageRoles,
   canSeeNav,
+  effectiveRole,
+  isActiveRole,
+  ACTIVE_ROLES,
   ROLES,
   ACTIONS,
   PRD_ACTIONS,
@@ -216,6 +219,42 @@ describe("fail-closed resolution", () => {
   it("masked counts as permitted to open the list", () => {
     expect(resolveGrant("analyst", "profile.view_list")).toBe("masked");
     expect(isPermitted("analyst", "profile.view_list")).toBe(true);
+  });
+});
+
+describe("three active roles only, retired PRD roles fail closed (K-44)", () => {
+  const RETIRED: Role[] = ["crm_operator", "unit_manager", "analyst", "data_steward"];
+
+  it("ACTIVE_ROLES is exactly the three the product uses", () => {
+    expect([...ACTIVE_ROLES].sort()).toEqual(["crm_manager", "super_admin", "viewer"]);
+  });
+
+  it("the four dropped PRD roles are NOT active", () => {
+    for (const r of RETIRED) expect(isActiveRole(r)).toBe(false);
+    for (const r of ACTIVE_ROLES) expect(isActiveRole(r)).toBe(true);
+  });
+
+  it("the matrix STILL contains all six PRD roles (parity preserved, reversal cheap)", () => {
+    // The retired roles are kept in ROLES/MATRIX on purpose — this is the property that makes K-44 a
+    // one-line reversal, not a rewrite. Removing them from ROLES should fail THIS test, on purpose.
+    for (const r of RETIRED) expect(ROLES).toContain(r);
+  });
+
+  it("effectiveRole() FAILS CLOSED: a stored retired role resolves to null = no access", () => {
+    // The biting rule (LARANGAN): a crm_user_role row carrying a dropped role must read as no-access,
+    // never as a known role that quietly grants. This is what getCurrentUserRole() runs every row through.
+    for (const r of RETIRED) expect(effectiveRole(r)).toBeNull();
+    expect(effectiveRole("bogus")).toBeNull();
+    expect(effectiveRole(null)).toBeNull();
+    for (const r of ACTIVE_ROLES) expect(effectiveRole(r)).toBe(r);
+  });
+
+  it("a retired stored role, once resolved to null, is denied every action", () => {
+    // effectiveRole('analyst') === null, and null is denied everywhere (the layer above the matrix).
+    for (const action of ACTIONS) {
+      expect(isPermitted(effectiveRole("analyst"), action)).toBe(false);
+      expect(isPermitted(effectiveRole("data_steward"), action)).toBe(false);
+    }
   });
 });
 

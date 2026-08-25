@@ -575,7 +575,8 @@ export const en: Messages = {
 
   audit: {
     settingsTitle: "Settings",
-    settingsSubtitle: "Governance: RBAC roles and the audit trail. Both are read-only this sprint.",
+    settingsSubtitle: "Governance: RBAC roles (grant, change, revoke — Super Admin only), the audit trail (read), the consent archive (read), and WhatsApp Business API status.",
+    emailUnresolved: "email unresolved",
     diagnostikLink: "Open Diagnostics — verification status & read-layer checks",
     pageDeniedRole: "Settings (roles & audit log) are only for super_admin and crm_manager. If RBAC isn't provisioned yet, all access is denied — this is the correct fail-closed behaviour.",
     rolesTitle: "Roles (RBAC)",

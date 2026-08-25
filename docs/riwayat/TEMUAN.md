@@ -744,3 +744,47 @@ dijalankan** — sepola T-30/reset/ekspor: hijau di gerbang, patah saat dipakai.
 mengimpor const+tipe dari modul biasa, fungsi dari actions. Fixture kini render 200. Pelajaran:
 **satu-satunya bukti sebuah komponen server-action benar-benar merender adalah merendernya**, bukan
 tsc/build.
+
+**Tindak lanjut (25 Agu 2026): kelas ini kini dipagari** — `lib/dev/use-server-exports.ts` +
+test memindai SETIAP modul `"use server"` dan gagal bila ada ekspor selain fungsi async. Terbukti
+menggigit: menyisipkan `export const PROBE` ke `actions.ts` menggagalkan pindaian (menyebut berkas +
+cuplikan), lalu dikembalikan. Menutup seluruh kelas untuk jalur server berikutnya.
+
+## T-33 · Tab 20FIT Manager menampilkan UUID, bukan email — `listUsers()` hanya halaman 1 dari kolam 935 akun (25 Agu 2026)
+
+Layar peran menampilkan `61a71f7f-…`, bukan email — padahal ketiga `user_id` punya baris di
+`auth.users` dan emailnya bisa diresolusi. Fallback UUID menyala tanpa sebab yang tampak.
+
+**Sebab (diverifikasi via SQL):** `auth.users` berisi **935** akun (kolam auth **bersama** seluruh
+ekosistem 20FIT). `admin.auth.admin.listUsers()` tanpa argumen hanya mengembalikan **halaman 1
+(default 50)**. Anggota CRM berada di peringkat-pembuatan 2, 3, dan **110** → setidaknya `zidni@`
+(peringkat 110) **tak pernah** ada di halaman 1 → petanya kosong untuk baris itu → UUID. Kegagalan
+senyap lagi: tak melempar, hanya menampilkan yang salah; `tsc`/lint/build hijau.
+
+**Perbaikan (`lib/auth/user-directory.ts`):** resolusi **tertarget** per anggota lewat
+`getUserById(user_id)` — tanpa paginasi, tanpa mengurai seluruh 935 akun (juga menghormati LARANGAN
+lama "jangan tampilkan seluruh auth.users"). Bila email **benar-benar** tak teresolusi, layar
+**mengatakannya** (tag "email tak teresolusi"), bukan menyodorkan UUID seolah jawaban. Jalur
+tulis (grant email→id) memakai `findUserIdByEmail` yang **berpaginasi sengaja** (bukan halaman 1
+saja) — menutup silent false-negative yang sama.
+
+## T-34 · Pertanyaan "apakah kode di produksi" salah dijawab TIGA kali — buktinya selalu di LUAR repo (25 Agu 2026)
+
+Pemilik produk mengirim screenshot `20fitcrm-production.up.railway.app/settings?tab=manager` dengan
+keempat tab → kode branch **tayang di produksi**. Ini kali **ketiga** pertanyaan deploy muncul, dan
+tiap kali jawabannya beda dari yang tercatat (12 Agu "deploy dari branch" — salah; 24 Agu "deploy
+dari main" — benar, T-27; kini).
+
+**Bagaimana kode sampai ke sana (dua sumber independen):** PR #15 **ter-merge** ke `main` —
+(1) **git**: `82c38e1` adalah leluhur `origin/main` di commit merge `df54688`
+(`git merge-base --is-ancestor` = YA); (2) **GitHub API**: `merged:true`, `merged_by
+Marketing-project-wq`, `merged_at 2026-08-25T09:59:15Z`. Railway auto-deploy dari `main` → produksi.
+**Tak ada jalur deploy lain**; branch tayang di produksi **karena branch itu MENJADI `main`**.
+
+**Kenapa berulang salah:** bukti yang tersedia **di dalam repo** secara struktural tak bisa
+membedakan "produksi = kode ini" dari "kode ini menulis ke DB bersama" (T-27), dan `git log` atas ref
+`origin/*` yang **basi** memberi jawaban lama (pola S-05, sudah terulang). **Diskriminator sejati
+selalu di LUAR repo**: setelan Railway Source, keadaan merge GitHub, dan mata pemilik produk di URL
+produksi. **Yang menyelesaikan:** beberapa sumber **luar-repo** yang sepakat — di sini git-ancestry +
+GitHub `merged:true` + screenshot produksi. Pelajaran permanen: **jangan jawab pertanyaan deploy dari
+`git log` sendirian; minta/lihat bukti luar-repo, dan `git fetch` dulu supaya ref tak basi.**

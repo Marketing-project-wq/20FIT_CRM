@@ -145,3 +145,25 @@ Manager** (peran) · **Consent** (arsip baca-saja) · **WhatsApp Business API** 
   di render pertama; dipindah ke modul biasa. Terbukti render lewat fixture `/dev/preview-settings`.
 
 Gerbang: `tsc` bersih · `next lint` bersih · **vitest 1172 → 1184** · `NODE_ENV=production build` lulus.
+
+---
+
+## 25 Agu 2026 (setelah PR #15 merge) — tiga peran aktif, dua cacat di layar yang sama, pagar `"use server"`
+
+PR #15 **ter-merge ke `main`** oleh pemilik produk (bukan agen) → kode sesi ini tayang di produksi.
+Branch di-restart dari `main` untuk pekerjaan lanjutan (PR merged = selesai; tak ditumpangi).
+
+- **Tiga peran aktif (K-44):** `ACTIVE_ROLES` = super_admin/crm_manager/viewer; empat peran PRD lain
+  **tetap di matriks** (paritas PRD, pembalikan satu baris) tapi tak ditawarkan (dropdown tiga) & tak
+  dihormati. `effectiveRole()` fail-closed: peran tersimpan yang pensiunan → `null` → tanpa akses.
+  Ditandai deviasi PRD, menunggu Jeff (seperti K-32/K-43). Test mengunci fail-closed + paritas matriks.
+- **Email tampil, bukan UUID (T-33):** `listUsers()` cuma halaman-1 dari 935 akun bersama → anggota di
+  peringkat 110 tak terlihat. Diganti `getUserById` tertarget (`lib/auth/user-directory.ts`); bila
+  benar-benar tak teresolusi, layar **mengatakannya**, bukan menyodorkan UUID.
+- **Kalimat usang (TUGAS 3):** subjudul Settings "keduanya read-only" — sudah salah (peran kini
+  beri/ubah/cabut). Diganti di id + en.
+- **Pagar kelas T-32:** `lib/dev/use-server-exports.ts` + test menggagalkan build bila modul
+  `"use server"` mengekspor selain fungsi async. Terbukti menggigit (sisip `export const`, gagal,
+  kembalikan). Nol pelanggaran lain di repo.
+
+Gerbang: `tsc` bersih · `next lint` bersih · **vitest 1184 → 1195** · `NODE_ENV=production build` lulus.
