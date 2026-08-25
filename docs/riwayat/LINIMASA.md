@@ -88,3 +88,38 @@ monitor bounce (belum aktif) + template + unsubscribe semuanya dibangun & teruji
   "lanjutkan run yang ada (N terkirim)" vs "mulai run baru" — Kirim nonaktif sampai satu dipilih.
   Store `lib/crm/campaign-run.ts` + aturan status murni teruji (`campaign-run-status.ts`).
 - Ikhtisar penuh + yang belum dikerjakan: `RANGKUMAN-24agu.md`.
+
+---
+
+## 25 Agu 2026 — navigasi sebelas → tujuh, plus responsif (BAGIAN C + D)
+
+**Menu:** Dashboard · Audience · Workflows · Campaigns · Templates · Exports · Settings (dari 11).
+Empat layar **dipindah ke dalam**, bukan dibuang; rute lama **redirect** (tak ada bookmark 404):
+
+| Dibuang | Pindah ke | Rute lama |
+|---|---|---|
+| Segments | Penyusun kriteria + asisten AI (komponen bersama `SegmentBuilder`) di **Campaigns** (kirim) dan **Exports** (ekspor) | `/segments` → `/campaigns` |
+| Messages | Tab **Riwayat Kirim** di Templates | `/messages` → `/templates?tab=history` |
+| Consent | **Unsubscribe** → tab di Audience; **arsip dasar consent** (crm_consent) → panel baca-saja di Settings | `/consent` → `/audience?tab=unsubscribe` |
+| Quality | Tab **Kualitas** di Audience | `/quality` → `/audience?tab=quality` |
+
+**Komponen bersama = satu berkas.** `SegmentBuilder` dipasang di Campaigns (`canExport=false`) dan
+Exports (`canExport=true`) — satu implementasi, dua titik pasang (bukan dua yang mirip). `loadCityFill`
+diekstrak ke `lib/crm/city-fill.ts` agar angkanya tak menyimpang antar keduanya. Consent dipecah tanpa
+menduplikasi: `consent-shared.tsx` (hook data + Pager + EmptyRegister) dipakai `suppression-panel` dan
+`consent-archive-panel`.
+
+**Catatan kejujuran — SEMUA ikut pindah, nol dihapus:**
+- "Suppression menang atas consent" → `suppression-panel` (tab Unsubscribe).
+- Banner makna-nol / backfilled + kosakata `basis` provisional → `consent-archive-panel` (Settings).
+- `skipped_suppressed`/`failed` apa adanya + "identitas hanya hash, bukan alamat" → `send-history-panel`
+  (tab Riwayat Kirim).
+- Peringatan kualitas, "kota 93% kosong", RFM-tak-terpakai → tetap di `QualityDashboard` / `SegmentBuilder`.
+
+**Pagar terjemahan dijalankan setelah berkas berpindah** — `SCREEN_FILES` diperbarui ke lokasi baru;
+`untranslated-scan` + paritas i18n **hijau** (nol string terlewat saat perpindahan).
+
+**Responsif (D):** sidebar jadi **laci** dengan tombol hamburger di bawah `md`; **tabel padat** (daftar
+audience, riwayat kirim, unsubscribe, arsip consent) jadi **kartu per baris** di ponsel; tab menggulir
+menyamping dengan sasaran sentuh besar; grafik batang tetap menampilkan angka di sebelahnya. Pratinjau
+fixture `/dev/preview-tabs` + screenshot ponsel & desktop.

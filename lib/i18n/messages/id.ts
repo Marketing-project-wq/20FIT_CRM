@@ -54,6 +54,16 @@ export const id = {
     signOut: "Keluar",
   },
 
+  // Tab labels for the consolidated screens (nav rebuild: 11 menu → 7).
+  tabs: {
+    audienceList: "Daftar",
+    audienceUnsubscribe: "Unsubscribe",
+    audienceQuality: "Kualitas",
+    templatesTemplate: "Template",
+    templatesHistory: "Riwayat Kirim",
+    menu: "Menu",
+  },
+
   access: {
     deniedBadge: "Akses ditolak",
     // Dashboard cards hidden because the role can't see the profile list.
@@ -68,6 +78,7 @@ export const id = {
     audienceDeniedRole:
       "Peran Anda tidak memiliki izin untuk melihat daftar profil. Bila RBAC belum di-provision, semua akses ditolak — ini perilaku fail-closed yang benar.",
     profileDeniedRole: "Peran Anda tidak memiliki izin untuk melihat profil.",
+    templatesDeniedRole: "Peran Anda tidak memiliki izin untuk melihat template dan riwayat kirim.",
   },
 
   dashboard: {

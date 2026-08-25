@@ -44,6 +44,16 @@ export const en: Messages = {
     signOut: "Sign out",
   },
 
+  // Tab labels for the consolidated screens (nav rebuild: 11 menu → 7).
+  tabs: {
+    audienceList: "List",
+    audienceUnsubscribe: "Unsubscribe",
+    audienceQuality: "Quality",
+    templatesTemplate: "Template",
+    templatesHistory: "Send History",
+    menu: "Menu",
+  },
+
   access: {
     deniedBadge: "Access denied",
     dashboardHidden: "Figures hidden: your role isn't permitted to view the profile list (fail-closed).",
@@ -57,6 +67,7 @@ export const en: Messages = {
     audienceDeniedRole:
       "Your role has no permission to view the profile list. If RBAC is not yet provisioned, all access is denied — this is the correct fail-closed behaviour.",
     profileDeniedRole: "Your role has no permission to view the profile.",
+    templatesDeniedRole: "Your role has no permission to view templates and send history.",
   },
 
   dashboard: {

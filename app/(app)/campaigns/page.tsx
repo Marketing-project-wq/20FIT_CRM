@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { getCurrentUserRole } from "@/lib/auth/current-role";
-import { grantFor } from "@/lib/auth/roles";
+import { grantFor, isPermitted } from "@/lib/auth/roles";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getServerDict } from "@/lib/i18n/server";
 import { Badge } from "@/components/ui/badge";
@@ -8,6 +8,9 @@ import { realSendEnabled } from "@/lib/crm/send-gate";
 import { listSegments } from "@/lib/crm/segment-store";
 import { extractVariables } from "@/lib/crm/template";
 import { isInternalTestTemplateKey } from "@/lib/crm/send-test-constants";
+import { loadCityFill } from "@/lib/crm/city-fill";
+import { SegmentBuilder } from "@/components/segments/segment-builder";
+import { CoverageNotice } from "@/components/i18n/coverage-notice";
 import { CampaignComposer, type TemplateOption } from "./campaign-composer";
 import { SendTestPanel } from "./send-test-panel";
 
@@ -63,7 +66,13 @@ export default async function CampaignsPage() {
   }
 
   const enabled = realSendEnabled();
-  const [segments, templates] = await Promise.all([listSegments(), loadEligibleTemplates()]);
+  const canBuild = isPermitted(role, "segment.build");
+  const canViewHealth = isPermitted(role, "profile.view_health");
+  const [segments, templates, cityFill] = await Promise.all([
+    listSegments(),
+    loadEligibleTemplates(),
+    canBuild ? loadCityFill() : Promise.resolve({ total: 0, cityFilled: 0, cityFillPct: 0 }),
+  ]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -78,6 +87,22 @@ export default async function CampaignsPage() {
           <Badge tone="red">{c.blockTitle}</Badge>
           <p className="mt-3 font-body text-[13px] leading-relaxed text-ink-soft">{c.blockBody}</p>
         </div>
+      )}
+
+      {/* Criteria builder + AI assistant — the SAME shared SegmentBuilder as Exports (one file, two
+          mount points; nav rebuild). Build + SAVE a segment here, then compose the send below from it.
+          canExport=false here (Campaigns sends; Exports exports). */}
+      {canBuild && (
+        <>
+          <CoverageNotice screen="segments" />
+          <SegmentBuilder
+            cityFillPct={cityFill.cityFillPct}
+            cityFilled={cityFill.cityFilled}
+            total={cityFill.total}
+            canViewHealth={canViewHealth}
+            canExport={false}
+          />
+        </>
       )}
 
       <CampaignComposer

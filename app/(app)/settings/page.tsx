@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { RolesPanel } from "@/components/settings/roles-panel";
 import { AuditLogPanel } from "@/components/settings/audit-log-panel";
 import { WhatsappPanel } from "@/components/settings/whatsapp-panel";
+import { ConsentArchivePanel } from "@/components/consent/consent-archive-panel";
 import { CoverageNotice } from "@/components/i18n/coverage-notice";
 import { getServerDict } from "@/lib/i18n/server";
 
@@ -25,6 +26,7 @@ export const dynamic = "force-dynamic";
 export default async function SettingsPage() {
   const role = await getCurrentUserRole();
   const { t } = getServerDict();
+  const canSeeConsentArchive = isPermitted(role, "consent.edit");
 
   if (!isPermitted(role, "audit.view")) {
     const decision = resolveGrant(role, "audit.view");
@@ -66,6 +68,14 @@ export default async function SettingsPage() {
       <AuditLogPanel />
       <RolesPanel />
       <WhatsappPanel />
+      {/* Consent-basis archive (crm_consent, 408k) — a READ-ONLY record after K-36 (consent is not a
+          gate). Moved here from the removed /consent screen; gated on consent.edit. */}
+      {canSeeConsentArchive && (
+        <>
+          <CoverageNotice screen="consent" />
+          <ConsentArchivePanel />
+        </>
+      )}
     </div>
   );
 }

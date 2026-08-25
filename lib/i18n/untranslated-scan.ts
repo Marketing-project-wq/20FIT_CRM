@@ -22,10 +22,13 @@ import type { ScreenId } from "./coverage";
 /** Files that render each screen's text. audience/ is mixed (search vs profile) so lists are
  *  EXPLICIT, not globbed. Only screens currently in BILINGUAL_SCREENS are scanned (see the test);
  *  profile/diagnostik are listed so they are covered automatically the moment they are flipped. */
+// Paths follow the content, not the route (nav rebuild 11→7): /quality, /segments, /consent are now
+// redirects, and their translated content renders as tabs/panels elsewhere. The scan tracks the
+// COMPONENT files that carry the strings, so a moved string is still caught.
 export const SCREEN_FILES: Record<ScreenId, string[]> = {
-  quality: ["app/(app)/quality/page.tsx", "components/quality/quality-dashboard.tsx"],
+  quality: ["components/quality/quality-dashboard.tsx"], // now a tab under Audience; page is a redirect
   segments: [
-    "app/(app)/segments/page.tsx",
+    // shared builder — mounted in Campaigns + Exports now (page is a redirect)
     "components/segments/segment-builder.tsx",
     "components/segments/filter-tree-builder.tsx",
   ],
@@ -34,15 +37,18 @@ export const SCREEN_FILES: Record<ScreenId, string[]> = {
     "components/settings/roles-panel.tsx",
     "components/settings/audit-log-panel.tsx",
     "components/settings/whatsapp-panel.tsx",
+    "components/settings/role-grant-form.tsx",
   ],
   consent: [
-    "app/(app)/consent/page.tsx",
-    "components/consent/consent-register.tsx",
+    // split into the unsubscribe tab (Audience) + the consent-basis archive (Settings)
+    "components/consent/suppression-panel.tsx",
+    "components/consent/consent-archive-panel.tsx",
+    "components/consent/consent-shared.tsx",
     "components/consent/suppression-form.tsx",
     "components/consent/lift-dialog.tsx",
   ],
   search: [
-    "app/(app)/audience/page.tsx",
+    "app/(app)/audience/page.tsx", // the tab host (h1 + tab labels)
     "components/audience/audience-pool.tsx",
     "components/audience/profile-search.tsx",
   ],
