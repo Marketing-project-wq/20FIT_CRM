@@ -30,6 +30,17 @@ const config: Config = {
           strong: "var(--glass-strong)",
           border: "var(--glass-border)",
         },
+        // Shop-inventory redesign tokens (K-46) — solid surfaces + light sidebar.
+        surface: {
+          DEFAULT: "var(--surface)",
+          2: "var(--surface-2)",
+          border: "var(--surface-border)",
+        },
+        sidebar: {
+          DEFAULT: "var(--sidebar)",
+          border: "var(--sidebar-border)",
+        },
+        topbar: "var(--topbar)",
         "bg-from": "var(--bg-from)",
         "bg-to": "var(--bg-to)",
       },
@@ -52,6 +63,7 @@ const config: Config = {
       boxShadow: {
         glass: "var(--shadow-glass)",
         "glass-lg": "var(--shadow-glass-lg)",
+        card: "var(--shadow-card)",
       },
       backdropBlur: {
         glass: "var(--blur)",
