@@ -6,6 +6,7 @@ import {
   shouldMaskContact,
   canSeeContactPII,
   canSeeMedical,
+  canManageRoles,
   canSeeNav,
   ROLES,
   ACTIONS,
@@ -22,63 +23,63 @@ import {
 const PRD_17_2: Record<(typeof PRD_ACTIONS)[number], Record<Role, Grant>> = {
   "profile.view_list": {
     super_admin: "allow", crm_manager: "allow", crm_operator: "allow",
-    unit_manager: "own_unit", analyst: "masked", data_steward: "allow",
+    unit_manager: "own_unit", analyst: "masked", data_steward: "allow", viewer: "masked",
   },
   "profile.view_contact": {
     super_admin: "allow", crm_manager: "allow", crm_operator: "allow",
-    unit_manager: "own_unit", analyst: "deny", data_steward: "allow",
+    unit_manager: "own_unit", analyst: "deny", data_steward: "allow", viewer: "deny",
   },
   "profile.view_health": {
     super_admin: "allow", crm_manager: "allow", crm_operator: "deny",
-    unit_manager: "deny", analyst: "deny", data_steward: "deny",
+    unit_manager: "deny", analyst: "deny", data_steward: "deny", viewer: "deny",
   },
   "segment.build": {
     super_admin: "allow", crm_manager: "allow", crm_operator: "allow",
-    unit_manager: "own_unit", analyst: "allow", data_steward: "deny",
+    unit_manager: "own_unit", analyst: "allow", data_steward: "deny", viewer: "deny",
   },
   "export.at_or_below_threshold": {
-    super_admin: "allow", crm_manager: "allow", crm_operator: "approval",
-    unit_manager: "approval", analyst: "deny", data_steward: "deny",
+    super_admin: "allow", crm_manager: "allow", crm_operator: "allow",
+    unit_manager: "approval", analyst: "deny", data_steward: "deny", viewer: "deny",
   },
   "export.above_threshold": {
     super_admin: "allow", crm_manager: "allow", crm_operator: "deny",
-    unit_manager: "deny", analyst: "deny", data_steward: "deny",
+    unit_manager: "deny", analyst: "deny", data_steward: "deny", viewer: "deny",
   },
   "workflow.create": {
     super_admin: "allow", crm_manager: "allow", crm_operator: "draft",
-    unit_manager: "draft", analyst: "deny", data_steward: "deny",
+    unit_manager: "draft", analyst: "deny", data_steward: "deny", viewer: "deny",
   },
   "workflow.activate": {
     super_admin: "allow", crm_manager: "allow", crm_operator: "deny",
-    unit_manager: "deny", analyst: "deny", data_steward: "deny",
+    unit_manager: "deny", analyst: "deny", data_steward: "deny", viewer: "deny",
   },
   "send.at_or_below_threshold": {
     super_admin: "allow", crm_manager: "allow", crm_operator: "allow",
-    unit_manager: "own_unit", analyst: "deny", data_steward: "deny",
+    unit_manager: "own_unit", analyst: "deny", data_steward: "deny", viewer: "deny",
   },
   "send.above_threshold": {
     super_admin: "allow", crm_manager: "allow", crm_operator: "deny",
-    unit_manager: "deny", analyst: "deny", data_steward: "deny",
+    unit_manager: "deny", analyst: "deny", data_steward: "deny", viewer: "deny",
   },
   "consent.edit": {
     super_admin: "allow", crm_manager: "allow", crm_operator: "deny",
-    unit_manager: "deny", analyst: "deny", data_steward: "allow",
+    unit_manager: "deny", analyst: "deny", data_steward: "allow", viewer: "deny",
   },
   "profile.merge": {
     super_admin: "allow", crm_manager: "deny", crm_operator: "deny",
-    unit_manager: "deny", analyst: "deny", data_steward: "allow",
+    unit_manager: "deny", analyst: "deny", data_steward: "allow", viewer: "deny",
   },
   "profile.delete": {
     super_admin: "allow", crm_manager: "deny", crm_operator: "deny",
-    unit_manager: "deny", analyst: "deny", data_steward: "request",
+    unit_manager: "deny", analyst: "deny", data_steward: "request", viewer: "deny",
   },
   "audit.view": {
     super_admin: "allow", crm_manager: "allow", crm_operator: "deny",
-    unit_manager: "deny", analyst: "deny", data_steward: "deny",
+    unit_manager: "deny", analyst: "deny", data_steward: "deny", viewer: "deny",
   },
   killswitch: {
     super_admin: "allow", crm_manager: "allow", crm_operator: "deny",
-    unit_manager: "deny", analyst: "deny", data_steward: "deny",
+    unit_manager: "deny", analyst: "deny", data_steward: "deny", viewer: "deny",
   },
 };
 
@@ -108,9 +109,10 @@ describe("extensions beyond PRD 17.2 (kept explicitly separate, K-32)", () => {
     expect([...ACTIONS].sort()).toEqual([...PRD_ACTIONS, ...EXTENSION_ACTIONS].sort());
   });
 
-  it("profile.edit_demographic is the only current extension, and it is NOT in the PRD copy", () => {
-    expect([...EXTENSION_ACTIONS]).toEqual(["profile.edit_demographic"]);
+  it("the current extensions are edit_demographic + role.granted, and NEITHER is in the PRD copy", () => {
+    expect([...EXTENSION_ACTIONS]).toEqual(["profile.edit_demographic", "role.granted"]);
     expect(Object.prototype.hasOwnProperty.call(PRD_17_2, "profile.edit_demographic")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(PRD_17_2, "role.granted")).toBe(false);
   });
 
   it("profile.edit_demographic grants: managers + operator + steward may edit; analyst may not; unit_manager fail-closed", () => {
@@ -122,6 +124,60 @@ describe("extensions beyond PRD 17.2 (kept explicitly separate, K-32)", () => {
     // unit_manager own_unit -> needs_scope (denied) until a scope table exists.
     expect(resolveGrant("unit_manager", "profile.edit_demographic")).toBe("needs_scope");
     expect(isPermitted("unit_manager", "profile.edit_demographic")).toBe(false);
+  });
+});
+
+describe("role administration is SUPER-ADMIN EXCLUSIVE (K-43, the WAJIB)", () => {
+  it("role.granted is 'allow' for super_admin and 'deny' for EVERY other role — proves it bites", () => {
+    expect(grantFor("super_admin", "role.granted")).toBe("allow");
+    // The whole point: CRM Manager and Viewer must NOT be able to hand out roles. And nobody else.
+    for (const role of ["crm_manager", "crm_operator", "unit_manager", "analyst", "data_steward", "viewer"] as const) {
+      expect(grantFor(role, "role.granted")).toBe("deny");
+    }
+  });
+
+  it("canManageRoles is true ONLY for super_admin (CRM Manager + Viewer explicitly excluded)", () => {
+    expect(canManageRoles("super_admin")).toBe(true);
+    expect(canManageRoles("crm_manager")).toBe(false); // reads all screens, but never role admin
+    expect(canManageRoles("viewer")).toBe(false);
+    for (const role of ["crm_operator", "unit_manager", "analyst", "data_steward"] as const) {
+      expect(canManageRoles(role)).toBe(false);
+    }
+    expect(canManageRoles("nope")).toBe(false); // fail-closed
+    expect(canManageRoles(null)).toBe(false);
+  });
+});
+
+describe("Viewer role (K-43 three-role model) — strictly view-only, masked contact", () => {
+  it("sees the list (masked) but can touch NOTHING else", () => {
+    expect(grantFor("viewer", "profile.view_list")).toBe("masked");
+    expect(isPermitted("viewer", "profile.view_list")).toBe(true); // may open the list
+    expect(shouldMaskContact("viewer")).toBe(true); // contact masked (decision K-43)
+    // Every write/execute action is denied — including segment SAVE (separates Viewer from analyst).
+    for (const action of [
+      "profile.view_contact", "profile.view_health", "segment.build",
+      "export.at_or_below_threshold", "export.above_threshold",
+      "workflow.create", "workflow.activate",
+      "send.at_or_below_threshold", "send.above_threshold",
+      "consent.edit", "profile.merge", "profile.delete", "audit.view", "killswitch",
+      "profile.edit_demographic", "role.granted",
+    ] as const) {
+      expect(isPermitted("viewer", action)).toBe(false);
+    }
+  });
+
+  it("differs from analyst by exactly one cell: analyst may build segments, Viewer may not", () => {
+    expect(grantFor("analyst", "segment.build")).toBe("allow");
+    expect(grantFor("viewer", "segment.build")).toBe("deny");
+  });
+
+  it("nav: Viewer sees Dashboard, Audience, Quality — and nothing that writes/sends", () => {
+    expect(canSeeNav("viewer", "/")).toBe(true);
+    expect(canSeeNav("viewer", "/audience")).toBe(true); // masked list
+    expect(canSeeNav("viewer", "/quality")).toBe(true);
+    for (const href of ["/segments", "/workflows", "/campaigns", "/templates", "/messages", "/consent", "/exports", "/settings"]) {
+      expect(canSeeNav("viewer", href)).toBe(false);
+    }
   });
 });
 
@@ -142,9 +198,15 @@ describe("fail-closed resolution", () => {
     expect(isPermitted("unit_manager", "profile.view_list", { hasUnitScope: true })).toBe(true);
   });
 
+  it("crm_operator may now export at or below threshold (opened 24 Aug 2026), but NOT above", () => {
+    expect(isPermitted("crm_operator", "export.at_or_below_threshold")).toBe(true);
+    expect(isPermitted("crm_operator", "export.above_threshold")).toBe(false);
+  });
+
   it("deferred grants are not 'permitted now'", () => {
-    expect(resolveGrant("crm_operator", "export.at_or_below_threshold")).toBe("needs_approval");
-    expect(isPermitted("crm_operator", "export.at_or_below_threshold")).toBe(false);
+    // unit_manager keeps the approval grant (fail-closed: no unit-scope table exists yet).
+    expect(resolveGrant("unit_manager", "export.at_or_below_threshold")).toBe("needs_approval");
+    expect(isPermitted("unit_manager", "export.at_or_below_threshold")).toBe(false);
     expect(resolveGrant("crm_operator", "workflow.create")).toBe("draft_only");
     expect(isPermitted("crm_operator", "workflow.create")).toBe(false);
     expect(resolveGrant("data_steward", "profile.delete")).toBe("request_only");

@@ -3,30 +3,29 @@
 Hal-hal yang **tidak bisa diselesaikan dari kode**. Tiap baris menaut ke dokumen sumbernya —
 **jangan salin isinya ke sini** (dua salinan akan menyimpang). Perbarui/hapus baris saat tuntas.
 
-Diperbarui: 19 Agustus 2026.
+Diperbarui: 24 Agustus 2026 (model deploy dikoreksi — lihat "BACA DULU" + T-27).
 
 ---
 
-> ## BACA DULU — apa yang sebenarnya berisiko (K-27)
+> ## BACA DULU — apa yang sebenarnya berisiko (dikoreksi 24 Agu 2026)
 >
-> Produksi men-deploy dari **branch**, bukan dari `main`. Maka:
+> **KOREKSI:** kotak lama di sini bilang "produksi dari branch, merge tidak mengubah apa-apa" —
+> **itu salah dan sudah ditarik** (K-27 dibatalkan; T-22/K-25 dikoreksi; lihat T-27). Yang benar:
 >
-> - **Merge ke `main` TIDAK mengubah apa yang berjalan.** Fitur sudah live lewat branch. Merge
->   hanya **menyelaraskan** `main` dengan produksi. Orang akan mengira merge adalah momen berisiko —
->   padahal bukan.
-> - **Yang berisiko justru mengarahkan Railway ke `main` SEBELUM merge.** Itu memundurkan produksi
->   ke jalur baca lama + angka contactability salah **tanpa error**. Urutan wajib: **merge dulu, baru
->   repoint** (`docs/KOREKSI-DEPLOY.md` §"Kalau dibalik").
->
-> Karena itu daftar di bawah dipisah tegas: apa yang harus benar **sebelum kode mendarat di `main`**,
-> versus apa yang penting tetapi **jalan paralel** dan tak menahan merge.
+> - **Produksi men-deploy dari `main`, auto-deploy saat push** (dashboard Railway, Settings →
+>   Source, dikonfirmasi 24 Agu 2026). **Merge ke `main` = deploy ke produksi seketika.**
+> - Maka **merge JUSTRU momen berisiko** — bukan sekadar "menyelaraskan". Gate hijau + izin
+>   eksplisit sebelum merge (bagian A) makin penting, bukan makin longgar.
+> - Butir lama "arahkan Railway ke `main`" (B4/B5) **tak relevan** — Railway sudah menunjuk `main`
+>   sejak awal; tak ada yang perlu di-repoint.
 
 ---
 
 ## A. MEMBLOKIR MERGE — harus benar sebelum kode mendarat di `main`
 
-Per K-27 tak ada **operasi** yang memblokir (fitur sudah live); yang memblokir adalah prasyarat
-kualitas & izin agar `main` layak jadi cermin resmi produksi.
+**Merge KE `main` = deploy ke produksi** (model dikoreksi 24 Agu 2026). Jadi merge itu sendiri
+**operasi berisiko**: HEAD yang di-merge langsung tayang. Prasyarat di bawah wajib benar sebelum
+merge, bukan sesudah.
 
 ### A1. Gate hijau di HEAD yang akan di-merge
 - **Siapa:** siapa pun yang menjalankan gate (agen/CI).
@@ -51,9 +50,16 @@ kualitas & izin agar `main` layak jadi cermin resmi produksi.
 
 ## B. TIDAK MEMBLOKIR MERGE — penting, jalan paralel
 
-Tak satu pun menahan merge (K-27). Diurut dari paling mendesak (keamanan) ke opsional.
+Tak satu pun menahan merge. Diurut dari paling mendesak (keamanan) ke opsional.
 
-### B1. Rotasi `MAILTRAP_API_TOKEN` (BOCOR) — paling mendesak (KEAMANAN, bukan merge)
+> ### 🚫 MEMBLOKIR PENGIRIMAN KAMPANYE PERTAMA (dinaikkan 24 Agu 2026, contacting-half TUGAS 1)
+> **B1 (rotasi token) + B3 (SPF/DKIM/DMARC), dengan B2 (verifikasi domain) sebagai prasyaratnya,
+> MEMBLOKIR pengiriman email kampanye pertama** — meski tak memblokir merge. Nol email kampanye
+> boleh dikirim sebelum ketiganya beres: volume besar dari domain tanpa riwayat + token bocor
+> merusak reputasi `20fit.id` untuk seterusnya, **termasuk email reset kata sandi yang sudah
+> jalan**. Rincian + rencana ramp: `docs/RENCANA-batas-kirim.md`.
+
+### B1. Rotasi `MAILTRAP_API_TOKEN` (BOCOR) — 🚫 MEMBLOKIR KIRIM PERTAMA + paling mendesak (KEAMANAN)
 - **Siapa:** pemegang akun Mailtrap + pemegang Variables Railway.
 - **Langkah:** cabut token bocor → terbitkan baru → perbarui `MAILTRAP_API_TOKEN` di Railway (redeploy
   otomatis) → uji token lama ditolak. Rincian: `docs/SETUP-reset-password.md` §0.
@@ -66,23 +72,19 @@ Tak satu pun menahan merge (K-27). Diurut dari paling mendesak (keamanan) ke ops
   Rincian: `docs/SETUP-reset-password.md` §2–§3.
 - **Kalau dilewati:** pengiriman dari `crm@20fit.id` ditolak — pengguna dapat halaman kode tapi email tak datang.
 
-### B3. SPF, DKIM, DMARC di DNS `20fit.id`
+### B3. SPF, DKIM, DMARC di DNS `20fit.id` — 🚫 MEMBLOKIR KIRIM PERTAMA
 - **Siapa:** pemegang DNS `20fit.id`.
 - **Langkah:** tambah record dari Mailtrap; mulai DMARC `p=none`; verifikasi via `dig` + Gmail "Show
   original" (PASS). Rincian: `docs/SETUP-reset-password.md` §3.
 - **Kalau dilewati:** email masuk Spam + spanduk "dangerous" betapapun rapi isinya. Propagasi DNS lambat — mulai awal.
 
-### B4. Konfirmasi sumber deploy Railway — KEBERSIHAN (K-27)
-- **Siapa:** pemegang akses dashboard Railway.
-- **Langkah:** Railway → service produksi → Settings → Source → Branch. Catat branch. Lihat `docs/KOREKSI-DEPLOY.md`.
-- **Kalau dilewati:** hanya merapikan catatan; T-18 sudah ditutup, tidak membuka apa pun.
+### B4. ~~Konfirmasi sumber deploy Railway~~ — **SELESAI (24 Agu 2026)**
+- Dikonfirmasi: Railway → service produksi → Settings → Source → **`main`**, auto-deploy saat
+  push. Ini menutup pertanyaan "branch atau main" secara otoritatif dan membalik T-22 (lihat T-27).
 
-### B5. Alih deploy ke `main` — KEBERSIHAN, dengan urutan wajib
-- **Siapa:** pemilik repo + pemegang Railway.
-- **Langkah:** **merge (branch→`main`) lebih dulu**, **baru** arahkan Railway ke `main`. Jangan dibalik
-  (lihat "BACA DULU" + `docs/KOREKSI-DEPLOY.md`).
-- **Kalau dilewati:** fitur tetap live lewat branch. Jadi perlu **hanya** begitu staf di luar tim dev
-  memakai sistem rutin — saat itu urutan merge-dulu-baru-repoint jadi wajib.
+### B5. ~~Alih deploy ke `main`~~ — **TAK RELEVAN**
+- Tak ada yang perlu dialihkan: produksi **sudah** dari `main`. Butir lama ("merge dulu, baru
+  repoint") lahir dari model yang keliru dan dihapus. `docs/KOREKSI-DEPLOY.md` seluruhnya ditarik.
 
 ### B6. Baris suppression pertama
 - **Siapa:** staf CS/operator saat ada permintaan berhenti dihubungi **nyata**.

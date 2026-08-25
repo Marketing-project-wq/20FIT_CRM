@@ -1,10 +1,6 @@
-import type { Metadata } from "next";
-import { ComingSoon } from "@/components/shell/coming-soon";
-import { getServerDict } from "@/lib/i18n/server";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = { title: "Messages" };
-
-export default function Page() {
-  const { t } = getServerDict();
-  return <ComingSoon title="Messages" description={t.stubs.messages} phase={t.stubs.phase4} />;
+// Nav rebuild (11→7): /messages is gone. The send history is now a tab under Templates.
+export default function MessagesRedirect() {
+  redirect("/templates?tab=history");
 }

@@ -28,6 +28,10 @@ yang sedang dihitung.
 **Produksi menjalankan kode branch, bukan `main`** (T-18). Muncul dari kontradiksi antara
 laporan ("PR belum di-merge") dan data ("tiga baris audit reset ada, dan orangnya berhasil
 masuk").
+> **KOREKSI (24 Agu 2026):** kesimpulan ini **salah dan ditarik**. Kontradiksi itu bukan bukti
+> "prod = branch" — commit reset sudah masuk `main` lewat PR #10 (04:41 UTC) 7 menit sebelum
+> reset (04:48 UTC), tapi `git log -S` dijalankan atas ref `origin/main` **basi** (S-05). Produksi
+> dari `main`, selalu. Lihat T-22 (dikoreksi), T-27, K-27 (dibatalkan).
 
 ---
 

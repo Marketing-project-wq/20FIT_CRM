@@ -1,8 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LogOut } from "lucide-react";
+import { LogOut, Menu, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BrandLogo } from "@/components/brand/logo";
 import { NAV_ITEMS, navLabel } from "./nav";
@@ -12,41 +13,28 @@ import { useI18n } from "@/components/i18n/lang-provider";
 import type { Theme } from "@/lib/theme";
 
 /**
- * Sidebar — always the dark theme with the white lockup (PRD §18.8). The active
- * item is a red pill, Barlow Condensed 700 uppercase. `activePath` overrides the
- * live pathname for dev previews.
+ * Sidebar — always the dark theme with the white lockup (PRD §18.8). Responsive (BAGIAN D): a static
+ * rail on desktop (md+); on a narrow screen it collapses to a top bar with a hamburger that opens the
+ * SAME nav as a slide-in drawer — so the menu is never a wall of links squeezed off-screen. The nav
+ * body is ONE component (SidebarBody), rendered by both the desktop rail and the mobile drawer, so the
+ * two can't drift. `activePath` overrides the live pathname for dev previews.
  */
-export function Sidebar({
-  userEmail,
+function SidebarBody({
+  items,
+  isActive,
   initialTheme,
-  activePath,
-  allowedHrefs,
+  userEmail,
+  onNavigate,
 }: {
-  userEmail: string;
+  items: typeof NAV_ITEMS;
+  isActive: (href: string) => boolean;
   initialTheme: Theme;
-  activePath?: string;
-  /** RBAC-filtered set of visible hrefs, computed server-side (canSeeNav). */
-  allowedHrefs: string[];
+  userEmail: string;
+  onNavigate?: () => void;
 }) {
-  const livePath = usePathname();
-  const pathname = activePath ?? livePath;
   const { t } = useI18n();
-
-  const allowed = new Set(allowedHrefs);
-  const items = NAV_ITEMS.filter((item) => allowed.has(item.href));
-
-  const isActive = (href: string) =>
-    href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/");
-
   return (
-    <aside
-      data-theme="dark"
-      className="sticky top-0 flex h-[100dvh] w-64 shrink-0 flex-col self-start bg-[var(--bg-to)] text-ink"
-    >
-      <div className="flex h-16 items-center px-5">
-        <BrandLogo variant="white" height={30} priority />
-      </div>
-
+    <>
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-2">
         {items.map((item) => {
           const active = isActive(item.href);
@@ -56,8 +44,9 @@ export function Sidebar({
               key={item.href}
               href={item.href}
               aria-current={active ? "page" : undefined}
+              onClick={onNavigate}
               className={cn(
-                "flex items-center gap-3 rounded-full px-3 py-2 font-display text-[14px] font-bold uppercase tracking-wide transition-colors",
+                "flex min-h-[44px] items-center gap-3 rounded-full px-3 py-2 font-display text-[14px] font-bold uppercase tracking-wide transition-colors",
                 active ? "bg-red text-white" : "text-ink-soft hover:bg-glass hover:text-ink",
               )}
             >
@@ -78,7 +67,7 @@ export function Sidebar({
           <form action="/logout" method="post">
             <button
               type="submit"
-              className="flex shrink-0 items-center gap-1.5 rounded-sm px-2 py-1 font-display text-[12px] font-bold uppercase tracking-wide text-ink-soft transition-colors hover:bg-glass hover:text-ink"
+              className="flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-sm px-2 py-1 font-display text-[12px] font-bold uppercase tracking-wide text-ink-soft transition-colors hover:bg-glass hover:text-ink"
             >
               <LogOut className="h-3.5 w-3.5" />
               {t.nav.signOut}
@@ -86,6 +75,94 @@ export function Sidebar({
           </form>
         </div>
       </div>
-    </aside>
+    </>
+  );
+}
+
+export function Sidebar({
+  userEmail,
+  initialTheme,
+  activePath,
+  allowedHrefs,
+}: {
+  userEmail: string;
+  initialTheme: Theme;
+  activePath?: string;
+  allowedHrefs: string[];
+}) {
+  const livePath = usePathname();
+  const pathname = activePath ?? livePath;
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+
+  const allowed = new Set(allowedHrefs);
+  const items = NAV_ITEMS.filter((item) => allowed.has(item.href));
+  const isActive = (href: string) =>
+    href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/");
+
+  return (
+    <>
+      {/* Desktop rail (md+). */}
+      <aside
+        data-theme="dark"
+        className="sticky top-0 hidden h-[100dvh] w-64 shrink-0 flex-col self-start bg-[var(--bg-to)] text-ink md:flex"
+      >
+        <div className="flex h-16 items-center px-5">
+          <BrandLogo variant="white" height={30} priority />
+        </div>
+        <SidebarBody items={items} isActive={isActive} initialTheme={initialTheme} userEmail={userEmail} />
+      </aside>
+
+      {/* Mobile top bar (below md). */}
+      <div
+        data-theme="dark"
+        className="sticky top-0 z-30 flex h-14 items-center gap-3 bg-[var(--bg-to)] px-4 text-ink md:hidden"
+      >
+        <button
+          type="button"
+          aria-label={t.tabs.menu}
+          onClick={() => setOpen(true)}
+          className="flex h-11 w-11 items-center justify-center rounded-sm text-ink-soft hover:bg-glass hover:text-ink"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+        <BrandLogo variant="white" height={26} />
+      </div>
+
+      {/* Mobile drawer + backdrop. */}
+      {open && (
+        <div className="fixed inset-0 z-40 md:hidden" role="dialog" aria-modal="true">
+          <button
+            type="button"
+            aria-label="close menu"
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setOpen(false)}
+          />
+          <aside
+            data-theme="dark"
+            className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col bg-[var(--bg-to)] text-ink shadow-xl"
+          >
+            <div className="flex h-14 items-center justify-between px-4">
+              <BrandLogo variant="white" height={26} />
+              <button
+                type="button"
+                aria-label="close menu"
+                onClick={() => setOpen(false)}
+                className="flex h-11 w-11 items-center justify-center rounded-sm text-ink-soft hover:bg-glass hover:text-ink"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <SidebarBody
+              items={items}
+              isActive={isActive}
+              initialTheme={initialTheme}
+              userEmail={userEmail}
+              onNavigate={() => setOpen(false)}
+            />
+          </aside>
+        </div>
+      )}
+    </>
   );
 }

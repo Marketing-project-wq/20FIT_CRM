@@ -253,6 +253,12 @@ Sprint 3B menyimpulkan `main` di `d92a92e` dan Sprint 3A belum di produksi, pada
 sudah ter-merge. Penyebabnya remote-tracking ref basi tanpa `git fetch`. Kesimpulan itu
 sempat mengubah penilaian risiko merge. Sejak 3C, `git fetch` + melaporkan tiga keluaran
 `git log` jadi langkah pertama wajib.
+**Terulang, lebih mahal (24 Agu 2026):** ref basi yang sama menyesatkan `git log -S
+"login.password_reset_requested" origin/main` → "nol", memicu kesimpulan **salah** "produksi =
+branch" yang bertahan 5 hari (T-22/K-25/K-27, semua kini dikoreksi/dibatalkan). Commit itu sudah
+di `main` lewat PR #10, 7 menit sebelum jejak yang dirujuk. Pelajaran S-05 **sudah ada** sejak 3C
+namun tetap terlewat — jadi `git log -S ... origin/main` kini **tak sah sebagai bukti** tanpa
+`git fetch` lebih dulu **dan** membandingkan waktu-merge PR dengan timestamp jejak. Lihat **T-27**.
 
 ### S-06 · Celah verifikasi sudah tertutup tanpa disadari
 Lima sprint melaporkan "runtime belum pernah terbukti". Ketika laporan 3G ditulis,
@@ -298,13 +304,32 @@ ditindaklanjuti**. Ini **kali kedua** jawabannya sudah ada di tempat yang sudah 
 tabel kini **wajib** menyebut RLS **dan** policy **dan** grant (K-23), dan kueri klasifikasinya
 masuk monitoring supaya bisa dijalankan ulang, bukan diandalkan pada ingatan.
 
-## T-22 · Produksi menjalankan kode BRANCH, bukan `main` — dokumentasi deploy salah
-> **DITUTUP (Sprint 3Y, 12 Agu 2026).** Pemilik produk **menerima secara sadar** bahwa produksi
-> men-deploy dari branch untuk sekarang (kecepatan > gate merge; belum ada pengguna eksternal),
-> dengan syarat pembalikan tercatat: begitu staf luar memakai sistem rutin → arahkan ke `main`
-> (merge dulu, repoint kemudian). Lihat **K-27**. Pertanyaan "branch atau main?" kini
-> **diketahui (branch) dan diterima** — bukan lagi kondisi tak disadari. Konfirmasi dashboard
-> Railway turun jadi kebersihan (MENUNGGU #3/#4), bukan penghalang. Detail bukti tetap di bawah.
+## T-22 · Produksi menjalankan kode BRANCH, bukan `main` — **KESIMPULAN SALAH, DIKOREKSI 24 Agu 2026**
+> **KOREKSI (24 Agu 2026) — kesimpulan ini terbalik dan ditarik.** Dashboard Railway
+> (Settings → Source) menunjukkan produksi tersambung ke **`main`** dengan **auto-deploy saat
+> push** — bukti dari luar repo yang tak pernah bisa saya lihat dari sandbox. Jadi produksi
+> **selalu** dari `main`; kalimat asli README "push ke `main` memicu deploy" **benar sejak
+> awal**, dan koreksi 12 Agu yang menandainya "salah" itulah yang keliru.
+>
+> **Bagaimana bukti 12 Agu menyesatkan (terbukti dari git, bukan tebakan):** temuan bersandar
+> pada `git log -S "login.password_reset_requested" origin/main` → **nol**, lalu menyimpulkan
+> "aksi ini hanya ada di branch, maka produksi menjalankan branch." Tetapi commit yang
+> memperkenalkan aksi itu (`a9602d5`) **sudah masuk `main` lewat PR #10** — merge `1b13fa8`
+> tercatat **12 Agu 04:41:32 UTC**, sedangkan baris audit reset produksi ditulis **04:48:41 /
+> 04:48:44 / 04:57:35 UTC**, yaitu **7 menit setelah** kode itu ada di `main`. `git merge-base
+> --is-ancestor a9602d5 1b13fa8` = **YA**. Maka "nol di `origin/main`" hanya mungkin bila
+> `git log -S` dijalankan atas **ref `origin/main` basi** (belum di-fetch setelah PR #10 merge) —
+> **pola S-05 (ref remote basi)**. Produksi menjalankan `main` yang baru saja di-deploy PR #10;
+> reset mendarat di sana. Temuan menggambarkan keadaan `main` **sebelum** PR #10 sambil reset
+> berjalan atas `main` **sesudah** PR #10.
+>
+> **Status:** kesimpulan "produksi = branch" **DITARIK.** K-25 dikoreksi, **K-27 dibatalkan
+> seluruhnya** (keputusan "menerima deploy-from-branch" tak pernah punya kondisi yang
+> diterimanya). Analisis kenapa ini lolos DUA kali → **T-27** (baru). Larangan "jangan merge ke
+> `main` tanpa izin" **tetap** — kini lebih penting, karena **merge = deploy**.
+>
+> _Teks di bawah ini adalah rekaman asli (yang keliru), disimpan utuh agar jejak keputusan
+> terbaca. Jangan dibaca sebagai keadaan sekarang._
 
 **Migrasi 11/12 (12 Agu 2026).** Reset kata sandi nyata berhasil di produksi
 (marketing@20fit.id masuk 04:58:21 UTC) dengan tiga baris audit
@@ -523,3 +548,199 @@ kelihatan di layar, jangan andalkan konteks di luar gambar.**
 **Pelajaran.** Data pratinjau yang makin akurat makin berbahaya kalau tak ditandai — sebab ia makin
 meyakinkan sebagai produksi. Fixture apa pun yang bisa masuk screenshot keputusan HARUS membawa
 penanda yang ikut ter-render.
+
+---
+
+## T-27 · Model deploy tercatat salah DUA kali — pertanyaan yang tak boleh dijawab dari dalam repo (2026-08-24)
+
+**Apa yang terjadi (dua kali, arah berlawanan).** Sumber deploy produksi salah dicatat dua kali:
+1. **~12 sprint pertama:** dokumen menulis "auto-deploy dari `main`" — **benar**, tapi ditulis
+   sebagai asumsi tanpa bukti.
+2. **12 Agu 2026 (T-22/K-25/K-27):** "koreksi" menyimpulkan produksi menjalankan **branch** —
+   **salah**, dan bertahan 5 hari lintas puluhan prompt sampai dashboard Railway (24 Agu)
+   membalikkannya kembali ke `main`.
+
+Pola berulang-terbalik itu sendiri adalah temuannya.
+
+**Apa yang terlewat (terbukti, bukan tebakan).** Bukti 12 Agu terasa kuat: aksi audit
+`login.password_reset_requested` tampak "hanya di branch" per `git log -S origin/main`, padahal
+produksi menulisnya. Yang terlewat: commit itu (`a9602d5`) **sudah** di `main` lewat **PR #10**
+(merge `1b13fa8`, **04:41:32 UTC**) — **7 menit sebelum** baris audit reset ditulis (04:48–04:57
+UTC). `git merge-base --is-ancestor a9602d5 1b13fa8` = **YA**. Jadi "nol di `origin/main`" hanya
+mungkin dari **ref `origin/main` basi** (belum di-fetch setelah PR #10) — **pola S-05**. Reset
+mendarat di `main` yang baru saja di-deploy, bukan di kode branch.
+
+**Kesalahan penalaran yang lebih dalam (ini yang harus tak terulang).** Bahkan seandainya ref
+tidak basi, bukti baris-audit **secara struktural tak bisa** menjawab pertanyaannya. Yang
+dibuktikan bukti itu paling jauh adalah **"kode branch pernah menyentuh DB produksi"** — dan itu
+bisa terjadi lewat **beberapa** mekanisme yang tak terbedakan dari dalam repo: (a) service
+produksi memang dari branch; (b) **deploy preview PR** dari branch menulis ke Supabase produksi
+yang **dibagi**; (c) kode branch dijalankan **lokal** terhadap DB produksi. T-22 sendiri
+**menyebut** alternatif (b) ("service produksi tetap `main`") lalu tetap menyimpulkan (a) sebagai
+fakta. Pertanyaan sebenarnya — **"branch mana yang disetel service produksi?"** — jawabannya ada
+**satu** tempat: **Railway → Settings → Source**, satu screenshot, **di luar repo dan diblokir
+egress dari sandbox**. Menutup pertanyaan empiris memakai bukti yang tak sanggup menjawabnya
+itulah cacatnya, bukan sekadar ref basi.
+
+**Pelajaran permanen (→ K-25 dikoreksi, K-27 dibatalkan, S-05 diperkuat).** Kelas pertanyaan
+"apa yang sebenarnya berjalan di produksi / setelan platform mana yang aktif" **tidak boleh
+dijawab dari dalam kode.** Bukti dari-dalam-repo (git log, isi audit, migrasi) bisa **menyanggah**
+sebuah klaim tapi jarang bisa **memastikan** setelan platform. Bila jawabannya butuh satu layar
+dashboard yang tak bisa saya lihat, hasil yang benar adalah **"belum diketahui — butuh
+konfirmasi manusia di Railway"**, bukan kesimpulan berbungkus rapi.
+
+**Bukti yang harus dicari lain kali (checklist verifikasi sumber deploy):**
+- **Railway → service produksi → Settings → Source** — branch tersambung + "auto deploy on push".
+  Ini otoritatif; semua yang lain turunan. (Diblokir dari sandbox → minta screenshot pemilik.)
+- Sebelum `git log -S` menyimpulkan "hanya di branch": **`git fetch origin main` dulu**, lalu
+  bandingkan **waktu merge PR** (`git show -s --format=%cd <merge>`) dengan **timestamp jejak
+  produksi**. Bila kode sudah di `main` sebelum jejak, "hanya di branch" itu artefak ref basi.
+- Ingat DB Supabase **dibagi** semua environment: baris di DB produksi **tak** membuktikan
+  environment mana yang menulisnya. Untuk memisah preview vs produksi butuh sinyal sisi-Railway
+  (log deploy, domain yang memanggil), bukan sinyal sisi-DB.
+
+**Konsekuensi gate:** larangan "jangan merge ke `main` tanpa izin eksplisit" **tetap** dan kini
+**lebih penting** — dengan model yang benar, **merge = deploy produksi seketika**.
+
+---
+
+## Temuan 24 Agu 2026 (separuh "menghubungi")
+
+- **Pagar terjemahan menggigit di hari pertama:** layar `search` (`app/(app)/audience/page.tsx`)
+  merender blok akses-ditolak berbahasa Indonesia yang di-hardcode **padahal sudah di
+  `BILINGUAL_SCREENS`** — campuran-bahasa senyap yang sudah tayang di produksi tanpa disadari.
+  Ini persis alasan pagar `untranslated-scan` dibangun lebih dulu. Diperbaiki.
+- **Prefiks audit `export.campaign_sent` → `campaign.sent` (K-39).** Mengirim bukan mengekspor:
+  memakai `export.%` membuat layar audit yang menyaring "ekspor" menampilkan kampanye. `campaign.%`
+  jadi famili kepatuhan sendiri (ditambah ke denylist pemangkas dengan cara K-09).
+- **Dua dari tujuh pemicu workflow tak punya sumber data:** "tidak kembali" (recency nyata hanya
+  ~47 profil my20fit) dan "fitpoint kedaluwarsa" (tak ada tabelnya). Arsitektur pemicu (polling vs
+  webhook vs tabel kejadian) belum diputuskan — snapshot harian tak bisa menjawab "baru saja login".
+- **CVE-2026-45755 (bridge Mailtrap Symfony)** = mode kegagalan webhook ini persis: secret diterima
+  tapi tak dipakai → bounce palsu bisa meracuni suppression. Webhook CRM **memverifikasi** (HMAC dua
+  nama header + anti-replay isi-hanya-bila-NULL), jadi aman; alasan itu dicatat di komentar agar tak
+  "disederhanakan" nanti.
+
+---
+
+## T-28 · Deadlock uji internal: dua pengaman yang benar, bersama-sama membuat pengujian mustahil (25 Agu 2026)
+
+Saat hendak menjalankan kirim internal pertama, verifikasi independen ke DB langsung menemukan
+**tak ada satu jalur pun bisa mengirim ke staf internal lewat composer:**
+
+- **`master_customer` memuat 0 alamat `@20fit.id`** (staf bukan pelanggan — `count(*) where
+  email_normalized like '%@20fit.id'` = 0).
+- Segmen menarik penerima **hanya** dari `master_customer` (`resolveRecipients`).
+- Dengan `CAMPAIGN_SEND_ENABLED` mati, gerbang pra-luncur (`maySendTo`) **hanya** mengizinkan
+  `@20fit.id`.
+
+Dua aturan yang masing-masing **benar** — pool baca-saja beku; kirim nyata diblokir sampai token+DNS
+beres — **berpotongan kosong**: domain yang diizinkan tak ada di sumber yang dibaca. Uji internal-saja
+lewat composer menghasilkan **0 "Akan dikirimi"**; tak ada `provider_message_id`, tak ada baris log,
+tak ada yang bisa dibuktikan. Juga: 0 template & 0 segmen tersimpan, jadi composer bahkan menolak
+sebelum sampai ke sana.
+
+**Perbaikan (bukan diam-diam):** harness `lib/crm/send-test-harness.ts` — menyuntikkan satu alamat
+internal (dari env `SEND_TEST_INTERNAL_ADDRESS`, tak di-hardcode) ke **`sendCampaign` yang sama
+persis** (engine, ports, audit, gerbang), hanya penerimanya yang berbeda. Menghasilkan artefak nyata
+(baris `crm_message_log` + `provider_message_id`, satu `campaign.sent`, baris `crm_campaign_run`).
+Guard: hanya jalan saat kirim nyata mati; menolak alamat non-`@20fit.id`. Panel di /campaigns tampil
+hanya pra-luncur. **Belum dijalankan manusia** saat temuan ini ditulis — laporan ketujuh butir menyusul
+setelah `SEND_TEST_INTERNAL_ADDRESS` diset di Railway dan tombolnya ditekan.
+
+## T-29 · `crm_user_role` = 3 akun; login di `auth.users` BUKAN bukti pemakaian CRM (koreksi, 25 Agu 2026)
+
+Klaim awal "jb@, hazel@, zidni@, ferdinand@ sudah punya aktivitas login → sistem mulai dipakai orang
+sungguhan" **dikoreksi oleh verifikasi independen.** `auth.users` **dipakai bersama seluruh ekosistem
+20FIT** (my20fit, shop, dll.), jadi timestamp login di sana bukan bukti pemakaian CRM.
+
+- **`crm_user_role` hanya 3 baris, semuanya `super_admin`:** tifany@, zidni@, marketing@.
+- **jb@, hazel@, ferdinand@ (dan ~25 akun `@20fit.id` lain) login di `auth.users` tapi TIDAK punya
+  `crm_user_role`** → jika mereka buka CRM, mereka tak dapat akses (tak ada peran).
+- **Bukti pemakaian CRM nyata = audit log-nya sendiri** (`crm_audit_log`): praktis satu pengguna berat
+  (tifany@) plus marketing@; zidni@ punya peran tapi nol baris audit.
+
+**Pelajaran permanen:** "sistem dipakai" hanya bisa dijawab dari `crm_audit_log` + `crm_user_role`,
+**bukan** dari `auth.users` yang dibagi lintas produk. Konsekuensi peran: bila jb@/hazel@/ferdinand@
+memang akan pakai CRM, mereka perlu **diberi peran** (least-privilege, bukan `super_admin` seperti 3
+akun sekarang).
+
+**Syarat pembalikan K-27 → usang, bukan "terpenuhi".** K-27 (deploy-dari-branch) **dibatalkan** 24 Agu
+karena premisnya salah: produksi **selalu** dari `main`. Tindakan yang diresepkan syaratnya ("arahkan
+Railway ke `main` begitu staf luar memakai rutin") sudah jadi kenyataan sejak awal — tak ada yang bisa
+dipicu. Yang berlaku: **merge = deploy produksi**, jadi disiplin gate makin penting, bukan makin longgar.
+
+## T-30 · Kirim pertama gagal SENYAP: secret wajib absen → throw sebelum baris pertama, tak berjejak (25 Agu 2026)
+
+Tekan pertama tombol uji kirim internal (tifany@, 07:41 & 07:42 UTC) **tak menghasilkan apa pun yang
+bisa dilacak**: `crm_message_log` 0, audit `campaign.sent` 0, dua `crm_campaign_run` berhenti di
+`draft`, inbox nol. Persiapan jalan (template + segmen + run dibuat), lalu diam.
+
+**Sebab (jejak kode + bukti, bukan tebakan):** `sendCampaign` melempar di `send-campaign.ts:214`,
+`const identitySecret = identityHashSecret();`. Helper itu membaca **`UNSUBSCRIBE_TOKEN_SECRET`** dan
+fail-closed melempar bila kosong/pendek. Variabel itu **absen dari Railway** (terbukti dari daftar 7
+variabel pemilik produk). Lemparan terjadi **setelah** resolusi penerima + gerbang tapi **sebelum**
+`runSend`/`claim` (INSERT pertama) dan **sebelum** audit → nol baris, run tetap `draft`, Mailtrap tak
+pernah dipanggil. Konsisten dengan seluruh bukti. **Bukan** pola ekspor-terputus (di sana throw di
+tengah aliran setelah header; di sini sebelum baris pertama).
+
+**Yang disingkirkan:** `SEND_TEST_INTERNAL_ADDRESS` terisi & internal (bukan penyebab); gerbang/peran
+lolos (template+segmen+run terbuat); `CAMPAIGN_SEND_ENABLED` absen **benar** (`undefined` =
+`realSendEnabled()` false = mode aman); Mailtrap tak pernah dipanggil (inbox nol).
+
+**Masalah kedua — lebih penting daripada bug-nya:** kegagalan tak meninggalkan jejak sebab di mana
+pun (tak ada kolom galat di run, tak ada baris `failed`, tak ada audit). Kalau pemilik produk tak
+melapor, tak seorang pun tahu ini terjadi. **Sepola dengan reset kata sandi empat-keadaan** (satu
+pesan menyembunyikan empat sebab) **dan ekspor terpotong tanpa penanda akhir** — tiap kali biayanya
+berhari-hari.
+
+**Perbaikan (BAGIAN A):**
+- Kolom **`crm_campaign_run.last_error`** (migrasi `20260825080504`). Run yang gagal sebelum kirim →
+  `status='stopped'` + `last_error` (sebab terklasifikasi, bebas-PII). Dua run yatim ditandai retroaktif.
+- **`try/catch` di sekitar `sendCampaign`** di harness **dan** jalur kirim nyata → `recordRunError` +
+  galat terstruktur ke panel/composer, tampil di layar, bukan senyap.
+- **Pra-cek `missingSendEnv()`** melaporkan **semua** variabel wajib yang kurang **sekaligus** (bukan
+  berhenti di yang pertama), sebelum membuat run — menghentikan pola "temukan satu variabel kurang per
+  percobaan gagal".
+- **Test mengunci `realSendEnabled`**: `undefined`/`"false"`/`"0"`/`"TRUE"` = mati; hanya `"true"` = nyala.
+
+**Yang harus dipasang pemilik produk (satu kali):** `UNSUBSCRIBE_TOKEN_SECRET` (≥16, WAJIB),
+`MAILTRAP_WEBHOOK_SECRET` (webhook), konfirmasi `NEXT_PUBLIC_APP_URL`. **Jangan** set
+`CAMPAIGN_SEND_ENABLED`.
+
+## T-31 · Celah audit bertambah jadi 179 & 187 — bukan kegagalan baru, dua rollback baca 19 Agu yang baru TERSINGKAP (25 Agu 2026)
+
+Celah id `crm_audit_log` kini: **4, 37, 38, 39, 179, 187** (max_id 239, 233 baris, 6 hilang). Dua yang
+"baru" — 179 dan 187 — **diselidiki sebelum menyentuh kode lain** (permintaan pemilik).
+
+**Sebab (dari cap waktu tetangga, bukan tebakan):** `id` = `GENERATED ALWAYS AS IDENTITY`; celah =
+INSERT audit mengambil nomornya lalu transaksinya rollback sebelum commit (K-21: baris yang hilang
+ITULAH jejaknya). Keduanya jatuh di tengah penjelajahan **baca-saja** `tifany@` pada **19 Agu 2026**:
+- **179** di antara id 178 (`profile.viewed`, 11:03) dan 180 (`profile.viewed`, 13:57) — pelanggan sama.
+- **187** di antara id 186 (`list.viewed`, 15:20) dan 188 (`list.viewed`, 16:06).
+Operasi yang gagal sekelas tetangganya: satu `profile.viewed`, satu `list.viewed` yang request-nya
+error setelah tulis audit. Kelas **benign** yang sama dengan 4/37/38/39.
+
+**Disingkirkan — jalur tulis sesi ini.** Semua baris audit tulis sesi ini di **id ≥ 214, 24–25 Agu**:
+`campaign.sent` = **id 232** (25 Agu 08:12); pemberian peran = baris seed 11 Agu (id 2, 3, 113); **nol**
+baris `suppression.*`. Tak satu pun memetakan ke 179/187. **Kenapa baru muncul:** penyelidikan celah
+lalu (3K) berjalan saat max_id ~47 dan hanya melihat 4/37/38/39; penjelajahan 19 Agu mendorong urutan
+melewati 187 dan menghasilkan dua lubang rollback lagi berpola sama — **19-Agu yang baru tersingkap,
+bukan kegagalan minggu ini.** Tak ada perbaikan kode: monitor celah (banner audit) sudah menampilkannya
+dengan benar; keduanya masuk hitungan `knownLegit`.
+
+## T-32 · Form pemberian peran akan MELEMPAR di render pertama — const diekspor dari modul `"use server"` (ditemukan & diperbaiki 25 Agu 2026)
+
+Saat membangun tab **20FIT Manager**, fixture `/dev/preview-settings` **500**:
+`GRANTABLE_ROLES.map is not a function`. Sebab: `GRANTABLE_ROLES` (sebuah const array) diekspor dari
+`app/(app)/settings/roles/actions.ts` yang ber-`"use server"`. **Modul `"use server"` hanya boleh
+mengekspor fungsi async** — const/tipe yang diekspor darinya menjadi **stub tak-terpakai di klien**, jadi
+`.map` melempar. Ini **bug laten di kode lama** (form mengimpor const itu dari actions sejak commit
+`696a142`): `tsc`/build hijau karena tipe terhapus saat kompilasi, tapi **jalur render nyata tak pernah
+dijalankan** — sepola T-30/reset/ekspor: hijau di gerbang, patah saat dipakai.
+
+**Perbaikan:** `GRANTABLE_ROLES` + tipe `RoleActionError`/`RoleActionResult` pindah ke
+`lib/auth/role-admin.ts` (modul biasa); `actions.ts` kini **hanya** mengekspor fungsi async; form
+mengimpor const+tipe dari modul biasa, fungsi dari actions. Fixture kini render 200. Pelajaran:
+**satu-satunya bukti sebuah komponen server-action benar-benar merender adalah merendernya**, bukan
+tsc/build.

@@ -66,3 +66,82 @@ belum diterapkan dan menjalankan ulang semuanya.
 > Nol baris audit dari `/` dan `/quality` adalah perilaku yang **benar** (aturan Sprint 3E:
 > agregat tanpa parameter pengguna tidak diaudit). Itu **bukan** bukti keduanya berjalan.
 > Satu-satunya bukti untuk keduanya adalah log Railway atau mata orang.
+
+---
+
+## 24 Agu 2026 — separuh "menghubungi" terbangun (kode), belum satu jalur pun dilalui
+
+5 migrasi diterapkan (`crm_message_template`, `crm_message_log`,
+`crm_purge_audit_log_add_campaign_compliance`, `crm_segment`, `crm_campaign_run`). **Lima
+tabel menunggu baris pertamanya** — semua 0 baris: `crm_message_log`, `crm_segment`,
+`crm_campaign_run`, `crm_suppression`, audit `campaign.%`. Jalur kirim + webhook Mailtrap +
+monitor bounce (belum aktif) + template + unsubscribe semuanya dibangun & teruji di sisi kode;
+**tak ada yang pernah dijalankan** karena kirim diblokir rotasi token.
+
+- **Reset kata sandi TERBUKTI ujung-ke-ujung di produksi** (fitur pertama yang benar-benar dipakai).
+- **Pagar terjemahan** (`untranslated-scan`) dipasang; menangkap layar `search` yang tayang dengan
+  blok Indonesia hardcode padahal sudah di `BILINGUAL_SCREENS`.
+- **Detail profil diterjemahkan** (5B-T2); `profile` di-flip ke `BILINGUAL_SCREENS`. Hanya
+  `/settings/diagnostik` yang masih `PENDING`.
+- **Composer kampanye disambungkan ke `crm_campaign_run`** (TUGAS 3): `campaignId = run.id`, jadi
+  tiap instans punya kunci idempotensi sendiri. Layar menawarkan dua jalur yang jelas berbeda —
+  "lanjutkan run yang ada (N terkirim)" vs "mulai run baru" — Kirim nonaktif sampai satu dipilih.
+  Store `lib/crm/campaign-run.ts` + aturan status murni teruji (`campaign-run-status.ts`).
+- Ikhtisar penuh + yang belum dikerjakan: `RANGKUMAN-24agu.md`.
+
+---
+
+## 25 Agu 2026 — navigasi sebelas → tujuh, plus responsif (BAGIAN C + D)
+
+**Menu:** Dashboard · Audience · Workflows · Campaigns · Templates · Exports · Settings (dari 11).
+Empat layar **dipindah ke dalam**, bukan dibuang; rute lama **redirect** (tak ada bookmark 404):
+
+| Dibuang | Pindah ke | Rute lama |
+|---|---|---|
+| Segments | Penyusun kriteria + asisten AI (komponen bersama `SegmentBuilder`) di **Campaigns** (kirim) dan **Exports** (ekspor) | `/segments` → `/campaigns` |
+| Messages | Tab **Riwayat Kirim** di Templates | `/messages` → `/templates?tab=history` |
+| Consent | **Unsubscribe** → tab di Audience; **arsip dasar consent** (crm_consent) → panel baca-saja di Settings | `/consent` → `/audience?tab=unsubscribe` |
+| Quality | Tab **Kualitas** di Audience | `/quality` → `/audience?tab=quality` |
+
+**Komponen bersama = satu berkas.** `SegmentBuilder` dipasang di Campaigns (`canExport=false`) dan
+Exports (`canExport=true`) — satu implementasi, dua titik pasang (bukan dua yang mirip). `loadCityFill`
+diekstrak ke `lib/crm/city-fill.ts` agar angkanya tak menyimpang antar keduanya. Consent dipecah tanpa
+menduplikasi: `consent-shared.tsx` (hook data + Pager + EmptyRegister) dipakai `suppression-panel` dan
+`consent-archive-panel`.
+
+**Catatan kejujuran — SEMUA ikut pindah, nol dihapus:**
+- "Suppression menang atas consent" → `suppression-panel` (tab Unsubscribe).
+- Banner makna-nol / backfilled + kosakata `basis` provisional → `consent-archive-panel` (Settings).
+- `skipped_suppressed`/`failed` apa adanya + "identitas hanya hash, bukan alamat" → `send-history-panel`
+  (tab Riwayat Kirim).
+- Peringatan kualitas, "kota 93% kosong", RFM-tak-terpakai → tetap di `QualityDashboard` / `SegmentBuilder`.
+
+**Pagar terjemahan dijalankan setelah berkas berpindah** — `SCREEN_FILES` diperbarui ke lokasi baru;
+`untranslated-scan` + paritas i18n **hijau** (nol string terlewat saat perpindahan).
+
+**Responsif (D):** sidebar jadi **laci** dengan tombol hamburger di bawah `md`; **tabel padat** (daftar
+audience, riwayat kirim, unsubscribe, arsip consent) jadi **kartu per baris** di ponsel; tab menggulir
+menyamping dengan sasaran sentuh besar; grafik batang tetap menampilkan angka di sebelahnya. Pratinjau
+fixture `/dev/preview-tabs` + screenshot ponsel & desktop.
+
+---
+
+## 25 Agu 2026 — Settings jadi EMPAT tab + jalur peran (tambah/ubah/cabut) + celah audit 179/187
+
+**Settings → 4 tab** (TabBar query-param yang sama, bukan pola baru): **CRM Log** (audit) · **20FIT
+Manager** (peran) · **Consent** (arsip baca-saja) · **WhatsApp Business API** (status). Rute lama
+`/settings/roles` **redirect** ke `/settings?tab=manager`.
+
+- **20FIT Manager**: daftar `crm_user_role` menampilkan **email** (dari `auth.users`, hanya untuk yang
+  ada di `crm_user_role` — bukan seluruh ekosistem), UUID hanya fallback. Responsif (tabel→kartu).
+- **Jalur peran (khusus Super Admin, server-gated `canManageRoles`, ber-audit):** beri/ubah (upsert) +
+  **cabut** (delete), masing-masing menulis `role.granted`/`role.revoked` (retensi permanen) dengan
+  **peran sebelumnya** di metadata. Aturan gigit di lapisan murni `lib/auth/role-admin.ts` (teruji):
+  **tak boleh demote/cabut diri sendiri**, **Super Admin terakhir dilindungi**, email **harus** sudah
+  punya akun `auth.users` (CRM **tak** membuat akun). +11 test.
+- **Celah audit 179/187** diselidiki lebih dulu (T-31): dua rollback baca **19 Agu** yang baru
+  tersingkap, **bukan** dari jalur tulis sesi ini — nol perbaikan kode, monitor celah sudah benar.
+- **Bug laten diperbaiki (T-32):** const diekspor dari modul `"use server"` → form peran akan melempar
+  di render pertama; dipindah ke modul biasa. Terbukti render lewat fixture `/dev/preview-settings`.
+
+Gerbang: `tsc` bersih · `next lint` bersih · **vitest 1172 → 1184** · `NODE_ENV=production build` lulus.

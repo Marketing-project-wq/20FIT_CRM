@@ -380,9 +380,11 @@ Log Railway: deploy hijau, `/health` (`env: configured`, `supabase: reachable`),
 
 ## 7. Prasyarat & catatan merge
 - **JANGAN merge / buka PR ke `main` tanpa izin eksplisit.** Push ke `main` memicu deploy
-  Railway ke sistem yang dipakai orang. **KOREKSI (12 Agu 2026, T-18/K-25):** bukti menunjukkan
-  produksi menjalankan kode *branch*, bukan `main` — setiap push ke branch bisa langsung live.
-  Lihat `docs/KOREKSI-DEPLOY.md`.
+  Railway ke sistem yang dipakai orang. ~~**KOREKSI (12 Agu 2026, T-18/K-25):** bukti menunjukkan
+  produksi menjalankan kode *branch*, bukan `main` — setiap push ke branch bisa langsung live.~~
+  **RE-KOREKSI (24 Agu 2026):** koreksi 12 Agu itu **salah dan ditarik** — produksi dari `main`
+  (dashboard Railway); kalimat pertama benar sejak awal, **merge = deploy**. Sebab kekeliruan:
+  ref `origin/main` basi (S-05). Lihat T-22/T-27, K-25/K-27; `docs/KOREKSI-DEPLOY.md` ditarik.
 - **3K & 3L baca-saja, nol skema.** Revert = `git revert` kode saja. **Migrasi 10 (3I)
   JANGAN direvert** (§4 Tingkat 0) — DB-nya sudah ditutup, dan 3I sudah di main via PR #6.
 - **Validasi deploy 3L itu sendiri = buka `/settings/diagnostik`** setelah deploy: seluruh

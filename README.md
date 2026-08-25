@@ -9,7 +9,15 @@ segmentation and marketing automation for the Marketing Division.
 
 Full spec: `PRD — 20FIT Audience Data & CRM System v1.1`.
 
-> ## 📚 Project history — read before changing a "warning" comment
+> ## 🧭 Scope authority — `docs/KEBUTUHAN-SISTEM.md`
+>
+> The product owner's standing statement of what this system must do (and what is **not** its
+> job), dated 24 Aug 2026, lives in **[`docs/KEBUTUHAN-SISTEM.md`](docs/KEBUTUHAN-SISTEM.md)**.
+> **When any other document in this repo conflicts with it, that file wins** — the one exception
+> is database numbers, which are always re-measured (its §6). Read it before deciding whether a
+> feature is in scope. Key standing consequences: **consent is not a gate** (every user is
+> considered contactable); **unsubscribe (`crm_suppression`) is the only real gate**; the daily
+> snapshot cannot answer event-based triggers; every send must leave an audit record.
 >
 > `docs/riwayat/` records why this system is the way it is: every sprint's prompt,
 > the decisions taken (`KEPUTUSAN.md`) and **what would reverse each one**, the
@@ -37,11 +45,16 @@ Full spec: `PRD — 20FIT Audience Data & CRM System v1.1`.
 > lockout is immediate. This warning is here, not only in `lib/auth/current-role.ts`,
 > because whoever merges is reading this file, not the auth code.
 >
-> **CORRECTION (2026-08-12, T-18/K-25):** the deployed branch is **not confirmed to be `main`** —
-> evidence shows production serving *feature-branch* code (an audit action present only in the
-> branch was written by production). So "a push to `main`" above may actually be "a push to the
-> connected feature branch." The lockout risk is identical either way; the trigger branch must
-> be confirmed in the Railway dashboard.
+> **RETRACTION (2026-08-24):** the 2026-08-12 "CORRECTION" that once stood here — claiming the
+> deployed branch was *not* `main` — was **wrong and is withdrawn**. The Railway dashboard
+> (Settings → Source) shows production connected to **`main`** with auto-deploy on push, exactly
+> as the original text above says. The 12 Aug "branch code serves production" reasoning rested on
+> a `git log -S` run against a **stale `origin/main` ref**: the audit action's commit (`a9602d5`)
+> was already merged into `main` via **PR #10 at 04:41 UTC**, seven minutes *before* the
+> production reset wrote those audit rows at 04:48 UTC. Production ran freshly-deployed `main`, not
+> branch code. See T-22 (corrected) and T-27 in `docs/riwayat/TEMUAN.md`. **Merge to `main` = a
+> production deploy** — the "do NOT merge until steps 1–2 are done" order above stands, and is now
+> confirmed to be the exact and only trigger.
 
 > ## ⚠️ Migration ledger diverged — do NOT run `supabase db push`
 >
@@ -74,6 +87,13 @@ Full spec: `PRD — 20FIT Audience Data & CRM System v1.1`.
 > | 20 | `…20260819113518_crm_purge_audit_log_add_demographic_compliance` | `20260819113518` | `crm_purge_audit_log_add_demographic_compliance` (Opsi 2 / K-09 — adds `profile.demographic_updated` to the compliance denylist; migration 8 untouched) |
 > | 21 | `…20260819113649_create_crm_upsert_profile_demographic` | `20260819113452` **+** `20260819113649` | `create_crm_upsert_profile_demographic` (×2 — first apply hit an `array_cat` bug, re-applied fixed) |
 > | 22 | `…20260821041044_pin_search_path_crm_audit_log_no_mutate` | `20260821041044` | `pin_search_path_crm_audit_log_no_mutate` (K-15 hardening — pins `search_path` on the append-only guard `crm_audit_log_no_mutate`; applied 2026-08-21, both triggers verified still reject UPDATE+DELETE) |
+> | 23 | `…20260821154415_unify_identity_sources_aplus` | `20260821154415` | `unify_identity_sources_aplus` (Migrasi 23 / jalur A+ — unifies identity sources into the mirror; merged via PR #14) |
+> | 24 | `…20260824135604_crm_message_template` | `20260824135604` | `crm_message_template` (contacting-half — message-template storage: append-version, bilingual, email+WhatsApp with `wa_approval_status`; RLS on / 0 policy, relacl `{postgres, service_role}`. Applied + verified this session) |
+> | 25 | `…20260824145501_crm_message_log` | `20260824145501` | `crm_message_log` (send path — one row per send attempt, keyed `customer_id`; mirrors `my20fit_message_log` cycle stamps; identity stored only as keyed-HMAC `identity_hash` (no raw PII), deterministic `idempotency_key`; RLS on / 0 policy, relacl `{postgres, service_role}`, 22 cols / 4 checks. Applied + verified this session. **Local file `20260824160000` renamed to the ledger stamp `20260824145501`.**) |
+> | 26 | `…20260824160306_crm_purge_audit_log_add_campaign_compliance` | `20260824160306` | `crm_purge_audit_log_add_campaign_compliance` (K-39 — adds the `campaign.%` compliance family to the purge denylist; a campaign send is outbound contact, not a file export, so it gets its OWN family, not `export.%`. create-or-replace; proacl `{postgres, service_role}`. Dry-run verified `campaign.sent` excluded from purge. Local file `20260824150000` renamed to the ledger stamp.) |
+> | 27 | `…20260824160409_crm_segment` | `20260824160409` | `crm_segment` (K-40 — saved segment DEFINITIONS: validated criteria jsonb, NOT a member list; members recomputed on read; `requires_clinical` re-checked against the USING role's view_health. RLS on / 0 policy, relacl `{postgres, service_role}`, 8 cols / 0 rows. Applied + verified this session.) |
+> | 28 | `…20260824180426_crm_campaign_run` | `20260824180426` | `crm_campaign_run` (K-41 form B — one row per campaign INSTANCE; its id becomes `crm_message_log.campaign_id` so each issue has its own deterministic idempotency keys (re-run = resume, new run = re-send). FK to `crm_segment` on delete restrict. RLS on / 0 policy, relacl `{postgres, service_role}`, 7 cols / 0 rows. Applied + verified this session. Local file `20260824170000` renamed to the ledger stamp.) |
+> | 29 | `…20260825080504_crm_campaign_run_add_last_error` | `20260825080504` | `crm_campaign_run_add_last_error` (T-30 — adds `last_error text` so a run that HALTED before/without sending leaves a PII-free classified reason (status `stopped`), not silence. No new grants (UPDATE already held). Applied + verified this session; the two orphan draft runs from the 24→25 Aug internal-test attempts were retroactively marked `stopped` + `last_error`.) |
 >
 > **Count reconciliation (re-checked against `schema_migrations` on 2026-08-21): 22 CRM
 > migration files on `main` → 24 CRM ledger entries in the DB.** The gap between files and
@@ -192,11 +212,13 @@ reverse it in **both** aggregate endpoints, never leave two answers.
 - Tailwind CSS 3 + shadcn/ui (restyled to the 20FIT design tokens)
 - Supabase Auth via `@supabase/ssr` (cookie-based sessions, no localStorage)
 - Self-hosted fonts via `next/font` (Barlow Condensed, JetBrains Mono, Manrope)
-- Deploy: Railway (source = GitHub). **The connected branch is NOT confirmed to be `main`.**
-  Evidence (2026-08-12, T-18/K-25) shows **branch code serving production**: production wrote
-  an audit action that exists only in the feature branch, never in `main`. Confirm the actual
-  deploy branch in the Railway dashboard (service → Settings → Source); until then, treat
-  every push to the feature branch as potentially live in production.
+- Deploy: Railway (source = GitHub), **connected branch = `main`, auto-deploy on push**
+  (confirmed in the Railway dashboard, Settings → Source, 2026-08-24). The 2026-08-12 claim that
+  "branch code serves production" was **wrong** — it came from a `git log -S` on a stale
+  `origin/main` ref (the audit-action commit had already merged to `main` via PR #10, minutes
+  before the reset it pointed to). Withdrawn; see T-22 (corrected) and T-27 in
+  `docs/riwayat/TEMUAN.md`. **Merge to `main` = deploy to production** — that is the single
+  trigger, so the merge gate below matters more, not less.
 
 ## Run locally
 

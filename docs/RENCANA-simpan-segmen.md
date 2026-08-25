@@ -1,8 +1,57 @@
 # Rencana: menyimpan segmen (keputusan, belum dikerjakan)
 
-> **Status: MEMO KEPUTUSAN.** Sprint 3M membangun segment builder yang **menghitung lalu
-> membuang** — nol tabel, nol simpan. Dokumen ini menaruh keputusan penyimpanan di atas
-> meja. Ia tidak membuat migrasi, tabel, atau aksi audit.
+> **DIPERBARUI 2026-08-24 (K-40): SEKARANG DIBANGUN — SQL DITUNJUKKAN, BELUM DIJALANKAN.**
+> Jalur kirim kampanye (K-38) butuh menyebut segmen mana yang dipakai; `crm_message_log.campaign_id`
+> sudah mengandaikan segmen punya identitas. Jadi 3M **diperbarui, bukan dibatalkan**. Yang tetap
+> berlaku dari 3M (bagian bawah dokumen ini) dipertahankan penuh: **simpan KRITERIA, bukan daftar
+> orang**; hitung anggota ulang saat dipakai; nol kriteria waktu (K-19). SQL final di bawah.
+>
+> **Status asli (arsip): MEMO KEPUTUSAN.** Sprint 3M membangun segment builder yang **menghitung lalu
+> membuang** — nol tabel, nol simpan.
+
+## SQL final `crm_segment` (K-40) — DITUNJUKKAN, BELUM DIJALANKAN
+
+Menyimpan **definisi (kriteria tervalidasi)**, bukan hasil. Pola `crm_*`: RLS on / 0 policy /
+grants `service_role`. Berhenti untuk tinjauan sebelum apply.
+
+```sql
+create table if not exists public.crm_segment (
+  id                uuid primary key default gen_random_uuid(),
+  name              text not null,                 -- diberi manusia
+  criteria          jsonb not null,                -- pohon filter TERVALIDASI (bukan SQL); divalidasi ulang saat baca
+  requires_clinical boolean not null default false,-- true bila kriteria menyentuh srcClinicPatient/srcClinicTxn (view_health)
+  created_by        text,                          -- aktor (email/id) — provenans di-baris
+  created_at        timestamptz not null default now(),
+  is_active         boolean not null default true, -- arsip lunak; tak ada DELETE definisi yang pernah dipakai
+  updated_at        timestamptz
+  -- TIDAK ADA member_count (dihitung saat dilihat, dgn penanda kesegaran)
+  -- TIDAK ADA daftar customer_id (membekukan pool = luput suppression)
+  -- TIDAK ADA kriteria waktu (K-19)
+);
+create index if not exists crm_segment_active_idx on public.crm_segment (is_active, created_at desc);
+
+alter table public.crm_segment enable row level security;
+revoke all on public.crm_segment from public, anon, authenticated;
+grant select, insert, update on public.crm_segment to service_role; -- update utk rename/arsip; isi kriteria = versi baru
+```
+
+**Penjaga yang mempertahankan alasan 3M (LARANGAN):**
+- **Anggota dihitung ulang saat dipakai**, ditampilkan dengan **penanda kesegaran** — tak pernah
+  kolom `member_count` tersimpan yang membeku.
+- **Gerbang klinis tak bisa dimutari.** `requires_clinical` di-set saat simpan (kriteria menyentuh
+  `srcClinicPatient`/`srcClinicTxn`); jalur PAKAI (hitung/kirim) tetap memeriksa `view_health` peran
+  **yang memakai** — bukan peran yang membuat. Jadi tak bisa dibuat peran berwenang lalu dipakai
+  peran lain untuk memutari gerbang.
+- **Gerbang peran** = `segment.build` (sama seperti builder 3M).
+- Kriteria divalidasi pohon-filter **saat simpan** dan **divalidasi ulang saat baca** (belt-and-suspenders).
+
+**Audit `segment.%`:** provenans dasar ada di-baris (`created_by`/`created_at`). Bila tim ingin aksi
+audit formal untuk pembuatan segmen, klasifikasinya **operasional** (rekomendasi bagian bawah, tetap
+berlaku) — bukti hukum penargetan ada di jejak KIRIM (`campaign.%`, kepatuhan, K-39), bukan di definisi
+segmen. Itu keputusan terpisah; **jangan** diselundupkan — tambahkan `segment.%` ke allowlist operasional
+migrasi + `retention-policy.ts` + parity test dalam satu commit bila diputuskan.
+
+**Revert:** `drop table if exists public.crm_segment;` — aditif, nol data pelanggan (hanya kriteria + metadata).
 
 ## Kenapa penyimpanan ditunda (dua halangan, bukan satu)
 

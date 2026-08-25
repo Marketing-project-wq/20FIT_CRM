@@ -2,7 +2,24 @@
 
 Berkas ini adalah titik masuk. Baca ini lebih dulu sebelum apa pun, lalu ikuti tautannya.
 
-Terakhir diperbarui: **13 Agustus 2026.**
+Terakhir diperbarui: **24 Agustus 2026.**
+
+> ## 🧭 Rujukan lingkup teratas — `docs/KEBUTUHAN-SISTEM.md`
+>
+> Pernyataan pemilik produk (24 Agu 2026) tentang apa yang sistem ini **harus** lakukan dan apa
+> yang **bukan** urusannya ada di **[`docs/KEBUTUHAN-SISTEM.md`](../KEBUTUHAN-SISTEM.md)**. **Bila
+> dokumen lain di repo bertentangan dengannya, berkas itu yang menang** — kecuali angka database,
+> yang selalu diukur ulang. Konsekuensi tetap yang mengubah panduan ini: **consent bukan
+> gerbang** (setiap pengguna dianggap boleh dihubungi); **unsubscribe (`crm_suppression`) satu-
+> satunya gerbang**; snapshot harian tak bisa menjawab pemicu berbasis kejadian; tiap pengiriman
+> meninggalkan catatan audit. Lihat K-36 (consent bukan gerbang).
+
+> ## 📌 Rangkuman hari re-scoping — [`RANGKUMAN-24agu.md`](RANGKUMAN-24agu.md)
+>
+> Ikhtisar 24 Agu 2026: perpindahan dari separuh "mengenali" ke separuh "menghubungi", 5 migrasi
+> diterapkan (semua tabelnya 0 baris), reset kata sandi terbukti di produksi, pagar terjemahan,
+> dan **apa yang belum dikerjakan** (rotasi token Mailtrap = satu-satunya penghalang kampanye).
+> Angkanya diverifikasi ulang terhadap DB langsung.
 
 ---
 
@@ -111,8 +128,10 @@ segmentasi berbasis waktu (K-19).
 
 **Jangan pakai `pg_class.reltuples`.** Estimasi perencana bergeser sendiri; selalu `count(*)`.
 
-**Produksi men-deploy dari branch kerja, bukan `main`** (T-18, diterima sadar di K-27). Push
-ke branch langsung tayang.
+**Produksi men-deploy dari `main`, auto-deploy saat push** (dashboard Railway, dikonfirmasi
+24 Agu 2026). **Merge ke `main` = deploy ke produksi seketika** — jadi jangan merge tanpa izin.
+_(Koreksi: catatan lama "deploy dari branch, K-27" **salah** — ref `origin/main` basi; K-27
+dibatalkan, lihat T-22/T-27/K-25 yang dikoreksi.)_
 
 **`supabase db push` jangan pernah dijalankan.** Ledger diverge dan punya entri ganda; semua
 migrasi lewat `apply_migration` satu per satu.

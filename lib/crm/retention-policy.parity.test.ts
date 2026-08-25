@@ -27,7 +27,11 @@ import {
 
 const MIGRATION = fileURLToPath(
   new URL(
-    "../../supabase/migrations/20260819113518_crm_purge_audit_log_add_demographic_compliance.sql",
+    // The CURRENT purge definition. …160306 is a create-or-replace that added the `campaign.%`
+    // compliance family (K-39), APPLIED 2026-08-24 (dry-run verified campaign.sent excluded); the
+    // parity target moves to it, exactly as it moved to …113518 when `profile.demographic_updated`
+    // was added (K-09).
+    "../../supabase/migrations/20260824160306_crm_purge_audit_log_add_campaign_compliance.sql",
     import.meta.url,
   ),
 );

@@ -21,8 +21,10 @@ export const dynamic = "force-dynamic";
  *   - The segment's row count decides which action is required: ≤ EXPORT_THRESHOLD →
  *     export.at_or_below_threshold, else export.above_threshold.
  *   - super_admin / crm_manager: both allow → stream.
- *   - crm_operator / unit_manager: at_or_below is `approval` → 403 "needs approval, feature not
- *     available" (the approval flow is not built; we do NOT let it through). above is a hard deny.
+ *   - crm_operator: at_or_below is `allow` (opened 24 Aug 2026 by the product owner — the approval
+ *     flow was never built and the requirements doc asks for none) → stream. above is a hard deny.
+ *   - unit_manager: at_or_below stays `approval` → 403 "needs approval, feature not available"
+ *     (fail-closed: no unit-scope table exists yet). above is a hard deny.
  *   - analyst: DENY. Reason (kept explicit): analyst sees contacts MASKED; a masked export is
  *     useless for contacting, and an unmasked export would defeat the very mask the role exists
  *     to enforce. So there is no coherent analyst export — deny, not "masked export".

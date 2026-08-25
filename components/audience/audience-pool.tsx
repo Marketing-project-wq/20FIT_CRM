@@ -282,8 +282,8 @@ export function AudiencePool() {
         </div>
       </div>
 
-      {/* Table */}
-      <div className="overflow-x-auto rounded-card border border-glass-border">
+      {/* Table (wide screens). BAGIAN D: a per-row card list replaces it below md. */}
+      <div className="hidden overflow-x-auto rounded-card border border-glass-border md:block">
         <table className="w-full border-collapse text-left">
           <thead>
             <tr className="border-b border-glass-border font-display text-[12px] uppercase tracking-wide text-ink-faint">
@@ -364,6 +364,44 @@ export function AudiencePool() {
             )}
           </tbody>
         </table>
+      </div>
+
+      {/* Cards (narrow screens) — a sideways-scrolling 8-column table is unusable on a phone. */}
+      <div className="flex flex-col gap-2 md:hidden">
+        {loading ? (
+          <p className="px-1 py-8 text-center font-body text-[13px] text-ink-soft">{t.audience.loading}</p>
+        ) : error ? (
+          <div className="rounded-card border border-glass-border p-6 text-center">
+            <Badge tone="red">{t.audience.failed}</Badge>
+            <p className="mt-2 font-body text-[13px] text-ink-soft">{error}</p>
+          </div>
+        ) : rows.length === 0 ? (
+          <p className="px-1 py-8 text-center font-body text-[13px] text-ink-soft">{t.audience.noMatch}</p>
+        ) : (
+          rows.map((r) => (
+            <div key={r.customer_id} className="rounded-card border border-glass-border p-3">
+              <div className="flex items-start justify-between gap-2">
+                <Link
+                  href={`/audience/${r.customer_id}`}
+                  className="font-body text-[14px] font-semibold text-ink underline decoration-glass-border underline-offset-2 hover:decoration-red"
+                >
+                  {formatDisplayName(r.full_name) ?? t.audience.noName}
+                </Link>
+                <span className="shrink-0 font-mono text-[12px] text-ink-soft">
+                  {r.lifetime_value != null && r.lifetime_value > 0 ? formatIdr(r.lifetime_value, lang) : ""}
+                </span>
+              </div>
+              <div className="mt-1.5 flex flex-col gap-0.5 font-body text-[12px] text-ink-soft">
+                <span className="font-mono">{r.phone ? r.phone : "—"} · {r.email ? r.email : "—"}</span>
+                <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span>{r.city ? r.city : "—"}{r.first_unit ? ` · ${r.first_unit}` : ""}</span>
+                  {r.segment ? <Badge tone="neutral">{r.segment}</Badge> : null}
+                  <span className="font-mono text-ink-faint">{fmtDate(r.created_at, lang)}</span>
+                </span>
+              </div>
+            </div>
+          ))
+        )}
       </div>
 
       {/* Incremental "Load more" (Sprint 5A) — shows the count loaded of the total, and stops

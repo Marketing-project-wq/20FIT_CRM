@@ -230,9 +230,20 @@ menjalankan ulang aman; untuk operasi **non-idempoten non-atomik**, langkah 2 (c
 **Membalikkan:** tidak ada — ini pengetahuan operasional, bukan perubahan sistem.
 
 ## K-25 · Sumber deploy = pertanyaan empiris, bukan asumsi dari README
+> **KOREKSI (24 Agu 2026).** Premis di bawah — "bukti menunjukkan kode branch melayani produksi"
+> — **salah**. Dashboard Railway (Settings → Source) menunjukkan produksi dari **`main`**,
+> auto-deploy saat push; kalimat README yang dulu dianggap keliru **benar sejak awal**. "Bukti"
+> itu adalah `git log -S` atas ref `origin/main` **basi**: commit aksi audit sudah masuk `main`
+> lewat PR #10 (04:41 UTC), 7 menit sebelum reset produksi (04:48 UTC). Lihat **T-22 (dikoreksi)**
+> dan **T-27**. **Yang tetap benar dari K-25:** prinsip metodologisnya — "sumber deploy adalah
+> pertanyaan empiris, jawab dengan bukti, bukan asumsi." Yang salah cuma **jawaban** yang ditarik
+> saat itu (branch), plus keyakinan bahwa bukti dari-dalam-repo sanggup menjawabnya (tak sanggup —
+> T-27). Diskriminator sah bukan `git log -S` melainkan **Railway → Settings → Source**.
+
 **Migrasi 11/12.** README menyatakan "auto-deploy on `main`" dan "push ke `main` memicu
 deploy" — tapi bukti menunjukkan **kode branch melayani produksi** (aksi audit yang hanya ada
 di branch tertulis oleh produksi; `main` bahkan tak menulis audit reset). → T-18.
+_(Alinea ini adalah rekaman asli yang keliru; lihat koreksi di atas.)_
 
 **Keputusan:** status deploy **diturunkan dari bukti**, bukan dari klaim dokumen. Diskriminator
 yang sah: **siapa yang menulis baris audit** (`git log -S` pada string aksi → cek apakah commit
@@ -275,7 +286,15 @@ tak punya granularitas purpose untuk dibedakan.
 `isContactableForPurpose` DAN `crm_contactable_counts` — atau keduanya diverge diam-diam lagi.
 **Membalikkan:** ubah kedua tempat itu bersama + perbarui test pengunci; jangan satu saja.
 
-## K-27 · Produksi men-deploy dari branch kerja — keputusan sadar pemilik produk (Sprint 3Y)
+## K-27 · ~~Produksi men-deploy dari branch kerja — keputusan sadar pemilik produk~~ — **DIBATALKAN 24 Agu 2026**
+> **DIBATALKAN SELURUHNYA (24 Agu 2026).** Keputusan ini "menerima secara sadar" sebuah kondisi
+> yang **tak pernah ada**: produksi tak pernah men-deploy dari branch — ia dari `main` sejak awal
+> (dashboard Railway, Settings → Source). Karena premisnya (K-25 versi lama, T-22) terbukti salah,
+> tak ada yang tersisa untuk "diterima". Jangan pakai K-27 sebagai preseden untuk apa pun. Model
+> yang benar: **`main` = produksi, merge = deploy.** Larangan merge tanpa izin **tetap** dan
+> makin penting. Lihat T-22 (dikoreksi), T-27, K-25 (dikoreksi). Teks asli disimpan di bawah
+> sebagai jejak, bukan sebagai keputusan yang berlaku.
+
 **Latar:** K-25 (Sprint 3Y sebelumnya) **menurunkan dari bukti** bahwa produksi Railway
 menjalankan kode **branch**, bukan `main` — dan T-18 mengangkat "sumber deploy mana yang
 benar" sebagai pertanyaan terbuka. Sprint ini pemilik produk **memutuskan dan menerima**
@@ -603,3 +622,245 @@ fitco/rfm/dob, bukan "flag", disimpan verbatim. Menyatukannya butuh verifikasi t
 **Syarat pembalikan:** rollback Migrasi 23 mengembalikan definisi cermin migrasi 16 (kanon `lower(btrim)`
 pra-K-35) — revert penuh yang disengaja. K-35 sebagai *aturan* (kanon tunggal untuk kode baru) tetap berlaku
 terlepas dari status Migrasi 23.
+
+## K-36 · Consent bukan gerbang — unsubscribe satu-satunya penentu boleh-dihubungi (Sprint evaluasi lingkup)
+**Latar:** Pemilik produk menyatakan ulang kebutuhan sistem (`docs/KEBUTUHAN-SISTEM.md`, 24 Agu
+2026): seluruh data di Supabase milik 20FIT, sah, dan penggunanya **sudah mengizinkan** untuk
+dihubungi — "izin dan legalitas bukan hal yang perlu dipersoalkan sistem ini." Yang menentukan
+siapa **tidak** boleh dihubungi hanyalah **unsubscribe**.
+
+**Keputusan:** consent **berhenti menjadi gerbang**. Setiap pengguna dianggap boleh dihubungi.
+Satu-satunya yang menahan kontak adalah baris **`crm_suppression` aktif** (daftar unsubscribe).
+Ini menyelaraskan dengan keadaan fungsional yang **sudah** berlaku: `crm_contactable_counts()`
+mengembalikan 82.253 untuk kedua purpose (seluruh pool, nol suppression). Yang berubah sprint ini
+hanyalah **bingkai dan bahasa**, bukan angka atau logika.
+
+**Yang TIDAK berubah:**
+- **`crm_consent` (408.119 baris) TETAP** — catatan sah tentang dasar hukum & sumbernya, baca-
+  saja. Menghapusnya tak bisa dibatalkan; manfaat penghapusan hanya kerapian konseptual (D-1).
+- **Aturan "suppression menang" TETAP** dan kini **satu-satunya aturan yang tersisa**, jadi makin
+  penting: `isContactableForPurpose` + `crm_contactable_counts` tetap anti-join ke suppression
+  aktif (K-26). Nol jalur keluar boleh melewati pemeriksaan suppression.
+- **Audit pengiriman TETAP** — tiap pengiriman meninggalkan catatan (bukan demi kepatuhan, tapi
+  agar kampanye gagal bisa ditelusuri & tak dikirim dua kali).
+
+**Yang berubah (frame + bahasa, nol perubahan angka/logika):**
+- `/consent` dibingkai ulang: **daftar unsubscribe** jadi utama; register consent jadi arsip
+  dasar hukum baca-saja. Label section, subtitle, dan warn di-reframe.
+- Kartu "Bisa dihubungi" di dashboard: hint berubah dari "consent aktif − suppression" jadi
+  **"seluruh pool − yang berhenti berlangganan"**.
+- Bahasa yang menyajikan consent sebagai penghalang disapu di /consent, dashboard, dan /quality
+  (caveat "punya identifier ≠ bisa dihubungi" kini menunjuk unsubscribe, bukan consent).
+
+**Syarat pembalikan (eksplisit):** bila kelak **dasar hukum kembali menjadi pembeda** (mis.
+regulasi berubah, atau kanal opt-in per-orang diaktifkan), gerbang consent **dinyalakan lagi dari
+tabel yang sama** (`crm_consent` masih utuh) — kembalikan `isContactableForPurpose` untuk
+memeriksa consent aktif selain suppression, dan reframe balik bahasanya. Tidak ada data yang
+hilang untuk pembalikan itu; hanya frame yang berubah.
+
+## K-37 · Fondasi separuh "menghubungi" — CRM berdiri sendiri, tiru skema tim lain, gerbang dibuka (contacting-half)
+**Latar:** pemilik produk menerapkan jawaban (kanal WA, pop-up ditunda, fitpoint kontrak-saja,
+"tidak kembali" ditunda, gerbang ekspor dibuka) dan meminta fondasi separuh "menghubungi".
+
+**Keputusan-keputusan (dengan syarat pembalikan):**
+
+1. **CRM berdiri sendiri di `crm_*`, TIDAK memakai tabel kirim/template tim lain.**
+   **Alasan yang harus dicatat BUKAN kepemilikan tabel, melainkan KUNCI YANG TIDAK SAMA**
+   (dipertegas pemilik produk, 24 Agu): `my20fit_message_log.user_id` menunjuk **auth my20fit**,
+   sedangkan pool CRM berkunci **`master_customer.customer_id`**, dan **hanya ~47 dari 82.253
+   profil punya keduanya**. Memakai log itu berarti **99,9% pengiriman CRM tak punya tempat
+   dicatat** — bukan sekadar "tabel milik tim lain". (Tabel-tabel itu juga nol baris / rancangan
+   belum diwiring, tapi kunci-beda itulah yang menutup opsi pakai-bersama.) **Skema
+   `my20fit_message_log` tetap ditiru** untuk `crm_message_log` — berkunci `customer_id` —
+   (idempotency_key, provider_message_id, status, cap waktu siklus, unsubscribed_at, language):
+   meniru bentuk baik, bukan membuat yang berbeda (anti "satu-aturan-dua-implementasi"). Pemilik
+   produk **menyetujui CRM berdiri sendiri** (24 Agu). **Pembalikan:** hanya bila kelak ada kunci
+   pemetaan yang mencakup seluruh pool CRM di satu log bersama — keputusan lintas-tim, bukan kode.
+
+2. **Unsubscribe pakai jalur suppression yang ADA (3H), bukan jalur kedua.** Halaman publik
+   `/unsubscribe` + token HMAC bertanda tangan (customer_id + kind, PII tak masuk URL) →
+   `crm_record_suppression` (reason `user_request`, source `unsubscribe_link`). Suppression menang
+   di tiap jalur keluar tetap berlaku. **Pembalikan:** tak ada; jalur tunggal itu inti.
+
+3. **Template: kosakata variabel TERTUTUP, divalidasi saat SIMPAN.** `{{var}}` di luar
+   `TEMPLATE_VARIABLES` ditolak saat simpan, bukan saat kirim (gagal saat kirim ke 10.000 orang
+   mahal). Riwayat versi = INSERT append (yang dipakai kemarin harus terbaca apa adanya). Storage
+   = migrasi `crm_message_template` **GATED, ditunjukkan belum dijalankan** (`RENCANA-template-simpan.md`);
+   inti murni (`lib/crm/template.ts`) sudah dibangun & diuji. **Pembalikan:** tambah variabel =
+   edit satu daftar; drop tabel = revert bersih (tabel kosong).
+
+4. **Gerbang ekspor dibuka untuk `crm_operator` ≤ ambang** (`approval`→`allow`); > ambang tetap
+   `super_admin`/`crm_manager`; `unit_manager` tetap `approval` (fail-closed, tabel scope belum
+   ada). Suppression tetap dikecualikan dari tiap ekspor (4A). **Pembalikan:** kembalikan ke
+   `approval` bila alur persetujuan dibangun.
+
+5. **WA = permukaan status (env var Railway), fitpoint = kontrak dokumen, pop-up = ditunda.** Nol
+   tempat kosong yang tampak siap. **Pembalikan:** buka pop-up hanya bila aplikasi 20FIT bisa
+   menerima pesan; bangun pemicu fitpoint hanya bila sumber saldo+kedaluwarsa (tanggal nyata) ada.
+
+## K-38 · Jalur kirim manual — log, hash identitas, idempotensi deterministik, gerbang pra-luncur (contacting-half, langkah kirim)
+
+Skema `crm_message_log` **disetujui dengan dua koreksi**; jalur kirim dibangun dan diuji; kirim
+nyata ke pelanggan tetap diblokir prasyarat.
+
+1. **`identity_hash` (HMAC berkunci), bukan alamat mentah.** Log tumbuh satu baris per kirim,
+   dibaca layar Messages, tak pernah dipangkas — menyimpan email/telepon mentah menjadikannya
+   salinan kedua daftar kontak + pintu belakang masking. Hash berkunci cukup untuk **mencocokkan**
+   (bounce, "pernah dikirimi?") tapi tak untuk **dibaca**; "ke siapa" dijawab `customer_id` lewat
+   masking `view_contact` yang sudah ada. Dikecualikan ekspor, tak pernah dirender.
+   (`lib/crm/identity-hash.ts`.) **Pembalikan:** kolom aditif; tabel mulai kosong.
+
+2. **`idempotency_key` deterministik `{campaign_id}:{customer_id}:{channel}`.** Bentuk acak per
+   percobaan membuat indeks unik tak menahan apa pun. Karena turunan murni kampanye+penerima+channel,
+   **jalankan-ulang menghasilkan kunci sama** → penerima yang sudah terkirim dilewati. Diuji dengan
+   **pemutusan sungguhan** (jalankan sebagian → ulang penuh → nol kirim ganda), bukan sisip dua baris
+   kembar (`lib/crm/send-run.test.ts`). Bentuk dicatat di `comment on column`.
+
+3. ~~**Aksi audit `export.campaign_sent` — prefiks `export.` YANG SUDAH ADA.**~~ **DIBALIK 2026-08-24
+   (K-39).** Refleks "pakai ulang prefiks" salah di sini: mengirim BUKAN mengekspor. Famili sendiri
+   `campaign.sent` — lihat K-39. Satu baris audit per RUN tetap berlaku.
+
+4. **Sebab gagal DIBEDAKAN (pelajaran reset).** `invalid_address` / `hard_bounce` /
+   `provider_rejected` / `unknown` sebagai kolom kelas satu (`failure_cause`), plus batas harian =
+   **deferred** (bukan gagal) dan auto-stop bounce 5%. Menyatukan jadi satu status menyembunyikan
+   bug berikutnya persis seperti reset.
+
+5. **Suppression diperiksa SAAT KIRIM** (awal run, bukan saat segmen dihitung); **tautan unsubscribe
+   = prasyarat keras** (run batal sebelum kirim bila tak ada); **batas harian dari log**, bukan
+   penghitung terpisah.
+
+6. **Gerbang pra-luncur di KODE, bukan konvensi.** `CAMPAIGN_SEND_ENABLED` off → hanya alamat
+   internal `@20fit.id` yang dikirimi; alamat pelanggan **ditahan** (tak dikirim, tak dilog) sampai
+   token Mailtrap dirotasi + DNS diatur (`lib/crm/send-gate.ts`). **Pembalikan:** flip env setelah
+   dua prasyarat beres.
+
+**Yang TIDAK dibangun (jujur):** form susun-dan-kirim di layar Campaigns menunggu (a) segmen bisa
+disimpan (`RENCANA-simpan-segmen`, belum) dan (b) dua prasyarat kirim. Layar Campaigns kini adalah
+konsol yang menampilkan alur + batas + blok pra-luncur; layar Messages membaca log apa adanya
+(termasuk `skipped_suppressed` dan `failed`). Kirim internal **belum diuji live** dari lingkungan
+ini — token bocor tak boleh dijalankan, dan app tak berjalan di sini.
+
+## K-39 · Aksi audit kirim = famili `campaign.%` sendiri, bukan `export.%` (koreksi K-38 #3)
+
+Membalik K-38 #3 **selagi murah** (nol baris audit memakai `export.campaign_sent`, nol baris
+`crm_message_log` — diverifikasi 2026-08-24). Refleks memakai ulang prefiks yang ada (benar 5×
+sebelumnya) di sini **satu langkah terlalu jauh**: `export.%` menjawab "data apa yang keluar sebagai
+BERKAS"; sebuah pengiriman kampanye adalah keputusan kontak keluar, bukan berkas. Menaruhnya di
+`export.%` membuat layar audit yang menyaring "ekspor" menampilkan pengiriman. Test paritas lama
+lulus — tapi yang lulus **klasifikasi retensinya, bukan maknanya**.
+
+Perbaikan mengikuti presedent **K-09** (`profile.demographic_updated`): famili baru `campaign.%`
+ditambahkan ke denylist kepatuhan **dengan benar** — fungsi `crm_purge_audit_log` (create-or-replace),
+`lib/crm/retention-policy.ts` `COMPLIANCE_RULES`, dan test paritas **bergerak bersama satu commit**;
+parity test kini membaca berkas migrasi baru. `campaign.%` (bukan `message.%`) karena granularitas
+audit adalah **per RUN kirim (satu kampanye)**, bukan per pesan — telemetri per-pesan ada di
+`crm_message_log`, bukan audit. Aksi persis: **`campaign.sent`**, dikunci `send-constants.test.ts`.
+
+**Status:** **DITERAPKAN** 2026-08-24 (ledger `20260824160306`). proacl `{postgres, service_role}`.
+**Uji kering** (`crm_purge_audit_log(true)` → matched 0) + predikat pemangkas dievaluasi atas sampel:
+`campaign.sent` → `would_purge=false` (dikecualikan), sementara `login.*`/`profile.viewed`/`search.*`
+→ purge. Perilaku terbukti, bukan sekadar create-or-replace lulus.
+**Pembalikan:** hapus baris `campaign.%` di kedua blok + `COMPLIANCE_RULES` + kembalikan parity target.
+
+## K-40 · Segmen TERSIMPAN — 3M diperbarui (bukan dibatalkan): simpan KRITERIA, bukan daftar orang
+
+Sprint 3M sengaja membuat segmen **ephemeral** karena segmen tersimpan yang basi menargetkan orang
+yang sudah tak memenuhi kriteria. **Alasan itu tetap berlaku.** Yang berubah: mengirim kampanye butuh
+menyebut segmen mana yang dipakai, dan `crm_message_log.campaign_id` sudah mengandaikan segmen punya
+identitas. Jadi 3M **diperbarui**, dengan penjaga yang mempertahankan alasannya:
+
+- **Simpan kriteria (pohon filter tervalidasi jsonb), BUKAN daftar anggota.** Anggota **dihitung
+  ulang saat dipakai** → segmen bulan lalu yang dikirimi hari ini menargetkan siapa yang memenuhi
+  kriteria **hari ini** (inilah yang menjaga alasan 3M). Jumlah anggota **tak pernah** kolom tersimpan;
+  ditampilkan dengan **penanda kesegaran** (LARANGAN: jangan tampilkan angka beku yang terlihat hidup).
+- **Gerbang klinis tidak boleh dimutari.** Segmen dengan kriteria klinis diberi flag `requires_clinical`
+  saat simpan; jalur PAKAI (hitung/kirim) tetap memeriksa `view_health` peran yang memakai — jadi tak
+  bisa dibuat peran berwenang lalu dipakai peran lain untuk memutari gerbang.
+- **Gerbang peran** mengikuti yang ada untuk segment builder (`segment.build`).
+
+**Status:** **DITERAPKAN** 2026-08-24 (ledger `20260824160409`): RLS on, 0 policy, relacl
+`{postgres, service_role}`, 8 kolom, 0 baris. **Pembalikan:** `drop table crm_segment` — aditif, nol
+data pelanggan (hanya kriteria + metadata).
+
+## K-41 · Pasca-kirim: webhook Mailtrap, monitor bounce (belum aktif), id instans kampanye (usulan)
+
+Tiga item yang tak butuh kirim, dikerjakan sambil menunggu rotasi token (reset TERBUKTI di produksi
+24 Agu → Mailtrap+DNS bekerja untuk kirim nyata; tinggal token).
+
+1. **Id instans kampanye — DIUSULKAN, belum dibangun** (`docs/RENCANA-instans-kampanye.md`).
+   `campaignId` sekarang `{segment}:{template}` → run ulang = resume, jadi newsletter tak bisa
+   dikirim 2× ke orang sama. Usul: `campaignId = {segment}:{template}:{instance}` dengan `instance`
+   **stabil sepanjang satu terbitan** (bukan acak per percobaan — itu merusak resume, larangan sama
+   dgn K-38 koreksi 2). Disarankan **baris run (`crm_campaign_run`, uuid)**. Ditunjukkan + berhenti.
+
+2. **Webhook Mailtrap** (`app/api/mailtrap/webhook/route.ts` + `lib/crm/mailtrap-webhook.ts`) mengisi
+   kolom siklus `crm_message_log` (delivered/bounced/complained/…). **Input tak dipercaya**: tanda
+   tangan diverifikasi (HMAC atas RAW body, konstan-waktu) **sebelum** apa pun diparse/ditulis; gagal
+   → 401, nol sentuhan. Hanya kolom cap-waktu siklus (+ status/failure_cause terminal) yang ditulis,
+   tak pernah isi pesan. Korelasi: `provider_message_id` dulu, `identity_hash` cadangan (alasan hash
+   disimpan). Event tak dikenal/transien (soft_bounce) **dilewati**, bukan ditebak. **Fail-closed**:
+   `MAILTRAP_WEBHOOK_SECRET` unset → semua request ditolak. Skema tanda tangan/nama header persis
+   **harus dikonfirmasi ke dok Mailtrap** sebelum diaktifkan (host dok diblokir egress di sini).
+
+3. **Monitor bounce 5% — DIBANGUN, BELUM DIAKTIFKAN** (`lib/crm/bounce-monitor.ts`). Setelah webhook
+   mengisi `bounced_at`, `campaignBounceStatus` membaca rasio bounce keras nyata. `active` **selalu
+   false** hari ini: ambang dari nol/near-nol kirim berperilaku absurd (1/3 = 33% "menghentikan"
+   kampanye yang baru mulai). `dataSufficient` (attempted ≥ minSample) menjaga itu — di bawahnya
+   `wouldStop` selalu false. Aktifkan hanya setelah ada data bounce sungguhan; aritmetikanya sudah
+   benar + teruji. **Pembalikan:** semuanya aditif; hapus berkas = tak ada efek (belum diwire ke apa pun).
+
+## K-42 · Detektor untuk terjemahan yang terlewat — kelengkapan jadi terbukti, bukan dipercaya
+
+Masalah yang membuat 5B-T2 mahal dan tertunda tujuh kali: "string yang terlewat menghasilkan
+campuran bahasa senyap yang tak ada test menangkapnya" — kelengkapan bergantung pada teliti-manual.
+Diperbaiki dengan pagar pemindai-sumber (pola yang sama dengan pagar reset), bukan disiasati.
+
+- `lib/i18n/untranslated-scan.ts` + test: memindai berkas komponen setiap layar di
+  `BILINGUAL_SCREENS` untuk daftar kata Indonesia yang tak-ambigu (whole-word, komentar dibuang).
+  Ada hit → gagal. `SCREEN_FILES` memetakan layar→berkas (audience/ campur search vs profile, jadi
+  daftar eksplisit); layar `PENDING` (profile, diagnostik) tak dipindai sampai di-flip.
+- **Terbukti menggigit di berkas nyata:** disisipkan satu string Indonesia ke `quality-dashboard`
+  (dwibahasa) → gagal; dikembalikan → lolos. Plus tiga bite-test sintetis permanen.
+- **Temuan hari pertama:** layar `search` (`app/(app)/audience/page.tsx`) memuat blok akses-ditolak
+  **Indonesia keras** meski sudah di `BILINGUAL_SCREENS` — persis "campuran senyap" itu. Diperbaiki
+  (dialihkan ke `t.access.audienceDenied*`). `/quality` **dikonfirmasi bersih** oleh pagar (bukan
+  sekadar diklaim).
+
+**Efeknya untuk 5B-T2:** terjemahan profil berubah dari "harus 100% teliti manual" jadi "kerjakan,
+lalu pagar memberi tahu yang terlewat". Flip `profile` `PENDING`→`BILINGUAL` nanti = tambah berkasnya
+sudah ada di `SCREEN_FILES`, terjemahkan, dan pagar membuktikan flip itu. Berguna untuk tiap layar
+berikutnya, bukan sekali pakai.
+
+## K-43 · Model tiga peran (Super Admin / CRM Manager / Viewer) + pemberian peran eksklusif Super Admin
+
+Pemilik produk (25 Agu 2026) menyatakan sistem ini mengekspos **tiga peran**. Dipetakan ke matriks
+PRD 17.2 yang ada — **tidak membuat peran baru bila yang ada cocok** — plus satu peran baru untuk
+Viewer dan satu aksi baru untuk administrasi peran:
+
+- **Super Admin = `super_admin`** (cocok persis).
+- **CRM Manager = `crm_manager`** (nyaris persis: baca semua layar, kirim email+WA, susun workflow,
+  consent; TIDAK merge/delete). **Selisih yang dilaporkan:** matriks memberi `crm_manager`
+  `killswitch = allow` — uraian tiga-peran diam soal kill switch; dibiarkan sesuai PRD (mengubahnya =
+  perubahan PRD, bukan kode).
+- **Viewer = peran BARU `viewer`.** `analyst` yang paling dekat (list masked, view-only) **tapi
+  `analyst` boleh `segment.build`** — menyimpan segmen adalah tulis, melanggar "hanya melihat". Jadi
+  Viewer = analyst **minus** `segment.build`; setiap aksi tulis/eksekusi `deny`.
+
+**Keputusan Viewer melihat kontak tersamar atau terang → TERSAMAR (masked).** Argumen: satu-satunya
+gerbang kontak-terang adalah `profile.view_contact`, tapi lewat **K-31** gerbang itu **juga**
+membuka NIK/DOB/gender/provinsi/alamat/kontak darurat — jauh lebih dari "memastikan nomor/email
+benar", ke peran paling rendah kepercayaannya. Biaya itu tak sepadan. Kalau verifikasi memang butuh
+telepon/email terang, perbaikan yang benar adalah **gerbang kontak-sempit baru** (usulan tersendiri),
+bukan menyerahkan seluruh gerbang identitas ke Viewer. Bisa dibalik pemilik produk: satu sel
+(`viewer.profile.view_contact` → `allow`) menerima biaya NIK, atau minta gerbang sempit.
+
+**Aksi baru `role.granted` (EXTENSION, bukan PRD) — EKSKLUSIF SUPER ADMIN.** Memberi peran = memberi
+seluruh izin peran itu, jadi ia duduk di atas seluruh matriks: `super_admin = allow`, **semua** yang
+lain (termasuk CRM Manager dan Viewer) `deny`. Digerbang oleh satu predikat `canManageRoles()`; jalur
+tulis `crm_user_role` (server action `grantRoleAction`) memeriksanya ulang di server (UI yang
+menyembunyikan kontrol bukan gerbang) dan mengaudit `role.granted` (sudah famili `role.` yang
+disimpan permanen). Test mengunci bahwa CRM Manager & Viewer tak bisa menyentuhnya (terbukti bergigit).
+
+**Status:** peran + aksi ini EXTENSION di luar PRD 17.2, dicatat terpisah (seperti K-32), **menunggu
+persetujuan Jeff**. Ketiga akun produksi masih `super_admin`; cara memberi peran disiapkan tapi
+**tidak dijalankan agen** (tindakan pemilik produk).

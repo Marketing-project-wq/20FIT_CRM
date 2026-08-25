@@ -42,7 +42,8 @@ export async function AppShell({
 
   return (
     <LangProvider lang={getLang()}>
-      <div className="flex min-h-[100dvh]">
+      {/* Column on mobile (top bar stacked above content), row on desktop (rail beside content). */}
+      <div className="flex min-h-[100dvh] flex-col md:flex-row">
         <Sidebar
           userEmail={userEmail}
           initialTheme={theme}
@@ -50,7 +51,7 @@ export async function AppShell({
           allowedHrefs={allowedHrefs}
         />
         <main className="min-w-0 flex-1">
-          <div className="mx-auto max-w-7xl px-6 py-8 md:px-10">{children}</div>
+          <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 md:px-10 md:py-8">{children}</div>
         </main>
       </div>
     </LangProvider>

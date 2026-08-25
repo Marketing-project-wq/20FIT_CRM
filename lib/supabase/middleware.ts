@@ -4,16 +4,24 @@ import { NextResponse, type NextRequest } from "next/server";
 type CookieToSet = { name: string; value: string; options?: CookieOptions };
 
 /**
- * Paths reachable WITHOUT a session (the auth gate's allowlist): /login (+ subpaths) and the
- * password-recovery pages. /health and /dev are handled by their own earlier returns. Pure +
- * exported so a test enforces this list — a future addition can't slip through unnoticed.
+ * Paths reachable WITHOUT a session (the auth gate's allowlist): /login (+ subpaths), the
+ * password-recovery pages, and the public self-service unsubscribe (page + its API). A recipient
+ * clicking an unsubscribe link in an email has no CRM session — the link's SIGNED token is the
+ * authorization, verified in /api/unsubscribe, not a login. /health and /dev are handled by their
+ * own earlier returns. Pure + exported so a test enforces this list — a future addition can't slip
+ * through unnoticed.
  */
 export function isPublicPath(pathname: string): boolean {
   return (
     pathname === "/login" ||
     pathname.startsWith("/login/") ||
     pathname === "/forgot-password" ||
-    pathname === "/reset-password"
+    pathname === "/reset-password" ||
+    pathname === "/unsubscribe" ||
+    pathname === "/api/unsubscribe" ||
+    // Mailtrap delivery webhook: an external POST with no CRM session — its authorization is the
+    // request SIGNATURE (verified in the route), the same shape as the unsubscribe token.
+    pathname === "/api/mailtrap/webhook"
   );
 }
 

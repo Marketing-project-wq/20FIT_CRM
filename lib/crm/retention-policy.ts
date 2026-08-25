@@ -44,6 +44,10 @@ export const COMPLIANCE_RULES: readonly MatchRule[] = [
   { kind: "exact", value: "profile.demographic_updated" },
   { kind: "prefix", value: "export." },
   { kind: "prefix", value: "retention." },
+  // campaign.* — a campaign SEND is outbound contact (who we messaged, when): compliance evidence,
+  // retained permanently. Its OWN family, not export.* — sending is not exporting a file (K-39).
+  // Added to the live purge denylist by migration …160306 (applied), alongside this rule + parity test.
+  { kind: "prefix", value: "campaign." },
 ];
 
 export function matchesRule(rule: MatchRule, action: string): boolean {

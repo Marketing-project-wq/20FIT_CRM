@@ -392,3 +392,75 @@ dashboard menampilkan keadaan gagalnya sendiri (bukan halaman kosong, bukan nol 
 
 _(Catatan: sempat disebut "empat malam" — pengukuran langsung menunjukkan **lima** malam, 19–23
 Agu; angka terverifikasi yang dicatat.)_
+
+---
+
+## Mailtrap — domain 20fit.id terverifikasi, prasyarat DNS kampanye terpenuhi (dilaporkan 24 Agu 2026)
+
+Kabar baik dari dasbor Mailtrap (dilaporkan pemilik produk 24 Agu 2026), relevan untuk separuh
+"menghubungi" yang akan dibangun:
+
+- **Domain `20fit.id` berstatus _Verified_** di Mailtrap — SPF/DKIM/DMARC yang dibutuhkan sudah
+  terpasang. Ini **prasyarat DNS untuk kampanye** yang selama ini dicatat sebagai belum tuntas;
+  kini terpenuhi.
+- **14.041 email terkirim dalam 30 hari terakhir** lewat domain ini — pipeline kirim nyata sudah
+  jalan di produksi (bukan hanya sandbox).
+- **Email reset kata sandi kini mendarat di _Inbox_** dari pengirim yang benar
+  (`20FIT CRM <crm@20fit.id>`), bukan spam — jalur `sendRecoveryCode → Mailtrap` (lib/auth/recovery)
+  bekerja end-to-end.
+
+**Yang masih tersisa sebelum kampanye boleh dikirim:** hanya **rotasi token Mailtrap** (token lama
+pernah terekspos; lihat MENUNGGU). DNS **bukan lagi** penghambat. Aturan tetap berlaku: **jangan
+kirim satu email kampanye pun** sampai token dirotasi.
+
+_(Sumber angka: dasbor Mailtrap, dilaporkan pemilik produk; dicatat sebagai fakta yang dilaporkan,
+bukan hasil kueri DB kami.)_
+
+## Reset kata sandi — TERBUKTI ujung ke ujung di produksi (24 Agu 2026)
+
+Jalur reset terbukti bekerja end-to-end di produksi (bukti `auth.users`, `tifany@20fit.id`,
+dilaporkan pemilik produk 24 Agu 2026):
+
+- `recovery_sent_at = null` — token dibersihkan **setelah** dipakai (verifyOtp mengonsumsinya).
+- `last_sign_in_at = 2026-08-24 16:21:21.448` → `updated_at = 2026-08-24 16:21:21.840` — **392 ms**
+  setelahnya. Urutannya benar: **verifyOtp sukses → updateUser sukses**.
+- Email dari `crm@20fit.id` mendarat di **Inbox**, kode terverifikasi, kata sandi berubah.
+
+**Perbaikan empat-keadaan terbukti.** Kegagalan sehari sebelumnya memang **"kata sandi baru sama
+dengan yang lama"** (updateUser 422) — persis diagnosis kami. Pesan lama menyembunyikannya sebagai
+"kode salah"; kini penolakan kata sandi punya pesan sendiri (K-38, `lib/auth/reset-verify.ts`).
+
+**Konsekuensi untuk kampanye:** ini juga membuktikan **Mailtrap + DNS bekerja untuk pengiriman
+NYATA** (bukan hanya reset). Satu-satunya penghalang kampanye yang tersisa = **rotasi token**.
+Butir "reset belum terbukti" **diturunkan** dari daftar yang menggantung.
+
+## Rantai kirim kampanye — TERBUKTI ujung ke ujung di produksi, termasuk webhook (25 Agu 2026)
+
+Kirim internal pertama berhasil dan **diverifikasi independen dari DB produksi** (bukan dashboard):
+
+| Bukti | Nilai |
+|---|---|
+| `crm_message_log` | **1 baris**, `status = delivered` |
+| `provider_message_id` | `bf46a730-a05c-11f1-0040-f1e5b703f128` — **nilai nyata pertama** (sebelumnya hanya kontrak) |
+| `sent_at` | 2026-08-25 08:12:42 |
+| `delivered_at` | 2026-08-25 08:12:43 — **webhook Mailtrap BEKERJA** |
+| audit `campaign.sent` | **tepat 1** |
+| `crm_campaign_run` | `status = sent` |
+| `crm_suppression` | **0** (tautan unsubscribe belum bisa diklik — DNS, lihat bawah) |
+
+**`delivered_at` terisi membuktikan jalur webhook end-to-end:** tanda tangan HMAC lolos, korelasi
+lewat `provider_message_id` menemukan barisnya, cap waktu ditulis. Itu jalur yang sebelumnya hanya
+kontrak terdokumentasi (CVE-2026-45755 dihindari — secret benar-benar dipakai).
+
+**Butir "belum pernah dijalankan" DITURUNKAN** (menumpuk sejak contacting-half dibangun): jalur kirim,
+idempotensi/resume (`crm_campaign_run` sent), audit `campaign.sent`, `crm_message_log` +
+`provider_message_id`, dan **webhook delivered** — semuanya kini terbukti dengan baris nyata.
+
+**Satu yang MASIH menunggu — unsubscribe (DNS):** tautan menunjuk `https://crm.20fit.id/unsubscribe`
+sementara domain itu belum resolve ("Waiting for DNS update"), jadi tak bisa diklik dan
+`crm_suppression` tetap 0 — konsisten. **Pengaman ditambah (25 Agu):** kirim kini DITOLAK bila host
+tautan unsubscribe ≠ host yang melayani aplikasi (email dengan unsubscribe mati lebih buruk daripada
+tak mengirim). Owner harus set `NEXT_PUBLIC_APP_URL` ke host yang benar (host Railway sampai DNS beres).
+
+**Bug jejak yang ikut diperbaiki:** `template_key` sempat NULL di baris itu (harness melewatinya);
+kini diisi saat `claim` untuk SEMUA kirim, dan baris historis di-backfill (`__uji_internal__` v1).

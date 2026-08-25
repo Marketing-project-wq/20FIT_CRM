@@ -54,6 +54,20 @@ export const id = {
     signOut: "Keluar",
   },
 
+  // Tab labels for the consolidated screens (nav rebuild: 11 menu → 7).
+  tabs: {
+    audienceList: "Daftar",
+    audienceUnsubscribe: "Unsubscribe",
+    audienceQuality: "Kualitas",
+    templatesTemplate: "Template",
+    templatesHistory: "Riwayat Kirim",
+    settingsLog: "CRM Log",
+    settingsManager: "20FIT Manager",
+    settingsConsent: "Consent",
+    settingsWhatsapp: "WhatsApp Business API",
+    menu: "Menu",
+  },
+
   access: {
     deniedBadge: "Akses ditolak",
     // Dashboard cards hidden because the role can't see the profile list.
@@ -63,6 +77,12 @@ export const id = {
       "Peran unit_manager dibatasi pada unit yang dikelola, tetapi tabel unit-scope belum ada — akses ditolak (fail-closed).",
     segmentsDeniedRole:
       "Membangun segmen butuh peran segment.build (super_admin, crm_manager, crm_operator, analyst). data_steward tidak berhak.",
+    audienceDeniedScope:
+      "Peran unit_manager dibatasi pada unit yang dikelola, tetapi tabel unit-scope belum ada — akses ditolak (fail-closed) sampai tabel itu dibangun.",
+    audienceDeniedRole:
+      "Peran Anda tidak memiliki izin untuk melihat daftar profil. Bila RBAC belum di-provision, semua akses ditolak — ini perilaku fail-closed yang benar.",
+    profileDeniedRole: "Peran Anda tidak memiliki izin untuk melihat profil.",
+    templatesDeniedRole: "Peran Anda tidak memiliki izin untuk melihat template dan riwayat kirim.",
   },
 
   dashboard: {
@@ -84,9 +104,9 @@ export const id = {
     audienceSize: "Ukuran audiens",
     audienceSizeHint: "master_customer (baca saja)",
     contactableMarketing: "Bisa dihubungi · marketing",
-    contactableMarketingHint: "consent marketing aktif − suppression",
+    contactableMarketingHint: "seluruh pool − yang berhenti berlangganan",
     contactableService: "Bisa dihubungi · layanan",
-    contactableServiceHint: "consent transactional aktif − suppression (untuk CS/operasional)",
+    contactableServiceHint: "seluruh pool − yang berhenti berlangganan (untuk CS/operasional)",
     workflowActive: "Workflow aktif",
     workflowActiveHint: "belum ada tabel workflow",
     lastProfile: "Profil terakhir bertambah",
@@ -143,7 +163,7 @@ export const id = {
     // D redesign — satu kartu ringkas (pool + jangkauan), tabel selisih, kartu kandidat, Fitco.
     summaryTitle: "Pool & jangkauan",
     summaryPoolLabel: "Pool CRM (master_customer)",
-    summaryReachAll: "seluruh pool dapat dihubungi · nol suppression",
+    summaryReachAll: "seluruh pool dapat dihubungi · nol berhenti berlangganan",
     gapTableSource: "Sumber",
     candTitle: "Kandidat belum di pool",
     candLabel: "belum jadi audiens · bukan pool · bukan bisa dipasarkan",
@@ -263,7 +283,7 @@ export const id = {
   consent: {
     title: "Consent",
     // subtitle split around the mono doc PATH (a file path — kept verbatim, never translated).
-    subtitleA: "Register dasar hukum kontak & daftar do-not-contact — baca saja. Fase 2 dibuka; jalur tulis ditunda.",
+    subtitleA: "Daftar berhenti berlangganan (unsubscribe) — satu-satunya gerbang kontak (K-36). Register consent tetap disimpan sebagai catatan dasar hukum, baca-saja.",
     // basis vocabulary block. The `value`s (legacy_import_unverified, explicit_opt_in) are STORED
     // vocabulary and stay verbatim; only these explanatory NOTES follow the language.
     basisHeadingA: "Kosakata ",
@@ -271,8 +291,8 @@ export const id = {
     basisNoteLegacy: "impor lama; sejak keputusan pemilik produk (12 Agu 2026) mengizinkan marketing + transactional (docs/SIGNOFF-legal-consent.md)",
     basisNoteOptin: "opt-in eksplisit tercatat — dasar terkuat, mengizinkan semua purpose",
     basisFooter: "Dua nilai ini bukan daftar lengkap. Status sign-off: docs/SIGNOFF-legal-consent.md.",
-    sectionConsent: "Register consent",
-    sectionSuppression: "Daftar suppression",
+    sectionConsent: "Catatan consent (arsip dasar hukum)",
+    sectionSuppression: "Daftar berhenti berlangganan (unsubscribe)",
     thProfile: "Profil",
     thChannel: "Channel",
     thPurpose: "Purpose",
@@ -365,10 +385,10 @@ export const id = {
       // ZeroMeaning banner. ID below; EN in en.ts. Nuance at risk: "0 rows" is NOT "no data yet" —
       // it is "no lawful basis for ANYONE", the correct FAIL-CLOSED answer. Softening it to "empty"
       // would read as a data gap to fix, not a deliberate contact ban.
-      zeroTitle: "Nol baris consent = nol orang boleh dikirimi marketing",
-      zeroBodyA: "Ini bukan “belum ada data”. Ini “tidak ada dasar hukum untuk siapa pun”. Ketiadaan baris consent adalah jawaban fail-closed yang benar: tanpa baris consent ",
+      zeroTitle: "Consent bukan gerbang — nol baris consent tidak menahan kontak (K-36)",
+      zeroBodyA: "Sejak pemilik produk menyatakan seluruh pengguna boleh dihubungi (24 Agu 2026, K-36), consent berhenti jadi gerbang. Baris consent kini catatan dasar hukum, bukan penentu boleh-tidaknya kontak. Yang menahan kontak untuk ",
       zeroBodyB: " ",
-      zeroBodyC: ", seseorang tidak boleh dihubungi untuk marketing. Kartu “Bisa dihubungi” di dashboard menghitung dari aturan ini — hasilnya 0 terukur, bukan 0 yang ditulis tangan.",
+      zeroBodyC: " hanyalah berhenti berlangganan (unsubscribe). Kartu “Bisa dihubungi” di dashboard menghitung seluruh pool dikurangi yang berhenti berlangganan — hasilnya angka terukur, bukan yang ditulis tangan.",
       // Backfilled banner. Nuance at risk: the backfill is REVERSIBLE and honestly labelled
       // "unverified per person"; suppression still WINS. Dropping "reversible"/"suppression wins"
       // would overstate the strength of a legacy consent basis.
@@ -388,8 +408,8 @@ export const id = {
       winsBodyD: ", supaya bertahan lintas penghapusan profil & impor ulang.",
       // Empty-state explanations. Nuance at risk (suppression): zero suppression is NOT "safe to
       // contact" — the thing holding contact is the ABSENCE OF CONSENT above, not absence of suppression.
-      emptyConsentWhy: "Belum ada satu baris pun. Backfill legacy sudah disetujui pemilik produk tapi belum dijalankan di lingkungan ini; sampai dijalankan, nol tetap jawaban fail-closed yang benar. Basis yang akan dipakai: legacy_import_unverified (jujur menandai “belum diverifikasi per orang”).",
-      emptySuppWhy: "Belum ada satu baris pun. Nol suppression bukan berarti aman untuk mengontak — yang menahan kontak adalah ketiadaan consent (di atas), bukan ketiadaan suppression.",
+      emptyConsentWhy: "Catatan consent kosong di lingkungan ini. Itu tidak lagi menahan kontak siapa pun (K-36 — consent bukan gerbang): baris consent adalah arsip dasar hukum, dan gerbang sesungguhnya hanyalah berhenti berlangganan (unsubscribe) di daftar bawah.",
+      emptySuppWhy: "Belum ada satu baris pun. Nol berhenti berlangganan berarti seluruh pool boleh dihubungi — unsubscribe adalah satu-satunya gerbang, dan consent bukan gerbang (K-36).",
       footer: "Suppression: catat & cabut (atomik dengan audit, nol DELETE) · consent tetap baca-saja (menunggu kanal opt-in) · dibaca via service role server-side · pembukaan halaman ini tercatat (list.viewed, crm_consent).",
       // Record-dialog description. Nuance at risk: recording a stop-request PROTECTS the person; it
       // is not a punishment, and there is no delete button — a lift goes through its own audited path.
@@ -404,7 +424,7 @@ export const id = {
       // Lift-dialog description. Nuance at risk: lifting RE-ENABLES contact (still subject to consent);
       // the row is not deleted — status flips to lifted and the lift itself is audited.
       liftDescA: "Mencabut suppression ",
-      liftDescB: " mengembalikan kemungkinan menghubungi orang ini (tetap tunduk pada status consent). Barisnya tidak dihapus — statusnya menjadi lifted dan pencabutan ini tercatat di audit.",
+      liftDescB: " mengembalikan kemungkinan menghubungi orang ini kembali. Barisnya tidak dihapus — statusnya menjadi lifted dan pencabutan ini tercatat di audit.",
       // Server write-path consequences (returned by the API, shown in the dialog). Same nuance:
       // "cannot be contacted, whatever the consent status" must survive translation.
       srvSuppressed: "Permintaan berhenti dicatat. Orang ini kini TIDAK bisa dihubungi, apa pun status consent-nya.",
@@ -412,7 +432,7 @@ export const id = {
       srvNoop: "Sudah ada suppression aktif untuk identitas ini — tidak ada perubahan.",
       srvWriteFailedRecord: "Gagal mencatat suppression. Tidak ada baris separuh jadi.",
       srvWriteFailedLift: "Gagal mencabut suppression. Tidak ada perubahan separuh jadi.",
-      srvLiftSuccess: "Suppression dicabut. Orang ini kini BISA dihubungi kembali (tunduk pada status consent).",
+      srvLiftSuccess: "Suppression dicabut. Orang ini kini BISA dihubungi kembali.",
     },
   },
 
@@ -464,6 +484,11 @@ export const id = {
     computing: "Menghitung…",
     exportBtn: "Ekspor CSV",
     exporting: "Mengekspor…",
+    savePlaceholder: "Nama segmen",
+    saveBtn: "Simpan segmen",
+    saving: "Menyimpan…",
+    saveOk: "Segmen tersimpan.",
+    saveFailed: "Gagal menyimpan segmen.",
     countMatchedLabel: "Cocok kriteria",
     countMatchedSub: "orang memenuhi definisi ini",
     countMktLabel: "Boleh dihubungi · marketing",
@@ -626,8 +651,27 @@ export const id = {
     pageDeniedRole: "Pengaturan (peran & audit log) hanya untuk super_admin dan crm_manager. Bila RBAC belum di-provision, semua akses ditolak — ini perilaku fail-closed yang benar.",
     // roles panel
     rolesTitle: "Peran (RBAC)",
-    rolesSubtitleA: "Read-only. Perubahan peran ditunda sampai alur pemberian peran ber-audit dibangun — mengubah izin tanpa jejak adalah hal yang justru ingin dihindari. Matriks izin: ",
+    rolesSubtitleA: "Daftar peran (baca). Pemberian peran hanya untuk Super Admin (K-43) dan ber-audit (role.granted, disimpan permanen). Matriks izin: ",
     rolesSubtitleB: " (PRD 17.2, disetujui Jeff 2026-08-10).",
+    grantTitle: "Beri, ubah, atau cabut peran (khusus Super Admin)",
+    grantDesc: "Memberi peran = memberi seluruh izin peran itu. Hanya Super Admin. Tiap perubahan tercatat di audit (role.granted / role.revoked, permanen). Email harus sudah punya akun 20FIT — CRM tidak membuat akun baru.",
+    grantEmail: "Email pengguna",
+    grantEmailPh: "orang@20fit.id",
+    grantRole: "Peran",
+    grantBtn: "Beri / ubah",
+    granting: "Menyimpan…",
+    grantOk: "Peran disimpan: ",
+    grantErrDenied: "Hanya Super Admin yang boleh mengubah peran.",
+    grantErrBadRole: "Peran tidak dikenal.",
+    grantErrUserNotFound: "Tak ada akun 20FIT dengan email itu. CRM tidak membuat akun baru — buat dulu di 20FIT.",
+    grantErrSelfDemote: "Super Admin tidak boleh menurunkan atau mencabut peran dirinya sendiri.",
+    grantErrLastSuperAdmin: "Ini Super Admin terakhir — tidak boleh diturunkan atau dicabut. Angkat Super Admin lain dulu.",
+    grantErrNotAssigned: "Pengguna itu belum punya peran untuk dicabut.",
+    grantErrWriteFailed: "Gagal menyimpan peran — periksa log.",
+    revokeBtn: "Cabut",
+    revoking: "Mencabut…",
+    revokeOk: "Peran dicabut: ",
+    revokeConfirm: "Cabut peran pengguna ini? Ia kehilangan seluruh akses CRM.",
     rolesNotProvisioned: "RBAC belum di-provision",
     rolesNotProvisionedA: "Tabel ",
     rolesNotProvisionedB: " belum ada. Jalankan migrasi lalu seed super_admin pertama; daftar peran akan muncul di sini.",
@@ -717,6 +761,281 @@ export const id = {
     },
   },
 
+  // /quality — data-quality dashboard (Sprint 5B). The app's largest warning surface: fill-rate
+  // notes, defect definitions, and the "cannot be computed live" artifacts are all load-bearing
+  // prose, so every one of them sits under quality.warn.* where the length + forbidden-term guards
+  // measure it. Short labels/titles/captions stay outside .warn.. Structured rows are keyed by the
+  // data key (fill/issue/satellite/artifact) so the client resolves label + warning by key, with
+  // the server's Indonesian text as the fallback. Stored data values (Campion user, table/column
+  // names, program names) are NOT translated — they are data, verbatim in both languages.
+  quality: {
+    title: "Quality",
+    subtitlePre: "Kondisi data apa adanya di",
+    subtitlePost: "— dihitung ulang tiap halaman dibuka, tak ada angka yang ditulis tangan.",
+    recompute: "Hitung ulang",
+    computing: "Menghitung agregat…",
+    loadFailed: "Gagal memuat",
+    connectFailed: "Gagal terhubung ke server.",
+    deniedBadge: "Akses ditolak",
+    deniedScope:
+      "Peran unit_manager dibatasi pada unit yang dikelola, tetapi tabel unit-scope belum ada — akses ditolak (fail-closed) sampai tabel itu dibangun.",
+    deniedRole:
+      "Peran Anda tidak berizin melihat kualitas data profil. Bila RBAC belum di-provision, semua akses ditolak — perilaku fail-closed yang benar.",
+
+    reachTitle: "Punya identifier ≠ bisa dihubungi",
+    reachBody1: "Seluruh",
+    reachBody2:
+      "profil dianggap boleh dihubungi (K-36). Catatan dasar hukum di",
+    reachBody3: "bukan gerbang; satu-satunya yang menghapus seseorang adalah berhenti berlangganan di",
+    reachBody4:
+      "— halaman ini mengukur kelengkapan data, bukan izin mengirim.",
+
+    panel: {
+      fillTitle: "Fill rate",
+      identifiersTitle: "Identifier tidak valid",
+      anomaliesTitle: "Anomali nilai",
+      duplicatesTitle: "Duplikat",
+      queuesTitle: "Antrean orphan & pengecualian",
+      satellitesTitle: "Kurasi & skor",
+      ecosystemTitle: "Ekosistem 20FIT — customer_engagement",
+      stagingTitle: "Cakupan data impor — staging_20fit_data ★",
+      enrichmentTitle: "Cakupan sumber ekosistem tak-tercocok",
+      multisourceTitle: "Cakupan sumber lain — arena / gym",
+      clinicTitle: "Cakupan klinik",
+      artifactsTitle: "Temuan yang tidak bisa dihitung live",
+    },
+
+    caption: {
+      fillPre: "Berapa persen dari",
+      fillPost:
+        "profil yang punya isi di tiap field. “Terisi” berarti NOT NULL — tidak ada penilaian mutu isi di sini. Ambang warna (≥95% hijau, ≥60% kuning) adalah konvensi tampilan, bukan SLA dari PRD.",
+      identifiers:
+        "Pemeriksaan bentuk, bukan verifikasi bahwa nomor atau email benar-benar aktif. Nol di sini bukan jaminan keterkiriman.",
+      anomalies:
+        "Nilai yang lolos semua pemeriksaan bentuk tetapi tidak masuk akal secara bisnis — dan yang paling penting, tidak tertangkap oleh filter di layar lain.",
+      duplicates:
+        "Penandaan berasal dari proses impor lama. Alur merge/unmerge belum dibangun, jadi angka ini hanya bisa naik.",
+      queues:
+        "Baris yang tidak masuk ke master. Persentase dihitung terhadap jumlah profil master sebagai pembanding skala, bukan sebagai bagian dari master.",
+      satellites:
+        "Tabel satelit crm_* sudah ada tetapi belum terisi. Ini bukan “skor basi” — skornya belum pernah dihitung sama sekali.",
+      ecosystem:
+        "Jejak keterlibatan lintas unit dari tabel customer_engagement — dibaca di tempat, tanpa disalin ke crm_*. Yang tampil di sini hanya yang bisa dihitung live; dua angka terpenting (% cap muat dan cakupan profil) ada di panel bertanggal di bawah.",
+      staging:
+        "Impor yang SAMA dengan master_customer, dicocokkan lewat email ternormalisasi (K-06). Inilah sumber yang mengisi tanggal lahir (master_customer: 0), kota, RFM, dan keikutsertaan program. Nol tulis, nol salin.",
+      enrichment:
+        "Sumber lain (Hyrox, my20fit) dikaitkan ke profil lewat email ternormalisasi (K-06). “Cocok” = profil master berbeda (satu email bisa banyak baris sumber). rc_team_members dikecualikan (berkunci nama).",
+      multisource:
+        "Dikaitkan lewat email ternormalisasi (K-06). Baris bernilai nol tetap ditampilkan (0 terukur, bukan tak ada sumber).",
+      clinic:
+        "Klinik dicocokkan TELEPON dulu (K-06): email hanya menemukan sebagian kecil karena banyak pasien tak punya email — bukan karena mereka tak ada di master.",
+      artifactsPre: "Hal-hal berikut sudah diverifikasi langsung ke database pada",
+      artifactsPost:
+        "tetapi tidak bisa dihitung ulang lewat API baca yang dipakai halaman ini (tidak ada perbandingan antar-kolom maupun regex). Angkanya statis dan sengaja diberi tanggal — jangan dibaca sebagai angka hari ini.",
+    },
+
+    fillLabel: {
+      full_name: "Nama",
+      phone: "Telepon",
+      email: "Email",
+      first_unit: "Unit pertama",
+      segment: "Segment",
+      city: "Kota",
+      gender: "Gender",
+      date_of_birth: "Tanggal lahir",
+      address: "Alamat",
+      lifetime_value: "Lifetime value > 0",
+    },
+    issueLabel: {
+      phone_not_62: "Telepon tidak berawalan 62",
+      email_no_at: "Email tanpa pola @domain.tld",
+      email_known_typo_domain: "Domain email salah ketik (daftar dikenal)",
+      ltv_negative: "Lifetime value negatif",
+      name_with_digits: "Nama mengandung angka",
+      flagged_duplicate: "Ditandai kemungkinan duplikat",
+      merged: "Sudah di-merge",
+      orphan: "Antrean orphan",
+      excluded: "Dikecualikan dari master",
+    },
+    satelliteLabel: {
+      demographic: "Kurasi demografis",
+      behavior: "Satelit perilaku",
+      scores: "Skor turunan",
+    },
+    artifactLabel: {
+      last_activity: "“Terakhir aktif” bukan data aktivitas",
+      segment_inverted: "Segment terbalik",
+      source_two_batches: "“live_txn_ingest” adalah muatan batch, bukan feed hidup",
+      first_seen_is_load_stamp: "“first_seen_at” adalah cap muat untuk 98,7% pool",
+      first_seen_after_created: "14 baris “pertama terlihat” setelah dibuat (kontradiksi logis)",
+      nik_derivation: "NIK Hyrox → gender + tanggal lahir (mengisi field yang 0% terisi)",
+      nik_date_swap: "321 tanggal lahir tersimpan hari-bulan TERTUKAR (NIK yang benar)",
+      ecosystem_last_seen_load_stamp: "“last_seen_at” ekosistem adalah cap muat untuk 99,51% baris",
+      ecosystem_coverage: "82.089 dari 82.253 profil (99,80%) punya jejak ekosistem",
+      staging_email_match: "staging_20fit_data cocok 98,6% ke master lewat email",
+      staging_dob_ambiguity: "Tanggal lahir impor: 0 tertukar terbukti, 2.232 hari-bulan ambigu",
+    },
+
+    eco: {
+      totalRows: "Total baris engagement",
+      spreadNote: "Sebaran per unit (baris, bukan pelanggan — satu pelanggan bisa punya beberapa produk di unit yang sama):",
+      futureLabel: "Baris last_seen_at di masa depan",
+    },
+    staging: {
+      rowsImport: "Baris impor",
+      hasEmail: "Punya email",
+      hasDob: "Punya tgl lahir",
+      dobParseTitle: "Penguraian tanggal lahir",
+      parsed: "berhasil diurai",
+      failed: "gagal (ditandai, bukan dibuang)",
+      ambiguous: "hari-bulan ambigu (≤12 di dua posisi — tak bisa dipastikan)",
+      swapped: "terbukti tertukar (bulan > 12)",
+      implausible: "umur mustahil (<10 / >100 / masa depan)",
+      umurPre: "Silang Umur (as-of snapshot 20 Apr 2026, memvalidasi TAHUN saja — menukar hari-bulan tak mengubah umur):",
+      umurChecked: "diperiksa",
+      umurExact: "sama persis",
+      umurOff1: "beda 1 tahun (drift snapshot, wajar)",
+      umurConflict: "bentrok ≥2 tahun (konflik tahun nyata)",
+      rfmTitle: "RFM per paid order",
+      noBucket: "− (tanpa bucket)",
+      programTitle: "Keikutsertaan program",
+    },
+    enrich: {
+      matchedFrom: "profil cocok dari",
+      sourceRows: "baris sumber",
+      unmatched: "tak tersambung ke master",
+    },
+    multi: {
+      matched: "profil cocok",
+      hasEmail: "punya email",
+      rows: "baris",
+      noEmailPre: "baris tanpa email (identifier kosong)",
+      allHaveEmail: "semua baris punya email",
+      hasEmailNoMaster: "punya email tapi tak ada di master",
+    },
+    clinic: {
+      matchedPhone: "cocok via telepon",
+      matchedEmail: "via email",
+      fromPatients: "dari",
+      patients: "pasien",
+      hasPhone: "punya telepon",
+      hasEmail: "punya email",
+      txTitle: "clinic_transactions — tautan pasien",
+      txLinked: "tertaut",
+      txNullFk: "patient_id NULL",
+      txFrom: "dari",
+      sparsePre: "Terlalu tipis untuk ditampilkan per-profil (dicatat di sini):",
+    },
+    footer: {
+      computedPre: "Dihitung",
+      computedPost: "· agregat saja, tak ada baris individual dibaca · agregat tetap tanpa parameter pengguna — tidak diaudit",
+    },
+    fillBarAria: "terisi",
+
+    // Every load-bearing warning sentence lives here (path contains ".warn.") so the length +
+    // forbidden-term guards measure it. Keys mirror the data key of the row they explain.
+    warn: {
+      fill_city:
+        "Satu-satunya sinyal geografis yang ada. Selama masih di bawah 10%, penargetan per kota tidak bisa dipertanggungjawabkan.",
+      fill_gender:
+        "Kosong total di sistem lama. Perlu diisi lewat lapisan kurasi (crm_profile_demographic), bukan dengan menebak dari nama.",
+      fill_date_of_birth:
+        "Kosong total di master_customer. Tanpa ini tidak ada kampanye ulang tahun dan tidak ada segmentasi usia.",
+      fill_address: "Kosong total di master_customer — belum terisi satu baris pun.",
+      fill_lifetime_value:
+        "Bukan field kosong: nilainya ada, tetapi nol. Sisanya belum pernah tercatat membayar — “Rp 0” adalah fakta yang terukur, bukan data yang hilang.",
+      issue_phone_not_62:
+        "phone_normalized IS NOT NULL AND NOT LIKE '62%'. Pemeriksaan bentuk awalan saja — panjang dan prefiks operator tidak divalidasi di sini (PostgREST tanpa regex).",
+      issue_email_no_at:
+        "email_normalized IS NOT NULL AND NOT LIKE '%@%.%'. Ini uji bentuk paling longgar; nol di sini TIDAK berarti semua email valid atau terkirim.",
+      issue_email_known_typo_domain:
+        "email_normalized berakhir pada domain typo yang dikenal (gmaol.com, gmail.con, …). gmaol.com sendiri = 986 baris, SEMUANYA dari impor 20 April 2026 satu instan — kerusakan sistematis, bukan 986 salah ketik independen. DITANDAI, bukan diperbaiki otomatis: mengubah email atas tebakan bisa mengirim data pribadi ke orang lain.",
+      issue_ltv_negative:
+        "lifetime_value < 0. Baris ini TIDAK TERLIHAT di filter revenue halaman Audience — “punya revenue” menyaring > 0 dan “tanpa revenue” menyaring 0/NULL, jadi nilai negatif jatuh di luar keduanya dan hanya muncul saat filter “Semua”. Diangkat di sini justru karena di sana ia menghilang.",
+      issue_name_with_digits:
+        "full_name mengandung minimal satu digit 0–9. Kemungkinan besar data sampah (mis. nomor antrean ikut ke kolom nama). DITANDAI, bukan diperbaiki: master_customer read-only, dan perapian nama terjadi di lapisan tampilan, bukan dengan menebak nama yang benar.",
+      issue_flagged_duplicate:
+        "is_potential_duplicate = true. Ditandai oleh proses impor lama; belum ada alur merge/unmerge di aplikasi ini.",
+      issue_merged: "is_merged = true. Nol berarti belum satu pun duplikat diselesaikan.",
+      issue_orphan:
+        "Baris di customer_orphan — data yang tidak bisa dikaitkan ke satu profil master.",
+      issue_excluded:
+        "Baris di customer_excluded. Jumlahnya besar dan alasan pengecualian belum ditinjau ulang di sprint ini.",
+      satellite_demographic: "Tabel sudah ada, belum diisi — ingestion masih ditahan.",
+      satellite_behavior:
+        "Belum diisi. Sumber perilaku yang tersedia masih terlarang sampai diremediasi.",
+      satellite_scores:
+        "Belum diisi. Semua profil belum terskor — bukan “skor basi”, melainkan skor yang belum pernah ada.",
+      ecoSpreadFuture:
+        "last_seen_at > sekarang — cacat data (tanggal yang belum terjadi tak bisa jadi aktivitas). Sejajar dengan LTV negatif dan first_seen_at > created_at: ditampilkan, bukan diperbaiki (K-20). Ini SATU-satunya bagian cap-muat ekosistem yang bisa dihitung live (perbandingan ke literal waktu, bukan antar-kolom).",
+      stagingRfm:
+        "Ejaan tersimpan dipertahankan (Campion user), tidak “diperbaiki”. RFM per revenue 0% terisi — jadi bucket dihitung dari paid order, bukan revenue.",
+      stagingProgram:
+        "“−” berarti tidak ikut, NULL berarti belum terisi (dibedakan). Arena / GYM / Paid Shop nol terukur — barisnya tetap ditampilkan (K-08).",
+      clinicPhoneWhy:
+        "Jauh lebih banyak pasien punya telepon daripada email — itu sebabnya kecocokan telepon jauh lebih tinggi, bukan karena email lebih bersih.",
+      clinicTxWhy:
+        "Sebab yang berbeda: impor spreadsheet yang tak pernah ditautkan ke pasien — bukan tingkat kecocokan. Baris yang tertaut valid 100%.",
+      artifact_last_activity:
+        "81.944 dari 82.253 baris (99,62%) punya last_activity_at yang persis sama dengan first_seen_at — artefak impor, bukan jejak aktivitas. Kolom ini sengaja tidak ditampilkan di mana pun.",
+      artifact_segment_inverted:
+        "1.242 profil tanpa segment (NULL) justru memiliki rata-rata lifetime value TERTINGGI — kelompok kosong itu bukan “data hilang” melainkan pelanggan paling bernilai. Ditampilkan apa adanya; tidak ada aturan yang “merapikan” ini.",
+      artifact_source_two_batches:
+        "master_customer datang sebagai DUA muatan batch, bukan satu impor dan bukan pipeline berkelanjutan: 20fit_data_import 81.178 baris (semua created_at 2026-04-20) dan live_txn_ingest 1.075 baris (semua created_at 2026-07-31 — satu instan, bukan sepekan). Jadi kartu “Profil terakhir bertambah: 31 Juli” = tanggal muatan batch terakhir, BUKAN pipeline yang telat — nama “live_txn_ingest” untuk sumber yang hanya berjalan sekali adalah label yang menyesatkan.",
+      artifact_first_seen_is_load_stamp:
+        "first_seen_at hanya membawa informasi nyata pada 1.075 baris live_txn_ingest. Untuk 81.178 baris 20fit_data_import (98,69%) ia satu instan (2026-04-20), yakni cap waktu muat — bukan “pertama terlihat”. Konsekuensinya: segmentasi berbasis recency TIDAK bisa jujur dengan data hari ini. Rinciannya di docs/KOLOM-WAKTU.md.",
+      artifact_first_seen_after_created:
+        "14 baris punya first_seen_at LEBIH BARU dari created_at (selisih terbesar 7 hari 11 jam), semuanya di live_txn_ingest. Sebuah baris yang “pertama terlihat” setelah barisnya sendiri dibuat adalah kontradiksi, bukan sekadar data kotor. Seperti LTV negatif, ia tak muncul di filter layar mana pun — PostgREST tak punya perbandingan antar-kolom — jadi diangkat di sini sebagai temuan terverifikasi. Diverifikasi 11 Agustus 2026.",
+      artifact_nik_derivation:
+        "Dari 1.030 NIK di cf_hyrox_participants, 971 bisa diurai (16 digit valid); 59 panjang salah, tak diurai. Menghasilkan gender (486 perempuan / 484 laki-laki) dan tanggal lahir + provinsi — tiga field yang 0% terisi di master_customer. Aturan abad eksplisit: yy≤11 → 2000-an, selebihnya 1900-an; hasil di luar 1946–2011 DITANDAI, bukan ditebak. Diturunkan saat tampil (gerbang profile.view_health), NOL tulis. Diverifikasi 11 Agustus 2026.",
+      artifact_nik_date_swap:
+        "Dari 967 NIK terurai yang punya tgl_lahir tersimpan: 614 cocok persis, 321 punya HARI dan BULAN tertukar di kolom tersimpan, 32 beda karena hal lain. 321 bukan salah ketik independen — bug parsing DD/MM saat impor, pola SISTEMATIS sama seperti gmaol.com (T-16). Untuk 321 baris itu, tanggal dari NIK lebih dapat dipercaya daripada kolom tersimpan. Layar menampilkan KEDUANYA beserta asalnya. Diverifikasi 11 Agustus 2026.",
+      artifact_ecosystem_last_seen_load_stamp:
+        "customer_engagement: 89.974 dari 90.419 baris (99,51%) punya last_seen_at = first_seen_at — cap waktu muat, bukan aktivitas. Hanya 444 baris (0,49%) membawa aktivitas nyata, SEMUANYA dari live_txn_sync dan terpusat di Transaksi Clinic (274) dan Transaksi Arena (170). Ini KALI KEEMPAT sebuah kolom waktu ternyata cap muat — pola, bukan kejutan. Konsekuensi: TIDAK ada kriteria waktu di segment builder untuk ekosistem (K-19). Diverifikasi 11 Agustus 2026.",
+      artifact_ecosystem_coverage:
+        "customer_engagement mencakup 82.089 profil master berbeda dari 82.253 (99,80%; count distinct — tak bisa live via PostgREST), lewat 90.419 baris, 0 baris yatim. 164 profil tidak muncul sama sekali di ekosistem. Sebaran didominasi satu produk: membership/Fitco User = 67.828 baris (75%). Diverifikasi 11 Agustus 2026.",
+      artifact_staging_email_match:
+        "staging_20fit_data adalah impor yang SAMA dengan master_customer: 88.536 baris, 88.445 punya email; 81.079 dari 82.253 profil master (98,62%) cocok lewat email ternormalisasi (count distinct — tak bisa live via PostgREST). Kontras tajam dengan seluruh sumber ekosistem lain digabung (922 profil, 1,12%). Sumber inilah yang membawa tanggal lahir (5.467 baris — master_customer 0), kota, RFM, dan program. Nol tulis, nol salin. Diverifikasi 12 Agustus 2026.",
+      artifact_staging_dob_ambiguity:
+        "Seluruh 5.467 tgl lahir di staging_20fit_data berbentuk ISO yyyy-mm-dd dan 0 punya field bulan > 12 — jadi TIDAK ada baris yang terbukti tertukar (beda dari cf_hyrox_participants: 321 tertukar, T-16). Namun 2.232 punya field bulan DAN hari sama-sama ≤ 12: urutannya tak bisa dipastikan dari nilainya, jadi DITANDAI ambigu, tak pernah ditebak. Umur hanya memvalidasi TAHUN (menukar hari-bulan tak mengubah umur): 0 baris meleset ≥ 2 tahun. Umur TIDAK dipakai sebagai umur yang ditampilkan; umur selalu dihitung ulang dari tanggal. Diverifikasi 12 Agustus 2026.",
+    },
+  },
+
+  // WhatsApp Business API connection status on /settings (contacting-half TUGAS 4). Shows PRESENCE
+  // of the env-var credentials only, never a value; today all absent → honest "not connected".
+  messaging: {
+    waTitle: "WhatsApp Business API",
+    waSubtitle: "Kanal chat untuk pengiriman. Kredensial disimpan sebagai environment variable di Railway (seperti token Mailtrap), tidak pernah ditampilkan kembali. Penyetelan kredensial menyusul.",
+    waNotConnected: "Belum tersambung",
+    waConnected: "Tersambung",
+    waFieldToken: "Access token",
+    waFieldPhone: "Nomor pengirim (phone number id)",
+    waFieldAccount: "Business Account id",
+    waConfigured: "terpasang",
+    waNotSet: "belum diatur",
+    waNote: "Sampai ketiganya terpasang, tidak ada pesan WhatsApp yang bisa dikirim. Ini status, bukan formulir — kredensial diatur di Railway, bukan di sini.",
+  },
+
+  // Public self-service unsubscribe page (contacting-half TUGAS 3). Reached from a link in an
+  // email — no session — so it reads the language from ?lang (default id) and pulls these strings
+  // directly from the dictionary. Recipients are mixed-language, hence both are kept complete.
+  unsubscribe: {
+    title: "Berhenti berlangganan",
+    checking: "Memeriksa tautan…",
+    invalidTitle: "Tautan tidak berlaku",
+    invalidBody: "Tautan ini tidak sah atau sudah tidak berlaku. Bila Anda ingin berhenti dihubungi, balas email yang Anda terima atau hubungi tim 20FIT.",
+    unavailableBody: "Layanan sedang tidak tersedia. Coba lagi nanti.",
+    promptEmail: "Anda akan berhenti menerima email dari CRM 20FIT di alamat:",
+    promptPhone: "Anda akan berhenti menerima pesan dari CRM 20FIT di nomor:",
+    confirmButton: "Ya, berhenti berlangganan",
+    working: "Memproses…",
+    doneTitle: "Anda telah berhenti berlangganan",
+    doneBody: "Permintaan Anda tercatat. Anda tidak akan lagi menerima pesan pemasaran dari CRM 20FIT lewat kontak ini.",
+    alreadyBody: "Kontak ini memang sudah berhenti berlangganan sebelumnya — tidak ada yang berubah.",
+    resubscribe: "Berubah pikiran? Hubungi tim 20FIT untuk berlangganan kembali.",
+    failed: "Gagal memproses permintaan. Coba lagi nanti.",
+  },
+
   // ComingSoon nav stubs (Sprint 4F) — user-openable routes that were hardcoded Indonesian with
   // no marker. Translated (short text) rather than marked. Titles stay proper nav names.
   stubs: {
@@ -728,6 +1047,379 @@ export const id = {
     exports: "Riwayat ekspor dengan pemohon, tujuan, jumlah baris, dan status persetujuan.",
     templates: "Register template WhatsApp dan email dengan status persetujuan Meta dan kategori.",
     workflows: "Mesin workflow marketing dengan sembilan guard. Diblokir sampai consent register aktif.",
+  },
+
+  // Messages screen (send path) — read-only log of every send. Born bilingual.
+  messagesPage: {
+    subtitle: "Setiap pengiriman — kanal, status, dan sebab gagal — ditampilkan apa adanya.",
+    deniedRole: "Peran Anda tidak memiliki akses ke log pengiriman.",
+    lastSend: "Pengiriman terakhir",
+    never: "Belum ada",
+    emptyTitle: "Belum ada pengiriman.",
+    emptyBody: "Log terisi begitu kampanye pertama berjalan. Kirim nyata masih diblokir sampai token Mailtrap dirotasi.",
+    breakdownTitle: "Ringkasan status",
+    colWho: "Pelanggan",
+    colChannel: "Kanal",
+    colStatus: "Status",
+    colCause: "Sebab",
+    colWhen: "Waktu",
+    identityNote: "Alamat tujuan tidak ditampilkan — disimpan hanya sebagai hash untuk penelusuran, tak pernah dibaca (sama seperti masking di layar lain).",
+    stQueued: "Antre",
+    stSent: "Terkirim",
+    stDelivered: "Sampai",
+    stBounced: "Bounce",
+    stComplained: "Komplain",
+    stFailed: "Gagal",
+    stSkipped: "Dilewati (suppress)",
+    causeInvalid: "Alamat tak valid",
+    causeHardBounce: "Bounce keras",
+    causeProvider: "Ditolak penyedia",
+    causeDaily: "Batas harian",
+    causeUnknown: "Tak diketahui",
+  },
+
+  // Campaigns console (send path) — compose flow + pre-launch block. Born bilingual.
+  campaignsPage: {
+    subtitle: "Susun kirim: pilih segmen, pilih template, lihat penerima setelah suppression, konfirmasi, kirim.",
+    deniedRole: "Peran Anda tidak memiliki akses untuk menyusun pengiriman.",
+    blockTitle: "Kirim nyata masih diblokir",
+    blockBody: "Nol email kampanye ke alamat pelanggan sampai dua prasyarat beres: rotasi token Mailtrap dan SPF/DKIM/DMARC untuk 20fit.id. Sampai itu, hanya alamat internal @20fit.id yang bisa dikirimi.",
+    flowTitle: "Alur kirim",
+    flow1: "Pilih segmen dan lihat berapa penerima setelah suppression dikurangkan.",
+    flow2: "Pilih template email aktif (versi yang benar-benar dikirim tercatat).",
+    flow3: "Untuk lebih dari 500 penerima, konfirmasi kedua sebelum tombol kirim aktif.",
+    flow4: "Setiap email memuat tautan unsubscribe bertanda tangan — syarat, bukan kebiasaan.",
+    flow5: "Kirim; kegagalan per penerima tercatat dengan sebabnya, tak menghentikan sisanya.",
+    limitsTitle: "Batas yang berlaku",
+    limit1: "Batas harian mulai 1.000/hari, dihitung dari log pengiriman (bukan penghitung terpisah).",
+    limit2: "Konfirmasi kedua wajib di atas 500 penerima.",
+    limit3: "Auto-stop bila bounce keras melewati 5% (disetujui 24 Agu).",
+    suppressionNote: "Suppression diperiksa SAAT KIRIM, bukan saat segmen dihitung — unsubscribe yang masuk di antaranya tetap dihormati.",
+    templatesActive: "Template email aktif",
+    templatesNone: "Belum ada template email aktif — buat dulu di Templates.",
+    pendingTitle: "Form kirim langsung menyusul",
+    pendingBody: "Menyusun-dan-kirim di layar menyusul setelah segmen bisa disimpan dan kedua prasyarat kirim terpenuhi. Jalur kirim sendiri sudah dibangun dan teruji.",
+    composer: {
+      title: "Susun kirim",
+      segmentLabel: "Segmen tersimpan",
+      templateLabel: "Template email",
+      noSegments: "Belum ada segmen tersimpan. Simpan satu di layar Segments.",
+      noTemplates: "Belum ada template email aktif — buat dulu di Templates.",
+      previewBtn: "Lihat penerima",
+      previewing: "Menghitung…",
+      matched: "Cocok",
+      withEmail: "Punya email",
+      noContact: "Tanpa email",
+      suppressed: "Di-suppress (dilewati)",
+      sendable: "Akan dikirimi",
+      daysA: "Segmen melebihi jatah harian — perlu sekitar ",
+      daysB: " hari. Sisanya menunggu Anda menjalankan ulang kampanye ini; kirim ganda dicegah.",
+      confirmLargeLabel: "Saya paham ini lebih dari 500 penerima.",
+      runTitle: "Kirim sebagai run yang mana?",
+      runHint: "Run baru mengirim ulang ke orang yang sama (terbitan berikutnya). Melanjutkan run yang ada melewati siapa pun yang sudah terkirim di run itu.",
+      runResumeHeading: "Lanjutkan run yang ada",
+      runNewHeading: "Mulai run baru",
+      runResumeBadge: "LANJUTKAN",
+      runNewBadge: "RUN BARU",
+      runNoRuns: "Belum ada run untuk pasangan segmen + template ini.",
+      runUntitled: "Tanpa nama",
+      runSentSuffix: "terkirim di run ini",
+      runStatusDraft: "draf",
+      runStatusSending: "berjalan",
+      runLabelField: "Nama run (opsional)",
+      runLabelPlaceholder: "mis. Newsletter Sept #1",
+      runsLoading: "Memuat run…",
+      runChooseFirst: "Pilih dulu: lanjutkan run atau mulai baru.",
+      sendBtn: "Kirim",
+      sending: "Mengirim…",
+      blockedBtn: "Kirim diblokir (token belum dirotasi)",
+      driftWarnA: "Jumlah berubah sejak Anda melihatnya: sekarang ",
+      driftWarnB: " akan dikirimi. Tekan Kirim lagi untuk melanjutkan dengan angka ini.",
+      errClinical: "Segmen ini memakai kriteria klinis; peran Anda tak berwenang memakainya.",
+      errNoUnsub: "Template ini tak memuat tautan unsubscribe — tak bisa dipakai.",
+      errDenied: "Peran Anda tak berwenang menyusun pengiriman.",
+      errNotFound: "Segmen tak ditemukan.",
+      errNeedConfirm: "Centang konfirmasi lebih-dari-500 dulu.",
+      errRunNotFound: "Run tak ditemukan lagi — segarkan daftar dan pilih lagi.",
+      errRunCreate: "Gagal membuka run baru.",
+      errSendThrew: "Kirim gagal sebelum selesai; run ditandai berhenti dengan sebabnya. Periksa run untuk detail.",
+      errHostMismatch: "Host tautan unsubscribe berbeda dari host yang melayani aplikasi — tautannya akan mati. Setel NEXT_PUBLIC_APP_URL ke host yang benar sebelum kirim.",
+      resultTitle: "Hasil kirim",
+      resRunLabelNew: "Run baru",
+      resRunLabelResume: "Lanjutan run",
+      resSent: "Terkirim",
+      resAlreadySent: "Sudah terkirim di run ini (dilewati)",
+      resSkipped: "Dilewati (suppress)",
+      resFailed: "Gagal",
+      resWithheld: "Ditahan (pra-luncur)",
+      resInternalNote: "Kirim nyata mati — hanya alamat internal yang dikirimi; alamat pelanggan ditahan.",
+    },
+    sendTest: {
+      title: "Uji kirim internal (pra-luncur)",
+      desc: "Pool pelanggan tak memuat alamat @20fit.id, jadi uji internal lewat composer menghasilkan nol penerima. Harness ini menyuntikkan satu alamat internal (dari SEND_TEST_INTERNAL_ADDRESS) ke engine, ports, audit, dan gerbang yang SAMA — membuktikan rantainya, bukan tiruannya. Hanya jalan saat kirim nyata mati.",
+      runBtn: "Jalankan uji kirim internal",
+      running: "Menjalankan…",
+      cleanupBtn: "Bersihkan data uji",
+      cleaning: "Membersihkan…",
+      errDenied: "Peran Anda tak berwenang.",
+      errRealSend: "Kirim nyata sedang menyala — harness dinonaktifkan (bukan pintu belakang).",
+      errNoTarget: "SEND_TEST_INTERNAL_ADDRESS belum diset di lingkungan.",
+      errNotInternal: "Alamat tujuan bukan @20fit.id — ditolak.",
+      errTemplate: "Gagal menyiapkan template uji.",
+      errSegment: "Gagal menyiapkan segmen uji.",
+      errRun: "Gagal membuka run uji.",
+      errMissingEnv: "Variabel lingkungan wajib belum diset (pasang semua sekaligus): ",
+      errSendThrew: "Kirim melempar sebelum baris pertama; run ditandai berhenti dengan sebab: ",
+      errUnexpected: "Galat tak terduga saat menjalankan uji — periksa log dan run.",
+      errHostMismatch: "Host tautan unsubscribe berbeda dari host aplikasi — tautannya akan mati. Setel NEXT_PUBLIC_APP_URL dulu. ",
+      resultTitle: "Hasil uji",
+      target: "Tujuan",
+      run: "Run",
+      runStatus: "Status run",
+      provider: "provider_message_id",
+      logStatus: "Status baris log",
+      auditCount: "Baris audit campaign.sent",
+      sent: "Terkirim",
+      withheld: "Ditahan (pra-luncur)",
+      failed: "Gagal",
+      providerNull: "kosong (klien tak menerima id dari Mailtrap — temuan)",
+      cleanupDone: "Segmen uji diarsipkan: ",
+      permanentTitle: "Tertinggal permanen (append-only)",
+    },
+  },
+
+  // Profile detail (/audience/[id]) — Sprint 5B-T2. Nuance-critical prose lives under profile.warn.*
+  // so the forbidden-term + length guards protect it (cap muat ≠ aktivitas, tidak terekam ≠ belum
+  // terisi, ambigu ≠ invalid, tidak ada sumber ≠ kosong/sehat, tidak tersambung ≠ tak pernah ikut).
+  profile: {
+    pageTitle: "Profil",
+    back: "Kembali ke audience",
+    loading: "Memuat profil…",
+    notFoundBadge: "Tidak ditemukan",
+    notFoundText: "Profil tidak ditemukan.",
+    errorBadge: "Gagal",
+    errorText: "Profil gagal dimuat.",
+    noName: "Tanpa nama",
+    originalNameLabel: "Nama asli (dari sumber): ",
+    contactMasked: "Kontak disamarkan",
+    merged: "Sudah di-merge",
+    possibleDup: "Kemungkinan duplikat",
+    recordStop: "Catat permintaan berhenti",
+    tabDemografi: "Demografi",
+    tabPerilaku: "Perilaku",
+    tabsAria: "Bagian profil",
+    // section titles
+    secContact: "Kontak",
+    secAttr: "Atribut",
+    secIdentity: "Identitas",
+    secTrail: "Jejak waktu",
+    secCuration: "Kurasi & duplikat",
+    secEcosystem: "Ekosistem 20FIT",
+    secOtherSources: "Sumber lain 20FIT",
+    secImport: "Data impor 20FIT — partisipasi",
+    secHealth: "Health flags",
+    // contact fields
+    fPhone: "Telepon",
+    fEmail: "Email",
+    fCity: "Kota",
+    typoBadge: "Mungkin salah ketik",
+    typoSuggest: "saran: ",
+    confHigh: "keyakinan tinggi",
+    confMed: "keyakinan sedang",
+    typoNote: " — perlu konfirmasi manusia, tidak diperbaiki otomatis",
+    // attributes
+    fFirstUnit: "Unit pertama",
+    fSegment: "Segment",
+    noSegment: "(tanpa segment)",
+    fLtv: "Lifetime value",
+    fSource: "Sumber",
+    // identity
+    fNik: "NIK",
+    fromPrefix: " · dari ",
+    fromWord: "dari",
+    fDob: "Tanggal lahir",
+    fGender: "Gender",
+    gMale: "Laki-laki",
+    gFemale: "Perempuan",
+    otherDiffer: " · sumber lain berbeda",
+    fProvince: "Provinsi pendaftaran KTP (dari NIK)",
+    provinceCodeA: "kode ",
+    provinceCodeB: " (referensi wilayah belum tersedia)",
+    provinceNote: " · tempat KTP diterbitkan, bukan domisili sekarang",
+    fAddress: "Alamat",
+    fEmergency: "Kontak darurat",
+    srcNik: "NIK",
+    srcStaging: "data impor 20FIT",
+    srcHyrox: "Hyrox",
+    srcStaff: "input staf",
+    // demographic fill form
+    fillTitle: "Lengkapi demografi (isi yang kosong)",
+    fillGender: "Gender",
+    fillDob: "Tanggal lahir",
+    fillPick: "— pilih —",
+    fillSave: "Simpan",
+    fillSaving: "Menyimpan…",
+    fillSaved: "Tersimpan. Memuat ulang…",
+    fillMinOne: "Isi minimal satu field.",
+    fillFailPrefix: "Gagal (",
+    fillConnErr: "Gagal menghubungi server.",
+    // time trail
+    tCreated: "Dibuat (cap waktu muat batch)",
+    tFirstSeenReal: "Pertama terlihat",
+    tFirstSeen: "First-seen",
+    tUpdated: "Diperbarui",
+    // curation
+    cNotes: "Catatan",
+    cTags: "Tag",
+    cDupReason: "Alasan duplikat",
+    // ecosystem table
+    loadFailBadge: "Gagal dimuat",
+    ecoEmptyBadge: "Tidak muncul di ekosistem",
+    groupClinic: "klinik",
+    ecoColUnit: "Unit",
+    ecoColProduct: "Produk",
+    ecoColCount: "Jumlah",
+    ecoColLast: "Terakhir",
+    lsReal: "aktivitas nyata",
+    lsFuture: "anomali: tanggal di masa depan",
+    lsMissing: "tidak ada",
+    lsLoadStamp: "tidak terekam",
+    lsLoadStampTitle: "last_seen_at = first_seen_at → cap waktu muat, bukan aktivitas",
+    // other sources
+    srcLoadFailBadge: "Sebagian gagal dimuat",
+    keyEmail: "cocok via email",
+    keyPhone: "cocok via telepon (format, keyakinan lebih rendah)",
+    keyPhonePlain: "cocok via telepon",
+    attendanceSuffix: " kehadiran",
+    rowsSuffix: " baris",
+    hideDetail: "Sembunyikan detail",
+    showDetailA: "Lihat detail (",
+    showDetailB: " booking)",
+    classNotFound: "Nama kelas tak ditemukan",
+    classCodesPrefix: " (kode: ",
+    my20Plus: "Plus member",
+    my20User: "Pengguna",
+    my20Onboard: " · onboarding selesai",
+    hyroxLabel: "Hyrox",
+    teamPrefix: " · tim ",
+    registerPrefix: " · daftar ",
+    bloodLabel: "Golongan darah (medis · view_health)",
+    activityLabel: "Aktivitas nyata (my20fit)",
+    activityVisitsSuffix: " kunjungan",
+    activityLastActivePrefix: " · terakhir aktif ",
+    clinicTitle: "Klinik — keterlibatan (view_health)",
+    clinicPatientPrefix: "Pasien ",
+    clinicBooking: "Booking",
+    clinicVisit: "Kunjungan",
+    clinicAssessment: "Assessment",
+    clinicScreening: "Skrining",
+    clinicTransaction: "Transaksi",
+    clinicLatestBooking: "Booking terakhir: ",
+    notConnectedBadge: "Tidak tersambung ke sumber lain",
+    mirrorStampPrefix: " · penanda kehadiran cermin per ",
+    // import (participation)
+    impRfm: "RFM (per paid order)",
+    impRfmNoBucket: "− (tanpa bucket)",
+    impPrograms: "Program yang diikuti",
+    // footer
+    footer:
+      "Baca saja · nol tombol edit/hapus/merge · pembukaan profil ini tercatat sekali (profile.viewed) — pindah tab bukan pembacaan baru · kontak & data sensitif ditahan di server untuk peran tanpa izin (tab hanya tata letak).",
+
+    warn: {
+      // "belum terisi" ≠ "empty" (a measured zero); guarded.
+      emptyField: "belum terisi",
+      // ecosystem
+      ecoLoadFail:
+        "Data ekosistem gagal dimuat untuk profil ini. Sisa profil tetap tampil — bagian ini dibaca terpisah dan tidak menahan pembukaan profil.",
+      ecoEmptyA: "Profil ini tidak punya satu pun baris di ",
+      ecoEmptyB:
+        " (arena, clinic, event, gym, membership, shop). Ini kosong yang jujur — bukan “tidak aktif”, melainkan tidak tercatat di sumber ekosistem mana pun.",
+      // all-load-stamp banner (cap muat ≠ aktivitas / date added)
+      allLoadA: "Semua ",
+      allLoadB: " titik ekosistem profil ini ",
+      allLoadStrong1: "cap waktu muat",
+      allLoadC: "). Riwayat aktivitasnya",
+      allLoadStrong2: " belum terekam",
+      allLoadD: " — itu bukan sama dengan “tidak aktif”.",
+      futureA: "Setidaknya satu baris punya ",
+      futureB: " di masa depan — cacat data, ditampilkan apa adanya.",
+      ecoWhyA: "“Terakhir” hanya menunjukkan tanggal bila baris membawa aktivitas nyata (",
+      ecoWhyB: ") — di data ini hampir seluruhnya berasal dari ",
+      ecoWhyC:
+        " (Transaksi Arena / Transaksi Clinic). Selebihnya cap waktu muat, ditandai “tidak terekam”. Dibaca-saja, tanpa ",
+      ecoWhyD: " / NIK / data sensitif lain (Fase 0). Tautan ke profil lewat ",
+      ecoWhyE: ", bukan telepon/email.",
+      // SourceLine unmatched ≠ "never participated" — the field label above names the source.
+      sourcesLoadFail: "Satu atau lebih sumber gagal dimuat; yang berhasil tetap tampil di bawah.",
+      sourceNoData: "tidak ada baris untuk profil ini di sumber ini",
+      // not connected (tidak tersambung ≠ tak pernah ikut)
+      notConnectedFullA: "Profil ini ",
+      notConnectedFullStrong: "tidak tersambung",
+      notConnectedFullB: " ke sumber 20FIT lain mana pun",
+      notConnectedFullC:
+        ". Ini kosong yang jujur: tak ada kunci (email/telepon) yang cocok ke sumber itu, bukan “belum aktif”.",
+      notConnectedSnapshotPrefix: "Dari penanda kehadiran cermin per ",
+      notConnectedSnapshotSuffix: " — “tidak tersambung” berasal dari snapshot ini, bukan pemeriksaan langsung.",
+      notConnectedLinePrefix: "Tidak tersambung ke: ",
+      sourcesWhyA: "Dicocokkan lewat ",
+      sourcesWhyStrong: "email ternormalisasi",
+      sourcesWhyB:
+        " dulu, lalu telepon (arena/gym/klinik) — nol cocok-nama-saja. “Tidak tersambung” berarti tak ada kunci yang cocok ATAU profil memang tak ada di sumber itu. Dibaca & digabung saat tampil, nol tulis, nol salin ke ",
+      sourcesWhyC: ". Sumber klinis digerbangi ",
+      sourcesWhyD:
+        " dan hanya membawa identitas + volume keterlibatan + booking terakhir — isi klinis (diagnosa, hasil, obat) sengaja tidak dibawa.",
+      // matchless (no email/phone)
+      unmatchableSources: "Profil ini tak punya email atau telepon untuk dicocokkan ke sumber lain.",
+      // identity ambiguity (ambigu ≠ invalid)
+      dobAmbNik: "tahun (abad) di luar rentang wajar — ditandai, tidak dipaksakan",
+      dobAmbStaging: "hari & bulan sama-sama ≤ 12 — urutan tak bisa dipastikan; ditandai, tidak ditebak",
+      dobSwap: "tersimpan hari-dulu (bulan > 12) — dibaca ulang dengan benar & ditandai",
+      dobConflictWhyA: "Ditampilkan satu nilai (paling andal: ",
+      dobConflictWhyB: "), tapi sumber lain tidak sepakat — ",
+      dobConflictWhyStrong: "tidak dipilih diam-diam",
+      dobConflictWhyC:
+        "Prioritas: NIK (posisi digit baku, nol ambiguitas hari-bulan) → impor → sumber lain → input staf.",
+      identityWhyA:
+        "NIK ditampilkan penuh (keputusan pemilik produk) — nilainya tetap TIDAK pernah masuk audit/metadata maupun ekspor CSV, dan tak pernah jadi kunci pencocokan. Gender/tanggal lahir/provinsi ",
+      identityWhyStrong: "diturunkan dari NIK",
+      identityWhyB: " (",
+      identityWhyC: "); provinsi = tempat KTP diterbitkan, bukan domisili. Identitas digerbangi ",
+      identityWhyD: " (K-31, sama seperti telepon/email); golongan darah & data klinis tetap ",
+      identityWhyE: ".",
+      identityGatedA: "NIK, gender, tanggal lahir, provinsi, alamat, dan kontak darurat ada tapi digerbangi — butuh peran ",
+      identityGatedB: ".",
+      // time trail
+      firstSeenRealNote: " · dari transaksi (nyata)",
+      firstSeenNote: " · cap waktu muat, BUKAN “pertama terlihat”",
+      trailWhyA: "“First-seen” hanya bermakna pada baris ",
+      trailWhyB: "; untuk ",
+      trailWhyC:
+        " (98,7% pool) ia sama dengan waktu muat. Segmentasi berbasis recency tidak bisa jujur dengan data ini.",
+      // fill note
+      fillNoteA: "Hanya field yang kosong di semua sumber ditawarkan; nilai tersimpan sebagai ",
+      fillNoteB: " dan tercatat di audit. Mengoreksi nilai yang sudah ada bukan lewat jalur ini.",
+      // import
+      importFail: "Data impor gagal dimuat. Sisa profil tetap tampil.",
+      importUnmatchable: "Profil ini tak punya email untuk dicocokkan ke data impor.",
+      importNotMatchedA: "Profil ini tidak ada di data impor ",
+      importNotMatchedB: ".",
+      importNoProgram: "tidak tercatat ikut program apa pun di data impor",
+      importClinicalWithheldA: "Program klinik (pasien 20FIT Clinic) disembunyikan — butuh ",
+      importClinicalWithheldB: " (menandai pasien = status kesehatan).",
+      importWhyA: "Dari ",
+      importWhyB: " (impor yang sama dengan master), dicocokkan lewat ",
+      importWhyStrong: "email ternormalisasi",
+      importWhyC: " — bukan nama. Nol tulis, nol salin: dibaca & digabung saat tampil. Tanggal lahir + kota dari impor ini pindah ke ",
+      importWhyD: " / ",
+      importWhyE: " (Demografi) — yang tersisa di sini adalah partisipasi (RFM + program).",
+      // health flags (tidak ada sumber ≠ kosong/sehat ≠ unavailable)
+      healthNoSourceBadge: "Tidak ada sumber data",
+      healthNoSourceB:
+        " tidak memiliki kolom kesehatan apa pun. Satu-satunya sumber (",
+      healthNoSourceC:
+        ") di luar lingkup dan masih RLS OFF. Ini bukan “sehat” dan bukan nol terukur — memang belum ada sumbernya. Gerbang ",
+      healthNoSourceD: " dipertahankan agar tetap benar begitu sumbernya ada.",
+    },
   },
 
   // Auth pages (Sprint 4F) — /login, /forgot-password, /reset-password. Pre-session so they default
@@ -779,8 +1471,15 @@ export const id = {
     resetErrMinCharsA: "Kata sandi baru minimal ",
     resetErrMinCharsB: " karakter.",
     resetErrMismatch: "Konfirmasi kata sandi tidak cocok.",
-    resetErrWrongCode: "Kode salah atau sudah kedaluwarsa. Minta kode baru lalu coba lagi.",
+    resetErrWrongCode: "Kode salah. Periksa lagi angka yang Anda masukkan lalu coba lagi.",
     resetErrSetFailed: "Gagal mengatur kata sandi baru. Minta kode baru lalu coba lagi.",
+    // Distinct reset-failure states (incident 24 Agu 2026 — one message hid several).
+    resetCodeAccepted: "Kode diterima. Sekarang atur kata sandi baru Anda — tak perlu memasukkan kode lagi.",
+    resetErrExpired: "Kode sudah kedaluwarsa (berlaku 1 jam). Minta kode baru lalu masukkan yang baru.",
+    resetErrUsed: "Kode ini sudah dipakai untuk verifikasi. Kata sandi hampir selesai — cukup atur kata sandinya di bawah.",
+    resetErrPwSame: "Kata sandi baru harus BERBEDA dari kata sandi lama. Masukkan yang lain.",
+    resetErrPwWeak: "Kata sandi baru terlalu lemah untuk kebijakan sistem. Coba yang lebih panjang / lebih kuat.",
+    resetErrPwRejected: "Kata sandi baru ditolak. Coba kata sandi lain — tak perlu kode baru, kodenya sudah diterima.",
     resetErrConn: "Tidak dapat terhubung ke server. Coba lagi sebentar lagi.",
     // pre-auth chrome (Sprint auth-UI): placeholder, password toggle, theme toggle
     emailPlaceholder: "nama@20fit.id",
