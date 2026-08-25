@@ -4,7 +4,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { EMPTY_CRITERIA } from "./segment";
 import { realSendEnabled, isInternalAddress } from "./send-gate";
 import { sendCampaign } from "./send-campaign";
-import { createRun, finalizeRunStatus } from "./campaign-run";
+import { createRun, finalizeRunStatus, recordRunError } from "./campaign-run";
+import { missingSendEnv, classifySendThrow } from "./send-env";
 import { SEND_ACTION } from "./send-constants";
 import {
   INTERNAL_TEST_ENV_VAR,
@@ -31,9 +32,11 @@ export type SendTestFailure =
   | "real_send_enabled" // CAMPAIGN_SEND_ENABLED=true → refuse (not a backdoor)
   | "no_target_configured" // SEND_TEST_INTERNAL_ADDRESS unset
   | "target_not_internal" // env target is not an @20fit.id address
+  | "missing_env" // one or more required send vars unset — ALL reported at once (see missingEnv)
   | "template_seed_failed"
   | "segment_seed_failed"
-  | "run_create_failed";
+  | "run_create_failed"
+  | "send_threw"; // sendCampaign threw; the run is marked stopped + last_error (see detail)
 
 export interface SendTestLogRow {
   status: string;
@@ -47,6 +50,8 @@ export interface SendTestLogRow {
 export interface SendTestResult {
   ok: boolean;
   error?: SendTestFailure;
+  missingEnv?: string[]; // on 'missing_env': the FULL list of missing required vars, not just the first
+  detail?: string; // on 'send_threw': the PII-free classified cause (also written to run.last_error)
   // Artifacts for the 7-point report (all read back from the real tables after the send):
   targetMasked?: string; // the internal address, lightly masked for display
   runId?: string;
@@ -153,6 +158,13 @@ export async function runInternalSendTest(actor: { actorId: string; actorEmail: 
   if (!target) return { ok: false, error: "no_target_configured" };
   if (!isInternalAddress(target)) return { ok: false, error: "target_not_internal" };
 
+  // Pre-flight: report ALL missing required send vars at once, BEFORE creating any run — so the owner
+  // fixes them in one pass (not one failed attempt per missing var), and a doomed run is never created.
+  const missing = missingSendEnv();
+  if (missing.length > 0) {
+    return { ok: false, error: "missing_env", missingEnv: missing.map((m) => m.name) };
+  }
+
   const admin = createAdminClient();
 
   const templateVersion = await ensureTestTemplate(admin);
@@ -171,20 +183,29 @@ export async function runInternalSendTest(actor: { actorId: string; actorEmail: 
   if (!run) return { ok: false, error: "run_create_failed" };
 
   // THE SAME production function — only the recipient list is injected (Guard 3: maySendTo still
-  // applies to it, so a non-internal address would be withheld regardless).
-  const result = await sendCampaign(
-    {
-      campaignId: run.id,
-      criteria: EMPTY_CRITERIA,
-      masterFilterExpr: null,
-      templateKey: INTERNAL_TEST_TEMPLATE_KEY,
-      actorId: actor.actorId,
-      actorEmail: actor.actorEmail,
-      confirmedLargeSend: false,
-      overrideRecipients: [{ customerId: INTERNAL_TEST_CUSTOMER_ID, email: target, language: "id" }],
-    },
-    nowIso,
-  );
+  // applies to it, so a non-internal address would be withheld regardless). If it throws (e.g. a
+  // secret the pre-check couldn't foresee), the run records WHY (status stopped + last_error) instead
+  // of dying silently — T-30.
+  let result: Awaited<ReturnType<typeof sendCampaign>>;
+  try {
+    result = await sendCampaign(
+      {
+        campaignId: run.id,
+        criteria: EMPTY_CRITERIA,
+        masterFilterExpr: null,
+        templateKey: INTERNAL_TEST_TEMPLATE_KEY,
+        actorId: actor.actorId,
+        actorEmail: actor.actorEmail,
+        confirmedLargeSend: false,
+        overrideRecipients: [{ customerId: INTERNAL_TEST_CUSTOMER_ID, email: target, language: "id" }],
+      },
+      nowIso,
+    );
+  } catch (e) {
+    const cause = classifySendThrow(e);
+    await recordRunError(run.id, cause);
+    return { ok: false, error: "send_threw", detail: cause, runId: run.id };
+  }
 
   const runStatus = await finalizeRunStatus(run.id, {
     deferredDailyLimit: result.summary.deferredDailyLimit,

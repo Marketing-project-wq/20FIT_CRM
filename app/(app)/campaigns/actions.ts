@@ -14,9 +14,11 @@ import {
   listResumableRuns,
   markRunSending,
   finalizeRunStatus,
+  recordRunError,
   type ResumableRun,
   type RunStatus,
 } from "@/lib/crm/campaign-run";
+import { classifySendThrow } from "@/lib/crm/send-env";
 import { runInternalSendTest, cleanupInternalSendTest, type SendTestResult, type SendTestCleanupResult } from "@/lib/crm/send-test-harness";
 import { extractVariables } from "@/lib/crm/template";
 
@@ -145,7 +147,9 @@ export interface SendResult {
     | "needs_confirm"
     | "count_changed"
     | "run_not_found"
-    | "run_create_failed";
+    | "run_create_failed"
+    | "send_threw"; // sendCampaign threw; the run is marked stopped + last_error (see detail)
+  detail?: string; // on 'send_threw': PII-free classified cause (also written to run.last_error)
   drift?: CountDrift; // recount at confirm vs what the operator saw
   freshSendable?: number; // the recounted number to show + re-press against (on count_changed)
   summary?: SendSummary;
@@ -234,18 +238,27 @@ export async function sendCampaignAction(args: {
 
   await markRunSending(runId);
 
-  const result = await sendCampaign(
-    {
-      campaignId: runId,
-      criteria: seg.stored.criteria,
-      masterFilterExpr: seg.stored.masterFilterExpr,
-      templateKey: args.templateKey,
-      actorId,
-      actorEmail,
-      confirmedLargeSend: args.confirmedLargeSend,
-    },
-    stamp,
-  );
+  // If the send throws (e.g. a required secret is unset), the run records WHY — status stopped +
+  // last_error — and the operator gets a structured error, instead of a silent draft (T-30).
+  let result: Awaited<ReturnType<typeof sendCampaign>>;
+  try {
+    result = await sendCampaign(
+      {
+        campaignId: runId,
+        criteria: seg.stored.criteria,
+        masterFilterExpr: seg.stored.masterFilterExpr,
+        templateKey: args.templateKey,
+        actorId,
+        actorEmail,
+        confirmedLargeSend: args.confirmedLargeSend,
+      },
+      stamp,
+    );
+  } catch (e) {
+    const cause = classifySendThrow(e);
+    await recordRunError(runId, cause);
+    return { ok: false, error: "send_threw", detail: cause, runId, runLabel, isNewRun };
+  }
 
   const runStatus = await finalizeRunStatus(runId, {
     deferredDailyLimit: result.summary.deferredDailyLimit,

@@ -173,3 +173,18 @@ export async function finalizeRunStatus(
   }
   return next;
 }
+
+/**
+ * Record that a run HALTED before/without completing a send: status → 'stopped', last_error → a
+ * PII-free classified cause. So a failed run leaves a reason in the row itself, not silence (T-30) —
+ * the same lesson as the four-state reset error and the truncated export with no end marker.
+ * Best-effort: if even this write fails, the caller still surfaces the error to the operator.
+ */
+export async function recordRunError(runId: string, cause: string): Promise<void> {
+  try {
+    const admin = createAdminClient();
+    await admin.from("crm_campaign_run").update({ status: "stopped", last_error: cause }).eq("id", runId);
+  } catch {
+    // nothing more we can do here; the action-layer error return is the other half of the trace.
+  }
+}

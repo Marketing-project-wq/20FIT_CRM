@@ -669,3 +669,41 @@ akun sekarang).
 karena premisnya salah: produksi **selalu** dari `main`. Tindakan yang diresepkan syaratnya ("arahkan
 Railway ke `main` begitu staf luar memakai rutin") sudah jadi kenyataan sejak awal — tak ada yang bisa
 dipicu. Yang berlaku: **merge = deploy produksi**, jadi disiplin gate makin penting, bukan makin longgar.
+
+## T-30 · Kirim pertama gagal SENYAP: secret wajib absen → throw sebelum baris pertama, tak berjejak (25 Agu 2026)
+
+Tekan pertama tombol uji kirim internal (tifany@, 07:41 & 07:42 UTC) **tak menghasilkan apa pun yang
+bisa dilacak**: `crm_message_log` 0, audit `campaign.sent` 0, dua `crm_campaign_run` berhenti di
+`draft`, inbox nol. Persiapan jalan (template + segmen + run dibuat), lalu diam.
+
+**Sebab (jejak kode + bukti, bukan tebakan):** `sendCampaign` melempar di `send-campaign.ts:214`,
+`const identitySecret = identityHashSecret();`. Helper itu membaca **`UNSUBSCRIBE_TOKEN_SECRET`** dan
+fail-closed melempar bila kosong/pendek. Variabel itu **absen dari Railway** (terbukti dari daftar 7
+variabel pemilik produk). Lemparan terjadi **setelah** resolusi penerima + gerbang tapi **sebelum**
+`runSend`/`claim` (INSERT pertama) dan **sebelum** audit → nol baris, run tetap `draft`, Mailtrap tak
+pernah dipanggil. Konsisten dengan seluruh bukti. **Bukan** pola ekspor-terputus (di sana throw di
+tengah aliran setelah header; di sini sebelum baris pertama).
+
+**Yang disingkirkan:** `SEND_TEST_INTERNAL_ADDRESS` terisi & internal (bukan penyebab); gerbang/peran
+lolos (template+segmen+run terbuat); `CAMPAIGN_SEND_ENABLED` absen **benar** (`undefined` =
+`realSendEnabled()` false = mode aman); Mailtrap tak pernah dipanggil (inbox nol).
+
+**Masalah kedua — lebih penting daripada bug-nya:** kegagalan tak meninggalkan jejak sebab di mana
+pun (tak ada kolom galat di run, tak ada baris `failed`, tak ada audit). Kalau pemilik produk tak
+melapor, tak seorang pun tahu ini terjadi. **Sepola dengan reset kata sandi empat-keadaan** (satu
+pesan menyembunyikan empat sebab) **dan ekspor terpotong tanpa penanda akhir** — tiap kali biayanya
+berhari-hari.
+
+**Perbaikan (BAGIAN A):**
+- Kolom **`crm_campaign_run.last_error`** (migrasi `20260825080504`). Run yang gagal sebelum kirim →
+  `status='stopped'` + `last_error` (sebab terklasifikasi, bebas-PII). Dua run yatim ditandai retroaktif.
+- **`try/catch` di sekitar `sendCampaign`** di harness **dan** jalur kirim nyata → `recordRunError` +
+  galat terstruktur ke panel/composer, tampil di layar, bukan senyap.
+- **Pra-cek `missingSendEnv()`** melaporkan **semua** variabel wajib yang kurang **sekaligus** (bukan
+  berhenti di yang pertama), sebelum membuat run — menghentikan pola "temukan satu variabel kurang per
+  percobaan gagal".
+- **Test mengunci `realSendEnabled`**: `undefined`/`"false"`/`"0"`/`"TRUE"` = mati; hanya `"true"` = nyala.
+
+**Yang harus dipasang pemilik produk (satu kali):** `UNSUBSCRIBE_TOKEN_SECRET` (≥16, WAJIB),
+`MAILTRAP_WEBHOOK_SECRET` (webhook), konfirmasi `NEXT_PUBLIC_APP_URL`. **Jangan** set
+`CAMPAIGN_SEND_ENABLED`.

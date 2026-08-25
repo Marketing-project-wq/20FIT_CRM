@@ -77,6 +77,7 @@ export function CampaignComposer({
       case "needs_confirm": return cc.errNeedConfirm;
       case "run_not_found": return cc.errRunNotFound;
       case "run_create_failed": return cc.errRunCreate;
+      case "send_threw": return cc.errSendThrew;
       default: return cc.errNotFound;
     }
   };
@@ -133,6 +134,9 @@ export function CampaignComposer({
           setShownSendable(r.freshSendable);
           setPreview({ ...preview, sendable: r.freshSendable });
           setNotice(`${cc.driftWarnA}${fmt(r.freshSendable)}${cc.driftWarnB}`);
+        } else if (r.error === "send_threw") {
+          // The run is marked stopped + last_error server-side; show the cause instead of silence.
+          setNotice(`${cc.errSendThrew}${r.detail ? ` (${r.detail})` : ""}`);
         } else {
           setNotice(errText(r.error));
         }
@@ -144,6 +148,8 @@ export function CampaignComposer({
       const refreshed = await listRunsAction(segmentId, templateKey);
       setRuns(refreshed.ok ? refreshed.runs ?? [] : []);
       setRunSel(null);
+    } catch {
+      setNotice(cc.errSendThrew);
     } finally {
       setSending(false);
     }

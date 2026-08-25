@@ -50,10 +50,22 @@ export function SendTestPanel() {
       const r = await runInternalSendTestAction();
       if (!r.ok) {
         setResult(null);
-        setNotice(errText(r.error));
+        if (r.error === "missing_env" && "missingEnv" in r && r.missingEnv?.length) {
+          // Report ALL missing vars at once — the whole point of the pre-check (T-30).
+          setNotice(`${st.errMissingEnv}${r.missingEnv.join(", ")}`);
+        } else if (r.error === "send_threw" && "detail" in r) {
+          setNotice(`${st.errSendThrew}${r.detail ?? ""}`);
+        } else {
+          setNotice(errText(r.error));
+        }
         return;
       }
       setResult(r);
+    } catch {
+      // A thrown server action would otherwise fail silently in the handler — the exact bug this
+      // panel exists to end. Surface it.
+      setResult(null);
+      setNotice(st.errUnexpected);
     } finally {
       setRunning(false);
     }
