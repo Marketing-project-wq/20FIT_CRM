@@ -707,3 +707,40 @@ berhari-hari.
 **Yang harus dipasang pemilik produk (satu kali):** `UNSUBSCRIBE_TOKEN_SECRET` (≥16, WAJIB),
 `MAILTRAP_WEBHOOK_SECRET` (webhook), konfirmasi `NEXT_PUBLIC_APP_URL`. **Jangan** set
 `CAMPAIGN_SEND_ENABLED`.
+
+## T-31 · Celah audit bertambah jadi 179 & 187 — bukan kegagalan baru, dua rollback baca 19 Agu yang baru TERSINGKAP (25 Agu 2026)
+
+Celah id `crm_audit_log` kini: **4, 37, 38, 39, 179, 187** (max_id 239, 233 baris, 6 hilang). Dua yang
+"baru" — 179 dan 187 — **diselidiki sebelum menyentuh kode lain** (permintaan pemilik).
+
+**Sebab (dari cap waktu tetangga, bukan tebakan):** `id` = `GENERATED ALWAYS AS IDENTITY`; celah =
+INSERT audit mengambil nomornya lalu transaksinya rollback sebelum commit (K-21: baris yang hilang
+ITULAH jejaknya). Keduanya jatuh di tengah penjelajahan **baca-saja** `tifany@` pada **19 Agu 2026**:
+- **179** di antara id 178 (`profile.viewed`, 11:03) dan 180 (`profile.viewed`, 13:57) — pelanggan sama.
+- **187** di antara id 186 (`list.viewed`, 15:20) dan 188 (`list.viewed`, 16:06).
+Operasi yang gagal sekelas tetangganya: satu `profile.viewed`, satu `list.viewed` yang request-nya
+error setelah tulis audit. Kelas **benign** yang sama dengan 4/37/38/39.
+
+**Disingkirkan — jalur tulis sesi ini.** Semua baris audit tulis sesi ini di **id ≥ 214, 24–25 Agu**:
+`campaign.sent` = **id 232** (25 Agu 08:12); pemberian peran = baris seed 11 Agu (id 2, 3, 113); **nol**
+baris `suppression.*`. Tak satu pun memetakan ke 179/187. **Kenapa baru muncul:** penyelidikan celah
+lalu (3K) berjalan saat max_id ~47 dan hanya melihat 4/37/38/39; penjelajahan 19 Agu mendorong urutan
+melewati 187 dan menghasilkan dua lubang rollback lagi berpola sama — **19-Agu yang baru tersingkap,
+bukan kegagalan minggu ini.** Tak ada perbaikan kode: monitor celah (banner audit) sudah menampilkannya
+dengan benar; keduanya masuk hitungan `knownLegit`.
+
+## T-32 · Form pemberian peran akan MELEMPAR di render pertama — const diekspor dari modul `"use server"` (ditemukan & diperbaiki 25 Agu 2026)
+
+Saat membangun tab **20FIT Manager**, fixture `/dev/preview-settings` **500**:
+`GRANTABLE_ROLES.map is not a function`. Sebab: `GRANTABLE_ROLES` (sebuah const array) diekspor dari
+`app/(app)/settings/roles/actions.ts` yang ber-`"use server"`. **Modul `"use server"` hanya boleh
+mengekspor fungsi async** — const/tipe yang diekspor darinya menjadi **stub tak-terpakai di klien**, jadi
+`.map` melempar. Ini **bug laten di kode lama** (form mengimpor const itu dari actions sejak commit
+`696a142`): `tsc`/build hijau karena tipe terhapus saat kompilasi, tapi **jalur render nyata tak pernah
+dijalankan** — sepola T-30/reset/ekspor: hijau di gerbang, patah saat dipakai.
+
+**Perbaikan:** `GRANTABLE_ROLES` + tipe `RoleActionError`/`RoleActionResult` pindah ke
+`lib/auth/role-admin.ts` (modul biasa); `actions.ts` kini **hanya** mengekspor fungsi async; form
+mengimpor const+tipe dari modul biasa, fungsi dari actions. Fixture kini render 200. Pelajaran:
+**satu-satunya bukti sebuah komponen server-action benar-benar merender adalah merendernya**, bukan
+tsc/build.

@@ -123,3 +123,25 @@ menduplikasi: `consent-shared.tsx` (hook data + Pager + EmptyRegister) dipakai `
 audience, riwayat kirim, unsubscribe, arsip consent) jadi **kartu per baris** di ponsel; tab menggulir
 menyamping dengan sasaran sentuh besar; grafik batang tetap menampilkan angka di sebelahnya. Pratinjau
 fixture `/dev/preview-tabs` + screenshot ponsel & desktop.
+
+---
+
+## 25 Agu 2026 — Settings jadi EMPAT tab + jalur peran (tambah/ubah/cabut) + celah audit 179/187
+
+**Settings → 4 tab** (TabBar query-param yang sama, bukan pola baru): **CRM Log** (audit) · **20FIT
+Manager** (peran) · **Consent** (arsip baca-saja) · **WhatsApp Business API** (status). Rute lama
+`/settings/roles` **redirect** ke `/settings?tab=manager`.
+
+- **20FIT Manager**: daftar `crm_user_role` menampilkan **email** (dari `auth.users`, hanya untuk yang
+  ada di `crm_user_role` — bukan seluruh ekosistem), UUID hanya fallback. Responsif (tabel→kartu).
+- **Jalur peran (khusus Super Admin, server-gated `canManageRoles`, ber-audit):** beri/ubah (upsert) +
+  **cabut** (delete), masing-masing menulis `role.granted`/`role.revoked` (retensi permanen) dengan
+  **peran sebelumnya** di metadata. Aturan gigit di lapisan murni `lib/auth/role-admin.ts` (teruji):
+  **tak boleh demote/cabut diri sendiri**, **Super Admin terakhir dilindungi**, email **harus** sudah
+  punya akun `auth.users` (CRM **tak** membuat akun). +11 test.
+- **Celah audit 179/187** diselidiki lebih dulu (T-31): dua rollback baca **19 Agu** yang baru
+  tersingkap, **bukan** dari jalur tulis sesi ini — nol perbaikan kode, monitor celah sudah benar.
+- **Bug laten diperbaiki (T-32):** const diekspor dari modul `"use server"` → form peran akan melempar
+  di render pertama; dipindah ke modul biasa. Terbukti render lewat fixture `/dev/preview-settings`.
+
+Gerbang: `tsc` bersih · `next lint` bersih · **vitest 1172 → 1184** · `NODE_ENV=production build` lulus.
