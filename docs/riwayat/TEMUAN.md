@@ -848,9 +848,11 @@ butuh log Postgres 21 Agu 15:44 atau tanya tim), (b) keputusan remediasi grant l
 
 **TINDAK LANJUT — 25 Agu 2026 (sesi lanjutan, pemilik produk menyetujui (b) dan (c)):**
 
-- **(b) Grant dicabut — K-47.** Migrasi `20260825150000_revoke_anon_authenticated_crm_loose_grants.sql`
-  **DITULIS, BELUM diterapkan** (bergerbang; ini pekerjaan CRM sendiri — tabel milik CRM, cabut grant
-  tak menyentuh data). Mencabut `anon`+`authenticated` dari ketujuh tabel ke `{postgres, service_role}`.
+- **(b) Grant dicabut — K-47. DITERAPKAN 25 Agu 2026** (ledger `20260825164301`, berkas
+  `20260825150000_revoke_...`). Mencabut `anon`+`authenticated` dari ketujuh tabel ke
+  `{postgres, service_role}`. **Verifikasi pasca-apply:** ke-13 tabel `crm_*` kini `{postgres,
+  service_role}`, RLS tetap ON di ke-13, 0 tabel memberi anon/authenticated. Ini pekerjaan CRM sendiri
+  (tabel milik CRM, cabut grant tak menyentuh data).
   Ketergantungan diperiksa via SQL (bukan diasumsikan): **0** policy, **0** view milik anon/authenticated,
   **0** pewarisan peran; 248 baris ditulis via BYPASSRLS yang grant-nya tetap → cabut aman. **Pagar
   permanen dipasang:** `scanCrmTableGrantsToAnonAuth` (di `migration-execute-guard.test.ts`) — gagal bila

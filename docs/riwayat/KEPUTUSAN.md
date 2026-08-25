@@ -926,8 +926,10 @@ migrasi masih memakai `.glass`, jadi pembalikan lokal.
 **Keputusan (25 Agu 2026, T-35/B10b):** tujuh tabel `crm_*` era-2B yang memberi `arwdDxtm` ke `anon`
 DAN `authenticated` (audit_log, consent, profile_behavior, profile_demographic, profile_scores,
 suppression, user_role) dicabut ke `{postgres, service_role}` saja, sejajar enam tabel yang lebih baru.
-Migrasi `20260825150000_revoke_...` **DITAMPILKAN, BELUM diterapkan** (bergerbang — pekerjaan CRM
-sendiri: tabel milik CRM, mencabut grant tak menyentuh data).
+Migrasi `20260825150000_revoke_...` **DITERAPKAN 25 Agu 2026** (ledger `20260825164301`) lewat
+`apply_migration` — pekerjaan CRM sendiri: tabel milik CRM, mencabut grant tak menyentuh data.
+Verifikasi pasca-apply: ke-13 tabel `crm_*` `{postgres, service_role}`, RLS ON di ke-13, 0 tabel
+memberi anon/authenticated.
 
 **Alasan:** grant itu dinetralkan RLS hari ini (RLS ON + 0 policy), tapi jaraknya ke tulis-penuh anon =
 **satu policy** `USING(true)` — dan langkah itu SUDAH terjadi (T-17: `master_customer` punya
