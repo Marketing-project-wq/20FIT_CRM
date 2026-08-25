@@ -123,17 +123,17 @@ lengkap + audit grant 13 tabel `crm_*` di **`docs/riwayat/TEMUAN.md` T-35**. Tig
   **Langkah:** telusuri sistem 20FIT mana yang menulis batch 21 Agu; pastikan 248 baris itu sah,
   bukan tumpahan tak sengaja. **Kalau dilewati:** DOB/gender dari sumber tak-terverifikasi terbaca
   seolah data internal. **Agen tidak menghapus/mengubah baris itu** — laporan lebih dulu.
-- **B10b. Putuskan remediasi grant `crm_*`.** — **Siapa:** pemilik data + pemilik produk.
-  **Langkah:** 7 dari 13 tabel `crm_*` masih memberi `arwdDxtm` ke `anon`+`authenticated`
-  (audit_log, consent, profile_behavior, profile_demographic, profile_scores, suppression,
-  user_role) — kini dinetralkan RLS ON/0-policy, tapi **satu policy permisif** dari tulis penuh.
-  Cabut grant longgar atau kunci ke `{postgres, service_role}` seperti 6 tabel lain. Sejajar T-17
-  (887 akun bisa tulis `master_customer`). **Kalau dilewati:** risiko laten, bukan pelanggaran aktif.
-  **Agen tidak mengubah policy/grant mana pun** — keputusan pemilik data.
-- **B10c. Setujui posisi `progressive_profiling` di rantai prioritas DOB.** — **Siapa:** pemilik
-  produk (mungkin Jeff). **Langkah:** rantai kini `[nik, staging, clinic, hyrox, staff]` dan
-  membaca `crm_profile_demographic` sebagai `staff` **tanpa** memeriksa `*_source` — jadi 246 DOB
-  `progressive_profiling` salah label "staff". Usulan agen (belum diterapkan):
-  `[nik, staging, clinic, hyrox, progressive, staff]` — laporan-diri di atas fallback-staff tapi di
-  bawah sumber ber-provenance, karena tiba lewat jalur eksternal tak-teraudit. **Kalau dilewati:**
-  248 DOB tetap mislabel; bukan penghalang kirim. **Agen tidak mengubah rantai** — laporan lebih dulu.
+- **B10b. Terapkan migrasi pencabutan grant `crm_*` (K-47).** — 🔓 **DISETUJUI + MIGRASI SIAP; tinggal
+  di-apply lewat gerbang.** Pemilik produk (25 Agu 2026) meminta pencabutan eksplisit — ini pekerjaan
+  CRM sendiri (tabel milik CRM; cabut grant tak menyentuh data). Migrasi
+  `20260825150000_revoke_anon_authenticated_crm_loose_grants.sql` mencabut `anon`+`authenticated` dari
+  7 tabel ke `{postgres, service_role}`. **Siapa:** pemegang akses apply migrasi (pemilik produk).
+  **Langkah:** jalankan lewat jalur bergerbang biasa (tunjuk → konfirmasi → apply → verifikasi ACL 0
+  baris anon/authenticated → catat ledger). JANGAN `db push`. Ketergantungan sudah diperiksa (0 policy,
+  0 view, 0 pewarisan; 248 baris via BYPASSRLS yang grant-nya tetap). Pagar `scanCrmTableGrantsToAnonAuth`
+  mencegah migrasi masa depan membuka lagi. **Kalau dilewati:** risiko laten tetap (satu policy dari
+  tulis-penuh anon; sejajar T-17).
+- **B10c. ~~Setujui posisi `progressive_profiling` di rantai DOB~~ — ✅ SELESAI (25 Agu 2026, K-48).**
+  Pemilik produk menyetujui `[nik, staging, clinic, hyrox, progressive, staff]`; DITERAPKAN. Lapisan
+  baca kini memeriksa `*_source` (`demographicProvenance`), tak lagi menganggap semua `staff` — 246 DOB
+  yang salah label kini "isian mandiri". Tak ada tindakan manusia tersisa di butir ini.

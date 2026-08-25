@@ -839,8 +839,29 @@ jalur eksternal tak-teraudit dengan mutu-koleksi tak diketahui (backfill massal,
 (clinic/hyrox). Saat ragu soal provenance/mutu sumber baru yang ditulis pihak luar, peringkat
 konservatif; ia tetap muncul sebagai isyarat konflik bila berbeda, jadi tak ada yang disembunyikan.
 
-**Larangan dipatuhi:** 248 baris TAK disentuh; policy/grant TAK diubah (remediasi = keputusan
-tersendiri pemilik data, sekelas T-17); dilaporkan dulu. **Menunggu tindakan manusia:** (a) konfirmasi
-tim/sistem penulis 248 baris (tak bisa dari DB — tak ada kolom provenance; butuh log Postgres 21 Agu
-15:44 atau tanya tim), (b) keputusan remediasi grant longgar 7 tabel, (c) persetujuan posisi
-`progressive_profiling` di rantai DOB.
+**Larangan dipatuhi (fase laporan):** 248 baris TAK disentuh; dilaporkan dulu. **Menunggu tindakan
+manusia:** (a) konfirmasi tim/sistem penulis 248 baris (tak bisa dari DB — tak ada kolom provenance;
+butuh log Postgres 21 Agu 15:44 atau tanya tim), (b) keputusan remediasi grant longgar 7 tabel,
+(c) persetujuan posisi `progressive_profiling` di rantai DOB.
+
+---
+
+**TINDAK LANJUT — 25 Agu 2026 (sesi lanjutan, pemilik produk menyetujui (b) dan (c)):**
+
+- **(b) Grant dicabut — K-47.** Migrasi `20260825150000_revoke_anon_authenticated_crm_loose_grants.sql`
+  **DITULIS, BELUM diterapkan** (bergerbang; ini pekerjaan CRM sendiri — tabel milik CRM, cabut grant
+  tak menyentuh data). Mencabut `anon`+`authenticated` dari ketujuh tabel ke `{postgres, service_role}`.
+  Ketergantungan diperiksa via SQL (bukan diasumsikan): **0** policy, **0** view milik anon/authenticated,
+  **0** pewarisan peran; 248 baris ditulis via BYPASSRLS yang grant-nya tetap → cabut aman. **Pagar
+  permanen dipasang:** `scanCrmTableGrantsToAnonAuth` (di `migration-execute-guard.test.ts`) — gagal bila
+  migrasi mana pun memberi privilege ke anon/authenticated pada relasi `crm_*`; terbukti menggigit atas
+  input sintetis, pola sama seperti pagar EXECUTE/matview. Larangan awal ("jangan ubah grant") **dicabut
+  oleh pemilik produk untuk kasus ini**: ia meminta pencabutan eksplisit dan menegaskan itu ranah CRM.
+- **(c) Rantai DOB diperbaiki — K-48, DITERAPKAN.** `DOB_PRIORITY`/`GENDER_PRIORITY` kini menyertakan
+  `progressive` tepat di atas `staff`. Lapisan baca (`demographic-read.ts`) kini mengambil
+  `date_of_birth_source`/`gender_source`; perakit (`resolveIdentity`) merutekan tiap nilai ke slot
+  `progressive` atau `staff` lewat `demographicProvenance` — **kolom `*_source` diperiksa, tak lagi
+  dianggap semua staff.** 246 DOB yang tadinya salah label "staff" kini berlabel "isian mandiri /
+  self-reported". Label i18n `srcProgressive` ditambah (id+en). Test rantai diperbarui.
+- **(a) MASIH menunggu manusia (B10a).** Setelah grant dicabut, jalur BYPASSRLS jadi satu-satunya cara
+  masuk — jauh lebih sempit dan lebih mudah ditanyakan ke tim pemegang `service_role`.

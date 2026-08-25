@@ -1268,6 +1268,7 @@ export const id = {
     srcNik: "NIK",
     srcStaging: "data impor 20FIT",
     srcHyrox: "Hyrox",
+    srcProgressive: "isian mandiri",
     srcStaff: "input staf",
     // demographic fill form
     fillTitle: "Lengkapi demografi (isi yang kosong)",

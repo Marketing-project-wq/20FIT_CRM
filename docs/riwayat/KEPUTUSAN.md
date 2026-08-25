@@ -908,3 +908,52 @@ definisinya.
 
 **Penyusun kriteria tetap hidup** di Campaigns (komponen bersama `SegmentBuilder`); yang dibuang titik
 pasangnya di Exports, bukan komponennya — dan komponen itu justru membaik (rombak Campaigns).
+
+## K-46 · Redesign "20FIT Shop": bahasa permukaan SOLID + sidebar terang, di samping glass DS v1.0
+
+**Keputusan pemilik produk (25 Agu 2026):** rombak tampilan mengikuti inventory 20FIT Shop — sidebar
+**terang** (bukan gelap-paksa PRD §18.8), kartu **solid putih tanpa aksen kiri** (bukan glass), angka
+lebih ringan, top-bar untuk kontrol global. Ini **deviasi sadar** dari Design System v1.0 (glass-only)
+dan PRD §18.8; **menunggu amandemen DS formal**, tapi token dipasang lebih dulu agar layar bisa migrasi
+bertahap. Token hidup di `app/globals.css` sebagai CSS var (`--surface*`, `--sidebar*`, `--topbar`,
+`--shadow-card`) + kelas `.card`/`.pill-outline-*` — **nol hex di komponen** (K-11 tetap berlaku).
+
+**Pembalikan:** bila DS v1.0 dipertahankan glass-only, cabut token + kelas ini; komponen yang belum
+migrasi masih memakai `.glass`, jadi pembalikan lokal.
+
+## K-47 · Grant `crm_*` ke `anon`/`authenticated` dicabut + dipagari — hanya `service_role` menulis
+
+**Keputusan (25 Agu 2026, T-35/B10b):** tujuh tabel `crm_*` era-2B yang memberi `arwdDxtm` ke `anon`
+DAN `authenticated` (audit_log, consent, profile_behavior, profile_demographic, profile_scores,
+suppression, user_role) dicabut ke `{postgres, service_role}` saja, sejajar enam tabel yang lebih baru.
+Migrasi `20260825150000_revoke_...` **DITAMPILKAN, BELUM diterapkan** (bergerbang — pekerjaan CRM
+sendiri: tabel milik CRM, mencabut grant tak menyentuh data).
+
+**Alasan:** grant itu dinetralkan RLS hari ini (RLS ON + 0 policy), tapi jaraknya ke tulis-penuh anon =
+**satu policy** `USING(true)` — dan langkah itu SUDAH terjadi (T-17: `master_customer` punya
+`authenticated_full_access`). Nol-grant menutup ledakan di sumbernya: pada `crm_user_role` = self-grant
+super_admin; pada `crm_suppression` = hapus/masukkan orang dari daftar berhenti.
+
+**Ketergantungan diperiksa (bukan diasumsikan):** 0 policy, 0 view milik anon/authenticated, 0 pewarisan
+peran; 248 baris ditulis via BYPASSRLS yang grant-nya tetap. **Pagar permanen:** test
+`scanCrmTableGrantsToAnonAuth` — gagal bila migrasi mana pun memberi privilege ke anon/authenticated pada
+relasi `crm_*` (pola sama seperti pagar EXECUTE/matview; terbukti menggigit atas input sintetis).
+
+**Pembalikan:** blok ROLLBACK di migrasi (grant ulang) — hanya bila sesuatu di luar CRM ternyata
+bergantung; tak ada yang ditemukan.
+
+## K-48 · `progressive_profiling` masuk rantai prioritas DOB/gender, tepat di atas `staff`
+
+**Keputusan pemilik produk (25 Agu 2026, T-35/B10c — disetujui + diterapkan):** rantai jadi
+`[nik, staging, clinic, hyrox, progressive, staff]`. Nilai `crm_profile_demographic` dibaca menurut
+kolom `*_source`-nya (`demographicProvenance`), **tidak lagi dianggap semua `staff`** — memperbaiki 246
+DOB yang salah label.
+
+**Alasan:** laporan-diri (self-report) DOB pada prinsipnya andal (orang tahu tanggal lahirnya), jadi
+**di atas** entri staff kosong-fallback; TAPI 248 baris tiba satu batch lewat `service_role` bersama
+lewat jalur eksternal tak-teraudit bermutu tak diketahui, jadi **di bawah** sumber ber-provenance
+(NIK/staging/clinic/hyrox). Konservatif saat ragu; nilai tetap muncul sebagai isyarat konflik bila
+berbeda — tak ada yang disembunyikan.
+
+**Pembalikan:** ubah `DOB_PRIORITY`/`GENDER_PRIORITY` di `lib/crm/demographic-pick.ts` (satu tempat,
+tertutup test) bila pemilik memutuskan self-report harus diperingkat lain.

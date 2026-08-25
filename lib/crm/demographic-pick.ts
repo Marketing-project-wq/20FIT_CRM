@@ -13,11 +13,23 @@
  *      rule. That makes it the most reliable WHEN IT PARSES — not because anyone asked for NIK
  *      first, but because it is structurally unambiguous.
  *   2. staging_20fit_data — ISO text, 5.467 rows, no proven swaps.
- *   3. clinic_patients, then cf_hyrox_participants — the WEAKEST: 321 Hyrox rows have day/month
- *      SWAPPED vs the NIK (an import parse bug, same class as T-16). Clinic is ordered before
- *      Hyrox because Hyrox is the proven-swapped one.
- *   4. staff entry (crm_profile_demographic) — present only when every other source was empty
- *      (its write path is fill-empty-only), so it is the last resort by construction.
+ *   3. clinic_patients, then cf_hyrox_participants — the WEAKEST of the known-provenance sources:
+ *      321 Hyrox rows have day/month SWAPPED vs the NIK (an import parse bug, same class as T-16).
+ *      Clinic is ordered before Hyrox because Hyrox is the proven-swapped one.
+ *   4. progressive_profiling (crm_profile_demographic, *_source='progressive_profiling') — self-
+ *      reported / externally-collected. Placed here (25 Agu 2026, owner-approved, T-35) ABOVE staff
+ *      but BELOW every known-provenance source: on principle a person's own birth date is reliable
+ *      (they know it), so it beats an empty-fallback staff entry; BUT the 248 such rows arrived in a
+ *      single external batch via a shared service_role, through an unaudited path of unknown
+ *      collection quality — so it ranks below NIK / staging / clinic / hyrox, whose provenance is
+ *      known. When unsure about a new externally-written source, rank it conservatively; it still
+ *      surfaces as a conflict cue when it disagrees, so nothing is hidden.
+ *   5. staff entry (crm_profile_demographic, *_source='staff_entry') — written by staff via the
+ *      fill-empty-only path, present only when every other source was empty, so last by construction.
+ *
+ * WHY progressive and staff are SEPARATE slots even though they share a table: the row's *_source
+ * column decides which slot a value lands in (see demographicProvenance). Treating the whole table
+ * as "staff" mislabelled the 248 progressive rows (T-35); the source is inspected, never assumed.
  *
  * A NIK that cannot be parsed (wrong length, bad month, dummy) yields no date and simply DROPS to
  * the next source — it is never forced. Ambiguity that survives onto the chosen value (NIK: the
@@ -56,10 +68,22 @@ export function isIsoDate(s: unknown): s is string {
   return dt.getUTCFullYear() === y && dt.getUTCMonth() + 1 === m && dt.getUTCDate() === d;
 }
 
-export type DobSource = "nik" | "staging" | "clinic" | "hyrox" | "staff";
+export type DobSource = "nik" | "staging" | "clinic" | "hyrox" | "progressive" | "staff";
 
 /** Canonical birth-date priority. Do not reorder — see the reasoning in the file header. */
-export const DOB_PRIORITY: readonly DobSource[] = ["nik", "staging", "clinic", "hyrox", "staff"];
+export const DOB_PRIORITY: readonly DobSource[] = ["nik", "staging", "clinic", "hyrox", "progressive", "staff"];
+
+/**
+ * Which chain slot a crm_profile_demographic value belongs in, decided by its `*_source` column —
+ * NOT assumed to be staff (T-35). 'staff_entry' (the fill-empty-only staff path) → the last-resort
+ * `staff` slot. ANY other provenance — 'progressive_profiling' (the 248-row external batch) or a
+ * 'backfill_*' — was written outside the staff path, so it goes in the lower-trust `progressive`
+ * slot. A value present with a null/unknown source is treated as progressive: never claim an
+ * externally- or unknown-sourced value was staff-entered. Pure, client-safe.
+ */
+export function demographicProvenance(source: string | null | undefined): "progressive" | "staff" {
+  return source === "staff_entry" ? "staff" : "progressive";
+}
 
 export interface DobInput {
   /** yyyy-mm-dd, or null when this source has no usable date. */
@@ -98,12 +122,13 @@ export function pickBirthDate(bySource: Partial<Record<DobSource, DobInput | nul
 }
 
 export type GenderValue = "male" | "female";
-export type GenderSource = "nik" | "clinic" | "staff";
+export type GenderSource = "nik" | "clinic" | "progressive" | "staff";
 
 /** Canonical gender priority — same reasoning as the date chain: NIK first because the gender
- *  digit is structural (day-code > 40 = female), staff last (fill-empty-only). staging carries no
- *  gender column, so it is not a source here. */
-export const GENDER_PRIORITY: readonly GenderSource[] = ["nik", "clinic", "staff"];
+ *  digit is structural (day-code > 40 = female); progressive (self-report/external, T-35) above
+ *  staff but below known-provenance clinic; staff last (fill-empty-only). staging carries no gender
+ *  column, so it is not a source here. */
+export const GENDER_PRIORITY: readonly GenderSource[] = ["nik", "clinic", "progressive", "staff"];
 
 export interface GenderPick {
   value: GenderValue | null;

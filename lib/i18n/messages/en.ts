@@ -1172,6 +1172,7 @@ export const en: Messages = {
     srcNik: "NIK",
     srcStaging: "20FIT import",
     srcHyrox: "Hyrox",
+    srcProgressive: "self-reported",
     srcStaff: "staff entry",
     fillTitle: "Complete the demographics (fill what's blank)",
     fillGender: "Gender",

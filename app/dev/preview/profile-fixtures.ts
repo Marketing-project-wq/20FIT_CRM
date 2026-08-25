@@ -88,7 +88,7 @@ const FILLABLE: ApiResult = {
   // Matched to the import, but the import carries NO birth date / city for this person — so
   // DOB is empty from every source the caller can see: the admin-fill target.
   importData: { matchable: true, matched: true, city: null, dob: { status: "empty", raw: null, iso: null, ambiguousDayMonth: false, swapped: false, plausibility: null }, age: null, umurSnapshot: null, rfmPaidOrder: "-", programs: [], clinicalWithheld: false },
-  demographic: { gated: true, gender: null, dateOfBirth: null },
+  demographic: { gated: true, gender: null, genderSource: null, dateOfBirth: null, dateOfBirthSource: null },
   clinicSourceLabel: "sumber ekosistem", // canViewHealth=false → clinic label coarsened (T-21)
   mirror: { hasHyrox: false, hasMy20fit: false, hasArena: false, hasGym: false, hasClinic: false },
   mirrorRefreshedAt: STALE_REFRESHED_AT,
@@ -150,7 +150,7 @@ const CLINIC: ApiResult = {
     },
   },
   importData: { matchable: true, matched: true, city: "Jakarta", dob: { status: "parsed", raw: "1988-03-14", iso: "1988-03-14", ambiguousDayMonth: false, swapped: false, plausibility: "ok" }, age: 38, umurSnapshot: "38", rfmPaidOrder: "Fitco User", programs: [{ key: "clinic", label: "Klinik", value: "y" }], clinicalWithheld: false },
-  demographic: { gated: true, gender: null, dateOfBirth: null },
+  demographic: { gated: true, gender: null, genderSource: null, dateOfBirth: null, dateOfBirthSource: null },
   clinicSourceLabel: "klinik", // canViewHealth=true → precise label
   mirror: { hasHyrox: false, hasMy20fit: false, hasArena: false, hasGym: false, hasClinic: true },
   mirrorRefreshedAt: STALE_REFRESHED_AT,
@@ -226,7 +226,7 @@ const DOB_DIFF: ApiResult = {
     programs: [{ key: "event", label: "Event", value: "y" }],
     clinicalWithheld: false,
   },
-  demographic: { gated: true, gender: null, dateOfBirth: null },
+  demographic: { gated: true, gender: null, genderSource: null, dateOfBirth: null, dateOfBirthSource: null },
   clinicSourceLabel: "klinik",
   mirror: { hasHyrox: true, hasMy20fit: false, hasArena: true, hasGym: false, hasClinic: false },
   mirrorRefreshedAt: STALE_REFRESHED_AT,
