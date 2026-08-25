@@ -7,7 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import { realSendEnabled } from "@/lib/crm/send-gate";
 import { listSegments } from "@/lib/crm/segment-store";
 import { extractVariables } from "@/lib/crm/template";
+import { isInternalTestTemplateKey } from "@/lib/crm/send-test-constants";
 import { CampaignComposer, type TemplateOption } from "./campaign-composer";
+import { SendTestPanel } from "./send-test-panel";
 
 export const metadata: Metadata = { title: "Campaigns" };
 export const dynamic = "force-dynamic";
@@ -30,6 +32,7 @@ async function loadEligibleTemplates(): Promise<TemplateOption[]> {
     const seen = new Set<string>();
     const out: TemplateOption[] = [];
     for (const r of (data ?? []) as { template_key: string; name: string; subject: string | null; body: string }[]) {
+      if (isInternalTestTemplateKey(r.template_key)) continue; // seeded test template — never in the real dropdown
       if (seen.has(r.template_key)) continue; // highest version per key (ordered desc)
       seen.add(r.template_key);
       if (extractVariables(`${r.subject ?? ""}\n${r.body}`).includes("unsubscribe_url")) {
@@ -82,6 +85,10 @@ export default async function CampaignsPage() {
         templates={templates}
         realSend={enabled}
       />
+
+      {/* Pre-launch internal send-test harness — shown ONLY while real sending is off (it also refuses
+          to run once real sending is on), so it can never be a post-launch backdoor. */}
+      {!enabled && <SendTestPanel />}
 
       <div className="grid gap-4 md:grid-cols-2">
         <div className="glass-strong rounded-card p-5">

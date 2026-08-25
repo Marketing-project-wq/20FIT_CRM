@@ -17,6 +17,7 @@ import {
   type ResumableRun,
   type RunStatus,
 } from "@/lib/crm/campaign-run";
+import { runInternalSendTest, cleanupInternalSendTest, type SendTestResult, type SendTestCleanupResult } from "@/lib/crm/send-test-harness";
 import { extractVariables } from "@/lib/crm/template";
 
 /**
@@ -262,4 +263,33 @@ export async function sendCampaignAction(args: {
     isNewRun,
     runStatus,
   };
+}
+
+/**
+ * Internal send-test harness actions (pre-launch only). Same send.* gate as the composer, then the
+ * harness enforces safe-mode + internal-target guards. See lib/crm/send-test-harness.ts.
+ */
+export type InternalTestResult = SendTestResult | { ok: false; error: "denied" };
+
+export async function runInternalSendTestAction(): Promise<InternalTestResult> {
+  const role = await getCurrentUserRole();
+  if (grantFor(role, "send.at_or_below_threshold") === "deny") return { ok: false, error: "denied" };
+  let actorId = "unknown";
+  let actorEmail: string | null = null;
+  try {
+    const { data } = await createClient().auth.getUser();
+    actorId = data.user?.id ?? "unknown";
+    actorEmail = data.user?.email ?? null;
+  } catch {
+    // fail-closed identity; the audit actor is 'unknown'
+  }
+  return runInternalSendTest({ actorId, actorEmail });
+}
+
+export type InternalTestCleanupResult = SendTestCleanupResult | { ok: false; error: "denied" };
+
+export async function cleanupInternalSendTestAction(): Promise<InternalTestCleanupResult> {
+  const role = await getCurrentUserRole();
+  if (grantFor(role, "send.at_or_below_threshold") === "deny") return { ok: false, error: "denied" };
+  return cleanupInternalSendTest();
 }

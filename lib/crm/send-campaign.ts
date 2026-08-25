@@ -45,6 +45,14 @@ export interface CampaignSendInput {
   /** true once the operator confirmed a >500-recipient send (enforced at the action layer). */
   confirmedLargeSend: boolean;
   config?: SendConfig;
+  /**
+   * INTERNAL-TEST ONLY (send-test-harness): inject the recipient list directly instead of resolving
+   * it from master_customer. This is the ONE thing the harness must differ on — the pool holds no
+   * @20fit.id address, so there is nothing to resolve — while everything downstream (ports, engine,
+   * gate, audit) stays the exact production path. The pre-launch gate (maySendTo) still applies to
+   * these recipients, so an injected non-internal address is still WITHHELD while sending is off.
+   */
+  overrideRecipients?: RawRecipient[];
 }
 
 export interface CampaignSendResult {
@@ -184,8 +192,13 @@ export async function sendCampaign(input: CampaignSendInput, nowIso: string): Pr
   const config = input.config ?? DEFAULT_SEND_CONFIG;
   const enabled = realSendEnabled();
 
+  // Recipients come from master_customer in production; the internal-test harness injects exactly one
+  // instead (the pool has no @20fit.id address to resolve — see send-test-constants). Everything after
+  // this line is identical for both, so the harness exercises the real path, not a copy.
   const [{ recipients: raw, noContact }, templates, suppressed] = await Promise.all([
-    resolveRecipients(admin, input.criteria, input.masterFilterExpr),
+    input.overrideRecipients
+      ? Promise.resolve({ recipients: input.overrideRecipients, noContact: 0 })
+      : resolveRecipients(admin, input.criteria, input.masterFilterExpr),
     loadTemplates(admin, input.templateKey),
     fetchSuppressedCustomerIds(admin),
   ]);

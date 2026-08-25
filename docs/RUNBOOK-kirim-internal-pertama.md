@@ -8,17 +8,34 @@ dipicu dari sana. Langkah + query verifikasi di bawah membuktikan seluruh rantai
 alamat `@20fit.id`; alamat pelanggan ditahan. Token Mailtrap yang bocor **tetap belum boleh** dipakai
 untuk kirim pelanggan — tapi uji internal ke `@20fit.id` aman.
 
-## Langkah
+> ## ⚠️ DEADLOCK yang ditemukan 24 Agu 2026 — kenapa composer TAK BISA dipakai untuk uji internal
+> Diverifikasi ke DB langsung: **`master_customer` memuat 0 alamat `@20fit.id`** (staf bukan
+> pelanggan). Segmen menarik penerima **hanya** dari `master_customer`, dan dengan kirim nyata mati
+> gerbang **hanya** mengizinkan `@20fit.id`. Dua pengaman yang masing-masing benar, bersama-sama
+> membuat "segmen berisi profil `@20fit.id`" **mustahil** — composer akan menampilkan 0 "Akan
+> dikirimi". Karena itu uji internal dijalankan lewat **harness** di bawah, bukan composer.
 
-1. **Siapkan data uji** (sekali):
-   - Pastikan ada minimal satu template email aktif yang memuat `{{unsubscribe_url}}` (Templates).
-   - Di /segments, buat segmen kecil yang **hanya** mencocokkan satu/dua profil dengan email
-     `@20fit.id` (mis. filter `email` + kota/unit yang mempersempit ke akun internal), lalu **Simpan
-     segmen** (beri nama).
-2. **Susun & kirim** di /campaigns: pilih segmen tersimpan → pilih template → **Lihat penerima**
-   (periksa: Cocok / Punya email / Di-suppress / Akan dikirimi tampil) → **Kirim**.
-   - Untuk uji nyata (bukan hanya tahan-pra-luncur), set `CAMPAIGN_SEND_ENABLED=true` **sementara**
-     di Railway (hanya bila token sudah dirotasi; kalau belum, biarkan mati dan uji jalur "ditahan").
+## Langkah — via harness (panel "Uji kirim internal" di /campaigns, tampil saat kirim nyata mati)
+
+1. **Set alamat tujuan di lingkungan:** `SEND_TEST_INTERNAL_ADDRESS=<alamat @20fit.id kamu>` di
+   Railway (jangan hardcode; harness menolak alamat non-`@20fit.id` dan menolak jalan bila kirim
+   nyata menyala). Redeploy agar variabelnya termuat.
+2. **Buka /campaigns** (sebagai peran ber-izin kirim; kini `super_admin`). Selama `CAMPAIGN_SEND_ENABLED`
+   mati, panel **"Uji kirim internal (pra-luncur)"** tampil di bawah composer.
+3. **Tekan "Jalankan uji kirim internal".** Harness menyuntikkan satu penerima internal ke **engine,
+   ports, audit, dan gerbang yang SAMA** dengan jalur produksi (template + segmen uji dibuat otomatis,
+   run dibuka), lalu menampilkan artefak ketujuh butir langsung di layar.
+4. **Uji unsubscribe:** buka email uji yang mendarat, klik tautan unsubscribe, lalu jalankan kueri
+   `crm_suppression` di bawah (baris pertama tabel itu sejak sistem ada).
+5. **Uji suppression-menang:** tekan tombol harness sekali lagi (run baru) — penerima yang sudah
+   berhenti harus tercatat `skipped_suppressed`, bukan dikirimi.
+6. **Bersihkan:** tombol "Bersihkan data uji" mengarsipkan segmen uji (soft-delete). Yang **permanen**
+   (append-only, tak bisa dihapus): template uji (tersembunyi dari composer via kunci sentinel), plus
+   baris `crm_message_log` / `crm_audit_log` / `crm_campaign_run` / `crm_suppression` hasil uji.
+
+**Kenapa harness, bukan composer:** deadlock di atas. Harness memakai **jalur yang sama persis**
+(lewat `sendCampaign`, hanya penerimanya yang disuntik) supaya yang terbukti adalah rantainya, bukan
+implementasi kedua — pola satu-aturan-dua-implementasi itu sudah lima kali menggigit proyek ini.
 
 ## Verifikasi (jalankan di SQL editor, per butir TUGAS 3)
 

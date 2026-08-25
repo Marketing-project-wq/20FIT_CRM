@@ -620,3 +620,52 @@ konfirmasi manusia di Railway"**, bukan kesimpulan berbungkus rapi.
   tapi tak dipakai → bounce palsu bisa meracuni suppression. Webhook CRM **memverifikasi** (HMAC dua
   nama header + anti-replay isi-hanya-bila-NULL), jadi aman; alasan itu dicatat di komentar agar tak
   "disederhanakan" nanti.
+
+---
+
+## T-28 · Deadlock uji internal: dua pengaman yang benar, bersama-sama membuat pengujian mustahil (25 Agu 2026)
+
+Saat hendak menjalankan kirim internal pertama, verifikasi independen ke DB langsung menemukan
+**tak ada satu jalur pun bisa mengirim ke staf internal lewat composer:**
+
+- **`master_customer` memuat 0 alamat `@20fit.id`** (staf bukan pelanggan — `count(*) where
+  email_normalized like '%@20fit.id'` = 0).
+- Segmen menarik penerima **hanya** dari `master_customer` (`resolveRecipients`).
+- Dengan `CAMPAIGN_SEND_ENABLED` mati, gerbang pra-luncur (`maySendTo`) **hanya** mengizinkan
+  `@20fit.id`.
+
+Dua aturan yang masing-masing **benar** — pool baca-saja beku; kirim nyata diblokir sampai token+DNS
+beres — **berpotongan kosong**: domain yang diizinkan tak ada di sumber yang dibaca. Uji internal-saja
+lewat composer menghasilkan **0 "Akan dikirimi"**; tak ada `provider_message_id`, tak ada baris log,
+tak ada yang bisa dibuktikan. Juga: 0 template & 0 segmen tersimpan, jadi composer bahkan menolak
+sebelum sampai ke sana.
+
+**Perbaikan (bukan diam-diam):** harness `lib/crm/send-test-harness.ts` — menyuntikkan satu alamat
+internal (dari env `SEND_TEST_INTERNAL_ADDRESS`, tak di-hardcode) ke **`sendCampaign` yang sama
+persis** (engine, ports, audit, gerbang), hanya penerimanya yang berbeda. Menghasilkan artefak nyata
+(baris `crm_message_log` + `provider_message_id`, satu `campaign.sent`, baris `crm_campaign_run`).
+Guard: hanya jalan saat kirim nyata mati; menolak alamat non-`@20fit.id`. Panel di /campaigns tampil
+hanya pra-luncur. **Belum dijalankan manusia** saat temuan ini ditulis — laporan ketujuh butir menyusul
+setelah `SEND_TEST_INTERNAL_ADDRESS` diset di Railway dan tombolnya ditekan.
+
+## T-29 · `crm_user_role` = 3 akun; login di `auth.users` BUKAN bukti pemakaian CRM (koreksi, 25 Agu 2026)
+
+Klaim awal "jb@, hazel@, zidni@, ferdinand@ sudah punya aktivitas login → sistem mulai dipakai orang
+sungguhan" **dikoreksi oleh verifikasi independen.** `auth.users` **dipakai bersama seluruh ekosistem
+20FIT** (my20fit, shop, dll.), jadi timestamp login di sana bukan bukti pemakaian CRM.
+
+- **`crm_user_role` hanya 3 baris, semuanya `super_admin`:** tifany@, zidni@, marketing@.
+- **jb@, hazel@, ferdinand@ (dan ~25 akun `@20fit.id` lain) login di `auth.users` tapi TIDAK punya
+  `crm_user_role`** → jika mereka buka CRM, mereka tak dapat akses (tak ada peran).
+- **Bukti pemakaian CRM nyata = audit log-nya sendiri** (`crm_audit_log`): praktis satu pengguna berat
+  (tifany@) plus marketing@; zidni@ punya peran tapi nol baris audit.
+
+**Pelajaran permanen:** "sistem dipakai" hanya bisa dijawab dari `crm_audit_log` + `crm_user_role`,
+**bukan** dari `auth.users` yang dibagi lintas produk. Konsekuensi peran: bila jb@/hazel@/ferdinand@
+memang akan pakai CRM, mereka perlu **diberi peran** (least-privilege, bukan `super_admin` seperti 3
+akun sekarang).
+
+**Syarat pembalikan K-27 → usang, bukan "terpenuhi".** K-27 (deploy-dari-branch) **dibatalkan** 24 Agu
+karena premisnya salah: produksi **selalu** dari `main`. Tindakan yang diresepkan syaratnya ("arahkan
+Railway ke `main` begitu staf luar memakai rutin") sudah jadi kenyataan sejak awal — tak ada yang bisa
+dipicu. Yang berlaku: **merge = deploy produksi**, jadi disiplin gate makin penting, bukan makin longgar.
