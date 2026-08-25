@@ -167,3 +167,30 @@ Branch di-restart dari `main` untuk pekerjaan lanjutan (PR merged = selesai; tak
   kembalikan). Nol pelanggaran lain di repo.
 
 Gerbang: `tsc` bersih · `next lint` bersih · **vitest 1184 → 1195** · `NODE_ENV=production build` lulus.
+
+---
+
+## 25 Agu 2026 — Campaigns: alur bertahap + filter bertingkat (komponen bersama)
+
+Layar Campaigns dirombak: **satu judul, tiga langkah berurutan** (1 Siapa · 2 Pesan · 3 Kirim,
+`campaign-flow.tsx`). Langkah selesai menyusut jadi ringkasan yang bisa dibuka lagi; langkah
+berikutnya terkunci sampai yang sebelumnya punya hasil. Logika kirim/gerbang/batas **tak diubah** —
+memakai server action yang sama; penerima **dihitung ulang saat kirim** (selisih ditampilkan).
+
+**Filter dikelompokkan menurut PERTANYAAN, bukan sumber data** (di `SegmentBuilder` bersama, jadi
+Exports ikut membaik): **Demografi** (tree: kota/revenue/unit/segmen) · **Kontak** (punya
+email/telepon — dipindah dari field-picker jadi toggle tersendiri, satu sumber via baris tree) ·
+**Perilaku** (ekosistem, sumber, program, RFM). Asisten AI jadi **pintasan opsional** (details) di
+atas ketiganya. Catatan kejujuran (kota 7,03%, `last_seen_at` cap muat, OR lintas-tabel, RFM ejaan)
+pindah ke `<Why>` — tetap ada, tak lagi memenuhi ruang antar kontrol.
+
+**Temuan tumpang-tindih filter:** Hyrox **berbeda** (tabel `cf_hyrox_participants` sendiri, bukan di
+ekosistem/staging). Arena/gym/klinik bisa dinyatakan lewat sampai TIGA jalur (centang sumber, unit
+ekosistem, program staging); program staging `Arena`/`GYM`/`Paid Shop` **kosong terukur (0)** —
+duplikat mati. Diselesaikan lewat pengelompokan + `<Why>` yang menjelaskan beda jalur match.
+
+**Keadaan terblokir naik ke atas** (tanpa template aktif, host unsubscribe tak cocok) — sebelum
+kriteria. Panel dokumentasi + uji-kirim-internal turun ke bawah, terpisah (uji hanya saat mode aman).
+`CampaignComposer` lama dihapus (mati). Kalimat usang footer "not built yet" diganti (id+en).
+
+Gerbang: `tsc` bersih · `next lint` bersih · **vitest 1195** · `NODE_ENV=production build` lulus.

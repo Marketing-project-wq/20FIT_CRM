@@ -55,7 +55,7 @@ function TimeBanned() {
   );
 }
 
-export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, canExport }: { cityFillPct: number; cityFilled: number; total: number; canViewHealth: boolean; canExport: boolean }) {
+export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, canExport, embedded = false, onComputed }: { cityFillPct: number; cityFilled: number; total: number; canViewHealth: boolean; canExport: boolean; embedded?: boolean; onComputed?: (counts: { matched: number; contactableMarketing: number; contactableService: number } | null) => void }) {
   const { lang, t } = useI18n();
   const [c, setC] = useState<SegmentCriteria>(EMPTY_CRITERIA);
   const [rows, setRows] = useState<Row[]>([]);
@@ -99,6 +99,18 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
     setRows(r);
     setCounts(null); // filter changed -> stale result
     setExportError(null);
+    onComputed?.(null);
+  }
+
+  // KONTAK group (nav rebuild): "punya email" / "punya telepon" are their own question, not demographic
+  // attributes, so they live here as dedicated toggles instead of in the free field picker. They still
+  // resolve as tree conditions (one source, no duplication, no engine change) — toggling adds/removes a
+  // single hasEmail/hasPhone condition row.
+  const hasContactRow = (field: "hasEmail" | "hasPhone") =>
+    rows.some((r) => r.t === "cond" && r.field === field);
+  function setContactRow(field: "hasEmail" | "hasPhone", on: boolean) {
+    const without = rows.filter((r) => !(r.t === "cond" && r.field === field));
+    setRowsAndClear(on ? [...without, { t: "cond", field, value: "" }] : without);
   }
 
   // The request body — master fields come from the AND/OR tree; ecosystem + source presence stay
@@ -134,17 +146,21 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
       if (!res.ok) {
         setError(data?.message ?? `${t.segments.computeFailed} (HTTP ${res.status}).`);
         setCounts(null);
+        onComputed?.(null);
         return;
       }
-      setCounts({
-        matched: data.matched,
-        contactableMarketing: data.contactableMarketing,
-        contactableService: data.contactableService,
-        mirrorRefreshedAt: data.mirrorRefreshedAt ?? null,
-      });
+      const next = {
+        matched: data.matched as number,
+        contactableMarketing: data.contactableMarketing as number,
+        contactableService: data.contactableService as number,
+        mirrorRefreshedAt: (data.mirrorRefreshedAt ?? null) as string | null,
+      };
+      setCounts(next);
+      onComputed?.({ matched: next.matched, contactableMarketing: next.contactableMarketing, contactableService: next.contactableService });
     } catch {
       setError(t.segments.connFailed);
       setCounts(null);
+      onComputed?.(null);
     } finally {
       setLoading(false);
     }
@@ -229,35 +245,30 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
   }
 
   return (
-    <div className="space-y-6">
-      <header className="flex items-center gap-3">
-        <div>
-          <h1 className="font-display text-[32px] font-black uppercase leading-none text-ink">{t.nav.segments}</h1>
-          <p className="mt-2 max-w-3xl font-body text-[14px] text-ink-soft">
-            {t.segments.subtitleA}
-          </p>
-        </div>
-      </header>
-
-      <TimeBanned />
-
-      {/* Criteria */}
-      <section className="glass rounded-card p-5">
-        <div className="flex items-center gap-2">
-          <Filter className="h-4 w-4 text-ink-soft" aria-hidden />
-          <h2 className="font-display text-[15px] font-bold uppercase tracking-wide text-ink">{t.segments.criteriaTitle}</h2>
-        </div>
-
-        {/* AI accelerator (Sprint 4A TUGAS 3). Describe the segment in words → the server maps it
-            to criteria via an LLM whose JSON is re-validated against the closed vocabulary. It is
-            a PROPOSAL: nothing runs until you apply it and press Hitung. The manual filters below
-            are always complete on their own — if the AI is down, this box just disappears in use. */}
-        <div className="mt-4 rounded-sm border border-glass-border/70 p-4">
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-ink-soft" aria-hidden />
-            <h3 className="font-display text-[12px] font-bold uppercase tracking-wide text-ink">{t.segments.aiTitle}</h3>
+    <div className="space-y-5">
+      {!embedded && (
+        <header className="flex items-center gap-3">
+          <div>
+            <h1 className="font-display text-[32px] font-black uppercase leading-none text-ink">{t.nav.segments}</h1>
+            <p className="mt-2 max-w-3xl font-body text-[14px] text-ink-soft">
+              {t.segments.subtitleA}
+            </p>
           </div>
-          <p className="mt-1 max-w-3xl font-body text-[12px] leading-relaxed text-ink-soft">
+        </header>
+      )}
+
+      {/* AI shortcut — OPTIONAL, sits ABOVE the three filter groups and is collapsed by default, so it
+          reads as a shortcut, not a seventh mechanism. Describe the segment in words → the server maps
+          it to criteria (LLM JSON re-validated against the closed vocabulary). It is a PROPOSAL: nothing
+          runs until you apply it and press Hitung. The manual groups below are complete on their own. */}
+      <details className="glass rounded-card p-4">
+        <summary className="flex cursor-pointer select-none items-center gap-2">
+          <Sparkles className="h-4 w-4 text-ink-soft" aria-hidden />
+          <span className="font-display text-[13px] font-bold uppercase tracking-wide text-ink">{t.segments.aiTitle}</span>
+          <span className="font-body text-[12px] text-ink-faint">· {t.segments.aiOptional}</span>
+        </summary>
+        <div className="mt-3">
+          <p className="max-w-3xl font-body text-[12px] leading-relaxed text-ink-soft">
             {t.segments.aiDescA}<span className="font-mono">profile.view_health</span>{t.segments.aiDescB}
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -307,23 +318,55 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
             </div>
           )}
         </div>
+        </details>
 
-        <div className="mt-4">
-          <FilterTreeBuilder rows={rows} setRows={setRowsAndClear} />
-        </div>
+        {/* No time criteria — the one screen-wide invariant, stays visible (its "why" is collapsed). */}
+        <TimeBanned />
 
-        {/* Ecosystem presence (customer_engagement) — a DIFFERENT table + vocabulary from
-            the attributes above. "Ada engagement di unit/produk ini", keyed by customer_id. */}
-        <div className="mt-5 rounded-sm border border-glass-border/70 p-4">
+        {/* Three groups by QUESTION (mirrors the profile screen), not by data source. */}
+        <section className="glass space-y-5 rounded-card p-5">
+          {/* ── DEMOGRAFI — attributes of the person, combined AND/OR ── */}
+          <div>
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-ink-soft" aria-hidden />
+              <h3 className="font-display text-[14px] font-bold uppercase tracking-wide text-ink">{t.segments.groupDemografi}</h3>
+            </div>
+            <p className="mt-1 font-body text-[12px] text-ink-soft">{t.segments.groupDemografiHint}</p>
+            <div className="mt-3">
+              <FilterTreeBuilder rows={rows} setRows={setRowsAndClear} />
+            </div>
+          </div>
+
+          {/* ── KONTAK — a question of its own, not a demographic attribute ── */}
+          <div className="border-t border-glass-border/60 pt-4">
+            <h3 className="font-display text-[14px] font-bold uppercase tracking-wide text-ink">{t.segments.groupKontak}</h3>
+            <p className="mt-1 font-body text-[12px] text-ink-soft">{t.segments.groupKontakHint}</p>
+            <div className="mt-2 flex flex-col gap-2">
+              <label className="inline-flex cursor-pointer items-center gap-2 font-body text-[13px] text-ink">
+                <input type="checkbox" checked={hasContactRow("hasEmail")} onChange={(e) => setContactRow("hasEmail", e.target.checked)} className="accent-red" />
+                {t.segments.kontakHasEmail}
+              </label>
+              <label className="inline-flex cursor-pointer items-center gap-2 font-body text-[13px] text-ink">
+                <input type="checkbox" checked={hasContactRow("hasPhone")} onChange={(e) => setContactRow("hasPhone", e.target.checked)} className="accent-red" />
+                {t.segments.kontakHasPhone}
+              </label>
+            </div>
+          </div>
+
+          {/* ── PERILAKU — cross-table presence (ecosystem, sources, program) ── */}
+        <div className="mt-1 border-t border-glass-border/60 pt-4">
           <div className="flex items-center gap-2">
             <Network className="h-4 w-4 text-ink-soft" aria-hidden />
-            <h3 className="font-display text-[12px] font-bold uppercase tracking-wide text-ink">
-              {t.segments.ecoTitle}
+            <h3 className="font-display text-[14px] font-bold uppercase tracking-wide text-ink">
+              {t.segments.groupPerilaku}
             </h3>
           </div>
-          <p className="mt-1 max-w-3xl font-body text-[12px] leading-relaxed text-ink-soft">
+          <p className="mt-1 font-body text-[12px] text-ink-soft">{t.segments.groupPerilakuHint}</p>
+          <Why>
+            <p className="text-[12px] leading-relaxed text-ink-soft">
             {t.segments.warn.ecoDescA}<span className="font-mono">customer_engagement</span>{t.segments.warn.ecoDescB}<span className="font-mono">event</span>{t.segments.warn.ecoDescC}<span className="font-mono">membership</span>{t.segments.warn.ecoDescD}<span className="font-mono">last_seen_at</span>{t.segments.warn.ecoDescE}
-          </p>
+            </p>
+          </Why>
           <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <label className="flex flex-col gap-1">
               <span className="font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">{t.segments.ecoUnitLabel}</span>
@@ -364,9 +407,11 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
               <input type="checkbox" checked={c.srcRecency} onChange={(e) => set("srcRecency", e.target.checked)} className="accent-red" />
               {t.segments.srcRecencyLabel}
             </label>
-            <p className="font-body text-[11px] leading-relaxed text-ink-faint">
-              {t.segments.warn.srcRecencyA}<span className="font-mono">last_active_at</span>{t.segments.warn.srcRecencyB}
-            </p>
+            <Why>
+              <p className="text-[11px] leading-relaxed text-ink-faint">
+                {t.segments.warn.srcRecencyA}<span className="font-mono">last_active_at</span>{t.segments.warn.srcRecencyB}
+              </p>
+            </Why>
           </div>
 
           {/* Sumber lain (TUGAS 2) — arena/gym (email), klinik (telepon, digerbangi view_health). */}
@@ -395,9 +440,11 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
                 {t.segments.warn.clinicHiddenA}<span className="font-mono">profile.view_health</span>{t.segments.warn.clinicHiddenB}
               </p>
             )}
-            <p className="font-body text-[11px] leading-relaxed text-ink-faint">
-              {t.segments.warn.sourcesAndA}
-            </p>
+            <Why>
+              <p className="text-[11px] leading-relaxed text-ink-faint">
+                {t.segments.warn.sourcesAndA}
+              </p>
+            </Why>
           </div>
 
           {/* Data impor 20FIT (staging_20fit_data, Sprint 3Y) — RFM + keikutsertaan program.
@@ -436,17 +483,25 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
                 </select>
               </label>
             </div>
-            <p className="font-body text-[11px] leading-relaxed text-ink-faint">
-              {t.segments.warn.stagingA}<span className="font-mono">staging_20fit_data</span>{t.segments.warn.stagingB}<span className="font-mono">Campion user</span>{t.segments.warn.stagingC}{canViewHealth ? t.segments.stagingGated : t.segments.stagingHidden}{t.segments.warn.stagingD}<span className="font-mono">profile.view_health</span>{t.segments.warn.stagingE}
-            </p>
+            <Why>
+              <p className="text-[11px] leading-relaxed text-ink-faint">
+                {t.segments.warn.stagingA}<span className="font-mono">staging_20fit_data</span>{t.segments.warn.stagingB}<span className="font-mono">Campion user</span>{t.segments.warn.stagingC}{canViewHealth ? t.segments.stagingGated : t.segments.stagingHidden}{t.segments.warn.stagingD}<span className="font-mono">profile.view_health</span>{t.segments.warn.stagingE}
+              </p>
+            </Why>
           </div>
         </div>
 
-        {/* City warning — in place, not a footnote (93% empty). */}
-        <div className="tint-amber mt-4 rounded-sm px-3 py-2">
-          <p className="font-body text-[12px] leading-relaxed text-ink">
-            {t.segments.warn.cityA}{formatPct(cityFillPct, lang)}{t.segments.warn.cityB}{formatCount(cityFilled, lang)}{t.segments.warn.cityC}{formatCount(total, lang)}{t.segments.warn.cityD}
-          </p>
+        {/* City-fill caveat — a "why city filtering is unreliable" note, no longer filling the space
+            between controls: title on the line, the numbers + reason collapsed (nav rebuild). */}
+        <div className="mt-4">
+          <div className="flex items-center gap-2">
+            <span className="font-display text-[11px] font-bold uppercase tracking-wide text-amber">{t.segments.cityCaveatTitle}</span>
+          </div>
+          <Why>
+            <p className="text-[12px] leading-relaxed text-ink-soft">
+              {t.segments.warn.cityA}{formatPct(cityFillPct, lang)}{t.segments.warn.cityB}{formatCount(cityFilled, lang)}{t.segments.warn.cityC}{formatCount(total, lang)}{t.segments.warn.cityD}
+            </p>
+          </Why>
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-3">

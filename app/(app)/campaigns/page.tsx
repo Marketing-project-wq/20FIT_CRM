@@ -1,26 +1,27 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { getCurrentUserRole } from "@/lib/auth/current-role";
 import { grantFor, isPermitted } from "@/lib/auth/roles";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getServerDict } from "@/lib/i18n/server";
 import { Badge } from "@/components/ui/badge";
 import { realSendEnabled } from "@/lib/crm/send-gate";
+import { unsubscribeHostServable } from "@/lib/crm/send-env";
 import { listSegments } from "@/lib/crm/segment-store";
 import { extractVariables } from "@/lib/crm/template";
 import { isInternalTestTemplateKey } from "@/lib/crm/send-test-constants";
 import { loadCityFill } from "@/lib/crm/city-fill";
-import { SegmentBuilder } from "@/components/segments/segment-builder";
-import { CoverageNotice } from "@/components/i18n/coverage-notice";
-import { CampaignComposer, type TemplateOption } from "./campaign-composer";
+import { CampaignFlow, type TemplateOption } from "./campaign-flow";
 import { SendTestPanel } from "./send-test-panel";
 
 export const metadata: Metadata = { title: "Campaigns" };
 export const dynamic = "force-dynamic";
 
 /**
- * Campaigns — the send console + compose form (TUGAS 2). Gate: send.* != deny.
- * Templates are pre-filtered to those whose body carries {{unsubscribe_url}} — a template without
- * the link cannot even be SELECTED (the send precondition, enforced at the list, not just at send).
+ * Campaigns — ONE screen, ONE title, THREE ordered steps (nav rebuild). Blocked states surface at the
+ * TOP (before any criteria); the flow is the middle; the "how it works / limits" docs and the pre-launch
+ * internal send-test sit BELOW, clearly separated (the send-test only while real sending is off). Gate:
+ * send.* != deny. Templates are pre-filtered to those whose body carries {{unsubscribe_url}}.
  */
 async function loadEligibleTemplates(): Promise<TemplateOption[]> {
   try {
@@ -35,11 +36,11 @@ async function loadEligibleTemplates(): Promise<TemplateOption[]> {
     const seen = new Set<string>();
     const out: TemplateOption[] = [];
     for (const r of (data ?? []) as { template_key: string; name: string; subject: string | null; body: string }[]) {
-      if (isInternalTestTemplateKey(r.template_key)) continue; // seeded test template — never in the real dropdown
-      if (seen.has(r.template_key)) continue; // highest version per key (ordered desc)
+      if (isInternalTestTemplateKey(r.template_key)) continue;
+      if (seen.has(r.template_key)) continue;
       seen.add(r.template_key);
       if (extractVariables(`${r.subject ?? ""}\n${r.body}`).includes("unsubscribe_url")) {
-        out.push({ key: r.template_key, name: r.name });
+        out.push({ key: r.template_key, name: r.name, subject: r.subject, body: r.body });
       }
     }
     return out;
@@ -74,6 +75,13 @@ export default async function CampaignsPage() {
     canBuild ? loadCityFill() : Promise.resolve({ total: 0, cityFilled: 0, cityFillPct: 0 }),
   ]);
 
+  // Blocked states, decided server-side, shown BEFORE the flow: no active template, and a mismatched
+  // unsubscribe-link host (the send would be refused — say so before anyone composes criteria).
+  const noTemplate = templates.length === 0;
+  const servingHost = headers().get("host");
+  const host = unsubscribeHostServable(process.env.NEXT_PUBLIC_APP_URL, servingHost);
+  const hostBlocked = !host.ok;
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -81,62 +89,66 @@ export default async function CampaignsPage() {
         <p className="mt-2 font-body text-[14px] leading-relaxed text-ink-soft">{c.subtitle}</p>
       </div>
 
-      {/* The single banner on this screen: the pre-launch block (also enforced in send-gate). */}
+      {/* ── BLOCKED STATES — always at the top, never mid-flow ── */}
       {!enabled && (
         <div className="tint-red rounded-card p-5">
           <Badge tone="red">{c.blockTitle}</Badge>
           <p className="mt-3 font-body text-[13px] leading-relaxed text-ink-soft">{c.blockBody}</p>
         </div>
       )}
-
-      {/* Criteria builder + AI assistant — the SAME shared SegmentBuilder as Exports (one file, two
-          mount points; nav rebuild). Build + SAVE a segment here, then compose the send below from it.
-          canExport=false here (Campaigns sends; Exports exports). */}
-      {canBuild && (
-        <>
-          <CoverageNotice screen="segments" />
-          <SegmentBuilder
-            cityFillPct={cityFill.cityFillPct}
-            cityFilled={cityFill.cityFilled}
-            total={cityFill.total}
-            canViewHealth={canViewHealth}
-            canExport={false}
-          />
-        </>
+      {noTemplate && (
+        <div className="tint-red rounded-card p-5">
+          <Badge tone="red">{c.blockNoTemplateTitle}</Badge>
+          <p className="mt-3 font-body text-[13px] leading-relaxed text-ink-soft">{c.blockNoTemplateBody}</p>
+        </div>
+      )}
+      {hostBlocked && (
+        <div className="tint-red rounded-card p-5">
+          <Badge tone="red">{c.blockHostTitle}</Badge>
+          <p className="mt-3 font-body text-[13px] leading-relaxed text-ink-soft">{c.blockHostBody}</p>
+        </div>
       )}
 
-      <CampaignComposer
+      {/* ── THE FLOW — 1 Siapa · 2 Pesan · 3 Kirim ── */}
+      <CampaignFlow
         segments={segments.map((s) => ({ id: s.id, name: s.name, requiresClinical: s.requiresClinical }))}
         templates={templates}
         realSend={enabled}
+        builder={{ cityFillPct: cityFill.cityFillPct, cityFilled: cityFill.cityFilled, total: cityFill.total, canViewHealth, canBuild }}
       />
 
-      {/* Pre-launch internal send-test harness — shown ONLY while real sending is off (it also refuses
-          to run once real sending is on), so it can never be a post-launch backdoor. */}
-      {!enabled && <SendTestPanel />}
-
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="glass-strong rounded-card p-5">
-          <h2 className="font-body text-[13px] font-semibold text-ink">{c.flowTitle}</h2>
-          <ol className="mt-3 flex list-decimal flex-col gap-2 pl-4 font-body text-[13px] leading-relaxed text-ink-soft">
-            <li>{c.flow1}</li>
-            <li>{c.flow2}</li>
-            <li>{c.flow3}</li>
-            <li>{c.flow4}</li>
-            <li>{c.flow5}</li>
-          </ol>
-          <p className="mt-3 font-body text-[12px] leading-relaxed text-ink-faint">{c.suppressionNote}</p>
+      {/* ── PRE-LAUNCH TOOL — separated from the campaign flow, only while real sending is off ── */}
+      {!enabled && (
+        <div className="rounded-card border border-dashed border-glass-border p-1">
+          <SendTestPanel />
         </div>
+      )}
 
-        <div className="glass-strong rounded-card p-5">
-          <h2 className="font-body text-[13px] font-semibold text-ink">{c.limitsTitle}</h2>
-          <ul className="mt-3 flex list-disc flex-col gap-2 pl-4 font-body text-[13px] leading-relaxed text-ink-soft">
-            <li>{c.limit1}</li>
-            <li>{c.limit2}</li>
-            <li>{c.limit3}</li>
-          </ul>
+      {/* ── DOCS — explanation, not controls: behind a disclosure below the flow ── */}
+      <details className="glass-strong rounded-card p-5">
+        <summary className="cursor-pointer select-none font-body text-[13px] font-semibold text-ink">{c.docsTitle}</summary>
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <div>
+            <h2 className="font-body text-[13px] font-semibold text-ink">{c.flowTitle}</h2>
+            <ol className="mt-3 flex list-decimal flex-col gap-2 pl-4 font-body text-[13px] leading-relaxed text-ink-soft">
+              <li>{c.flow1}</li>
+              <li>{c.flow2}</li>
+              <li>{c.flow3}</li>
+              <li>{c.flow4}</li>
+              <li>{c.flow5}</li>
+            </ol>
+            <p className="mt-3 font-body text-[12px] leading-relaxed text-ink-faint">{c.suppressionNote}</p>
+          </div>
+          <div>
+            <h2 className="font-body text-[13px] font-semibold text-ink">{c.limitsTitle}</h2>
+            <ul className="mt-3 flex list-disc flex-col gap-2 pl-4 font-body text-[13px] leading-relaxed text-ink-soft">
+              <li>{c.limit1}</li>
+              <li>{c.limit2}</li>
+              <li>{c.limit3}</li>
+            </ul>
+          </div>
         </div>
-      </div>
+      </details>
     </div>
   );
 }
