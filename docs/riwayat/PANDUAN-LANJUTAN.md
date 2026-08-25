@@ -14,6 +14,14 @@ Terakhir diperbarui: **24 Agustus 2026.**
 > satunya gerbang**; snapshot harian tak bisa menjawab pemicu berbasis kejadian; tiap pengiriman
 > meninggalkan catatan audit. Lihat K-36 (consent bukan gerbang).
 
+> ## 🟢 Mulai di sini — [`RANGKUMAN.md`](RANGKUMAN.md)
+>
+> Keadaan sistem **per 25 Agu 2026**, angka diukur ulang ke produksi (nol selisih). Apa yang
+> sistem lakukan sekarang, angka kunci, temuan yang membentuknya, kegagalan senyap yang berulang,
+> dan yang menunggu tindakan manusia. **Baca ini lebih dulu**, lalu turun ke register di bawah.
+> Termasuk temuan baru **T-35** (248 baris `crm_profile_demographic` ditulis pihak lain lewat
+> `service_role` bersama — bukti tim lain menulis ke `crm_*`).
+
 > ## 📌 Rangkuman hari re-scoping — [`RANGKUMAN-24agu.md`](RANGKUMAN-24agu.md)
 >
 > Ikhtisar 24 Agu 2026: perpindahan dari separuh "mengenali" ke separuh "menghubungi", 5 migrasi
@@ -28,8 +36,12 @@ Terakhir diperbarui: **24 Agustus 2026.**
 20FIT CRM — alat internal untuk staf mengelola data pelanggan dari banyak sistem 20FIT
 (arena, gym, clinic, event, my20fit, shop). Next.js 14 + Supabase, deploy di Railway.
 
-Basis data: **82.253 profil** di `master_customer`, dibaca saja. Seluruh tulis CRM berada di
-tabel `crm_*` yang RLS ON tanpa policy (hanya `service_role`).
+Basis data: **82.253 profil** di `master_customer`, dibaca saja. Tulis CRM berada di tabel
+`crm_*` yang RLS ON tanpa policy — jadi hanya peran BYPASSRLS (`service_role`, `postgres`) yang
+bisa menulis. **Koreksi (T-35):** "hanya CRM yang menulis `crm_*`" ternyata salah. 248 baris
+`crm_profile_demographic` ditulis satu batch oleh pihak di luar CRM lewat `service_role`
+bersama di proyek Supabase yang sama. `service_role` bukan milik CRM sendiri — ia dipakai
+seluruh ekosistem 20FIT. Perlakukan `crm_*` sebagai bisa ditulis lintas-tim, bukan hanya CRM.
 
 ---
 
@@ -61,8 +73,8 @@ sesi chat mana pun. Baca, jangan salin isinya ke tempat lain:
 
 | Berkas | Isi |
 |---|---|
-| `docs/riwayat/KEPUTUSAN.md` | Keputusan K-01 … K-28, masing-masing dengan syarat pembalikannya |
-| `docs/riwayat/TEMUAN.md` | Temuan T-01 … T-19 plus kesalahan sendiri (`S-`) |
+| `docs/riwayat/KEPUTUSAN.md` | Keputusan K-01 … K-45, masing-masing dengan syarat pembalikannya |
+| `docs/riwayat/TEMUAN.md` | Temuan T-01 … T-35 plus kesalahan sendiri (`S-`) |
 | `docs/riwayat/FAKTA-DATA.md` | Angka database, bertanggal |
 | `docs/riwayat/LINIMASA.md` | Sprint, commit, ledger migrasi |
 | `docs/MENUNGGU-TINDAKAN-MANUSIA.md` | Yang hanya bisa diselesaikan manusia |

@@ -19,6 +19,10 @@ Full spec: `PRD — 20FIT Audience Data & CRM System v1.1`.
 > considered contactable); **unsubscribe (`crm_suppression`) is the only real gate**; the daily
 > snapshot cannot answer event-based triggers; every send must leave an audit record.
 >
+> **Start here for the whole picture: [`docs/riwayat/RANGKUMAN.md`](docs/riwayat/RANGKUMAN.md)** —
+> the state of the system on 25 Aug 2026 (what runs, key numbers re-measured live, the findings that
+> shaped it, and what's still waiting on a human).
+>
 > `docs/riwayat/` records why this system is the way it is: every sprint's prompt,
 > the decisions taken (`KEPUTUSAN.md`) and **what would reverse each one**, the
 > findings and self-corrections (`TEMUAN.md`), the database facts with dates

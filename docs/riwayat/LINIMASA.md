@@ -226,3 +226,23 @@ waSubtitle, merge-belum-dibangun, province-ref). Terbukti menggigit (unit test).
 
 Gerbang: `tsc` bersih · `next lint` bersih · **vitest 1195 → 1166** (−32 test ekspor, +3 pagar) ·
 `NODE_ENV=production build` lulus.
+
+## 25 Agu 2026 — RANGKUMAN dipasang + investigasi 248 baris `crm_profile_demographic` (T-35)
+
+**Dokumen (bukan kode).** `docs/riwayat/RANGKUMAN.md` dipasang sebagai titik-mulai keadaan sistem per
+25 Agu — ditautkan dari `PANDUAN-LANJUTAN.md` (callout 🟢 di atas) dan `README.md`. Sepuluh angka §2
+**diukur ulang langsung ke produksi lewat SQL: nol selisih** (`crm_audit_log` satu-satunya yang hidup,
+233→236 dalam sesi).
+
+**Investigasi (laporan lebih dulu — nol baris/policy/grant disentuh).** `crm_profile_demographic` = 248
+baris, ditulis **satu batch** `2026-08-21 15:44:15 UTC`, seluruhnya `gender_source='progressive_profiling'`
+(246 juga DOB progressive), tanpa kolom provenance. Audit grant **13 tabel `crm_*`**: 6 terkunci
+`{postgres, service_role}`; 7 masih memberi `arwdDxtm` ke `anon`+`authenticated` (audit_log, consent,
+profile_behavior, profile_demographic, profile_scores, suppression, user_role) — kini dinetralkan
+RLS ON/0-policy tapi laten. Kesimpulan: **248 baris ditulis pihak di luar CRM lewat `service_role`
+bersama** → asumsi "hanya CRM menulis `crm_*`" **salah** dan dikoreksi di PANDUAN §1 + T-35. Rantai DOB
+membaca tabel ini sebagai `staff` **tanpa** cek `*_source`, jadi 246 DOB salah-label; usulan posisi
+`[nik, staging, clinic, hyrox, progressive, staff]` **belum diterapkan** (tunggu persetujuan, B10c).
+
+**Register:** T-35 (TEMUAN) · B10a/b/c (MENUNGGU) · §1 PANDUAN dikoreksi · RANGKUMAN §2 diverifikasi.
+Gerbang penuh dijalankan ulang (dokumen saja — tak ada kode berubah di petak ini).

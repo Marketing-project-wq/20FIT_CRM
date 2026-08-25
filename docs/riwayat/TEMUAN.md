@@ -788,3 +788,59 @@ selalu di LUAR repo**: setelan Railway Source, keadaan merge GitHub, dan mata pe
 produksi. **Yang menyelesaikan:** beberapa sumber **luar-repo** yang sepakat — di sini git-ancestry +
 GitHub `merged:true` + screenshot produksi. Pelajaran permanen: **jangan jawab pertanyaan deploy dari
 `git log` sendirian; minta/lihat bukti luar-repo, dan `git fetch` dulu supaya ref tak basi.**
+
+## T-35 · Pihak lain menulis ke tabel `crm_*` — 248 baris `crm_profile_demographic` dari batch eksternal (25 Agu 2026)
+
+**Asumsi yang runtuh:** "`crm_*` hanya ditulis service-role CRM." **Salah.**
+
+**Bukti (diverifikasi SQL):** `crm_profile_demographic` = **248 baris**, seluruhnya
+`gender_source='progressive_profiling'` (246 juga `date_of_birth_source='progressive_profiling'`, 2
+DOB null), **semua ditulis pada cap waktu IDENTIK `2026-08-21 15:44:15.665587+00`** — satu batch, satu
+transaksi, 248 pelanggan berbeda. Bukan progressive-profiling bertahap (itu akan bertimestamp
+tersebar); ini **backfill massal** yang MELABELI dirinya progressive_profiling. CRM tak menulisnya:
+form isian adminnya (`demographic-write.ts`) baru dibangun setelah 21 Agu dan hanya menulis
+`staff_entry`. Tabel **tak punya kolom penulis/provenance** (hanya `updated_at`), jadi baris tak bisa
+menyebut siapa penulisnya.
+
+**Siapa & lewat jalur apa — audit grant SELURUH 13 tabel `crm_*`:**
+
+- **Terkunci benar** (`relacl` = {postgres, service_role} saja) — 6 tabel, semua dibuat sprint 3H+/
+  KIRIM/5A: `crm_campaign_run`, `crm_identity_candidate`, `crm_message_log`, `crm_message_template`,
+  `crm_mirror_meta`, `crm_segment`.
+- **Grant longgar** — `arwdDxtm` (SEMUA privilege, termasuk INSERT/UPDATE/DELETE) juga ke **`anon`
+  DAN `authenticated`** — 7 tabel, semua era 2B (T-17): `crm_audit_log`, `crm_consent`,
+  `crm_profile_behavior`, **`crm_profile_demographic`**, `crm_profile_scores`, `crm_suppression`,
+  `crm_user_role`.
+
+**Semua 13 tabel: RLS ON, 0 policy.** Artinya `anon`/`authenticated` **tetap diblokir RLS** (deny-all
+tanpa policy permisif) MESKIPUN punya grant — sesuai ukur-ulang 3Q (grant ≠ akses saat RLS ON + 0
+policy). Jadi 248 baris itu **bukan** ditulis lewat web anon; ditulis lewat peran **BYPASSRLS**
+(`service_role`/`postgres`) yang **dibagi seluruh proyek Supabase bersama** (T-20). Kesimpulan: **tim
+lain memakai service-role/postgres bersama** untuk menulis ke `crm_profile_demographic`.
+
+**Dua risiko berbeda, jangan dicampur:**
+1. **Yang terjadi** — penulisan lintas-tim lewat BYPASSRLS di proyek bersama. `crm_*` **bukan milik
+   CRM sepenuhnya**; siapa pun pemegang service-role/postgres proyek bisa menulis.
+2. **Laten** — 7 tabel era-2B masih meng-grant SEMUA privilege ke `anon`/`authenticated`. Dinetralkan
+   RLS **hari ini**, tapi **satu policy permisif** (`using(true)`) dari langkah ceroboh mana pun akan
+   langsung membuka tulis-penuh anon/authenticated ke consent, suppression, user_role, dan ketiga tabel
+   profil. Tabel yang terkunci benar (6) bahkan tak meng-grant `authenticated`, jadi risiko ini khusus
+   7 tabel lama.
+
+**Konsekuensi — rantai prioritas tanggal lahir.** `DOB_PRIORITY = [nik, staging, clinic, hyrox,
+staff]` (`demographic-pick.ts`); "staff" = nilai `crm_profile_demographic`, dibaca **tanpa** memeriksa
+`*_source` di dalamnya. Jadi 246 DOB `progressive_profiling` kini **tampil berprovenance "staff"** —
+salah label, dan mungkin salah prioritas. **Usulan posisi (belum diterapkan — mengubah 246 DOB tampil
+adalah keputusan kepercayaan, dilaporkan dulu):** sisipkan `progressive` **tepat di atas `staff`** →
+`[nik, staging, clinic, hyrox, progressive, staff]`. **Alasan:** self-report DOB seseorang pada
+prinsipnya andal (ia tahu tanggal lahirnya), jadi ≥ entri staff kosong-fallback; TAPI ia masuk lewat
+jalur eksternal tak-teraudit dengan mutu-koleksi tak diketahui (backfill massal, bukan bertahap), jadi
+< sumber berprovenance-diketahui (NIK gov-ID, staging impor) dan bahkan < rekaman ekosistem
+(clinic/hyrox). Saat ragu soal provenance/mutu sumber baru yang ditulis pihak luar, peringkat
+konservatif; ia tetap muncul sebagai isyarat konflik bila berbeda, jadi tak ada yang disembunyikan.
+
+**Larangan dipatuhi:** 248 baris TAK disentuh; policy/grant TAK diubah (remediasi = keputusan
+tersendiri pemilik data, sekelas T-17); dilaporkan dulu. **Menunggu tindakan manusia:** (a) konfirmasi
+tim/sistem penulis 248 baris (tak bisa dari DB — tak ada kolom provenance; butuh log Postgres 21 Agu
+15:44 atau tanya tim), (b) keputusan remediasi grant longgar 7 tabel, (c) persetujuan posisi
+`progressive_profiling` di rantai DOB.
