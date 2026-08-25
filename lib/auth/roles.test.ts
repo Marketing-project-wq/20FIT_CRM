@@ -330,10 +330,12 @@ describe("nav visibility", () => {
     expect(canSeeNav("unit_manager", "/audience")).toBe(false); // needs_scope
   });
 
-  it("exports hidden for analyst (deny), visible for approval roles", () => {
-    expect(canSeeNav("analyst", "/exports")).toBe(false);
-    expect(canSeeNav("crm_operator", "/exports")).toBe(true); // approval
-    expect(canSeeNav("crm_manager", "/exports")).toBe(true); // allow
+  it("exports is GONE from nav for every role (the Exports screen was removed)", () => {
+    // The Exports feature was deleted (the route now redirects to /campaigns); no role sees it in nav,
+    // even those still holding export.* in the matrix (kept for PRD 17.2 parity, K-44).
+    for (const r of ["super_admin", "crm_manager", "crm_operator", "analyst", "viewer"] as const) {
+      expect(canSeeNav(r, "/exports")).toBe(false);
+    }
   });
 
   it("settings gated on audit.view", () => {

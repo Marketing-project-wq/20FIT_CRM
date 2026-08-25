@@ -35,7 +35,6 @@ export const en: Messages = {
     messages: "Messages",
     consent: "Consent",
     quality: "Quality",
-    exports: "Exports",
     settings: "Settings",
     darkMode: "Dark mode",
     lightMode: "Light mode",
@@ -137,13 +136,7 @@ export const en: Messages = {
     coverageNeither: "Neither",
     coveragePhoneNote: "“Phone” = a stored phone number. WhatsApp status is NOT verified — do not build a WhatsApp campaign on this figure. “Neither” = a measured 0 (not hidden).",
     // Per-category contact-coverage export → through the existing segment export engine.
-    coverageExportTitle: "Export CSV per category",
-    coverageExportBtn: "Export",
-    coverageExportBusy: "Exporting…",
-    coverageExportEmpty: "0 — nothing to export",
     coveragePhoneOnlyWarn: "The “phone only” category has no email — this list cannot be used for an email campaign.",
-    coverageExportNote: "Exports through the same segment engine: suppression is excluded, role gates apply, NIK & clinical data never enter the file, and the real row count is written at the end of the file.",
-    coverageExportFailed: "Export failed.",
     summaryTitle: "Pool & reach",
     summaryPoolLabel: "CRM pool (master_customer)",
     summaryReachAll: "whole pool contactable · zero unsubscribed",
@@ -384,7 +377,7 @@ export const en: Messages = {
   },
 
   segments: {
-    subtitleA: "Compose criteria, see the count, change it, look again. Nothing is saved — no table, no segment name. Saving is deferred.",
+    subtitleA: "Compose criteria, compute the count, then save the definition (criteria, not a list of people) for use in Campaigns.",
     criteriaTitle: "Criteria",
     aiTitle: "AI assistant",
     aiOptional: "optional shortcut",
@@ -434,8 +427,6 @@ export const en: Messages = {
     stagingHidden: "hidden —",
     computeBtn: "Compute",
     computing: "Computing…",
-    exportBtn: "Export CSV",
-    exporting: "Exporting…",
     savePlaceholder: "Segment name",
     saveBtn: "Save segment",
     saving: "Saving…",
@@ -452,7 +443,6 @@ export const en: Messages = {
     openConsent: "Open Consent",
     computeFailed: "Failed to compute",
     connFailed: "Couldn't reach the server.",
-    exportFailed: "Failed to export",
     proposeFailed: "Failed to propose",
     treeIntro: "All rows are joined with AND. A row can be a single condition, or an OR group (e.g. “has an email OR has a phone”). Max 2 levels, 12 conditions.",
     fieldUnit: "Unit",
@@ -564,8 +554,6 @@ export const en: Messages = {
       cityC: " of ",
       cityD: "). Filtering city over data that is ±93% blank only filters “people whose city happens to be recorded” — the result looks firm but misleads.",
       // Nuance kept: the EOF row is the completeness proof; a truncated file must not be trusted.
-      exportNoteA: "The export streams a CSV (suppression excluded, no NIK / clinical data). The file ends with an ",
-      exportNoteB: " row — if that row is missing, the download was truncated & must not be used as complete data.",
       // Nuance kept: below 25 a segment shifts from aggregate to individual disclosure; the count is
       // still shown (hiding 0 hides the measured), but not treated as an anonymous aggregate.
       smallSegmentA: "Very small segment (",
@@ -885,7 +873,7 @@ export const en: Messages = {
       issue_orphan:
         "Rows in customer_orphan — data that cannot be linked to a single master profile.",
       issue_excluded:
-        "Rows in customer_excluded. The count is large and the exclusion reasons have not been re-reviewed this sprint.",
+        "Rows in customer_excluded. The count is large and the exclusion reasons have not been re-reviewed.",
       satellite_demographic: "The table exists, not filled in yet — ingestion is still held.",
       satellite_behavior:
         "Not filled in yet. The available behaviour source is still off-limits until it is remediated.",
@@ -962,7 +950,6 @@ export const en: Messages = {
     phase4: "Phase 4",
     campaigns: "Manual campaigns: pick a segment, pick a template, see the cost estimate, request approval, send.",
     messages: "A log of every send — channel, status, and the always-visible reason a message was blocked.",
-    exports: "Export history with requester, purpose, row count, and approval status.",
     templates: "A register of WhatsApp and email templates with their Meta approval status and category.",
     workflows: "The marketing workflow engine with nine guards. Blocked until the consent register is active.",
   },
@@ -1036,10 +1023,6 @@ export const en: Messages = {
     limit2: "A second confirmation is required above 500 recipients.",
     limit3: "Auto-stop if hard bounces cross 5% (approved 24 Aug).",
     suppressionNote: "Suppression is checked AT SEND, not when the segment was counted — an unsubscribe that arrives in between is still honoured.",
-    templatesActive: "Active email templates",
-    templatesNone: "No active email template yet — create one under Templates first.",
-    pendingTitle: "The in-screen send form follows",
-    pendingBody: "Compose-and-send in the screen follows once segments can be saved and both send prerequisites are met. The send path itself is already built and tested.",
     composer: {
       title: "Compose a send",
       segmentLabel: "Saved segment",

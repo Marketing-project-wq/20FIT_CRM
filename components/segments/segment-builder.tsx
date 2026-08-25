@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Filter, Clock, Users, Send, Network, Download, Sparkles } from "lucide-react";
+import { Filter, Clock, Users, Send, Network, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ECOSYSTEM_UNITS, ECOSYSTEM_PRODUCTS_BY_UNIT } from "@/lib/crm/engagement-constants";
 import { STAGING_RFM_VALUES, STAGING_PROGRAMS } from "@/lib/crm/staging-constants";
@@ -55,15 +55,13 @@ function TimeBanned() {
   );
 }
 
-export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, canExport, embedded = false, onComputed }: { cityFillPct: number; cityFilled: number; total: number; canViewHealth: boolean; canExport: boolean; embedded?: boolean; onComputed?: (counts: { matched: number; contactableMarketing: number; contactableService: number } | null) => void }) {
+export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, embedded = false, onComputed }: { cityFillPct: number; cityFilled: number; total: number; canViewHealth: boolean; embedded?: boolean; onComputed?: (counts: { matched: number; contactableMarketing: number; contactableService: number } | null) => void }) {
   const { lang, t } = useI18n();
   const [c, setC] = useState<SegmentCriteria>(EMPTY_CRITERIA);
   const [rows, setRows] = useState<Row[]>([]);
   const [counts, setCounts] = useState<Counts | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [exporting, setExporting] = useState(false);
-  const [exportError, setExportError] = useState<string | null>(null);
   const [aiText, setAiText] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
@@ -92,13 +90,11 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
   function set<K extends keyof SegmentCriteria>(k: K, v: SegmentCriteria[K]) {
     setC((prev) => ({ ...prev, [k]: v }));
     setCounts(null); // criteria changed -> stale result, recompute explicitly
-    setExportError(null);
   }
 
   function setRowsAndClear(r: Row[]) {
     setRows(r);
     setCounts(null); // filter changed -> stale result
-    setExportError(null);
     onComputed?.(null);
   }
 
@@ -114,8 +110,7 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
   }
 
   // The request body — master fields come from the AND/OR tree; ecosystem + source presence stay
-  // separate top-level ANDs (cross-table OR isn't expressible in one query). Shared by compute +
-  // export so the exported file can never describe a different segment than the counts shown.
+  // separate top-level ANDs (cross-table OR isn't expressible in one query).
   function buildBody() {
     return {
       tree: rowsToTree(rows),
@@ -210,38 +205,6 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
     }));
     setCounts(null);
     setAiProposal(null);
-  }
-
-  async function exportCsv() {
-    setExportError(null);
-    setExporting(true);
-    try {
-      const res = await fetch("/api/exports", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(buildBody()),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setExportError(data?.message ?? `${t.segments.exportFailed} (HTTP ${res.status}).`);
-        return;
-      }
-      // Streamed CSV → download. The connection stayed alive as pages flowed (no idle timeout).
-      const blob = await res.blob();
-      const name = res.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] ?? "segmen.csv";
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = name;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch {
-      setExportError(t.segments.connFailed);
-    } finally {
-      setExporting(false);
-    }
   }
 
   return (
@@ -508,15 +471,6 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
           <Button onClick={compute} disabled={loading}>
             {loading ? t.segments.computing : t.segments.computeBtn}
           </Button>
-          {/* Export is a separate, gated action (PRD 17.2). Enabled only after a compute so the
-              file always matches a segment the user has just seen the size of. The server
-              re-checks the grant against the row count and refuses (approval / deny) with a
-              message; suppression is excluded and NIK/clinical are never columns. */}
-          {canExport && (
-            <Button variant="outline" onClick={exportCsv} disabled={exporting || !counts}>
-              <Download className="h-3.5 w-3.5" /> {exporting ? t.segments.exporting : t.segments.exportBtn}
-            </Button>
-          )}
           {/* Save the definition (K-40). Enabled after a compute; saves criteria, not people. */}
           {counts && (
             <div className="flex w-full flex-wrap items-center gap-2">
@@ -534,12 +488,6 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
             </div>
           )}
           {error && <p className="w-full font-body text-[13px] text-red">{error}</p>}
-          {exportError && <p className="w-full font-body text-[13px] text-red">{exportError}</p>}
-          {canExport && counts && !exportError && (
-            <p className="w-full font-body text-[11px] leading-relaxed text-ink-faint">
-              {t.segments.warn.exportNoteA}<span className="font-mono">EOF total_baris=…</span>{t.segments.warn.exportNoteB}
-            </p>
-          )}
         </div>
       </section>
 

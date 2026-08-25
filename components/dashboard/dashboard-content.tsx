@@ -5,27 +5,8 @@ import { StatCard } from "./stat-card";
 import { BarList } from "./bar-list";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Why } from "@/components/ui/why";
-import { Button } from "@/components/ui/button";
 import { useI18n } from "@/components/i18n/lang-provider";
 import { formatCount, formatDate, formatDateTime } from "@/lib/i18n";
-import type { FilterNode } from "@/lib/crm/filter-tree";
-
-/** Contact-coverage category → the AND filter tree the existing /api/exports engine understands.
- *  Presence (hasPhone/hasEmail) + absence (noPhone/noEmail) leaves; one engine, no second path. */
-type CoverageCat = "both" | "emailOnly" | "phoneOnly" | "neither";
-const COVERAGE_LEAVES: Record<CoverageCat, [string, string]> = {
-  both: ["hasEmail", "hasPhone"],
-  emailOnly: ["hasEmail", "noPhone"],
-  phoneOnly: ["hasPhone", "noEmail"],
-  neither: ["noPhone", "noEmail"],
-};
-function coverageTree(cat: CoverageCat): FilterNode {
-  const [a, b] = COVERAGE_LEAVES[cat];
-  return { kind: "group", op: "AND", children: [
-    { kind: "condition", field: a as never },
-    { kind: "condition", field: b as never },
-  ] };
-}
 
 interface SourceGap { key: string; total: number; inPool: number; gap: number }
 interface UnitCount { unit: string; profiles: number; source: "mirror" | "live" }
@@ -275,8 +256,6 @@ export function DashboardContent(
   const [sources, setSources] = useState<Block<SourcesBlock>>(() => initBlocks().sources);
 
   const [showAllEvents, setShowAllEvents] = useState(false);
-  const [exportBusy, setExportBusy] = useState<CoverageCat | null>(null);
-  const [exportMsg, setExportMsg] = useState<string | null>(null);
 
   const setters: Record<BlockName, (b: Block<unknown>) => void> = {
     immediate: setImmediate as (b: Block<unknown>) => void,
@@ -307,38 +286,6 @@ export function DashboardContent(
     (["immediate", "contactable", "mirror", "events", "sources"] as BlockName[]).forEach((n) => loadBlock(n, ac.signal));
     return () => ac.abort();
   }, [isPreview, loadBlock]);
-
-  async function exportCoverage(cat: CoverageCat) {
-    if (isPreview) return;
-    setExportMsg(null);
-    setExportBusy(cat);
-    try {
-      const res = await fetch("/api/exports", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tree: coverageTree(cat) }),
-      });
-      if (!res.ok) {
-        const d = (await res.json().catch(() => ({}))) as { message?: string };
-        setExportMsg(d.message ?? `${t.dashboard.coverageExportFailed} (HTTP ${res.status})`);
-        return;
-      }
-      const blob = await res.blob();
-      const name = res.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] ?? "segmen.csv";
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = name;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch {
-      setExportMsg(t.dashboard.coverageExportFailed);
-    } finally {
-      setExportBusy(null);
-    }
-  }
 
   const todayLabel = new Intl.DateTimeFormat(lang === "en" ? "en-US" : "id-ID", {
     weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Jakarta",
@@ -541,36 +488,12 @@ export function DashboardContent(
                     { label: t.dashboard.coverageNeither, value: cov.neither },
                   ]} />
 
-                {/* Per-category CSV export — through the existing engine. A zero category (neither) is
-                    a DISABLED button ("nothing to export"), never an empty file; its row still shows. */}
-                <div className="mt-4 border-t border-glass-border pt-3">
-                  <p className="font-display text-[12px] font-semibold uppercase tracking-wide text-ink-faint">{t.dashboard.coverageExportTitle}</p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {([
-                      ["both", t.dashboard.coverageBoth, cov.both],
-                      ["emailOnly", t.dashboard.coverageEmailOnly, cov.emailOnly],
-                      ["phoneOnly", t.dashboard.coveragePhoneOnly, cov.phoneOnly],
-                      ["neither", t.dashboard.coverageNeither, cov.neither],
-                    ] as [CoverageCat, string, number][]).map(([cat, label, value]) => (
-                      <Button
-                        key={cat}
-                        size="sm"
-                        variant="outline"
-                        disabled={value === 0 || exportBusy !== null}
-                        onClick={() => exportCoverage(cat)}
-                        title={value === 0 ? t.dashboard.coverageExportEmpty : undefined}
-                      >
-                        {t.dashboard.coverageExportBtn} · {label} ({formatCount(value, lang)})
-                        {exportBusy === cat ? ` — ${t.dashboard.coverageExportBusy}` : ""}
-                      </Button>
-                    ))}
-                  </div>
-                  {cov.phoneOnly > 0 && (
-                    <p className="mt-2 font-body text-[11px] leading-relaxed text-amber">{t.dashboard.coveragePhoneOnlyWarn}</p>
-                  )}
-                  {exportMsg && <p className="mt-2 font-body text-[12px] text-red">{exportMsg}</p>}
-                  <p className="mt-2 font-body text-[11px] leading-relaxed text-ink-faint">{t.dashboard.coverageExportNote}</p>
-                </div>
+                {/* Phone-only cohort caveat — a measurement note about the card (kept); the per-category
+                    CSV export buttons were removed with the Exports feature (CSV was the only data exit
+                    that did not honour unsubscribe). */}
+                {cov.phoneOnly > 0 && (
+                  <p className="mt-4 border-t border-glass-border pt-3 font-body text-[11px] leading-relaxed text-amber">{t.dashboard.coveragePhoneOnlyWarn}</p>
+                )}
 
                 {/* D1: the WhatsApp/phone caveat moved behind <Why> — collapsed, not deleted. */}
                 <div className="mt-3"><Why><p className="text-[11px] leading-relaxed text-ink-soft">{t.dashboard.coveragePhoneNote}</p></Why></div>

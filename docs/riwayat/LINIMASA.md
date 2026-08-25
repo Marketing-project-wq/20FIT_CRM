@@ -194,3 +194,35 @@ kriteria. Panel dokumentasi + uji-kirim-internal turun ke bawah, terpisah (uji h
 `CampaignComposer` lama dihapus (mati). Kalimat usang footer "not built yet" diganti (id+en).
 
 Gerbang: `tsc` bersih · `next lint` bersih · **vitest 1195** · `NODE_ENV=production build` lulus.
+
+---
+
+## 25 Agu 2026 — Exports dihapus sepenuhnya; nav tujuh → enam
+
+**Menu:** Dashboard · Audience · Workflows · Campaigns · Templates · Settings (dari 7). Ekspor CSV
+dibuang sepenuhnya — inti sistem mengelola audiens + mengirim langsung, bukan memindahkan data keluar;
+dan ekspor CSV adalah **satu-satunya jalur keluar yang tak menghormati unsubscribe**.
+
+**Mati (kode dihapus, preseden 3G):** `app/api/exports/route.ts` (9,5 KB), `lib/crm/export.ts`,
+`export-constants.ts`, `export-constants.test.ts`, `export-row-path.test.ts` — beserta streaming CSV,
+`EOF total_baris=`, `# GAGAL`, paksa-teks-Excel, BOM, nama-berkas per kategori, ambang 1.000 +
+pembagian gerbang. **−32 test hilang bersama kodenya.** Tombol ekspor per-kategori di kartu cakupan
+Dashboard + `exportCoverage`/`coverageTree`/`COVERAGE_COMBOS` dibuang. `SegmentBuilder` kehilangan
+`canExport`/tombol ekspor (komponen tetap, dipakai Campaigns). i18n key khusus-ekspor dibuang (13/lang).
+
+**Diubah:** `/exports` → **redirect** ke `/campaigns` (166 B). `canSeeNav("/exports")` case dibuang.
+
+**Dipertahankan (WAJIB):** audit `export.performed` (id 193/194/197, di DB, tak tersentuh); klasifikasi
+kepatuhan `export.%` di `retention-policy.ts` + test paritas (`send-constants.test` kini meng-inline
+string `export.performed`); kartu cakupan kontak + angkanya; daun filter `noEmail`/`noPhone` (dipakai
+kriteria + AI + combo kartu); aksi RBAC `export.*` tetap di matriks (paritas PRD 17.2, K-44).
+
+**Kalimat usang (TUGAS 5):** disisir — diperbaiki `segments.subtitleA` ("penyimpanan ditunda" → saving
+ada), `/quality` "sprint ini" dilepas; dibuang key mati `pendingTitle/pendingBody/templatesActive/
+templatesNone`. **Pagar dipasang:** `lib/i18n/stale-phrase-scan.ts` + test — memindai string tampilan
+untuk frasa "coming soon / not built yet / deferred / this sprint / menyusul"; gagal kecuali path-nya
+ada di allowlist "sudah ditinjau, masih benar" (5 entri bertanggal: notEnglishYet, comingSoon,
+waSubtitle, merge-belum-dibangun, province-ref). Terbukti menggigit (unit test).
+
+Gerbang: `tsc` bersih · `next lint` bersih · **vitest 1195 → 1166** (−32 test ekspor, +3 pagar) ·
+`NODE_ENV=production build` lulus.

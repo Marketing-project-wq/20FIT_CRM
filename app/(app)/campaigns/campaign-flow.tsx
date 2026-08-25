@@ -210,7 +210,6 @@ export function CampaignFlow({
                   cityFilled={builder.cityFilled}
                   total={builder.total}
                   canViewHealth={builder.canViewHealth}
-                  canExport={false}
                   onComputed={(cnt) => setStep1Counts(cnt ? { matched: cnt.matched, contactableMarketing: cnt.contactableMarketing } : null)}
                 />
               </div>

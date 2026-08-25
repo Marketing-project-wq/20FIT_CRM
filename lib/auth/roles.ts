@@ -451,10 +451,9 @@ export function canSeeNav(role: unknown, href: string, ctx: AccessContext = {}):
     case "/quality":
       // Data-quality dashboard: anyone who can see the profile list can see quality.
       return canViewProfileList(role, ctx);
-    case "/exports":
-      // Exports screen: visible to anyone who may export or REQUEST an export
-      // (allow or approval), hidden where export is a flat deny.
-      return grantFor(role, "export.at_or_below_threshold") !== "deny";
+    // NOTE: "/exports" is intentionally absent — the Exports screen was removed (the route now
+    // redirects to /campaigns). The export.* actions stay in the matrix for PRD 17.2 parity (K-44
+    // precedent) but no nav destination surfaces them.
     case "/settings":
       // Settings holds the RBAC/audit surface -> gate on audit.view (super_admin,
       // crm_manager). Others have no business on it.

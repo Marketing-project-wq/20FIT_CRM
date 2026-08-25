@@ -1,7 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { SEND_ACTION } from "./send-constants";
-import { EXPORT_ACTION } from "./export-constants";
 import { classifyAction } from "./retention-policy";
+
+// The export FEATURE was removed (nav rebuild), but its compliance classification MUST survive: if an
+// `export.*` action ever reappears it has to land in `compliance`, not fall between the lists (TUGAS 2).
+// This is the exact string the old export path wrote; export-constants.ts is gone, so it's inlined.
+const EXPORT_ACTION = "export.performed";
 
 /**
  * PARITY: the send audit action must classify as COMPLIANCE (retained permanently) — never land in

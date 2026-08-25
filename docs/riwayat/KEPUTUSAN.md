@@ -889,3 +889,22 @@ tersimpan yang tak-aktif ke `null`.
 `getCurrentUserRole()` menjalankan tiap nilai tersimpan lewat `effectiveRole()`; test mengunci ini
 (retired → `null` → ditolak di setiap aksi). Tidak ada baris `crm_user_role` yang dihapus — ketiga
 akun produksi `super_admin`, aman.
+
+## K-45 · Ekspor CSV dihapus sepenuhnya — permukaan dipersempit, unsubscribe dihormati di semua jalur keluar
+
+**Keputusan pemilik produk (25 Agu 2026):** buang fitur ekspor CSV (menu Exports + tombol per-kategori
+di Dashboard). Inti sistem: mengelola audiens dan **mengirim pesan langsung**, bukan memindahkan data
+audiens ke sistem lain.
+
+**Alasan tambahan (keamanan):** ekspor CSV adalah **satu-satunya jalur keluar data yang tak menghormati
+unsubscribe** — begitu berkas terunduh ia beredar tanpa gerbang. Semua jalur keluar lain (kirim)
+memeriksa suppression saat kirim. Menghapus ekspor mempersempit permukaan paparan.
+
+**Yang TIDAK ikut mati (append-only / paritas):** baris audit `export.performed` (bukti permanen bahwa
+ekspor pernah terjadi); klasifikasi kepatuhan `export.%` di migrasi 8 / `retention-policy.ts` (bila
+prefiks itu muncul lagi ia harus mendarat di kelas benar); aksi RBAC `export.*` tetap di matriks
+(paritas PRD 17.2, seperti peran pensiunan di K-44). Enforcement (route + ambang) yang mati, bukan
+definisinya.
+
+**Penyusun kriteria tetap hidup** di Campaigns (komponen bersama `SegmentBuilder`); yang dibuang titik
+pasangnya di Exports, bukan komponennya — dan komponen itu justru membaik (rombak Campaigns).

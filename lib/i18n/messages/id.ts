@@ -45,7 +45,6 @@ export const id = {
     messages: "Messages",
     consent: "Consent",
     quality: "Quality",
-    exports: "Exports",
     settings: "Settings",
     darkMode: "Mode gelap",
     lightMode: "Mode terang",
@@ -153,13 +152,7 @@ export const id = {
     coverageNeither: "Tak punya keduanya",
     coveragePhoneNote: "“Telepon” = nomor telepon tersimpan. Status WhatsApp BELUM diverifikasi — jangan susun kampanye WhatsApp di atas angka ini. “Tak punya keduanya” = 0 terukur (bukan disembunyikan).",
     // Ekspor per kategori cakupan kontak → lewat mesin ekspor segmen yang sudah ada.
-    coverageExportTitle: "Ekspor CSV per kategori",
-    coverageExportBtn: "Ekspor",
-    coverageExportBusy: "Mengekspor…",
-    coverageExportEmpty: "0 — tak ada yang bisa diekspor",
     coveragePhoneOnlyWarn: "Kategori “telepon saja” tak punya email — daftar ini tak bisa dipakai untuk kampanye email.",
-    coverageExportNote: "Ekspor lewat mesin segmen yang sama: suppression dikecualikan, gerbang peran berlaku, NIK & data klinis tak pernah masuk berkas, dan jumlah baris nyata ditulis di akhir berkas.",
-    coverageExportFailed: "Ekspor gagal.",
     // D redesign — satu kartu ringkas (pool + jangkauan), tabel selisih, kartu kandidat, Fitco.
     summaryTitle: "Pool & jangkauan",
     summaryPoolLabel: "Pool CRM (master_customer)",
@@ -442,7 +435,7 @@ export const id = {
   // an optional lang (default "id") so old tests are untouched. Nuance-bearing warnings live under
   // segments.warn.* (guarded). Numbers/counts are interpolated by the component, not stored here.
   segments: {
-    subtitleA: "Susun kriteria, lihat jumlahnya, ubah, lihat lagi. Tidak ada yang disimpan — tanpa tabel, tanpa nama segmen. Penyimpanan ditunda.",
+    subtitleA: "Susun kriteria, hitung jumlahnya, lalu simpan definisinya (kriteria, bukan daftar orang) untuk dipakai di Campaigns.",
     criteriaTitle: "Kriteria",
     aiTitle: "Asisten AI",
     aiOptional: "pintasan opsional",
@@ -492,8 +485,6 @@ export const id = {
     stagingHidden: "disembunyikan —",
     computeBtn: "Hitung",
     computing: "Menghitung…",
-    exportBtn: "Ekspor CSV",
-    exporting: "Mengekspor…",
     savePlaceholder: "Nama segmen",
     saveBtn: "Simpan segmen",
     saving: "Menyimpan…",
@@ -510,7 +501,6 @@ export const id = {
     openConsent: "Buka Consent",
     computeFailed: "Gagal menghitung",
     connFailed: "Gagal terhubung ke server.",
-    exportFailed: "Gagal mengekspor",
     proposeFailed: "Gagal mengusulkan",
     // ── filter tree builder ──
     treeIntro: "Semua baris digabung dengan DAN. Sebuah baris bisa berupa satu kondisi, atau grup ATAU (mis. “punya email ATAU punya telepon”). Maks 2 tingkat, 12 kondisi.",
@@ -629,8 +619,6 @@ export const id = {
       cityC: " dari ",
       cityD: "). Menyaring kota atas data yang ±93% kosong hanya menyaring “orang yang kotanya kebetulan tercatat” — hasilnya tampak tegas tapi menyesatkan.",
       // Export note. Nuance: the EOF row is the completeness proof; a truncated file must not be trusted.
-      exportNoteA: "Ekspor mengalirkan CSV (suppression dikecualikan, tanpa NIK / data klinis). Berkas diakhiri baris ",
-      exportNoteB: " — jika baris itu tak ada, unduhan terpotong & jangan dipakai sebagai data lengkap.",
       // Small-segment warning. Nuance at risk: below 25, a segment shifts from aggregate to individual
       // disclosure; the count is still shown (hiding 0 hides the measured), but not an anonymous aggregate.
       smallSegmentA: "Segmen sangat kecil (",
@@ -971,7 +959,7 @@ export const id = {
       issue_orphan:
         "Baris di customer_orphan — data yang tidak bisa dikaitkan ke satu profil master.",
       issue_excluded:
-        "Baris di customer_excluded. Jumlahnya besar dan alasan pengecualian belum ditinjau ulang di sprint ini.",
+        "Baris di customer_excluded. Jumlahnya besar dan alasan pengecualian belum ditinjau ulang.",
       satellite_demographic: "Tabel sudah ada, belum diisi — ingestion masih ditahan.",
       satellite_behavior:
         "Belum diisi. Sumber perilaku yang tersedia masih terlarang sampai diremediasi.",
@@ -1055,7 +1043,6 @@ export const id = {
     phase4: "Fase 4",
     campaigns: "Kampanye manual: pilih segmen, pilih template, lihat estimasi biaya, minta persetujuan, kirim.",
     messages: "Log setiap pengiriman — kanal, status, dan alasan pemblokiran yang selalu terlihat.",
-    exports: "Riwayat ekspor dengan pemohon, tujuan, jumlah baris, dan status persetujuan.",
     templates: "Register template WhatsApp dan email dengan status persetujuan Meta dan kategori.",
     workflows: "Mesin workflow marketing dengan sembilan guard. Diblokir sampai consent register aktif.",
   },
@@ -1129,10 +1116,6 @@ export const id = {
     limit2: "Konfirmasi kedua wajib di atas 500 penerima.",
     limit3: "Auto-stop bila bounce keras melewati 5% (disetujui 24 Agu).",
     suppressionNote: "Suppression diperiksa SAAT KIRIM, bukan saat segmen dihitung — unsubscribe yang masuk di antaranya tetap dihormati.",
-    templatesActive: "Template email aktif",
-    templatesNone: "Belum ada template email aktif — buat dulu di Templates.",
-    pendingTitle: "Form kirim langsung menyusul",
-    pendingBody: "Menyusun-dan-kirim di layar menyusul setelah segmen bisa disimpan dan kedua prasyarat kirim terpenuhi. Jalur kirim sendiri sudah dibangun dan teruji.",
     composer: {
       title: "Susun kirim",
       segmentLabel: "Segmen tersimpan",

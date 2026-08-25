@@ -51,13 +51,13 @@ export default function PreviewCampaign() {
 
           <div className="rounded-sm bg-glass px-3 py-2">
             <p className="font-display text-[13px] font-bold text-ink">Bagian 2 — kriteria bertingkat (Demografi · Kontak · Perilaku), asisten AI opsional di atas, catatan kejujuran di “Kenapa?”</p>
-            <p className="font-body text-[12px] text-ink-soft">Komponen bersama yang sama dipasang di langkah 1 “Buat segmen baru” dan di Exports.</p>
+            <p className="font-body text-[12px] text-ink-soft">Komponen bersama yang sama dipasang di langkah 1 “Buat segmen baru”.</p>
           </div>
           <div className="flex items-center gap-2">
             <Badge tone="neutral">Embedded</Badge>
             <span className="font-body text-[12px] text-ink-soft">SegmentBuilder tanpa judul kedua (embedded), grup menurut pertanyaan.</span>
           </div>
-          <SegmentBuilder embedded cityFillPct={7.03} cityFilled={5782} total={82253} canViewHealth canExport={false} />
+          <SegmentBuilder embedded cityFillPct={7.03} cityFilled={5782} total={82253} canViewHealth />
         </div>
       </AppShell>
     </LangProvider>
