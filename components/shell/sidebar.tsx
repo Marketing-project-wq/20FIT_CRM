@@ -81,7 +81,7 @@ function SidebarControls({ initialTheme, userEmail }: { initialTheme: Theme; use
   return (
     <div className="space-y-2 border-t border-sidebar-border p-3">
       <LangSwitcher />
-      <ThemeToggle initialTheme={initialTheme} />
+      <ThemeToggle initialTheme={initialTheme} labels={{ toDark: t.nav.darkMode, toLight: t.nav.lightMode }} />
       <div className="flex items-center justify-between gap-2 px-3">
         <span className="min-w-0 truncate font-mono text-[11px] text-ink-faint" title={userEmail}>
           {userEmail}

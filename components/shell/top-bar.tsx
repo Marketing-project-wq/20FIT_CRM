@@ -18,7 +18,7 @@ export function TopBar({ userEmail, initialTheme }: { userEmail: string; initial
   return (
     <div className="sticky top-0 z-20 hidden h-14 items-center justify-end gap-2 border-b border-surface-border bg-topbar px-6 backdrop-blur-glass md:flex">
       <LangSwitcher />
-      <ThemeToggle initialTheme={initialTheme} />
+      <ThemeToggle initialTheme={initialTheme} labels={{ toDark: t.nav.darkMode, toLight: t.nav.lightMode }} />
       <div className="mx-1 h-5 w-px bg-surface-border" aria-hidden />
       <span className="max-w-[16rem] truncate font-mono text-[11px] text-ink-faint" title={userEmail}>
         {userEmail}
