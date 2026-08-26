@@ -56,7 +56,7 @@ export default async function CampaignsPage({
   const { t } = getServerDict();
   const c = t.campaignsPage;
   const { tab: rawTab } = await searchParams;
-  const tab = rawTab === "segmen" ? "segmen" : rawTab === "uji" ? "uji" : "kirim";
+  const tab = rawTab === "segmen" ? "segmen" : "kirim";
 
   if (grantFor(role, "send.at_or_below_threshold") === "deny") {
     return (
@@ -88,7 +88,6 @@ export default async function CampaignsPage({
   const tabs = [
     { key: "kirim", label: c.tabKirim, href: "/campaigns?tab=kirim" },
     { key: "segmen", label: c.tabSegmen, href: "/campaigns?tab=segmen" },
-    { key: "uji", label: c.tabUji, href: "/campaigns?tab=uji" },
   ];
 
   return (
@@ -165,16 +164,6 @@ export default async function CampaignsPage({
           canViewHealth={canViewHealth}
           canBuild={canBuild}
         />
-      )}
-
-      {/* ── TAB: UJI KIRIM ── */}
-      {tab === "uji" && (
-        <div className="flex flex-col gap-6">
-          <TestRecipientsPanel initial={testRecipients} />
-          <div className="rounded-card border border-dashed border-glass-border p-1">
-            <SendTestPanel />
-          </div>
-        </div>
       )}
     </div>
   );

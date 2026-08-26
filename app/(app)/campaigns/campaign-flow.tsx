@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Check, Lock, Users, Mail, Send, MessageCircle, ExternalLink } from "lucide-react";
+import { Check, Lock, Users, Mail, Send, MessageCircle, ExternalLink, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useI18n } from "@/components/i18n/lang-provider";
@@ -41,9 +41,8 @@ const selectCls =
   "h-10 w-full rounded-sm border border-glass-border bg-glass px-3 font-body text-[14px] text-ink focus:outline-none focus:ring-2 focus:ring-red";
 
 /**
- * Campaign flow — four steps: Kanal → Siapa → Pesan → Kirim.
- * Step 1 (Siapa) is a simple dropdown of saved segments.
- * Building segments lives at /segments — not embedded here.
+ * Campaign flow — five steps:
+ * 0 Kanal → 1 Siapa → 2 Pesan → 3 Review (preview + uji kirim ke admin) → 4 Kirim ke audiens
  */
 export function CampaignFlow({
   segments,
@@ -55,7 +54,6 @@ export function CampaignFlow({
   templates: TemplateOption[];
   realSend: boolean;
   testRecipients?: TestRecipient[];
-  // builder prop accepted but unused — page.tsx still passes it
   builder: { cityFillPct: number; cityFilled: number; total: number; canViewHealth: boolean; canBuild: boolean };
 }) {
   const { lang, t } = useI18n();
@@ -77,13 +75,14 @@ export function CampaignFlow({
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<SendResult | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [open, setOpen] = useState<0 | 1 | 2 | 3>(0);
+  const [open, setOpen] = useState<0 | 1 | 2 | 3 | 4>(0);
 
   const segment = segments.find((s) => s.id === segmentId) ?? null;
   const template = templates.find((tp) => tp.key === templateKey) ?? null;
   const step0Done = channel === "email";
   const step1Done = !!segment;
-  const step2Done = !!(preview && preview.ok);
+  const step2Done = !!(template);
+  const step3Done = !!(preview?.ok);
 
   const errText = (e: PreviewResult["error"] | SendResult["error"]): string => {
     switch (e) {
@@ -123,7 +122,6 @@ export function CampaignFlow({
       setRunsLoading(true);
       const r = await listRunsAction(segmentId, templateKey);
       setRuns(r.ok ? r.runs ?? [] : []);
-      setOpen(3);
     } finally { setPreviewing(false); setRunsLoading(false); }
   }
 
@@ -161,7 +159,7 @@ export function CampaignFlow({
       : <Badge tone="neutral">{cc.runStatusDraft}</Badge>;
 
   function Step({ n, title, done, locked, summary, children }: {
-    n: 0 | 1 | 2 | 3; title: string; done: boolean; locked: boolean; summary?: string; children: React.ReactNode;
+    n: 0 | 1 | 2 | 3 | 4; title: string; done: boolean; locked: boolean; summary?: string; children: React.ReactNode;
   }) {
     const isOpen = open === n && !locked;
     return (
@@ -234,7 +232,6 @@ export function CampaignFlow({
             <Users className="h-4 w-4" aria-hidden />
             <p className="font-body text-[13px]">{c.step1Hint}</p>
           </div>
-
           {segments.length === 0 ? (
             <div className="flex flex-col gap-3">
               <p className="font-body text-[13px] text-ink-soft">{cc.noSegments}</p>
@@ -248,9 +245,7 @@ export function CampaignFlow({
               <label className="flex flex-col gap-1.5">
                 <span className="font-body text-[12px] font-semibold text-ink-soft">{c.step1SegmentLabel}</span>
                 <Select value={segmentId} onValueChange={pickSegment}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="—" />
-                  </SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
                   <SelectContent>
                     {segments.map((s) => (
                       <SelectItem key={s.id} value={s.id}>
@@ -266,7 +261,6 @@ export function CampaignFlow({
               </Link>
             </div>
           )}
-
           {segment && (
             <div className="flex justify-end">
               <Button size="sm" onClick={() => setOpen(2)}>{c.toStep2}</Button>
@@ -277,7 +271,7 @@ export function CampaignFlow({
 
       {/* STEP 2 · PESAN */}
       <Step n={2} title={c.step2Title} done={step2Done} locked={!step1Done}
-        summary={template ? `${template.name}${preview?.ok ? ` · ${fmt(preview.sendable ?? 0)} ${c.step2SummarySuffix}` : ""}` : undefined}
+        summary={template ? template.name : undefined}
       >
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-2 text-ink-soft">
@@ -292,16 +286,13 @@ export function CampaignFlow({
               <Select value={templateKey} onValueChange={(v) => {
                 setTemplateKey(v); setPreview(null); setRunSel(null); setResult(null);
               }}>
-                <SelectTrigger>
-                  <SelectValue placeholder="—" />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
                 <SelectContent>
                   {templates.map((tp) => <SelectItem key={tp.key} value={tp.key}>{tp.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </label>
           )}
-
           {template && (
             <div className="rounded-card border border-glass-border p-4">
               <p className="font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">{c.step2PreviewLabel}</p>
@@ -309,10 +300,28 @@ export function CampaignFlow({
               <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap font-body text-[12px] leading-relaxed text-ink-soft">{template.body}</pre>
             </div>
           )}
+          {template && (
+            <div className="flex justify-end">
+              <Button size="sm" onClick={() => setOpen(3)}>{c.toStep3}</Button>
+            </div>
+          )}
+        </div>
+      </Step>
 
+      {/* STEP 3 · REVIEW — preview jumlah audiens + uji kirim ke admin */}
+      <Step n={3} title={c.step3Title} done={step3Done} locked={!step2Done}
+        summary={preview?.ok ? `${fmt(preview.sendable ?? 0)} ${c.step3SummarySuffix}` : undefined}
+      >
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center gap-2 text-ink-soft">
+            <Eye className="h-4 w-4" aria-hidden />
+            <p className="font-body text-[13px]">{c.step3Hint}</p>
+          </div>
+
+          {/* Hitung audiens */}
           <div>
             <Button size="sm" onClick={onPreview} disabled={!segmentId || !templateKey || previewing}>
-              {previewing ? cc.previewing : c.step2CountBtn}
+              {previewing ? cc.previewing : c.step3CountBtn}
             </Button>
           </div>
 
@@ -325,33 +334,30 @@ export function CampaignFlow({
             </div>
           )}
 
-          {/* Uji kirim ke admin sebelum kirim ke audiens luas */}
-          {preview?.ok && (
-            <details className="rounded-card border border-glass-border p-4">
-              <summary className="cursor-pointer select-none font-display text-[12px] font-bold uppercase tracking-wide text-ink-soft">
-                {c.step2TestTitle}
-              </summary>
-              <div className="mt-4">
-                <SendTestPanel />
-              </div>
-            </details>
-          )}
+          {notice && !preview?.ok && <p role="alert" className="font-body text-[13px] text-red">{notice}</p>}
+
+          {/* Uji kirim ke admin */}
+          <div className="rounded-card border border-glass-border p-4">
+            <p className="font-display text-[12px] font-bold uppercase tracking-wide text-ink-soft mb-3">{c.step3TestTitle}</p>
+            <SendTestPanel />
+          </div>
 
           {preview?.ok && (
-            <div><Button size="sm" onClick={() => setOpen(3)}>{c.toStep3}</Button></div>
+            <div className="flex justify-end">
+              <Button size="sm" onClick={() => setOpen(4)}>{c.toStep4}</Button>
+            </div>
           )}
-          {notice && !preview?.ok && <p role="alert" className="font-body text-[13px] text-red">{notice}</p>}
         </div>
       </Step>
 
-      {/* STEP 3 · KIRIM */}
-      <Step n={3} title={c.step3Title} done={!!result?.ok} locked={!step2Done}
-        summary={result?.ok && result.summary ? `${fmt(result.summary.sent)} ${c.step3SummarySuffix}` : undefined}
+      {/* STEP 4 · KIRIM ke audiens */}
+      <Step n={4} title={c.step4Title} done={!!result?.ok} locked={!step3Done}
+        summary={result?.ok && result.summary ? `${fmt(result.summary.sent)} ${c.step4SummarySuffix}` : undefined}
       >
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-2 text-ink-soft">
             <Send className="h-4 w-4" aria-hidden />
-            <p className="font-body text-[13px]">{c.step3Hint}</p>
+            <p className="font-body text-[13px]">{c.step4Hint}</p>
           </div>
 
           {preview?.spread?.exceedsToday && (
