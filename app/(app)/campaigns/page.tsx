@@ -13,10 +13,7 @@ import { extractVariables } from "@/lib/crm/template";
 import { isInternalTestTemplateKey } from "@/lib/crm/send-test-constants";
 import { loadCityFill } from "@/lib/crm/city-fill";
 import { CampaignFlow, type TemplateOption } from "./campaign-flow";
-import { SendTestPanel } from "./send-test-panel";
 import { SegmentsTab } from "./segments-tab";
-import { TestRecipientsPanel } from "./test-recipients-panel";
-import { listTestRecipientsAction } from "./test-recipient-actions";
 
 export const metadata: Metadata = { title: "Campaigns" };
 export const dynamic = "force-dynamic";
@@ -73,11 +70,10 @@ export default async function CampaignsPage({
   const enabled = realSendEnabled();
   const canBuild = isPermitted(role, "segment.build");
   const canViewHealth = isPermitted(role, "profile.view_health");
-  const [segments, templates, cityFill, testRecipients] = await Promise.all([
+  const [segments, templates, cityFill] = await Promise.all([
     listSegments(),
     loadEligibleTemplates(),
     canBuild ? loadCityFill() : Promise.resolve({ total: 0, cityFilled: 0, cityFillPct: 0 }),
-    listTestRecipientsAction().then((r) => r.recipients),
   ]);
 
   const noTemplate = templates.length === 0;
@@ -124,7 +120,6 @@ export default async function CampaignsPage({
             segments={segments.map((s) => ({ id: s.id, name: s.name, requiresClinical: s.requiresClinical }))}
             templates={templates}
             realSend={enabled}
-            testRecipients={testRecipients}
             builder={{ cityFillPct: cityFill.cityFillPct, cityFilled: cityFill.cityFilled, total: cityFill.total, canViewHealth, canBuild }}
           />
           <details className="glass-strong rounded-card p-5">

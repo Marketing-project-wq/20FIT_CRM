@@ -8,7 +8,6 @@ import { Badge } from "@/components/ui/badge";
 import { useI18n } from "@/components/i18n/lang-provider";
 import { formatCount } from "@/lib/i18n";
 import { SendTestPanel } from "./send-test-panel";
-import type { TestRecipient } from "./test-recipient-actions";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -48,12 +47,10 @@ export function CampaignFlow({
   segments,
   templates,
   realSend,
-  testRecipients = [],
 }: {
   segments: SegmentOption[];
   templates: TemplateOption[];
   realSend: boolean;
-  testRecipients?: TestRecipient[];
   builder: { cityFillPct: number; cityFilled: number; total: number; canViewHealth: boolean; canBuild: boolean };
 }) {
   const { lang, t } = useI18n();
