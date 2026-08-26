@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { X, Save, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 
 interface Template {
   template_key?: string;
@@ -18,7 +17,7 @@ interface EmailTemplateBuilderProps {
 }
 
 export function EmailTemplateBuilder({ template, onClose }: EmailTemplateBuilderProps) {
-  const [mode, setMode] = useState<"visual" | "html">("visual");
+  const [mode, setMode] = useState<"html" | "preview">("html");
   const [senderName, setSenderName] = useState(template?.sender_name || "20FIT");
   const [subject, setSubject] = useState(template?.subject || "");
   const [htmlContent, setHtmlContent] = useState(
@@ -36,26 +35,21 @@ export function EmailTemplateBuilder({ template, onClose }: EmailTemplateBuilder
 </body>
 </html>`
   );
-  const [showPreview, setShowPreview] = useState(false);
 
   const injectUnsubscribeLink = (html: string): string => {
     const unsubLink = `<p style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; font-size: 12px; color: #666;">
   <a href="{{unsubscribe_url}}" style="color: #666;">Berhenti berlangganan</a>
 </p>`;
-
-    // Cek apakah sudah ada unsubscribe link
-    if (html.includes("{{unsubscribe_url}}")) {
-      return html;
-    }
-
-    // Inject sebelum closing </body> tag
-    if (html.includes("</body>")) {
-      return html.replace("</body>", `${unsubLink}\n</body>`);
-    }
-
-    // Jika tidak ada </body>, tambahkan di akhir
+    if (html.includes("{{unsubscribe_url}}")) return html;
+    if (html.includes("</body>")) return html.replace("</body>", `${unsubLink}\n</body>`);
     return html + unsubLink;
   };
+
+  const previewHtml = injectUnsubscribeLink(htmlContent)
+    .replace(/\{\{first_name\}\}/g, "Andi")
+    .replace(/\{\{last_name\}\}/g, "Wijaya")
+    .replace(/\{\{email\}\}/g, "andi@example.com")
+    .replace(/\{\{unsubscribe_url\}\}/g, "/unsubscribe?email=andi%40example.com&template=preview");
 
   const handleSave = async () => {
     const finalHtml = injectUnsubscribeLink(htmlContent);
@@ -92,145 +86,90 @@ export function EmailTemplateBuilder({ template, onClose }: EmailTemplateBuilder
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="flex h-full max-h-[90vh] w-full max-w-5xl flex-col rounded-lg bg-surface shadow-xl">
-        {/* Header */}
         <div className="flex items-center justify-between border-b border-glass-border px-6 py-4">
           <div>
             <h2 className="font-display text-[18px] font-bold text-ink">
               {template ? "Edit Email Template" : "Buat Email Template"}
             </h2>
             <p className="mt-1 font-body text-[12px] text-ink-soft">
-              Template akan otomatis menyertakan link unsubscribe
+              Link unsubscribe ditambahkan otomatis di footer
             </p>
           </div>
-          <button
-            onClick={onClose}
-            className="rounded p-2 hover:bg-glass"
-          >
+          <button onClick={onClose} className="rounded p-2 hover:bg-glass">
             <X className="h-5 w-5 text-ink-soft" />
           </button>
         </div>
 
-        {/* Body */}
         <div className="flex flex-1 flex-col gap-4 overflow-auto p-6">
-          {/* Sender Name */}
-          <div>
-            <label className="mb-2 block font-display text-[13px] font-bold text-ink">
-              Sender Name
-            </label>
-            <input
-              type="text"
-              value={senderName}
-              onChange={(e) => setSenderName(e.target.value)}
-              className="w-full rounded-md border border-glass-border bg-glass px-3 py-2 font-body text-[14px] text-ink focus:border-ink focus:outline-none"
-              placeholder="20FIT"
-            />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="mb-2 block font-display text-[13px] font-bold text-ink">Sender Name</label>
+              <input
+                type="text"
+                value={senderName}
+                onChange={(e) => setSenderName(e.target.value)}
+                className="w-full rounded-md border border-glass-border bg-glass px-3 py-2 font-body text-[14px] text-ink focus:border-ink focus:outline-none"
+                placeholder="20FIT"
+              />
+            </div>
+            <div>
+              <label className="mb-2 block font-display text-[13px] font-bold text-ink">
+                Subject <span className="text-red">*</span>
+              </label>
+              <input
+                type="text"
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                className="w-full rounded-md border border-glass-border bg-glass px-3 py-2 font-body text-[14px] text-ink focus:border-ink focus:outline-none"
+                placeholder="Subject email Anda"
+              />
+            </div>
           </div>
+          <p className="font-mono text-[11px] text-ink-faint">
+            Variabel: {"{{first_name}}"}, {"{{last_name}}"}, {"{{email}}"}
+          </p>
 
-          {/* Subject */}
-          <div>
-            <label className="mb-2 block font-display text-[13px] font-bold text-ink">
-              Subject <span className="text-red">*</span>
-            </label>
-            <input
-              type="text"
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              className="w-full rounded-md border border-glass-border bg-glass px-3 py-2 font-body text-[14px] text-ink focus:border-ink focus:outline-none"
-              placeholder="Subject email Anda"
-            />
-            <p className="mt-1 font-mono text-[11px] text-ink-faint">
-              Gunakan variabel: {"{{first_name}}"}, {"{{last_name}}"}, {"{{email}}"}
-            </p>
-          </div>
-
-          {/* Editor Mode Toggle */}
           <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant={mode === "visual" ? "primary" : "outline"}
-              onClick={() => setMode("visual")}
-            >
-              Visual
-            </Button>
-            <Button
-              size="sm"
-              variant={mode === "html" ? "primary" : "outline"}
-              onClick={() => setMode("html")}
-            >
+            <Button size="sm" variant={mode === "html" ? "primary" : "outline"} onClick={() => setMode("html")}>
               HTML
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setShowPreview(!showPreview)}
-            >
-              <Eye className="h-4 w-4" />
+            <Button size="sm" variant={mode === "preview" ? "primary" : "outline"} onClick={() => setMode("preview")}>
+              <Eye className="mr-1 h-4 w-4" />
               Preview
             </Button>
           </div>
 
-          {/* Editor */}
-          {mode === "visual" ? (
-            <div className="rounded-md border border-glass-border bg-glass p-4">
-              <Badge tone="amber" className="mb-4">
-                Visual editor coming soon
-              </Badge>
-              <p className="font-body text-[13px] text-ink-soft">
-                Untuk sementara, gunakan mode HTML untuk mengedit template.
-              </p>
-            </div>
+          {mode === "html" ? (
+            <textarea
+              value={htmlContent}
+              onChange={(e) => setHtmlContent(e.target.value)}
+              className="h-[440px] w-full rounded-md border border-glass-border bg-glass p-3 font-mono text-[12px] text-ink focus:border-ink focus:outline-none"
+              placeholder="<!DOCTYPE html>..."
+            />
           ) : (
-            <div>
-              <label className="mb-2 block font-display text-[13px] font-bold text-ink">
-                HTML Content
-              </label>
-              <textarea
-                value={htmlContent}
-                onChange={(e) => setHtmlContent(e.target.value)}
-                className="h-[400px] w-full rounded-md border border-glass-border bg-glass p-3 font-mono text-[12px] text-ink focus:border-ink focus:outline-none"
-                placeholder="<!DOCTYPE html>..."
-              />
-            </div>
-          )}
-
-          {/* Preview */}
-          {showPreview && (
-            <div className="rounded-md border border-glass-border bg-white p-6">
-              <h3 className="mb-4 font-display text-[13px] font-bold text-ink">
-                Preview
-              </h3>
-              <div className="border-t border-glass-border pt-4">
-                <div className="mb-2 text-[11px] text-ink-faint">
-                  <strong>From:</strong> {senderName} &lt;noreply@20fit.id&gt;
-                </div>
-                <div className="mb-4 text-[11px] text-ink-faint">
-                  <strong>Subject:</strong> {subject || "(no subject)"}
-                </div>
-                <iframe
-                  srcDoc={injectUnsubscribeLink(htmlContent)
-                    .replace("{{first_name}}", "Andi")
-                    .replace("{{last_name}}", "Wijaya")
-                    .replace("{{email}}", "andi@example.com")
-                    .replace("{{unsubscribe_url}}", "/unsubscribe?email=andi@example.com&template=123")}
-                  className="h-[400px] w-full border border-glass-border"
-                  title="Email Preview"
-                />
+            <div className="flex flex-col gap-2 rounded-md border border-glass-border bg-white p-4">
+              <div className="font-mono text-[11px] text-ink-faint">
+                <strong>From:</strong> {senderName} &lt;noreply@20fit.id&gt;
+                {" · "}
+                <strong>Subject:</strong> {subject || "(no subject)"}
               </div>
+              <iframe
+                key={previewHtml}
+                srcDoc={previewHtml}
+                sandbox="allow-same-origin"
+                className="h-[400px] w-full rounded border border-glass-border bg-white"
+                title="Email Preview"
+              />
             </div>
           )}
         </div>
 
-        {/* Footer */}
         <div className="flex items-center justify-between border-t border-glass-border px-6 py-4">
-          <p className="font-mono text-[11px] text-ink-faint">
-            Link unsubscribe akan ditambahkan otomatis di footer
-          </p>
+          <p className="font-mono text-[11px] text-ink-faint">Link unsubscribe akan ditambahkan otomatis di footer</p>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose}>
-              Batal
-            </Button>
+            <Button variant="outline" onClick={onClose}>Batal</Button>
             <Button onClick={handleSave} disabled={!subject.trim()}>
-              <Save className="h-4 w-4" />
+              <Save className="mr-1 h-4 w-4" />
               Simpan Template
             </Button>
           </div>

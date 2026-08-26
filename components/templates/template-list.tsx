@@ -18,6 +18,7 @@ interface Template {
   version: number;
   wa_approval_status: string;
   created_at: string;
+  body?: string;  // Added for edit mode
 }
 
 interface TemplateListProps {
@@ -29,6 +30,7 @@ export function TemplateList({ templates, lang }: TemplateListProps) {
   const [showEmailBuilder, setShowEmailBuilder] = useState(false);
   const [showWhatsAppBuilder, setShowWhatsAppBuilder] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
+  const [isLoadingEdit, setIsLoadingEdit] = useState(false);
 
   const emailTemplates = templates.filter((t) => t.channel === "email");
   const whatsappTemplates = templates.filter((t) => t.channel === "whatsapp");
@@ -109,9 +111,22 @@ export function TemplateList({ templates, lang }: TemplateListProps) {
                       <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                         <button
                           className="rounded p-1 hover:bg-glass"
-                          onClick={() => {
-                            setEditingTemplate(tpl);
-                            setShowEmailBuilder(true);
+                          disabled={isLoadingEdit}
+                          onClick={async () => {
+                            setIsLoadingEdit(true);
+                            try {
+                              const res = await fetch(`/api/templates?id=${tpl.id}`);
+                              if (!res.ok) throw new Error("Failed to fetch template");
+
+                              const { template } = await res.json();
+                              setEditingTemplate(template);
+                              setShowEmailBuilder(true);
+                            } catch (err) {
+                              console.error("Failed to load template:", err);
+                              alert("Failed to load template for editing");
+                            } finally {
+                              setIsLoadingEdit(false);
+                            }
                           }}
                         >
                           <Edit className="h-3.5 w-3.5 text-ink-soft" />
@@ -166,9 +181,22 @@ export function TemplateList({ templates, lang }: TemplateListProps) {
                       <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                         <button
                           className="rounded p-1 hover:bg-glass"
-                          onClick={() => {
-                            setEditingTemplate(tpl);
-                            setShowWhatsAppBuilder(true);
+                          disabled={isLoadingEdit}
+                          onClick={async () => {
+                            setIsLoadingEdit(true);
+                            try {
+                              const res = await fetch(`/api/templates?id=${tpl.id}`);
+                              if (!res.ok) throw new Error("Failed to fetch template");
+
+                              const { template } = await res.json();
+                              setEditingTemplate(template);
+                              setShowWhatsAppBuilder(true);
+                            } catch (err) {
+                              console.error("Failed to load template:", err);
+                              alert("Failed to load template for editing");
+                            } finally {
+                              setIsLoadingEdit(false);
+                            }
                           }}
                         >
                           <Edit className="h-3.5 w-3.5 text-ink-soft" />

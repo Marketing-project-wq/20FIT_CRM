@@ -4,6 +4,39 @@ import { getCurrentUserRole } from "@/lib/auth/current-role";
 import { grantFor } from "@/lib/auth/roles";
 
 /**
+ * GET /api/templates?id=<uuid> — fetch a single template by ID (for editing).
+ */
+export async function GET(req: NextRequest) {
+  try {
+    const role = await getCurrentUserRole();
+    if (grantFor(role, "workflow.create") === "deny") {
+      return NextResponse.json({ error: "Access denied" }, { status: 403 });
+    }
+
+    const id = req.nextUrl.searchParams.get("id");
+    if (!id) {
+      return NextResponse.json({ error: "Missing id parameter" }, { status: 400 });
+    }
+
+    const admin = createAdminClient();
+    const { data, error } = await admin
+      .from("crm_message_template")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (error || !data) {
+      return NextResponse.json({ error: "Template not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({ template: data });
+  } catch (err) {
+    console.error("Template fetch error:", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+/**
  * POST /api/templates — save a new template (email or WhatsApp).
  * Creates a new version (INSERT only, no UPDATE) following crm_message_template immutability.
  */

@@ -984,12 +984,25 @@ export const en: Messages = {
   // Campaigns console (send path) — compose flow + pre-launch block. Born bilingual.
   campaignsPage: {
     subtitle: "Compose a send: pick a segment, pick a template, see recipients after suppression, confirm, send.",
+    tabKirim: "Send",
+    tabSegmen: "Segments",
+    tabUji: "Test Send",
     deniedRole: "Your role has no access to compose a send.",
     blockNoTemplateTitle: "No active email template yet",
     blockNoTemplateBody: "The send flow stops here until there is an active template carrying an unsubscribe link. Create one in Templates first.",
     blockHostTitle: "Unsubscribe link domain doesn't match the host",
     blockHostBody: "The unsubscribe link would point at a different domain than the host serving the app — the send would be refused. Set NEXT_PUBLIC_APP_URL to the right host first.",
     docsTitle: "How it works & limits (explanation, not controls)",
+    segmentsTab: {
+      savedTitle: "Saved segments",
+      savedEmpty: "No saved segments yet. Build a new one below.",
+      deleteLabel: "Delete segment",
+      deleteConfirm: "Delete segment",
+      deleteOk: "Segment deleted.",
+      deleteFailed: "Failed to delete segment.",
+      buildTitle: "Build a new segment",
+      buildHint: "Compose audience criteria, count how many match, then save. Saved segments appear in the list above and can be selected when sending a campaign.",
+    },
     steps: {
       step0Title: "Channel",
       step0Hint: "Pick the communication channel for this campaign.",

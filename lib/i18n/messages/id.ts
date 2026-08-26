@@ -1077,12 +1077,25 @@ export const id = {
   // Campaigns console (send path) — compose flow + pre-launch block. Born bilingual.
   campaignsPage: {
     subtitle: "Susun kirim: pilih segmen, pilih template, lihat penerima setelah suppression, konfirmasi, kirim.",
+    tabKirim: "Kirim",
+    tabSegmen: "Segmen",
+    tabUji: "Uji Kirim",
     deniedRole: "Peran Anda tidak memiliki akses untuk menyusun pengiriman.",
     blockNoTemplateTitle: "Belum ada template email aktif",
     blockNoTemplateBody: "Alur kirim berhenti di sini sampai ada template aktif yang memuat tautan unsubscribe. Buat dulu di Templates.",
     blockHostTitle: "Domain tautan unsubscribe tak cocok dengan host",
     blockHostBody: "Tautan unsubscribe akan menunjuk domain yang berbeda dari host yang menyajikan aplikasi — kirim akan ditolak. Setel NEXT_PUBLIC_APP_URL ke host yang benar dulu.",
     docsTitle: "Cara kerja & batas (penjelasan, bukan kontrol)",
+    segmentsTab: {
+      savedTitle: "Segmen tersimpan",
+      savedEmpty: "Belum ada segmen tersimpan. Buat segmen baru di bawah.",
+      deleteLabel: "Hapus segmen",
+      deleteConfirm: "Hapus segmen",
+      deleteOk: "Segmen dihapus.",
+      deleteFailed: "Gagal menghapus segmen.",
+      buildTitle: "Buat segmen baru",
+      buildHint: "Susun kriteria audiens, hitung jumlah yang cocok, lalu simpan. Segmen yang disimpan akan muncul di daftar di atas dan bisa dipilih saat mengirim kampanye.",
+    },
     steps: {
       step0Title: "Kanal",
       step0Hint: "Pilih kanal komunikasi yang akan dipakai untuk kampanye ini.",
