@@ -744,3 +744,126 @@ dijalankan** — sepola T-30/reset/ekspor: hijau di gerbang, patah saat dipakai.
 mengimpor const+tipe dari modul biasa, fungsi dari actions. Fixture kini render 200. Pelajaran:
 **satu-satunya bukti sebuah komponen server-action benar-benar merender adalah merendernya**, bukan
 tsc/build.
+
+**Tindak lanjut (25 Agu 2026): kelas ini kini dipagari** — `lib/dev/use-server-exports.ts` +
+test memindai SETIAP modul `"use server"` dan gagal bila ada ekspor selain fungsi async. Terbukti
+menggigit: menyisipkan `export const PROBE` ke `actions.ts` menggagalkan pindaian (menyebut berkas +
+cuplikan), lalu dikembalikan. Menutup seluruh kelas untuk jalur server berikutnya.
+
+## T-33 · Tab 20FIT Manager menampilkan UUID, bukan email — `listUsers()` hanya halaman 1 dari kolam 935 akun (25 Agu 2026)
+
+Layar peran menampilkan `61a71f7f-…`, bukan email — padahal ketiga `user_id` punya baris di
+`auth.users` dan emailnya bisa diresolusi. Fallback UUID menyala tanpa sebab yang tampak.
+
+**Sebab (diverifikasi via SQL):** `auth.users` berisi **935** akun (kolam auth **bersama** seluruh
+ekosistem 20FIT). `admin.auth.admin.listUsers()` tanpa argumen hanya mengembalikan **halaman 1
+(default 50)**. Anggota CRM berada di peringkat-pembuatan 2, 3, dan **110** → setidaknya `zidni@`
+(peringkat 110) **tak pernah** ada di halaman 1 → petanya kosong untuk baris itu → UUID. Kegagalan
+senyap lagi: tak melempar, hanya menampilkan yang salah; `tsc`/lint/build hijau.
+
+**Perbaikan (`lib/auth/user-directory.ts`):** resolusi **tertarget** per anggota lewat
+`getUserById(user_id)` — tanpa paginasi, tanpa mengurai seluruh 935 akun (juga menghormati LARANGAN
+lama "jangan tampilkan seluruh auth.users"). Bila email **benar-benar** tak teresolusi, layar
+**mengatakannya** (tag "email tak teresolusi"), bukan menyodorkan UUID seolah jawaban. Jalur
+tulis (grant email→id) memakai `findUserIdByEmail` yang **berpaginasi sengaja** (bukan halaman 1
+saja) — menutup silent false-negative yang sama.
+
+## T-34 · Pertanyaan "apakah kode di produksi" salah dijawab TIGA kali — buktinya selalu di LUAR repo (25 Agu 2026)
+
+Pemilik produk mengirim screenshot `20fitcrm-production.up.railway.app/settings?tab=manager` dengan
+keempat tab → kode branch **tayang di produksi**. Ini kali **ketiga** pertanyaan deploy muncul, dan
+tiap kali jawabannya beda dari yang tercatat (12 Agu "deploy dari branch" — salah; 24 Agu "deploy
+dari main" — benar, T-27; kini).
+
+**Bagaimana kode sampai ke sana (dua sumber independen):** PR #15 **ter-merge** ke `main` —
+(1) **git**: `82c38e1` adalah leluhur `origin/main` di commit merge `df54688`
+(`git merge-base --is-ancestor` = YA); (2) **GitHub API**: `merged:true`, `merged_by
+Marketing-project-wq`, `merged_at 2026-08-25T09:59:15Z`. Railway auto-deploy dari `main` → produksi.
+**Tak ada jalur deploy lain**; branch tayang di produksi **karena branch itu MENJADI `main`**.
+
+**Kenapa berulang salah:** bukti yang tersedia **di dalam repo** secara struktural tak bisa
+membedakan "produksi = kode ini" dari "kode ini menulis ke DB bersama" (T-27), dan `git log` atas ref
+`origin/*` yang **basi** memberi jawaban lama (pola S-05, sudah terulang). **Diskriminator sejati
+selalu di LUAR repo**: setelan Railway Source, keadaan merge GitHub, dan mata pemilik produk di URL
+produksi. **Yang menyelesaikan:** beberapa sumber **luar-repo** yang sepakat — di sini git-ancestry +
+GitHub `merged:true` + screenshot produksi. Pelajaran permanen: **jangan jawab pertanyaan deploy dari
+`git log` sendirian; minta/lihat bukti luar-repo, dan `git fetch` dulu supaya ref tak basi.**
+
+## T-35 · Pihak lain menulis ke tabel `crm_*` — 248 baris `crm_profile_demographic` dari batch eksternal (25 Agu 2026)
+
+**Asumsi yang runtuh:** "`crm_*` hanya ditulis service-role CRM." **Salah.**
+
+**Bukti (diverifikasi SQL):** `crm_profile_demographic` = **248 baris**, seluruhnya
+`gender_source='progressive_profiling'` (246 juga `date_of_birth_source='progressive_profiling'`, 2
+DOB null), **semua ditulis pada cap waktu IDENTIK `2026-08-21 15:44:15.665587+00`** — satu batch, satu
+transaksi, 248 pelanggan berbeda. Bukan progressive-profiling bertahap (itu akan bertimestamp
+tersebar); ini **backfill massal** yang MELABELI dirinya progressive_profiling. CRM tak menulisnya:
+form isian adminnya (`demographic-write.ts`) baru dibangun setelah 21 Agu dan hanya menulis
+`staff_entry`. Tabel **tak punya kolom penulis/provenance** (hanya `updated_at`), jadi baris tak bisa
+menyebut siapa penulisnya.
+
+**Siapa & lewat jalur apa — audit grant SELURUH 13 tabel `crm_*`:**
+
+- **Terkunci benar** (`relacl` = {postgres, service_role} saja) — 6 tabel, semua dibuat sprint 3H+/
+  KIRIM/5A: `crm_campaign_run`, `crm_identity_candidate`, `crm_message_log`, `crm_message_template`,
+  `crm_mirror_meta`, `crm_segment`.
+- **Grant longgar** — `arwdDxtm` (SEMUA privilege, termasuk INSERT/UPDATE/DELETE) juga ke **`anon`
+  DAN `authenticated`** — 7 tabel, semua era 2B (T-17): `crm_audit_log`, `crm_consent`,
+  `crm_profile_behavior`, **`crm_profile_demographic`**, `crm_profile_scores`, `crm_suppression`,
+  `crm_user_role`.
+
+**Semua 13 tabel: RLS ON, 0 policy.** Artinya `anon`/`authenticated` **tetap diblokir RLS** (deny-all
+tanpa policy permisif) MESKIPUN punya grant — sesuai ukur-ulang 3Q (grant ≠ akses saat RLS ON + 0
+policy). Jadi 248 baris itu **bukan** ditulis lewat web anon; ditulis lewat peran **BYPASSRLS**
+(`service_role`/`postgres`) yang **dibagi seluruh proyek Supabase bersama** (T-20). Kesimpulan: **tim
+lain memakai service-role/postgres bersama** untuk menulis ke `crm_profile_demographic`.
+
+**Dua risiko berbeda, jangan dicampur:**
+1. **Yang terjadi** — penulisan lintas-tim lewat BYPASSRLS di proyek bersama. `crm_*` **bukan milik
+   CRM sepenuhnya**; siapa pun pemegang service-role/postgres proyek bisa menulis.
+2. **Laten** — 7 tabel era-2B masih meng-grant SEMUA privilege ke `anon`/`authenticated`. Dinetralkan
+   RLS **hari ini**, tapi **satu policy permisif** (`using(true)`) dari langkah ceroboh mana pun akan
+   langsung membuka tulis-penuh anon/authenticated ke consent, suppression, user_role, dan ketiga tabel
+   profil. Tabel yang terkunci benar (6) bahkan tak meng-grant `authenticated`, jadi risiko ini khusus
+   7 tabel lama.
+
+**Konsekuensi — rantai prioritas tanggal lahir.** `DOB_PRIORITY = [nik, staging, clinic, hyrox,
+staff]` (`demographic-pick.ts`); "staff" = nilai `crm_profile_demographic`, dibaca **tanpa** memeriksa
+`*_source` di dalamnya. Jadi 246 DOB `progressive_profiling` kini **tampil berprovenance "staff"** —
+salah label, dan mungkin salah prioritas. **Usulan posisi (belum diterapkan — mengubah 246 DOB tampil
+adalah keputusan kepercayaan, dilaporkan dulu):** sisipkan `progressive` **tepat di atas `staff`** →
+`[nik, staging, clinic, hyrox, progressive, staff]`. **Alasan:** self-report DOB seseorang pada
+prinsipnya andal (ia tahu tanggal lahirnya), jadi ≥ entri staff kosong-fallback; TAPI ia masuk lewat
+jalur eksternal tak-teraudit dengan mutu-koleksi tak diketahui (backfill massal, bukan bertahap), jadi
+< sumber berprovenance-diketahui (NIK gov-ID, staging impor) dan bahkan < rekaman ekosistem
+(clinic/hyrox). Saat ragu soal provenance/mutu sumber baru yang ditulis pihak luar, peringkat
+konservatif; ia tetap muncul sebagai isyarat konflik bila berbeda, jadi tak ada yang disembunyikan.
+
+**Larangan dipatuhi (fase laporan):** 248 baris TAK disentuh; dilaporkan dulu. **Menunggu tindakan
+manusia:** (a) konfirmasi tim/sistem penulis 248 baris (tak bisa dari DB — tak ada kolom provenance;
+butuh log Postgres 21 Agu 15:44 atau tanya tim), (b) keputusan remediasi grant longgar 7 tabel,
+(c) persetujuan posisi `progressive_profiling` di rantai DOB.
+
+---
+
+**TINDAK LANJUT — 25 Agu 2026 (sesi lanjutan, pemilik produk menyetujui (b) dan (c)):**
+
+- **(b) Grant dicabut — K-47. DITERAPKAN 25 Agu 2026** (ledger `20260825164301`, berkas
+  `20260825150000_revoke_...`). Mencabut `anon`+`authenticated` dari ketujuh tabel ke
+  `{postgres, service_role}`. **Verifikasi pasca-apply:** ke-13 tabel `crm_*` kini `{postgres,
+  service_role}`, RLS tetap ON di ke-13, 0 tabel memberi anon/authenticated. Ini pekerjaan CRM sendiri
+  (tabel milik CRM, cabut grant tak menyentuh data).
+  Ketergantungan diperiksa via SQL (bukan diasumsikan): **0** policy, **0** view milik anon/authenticated,
+  **0** pewarisan peran; 248 baris ditulis via BYPASSRLS yang grant-nya tetap → cabut aman. **Pagar
+  permanen dipasang:** `scanCrmTableGrantsToAnonAuth` (di `migration-execute-guard.test.ts`) — gagal bila
+  migrasi mana pun memberi privilege ke anon/authenticated pada relasi `crm_*`; terbukti menggigit atas
+  input sintetis, pola sama seperti pagar EXECUTE/matview. Larangan awal ("jangan ubah grant") **dicabut
+  oleh pemilik produk untuk kasus ini**: ia meminta pencabutan eksplisit dan menegaskan itu ranah CRM.
+- **(c) Rantai DOB diperbaiki — K-48, DITERAPKAN.** `DOB_PRIORITY`/`GENDER_PRIORITY` kini menyertakan
+  `progressive` tepat di atas `staff`. Lapisan baca (`demographic-read.ts`) kini mengambil
+  `date_of_birth_source`/`gender_source`; perakit (`resolveIdentity`) merutekan tiap nilai ke slot
+  `progressive` atau `staff` lewat `demographicProvenance` — **kolom `*_source` diperiksa, tak lagi
+  dianggap semua staff.** 246 DOB yang tadinya salah label "staff" kini berlabel "isian mandiri /
+  self-reported". Label i18n `srcProgressive` ditambah (id+en). Test rantai diperbarui.
+- **(a) MASIH menunggu manusia (B10a).** Setelah grant dicabut, jalur BYPASSRLS jadi satu-satunya cara
+  masuk — jauh lebih sempit dan lebih mudah ditanyakan ke tim pemegang `service_role`.

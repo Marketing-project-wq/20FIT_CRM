@@ -13,6 +13,7 @@ import {
   pickBirthDate,
   pickGender,
   normalizeGender,
+  demographicProvenance,
   type DobSource,
   type GenderSource,
 } from "@/lib/crm/demographic-pick";
@@ -144,7 +145,9 @@ interface ProfileClinicT {
 interface ProfileDemographicT {
   gated: boolean;
   gender: string | null;
+  genderSource: string | null;
   dateOfBirth: string | null;
+  dateOfBirthSource: string | null;
 }
 
 interface DobParseT {
@@ -854,6 +857,7 @@ function dobSourceLabel(s: DobSource, clinicLabel: string, P: Dict["profile"]): 
     nik: P.srcNik,
     staging: P.srcStaging,
     hyrox: P.srcHyrox,
+    progressive: P.srcProgressive,
     staff: P.srcStaff,
   };
   return map[s];
@@ -861,7 +865,11 @@ function dobSourceLabel(s: DobSource, clinicLabel: string, P: Dict["profile"]): 
 /** Provenance label for a gender source, using the server-coarsened clinic label for "clinic". */
 function genderSourceLabel(s: GenderSource, clinicLabel: string, P: Dict["profile"]): string {
   if (s === "clinic") return clinicLabel;
-  const map: Record<Exclude<GenderSource, "clinic">, string> = { nik: P.srcNik, staff: P.srcStaff };
+  const map: Record<Exclude<GenderSource, "clinic">, string> = {
+    nik: P.srcNik,
+    progressive: P.srcProgressive,
+    staff: P.srcStaff,
+  };
   return map[s];
 }
 
@@ -888,18 +896,28 @@ function resolveIdentity(
   const nikSource: "hyrox" | "clinic" | null = hs?.nik ? "hyrox" : cs?.nik ? "clinic" : null;
 
   const staging = importData?.dob ?? null;
+  // crm_profile_demographic carries TWO provenances (T-35): a value's *_source decides whether it
+  // lands in the `progressive` slot (self-report / the 248-row external batch) or the last-resort
+  // `staff` slot — inspected per field, never assumed to be staff.
+  const dmDob = dm?.dateOfBirth ? { iso: toIsoDate(dm.dateOfBirth), ambiguous: false } : null;
+  const dmDobSlot = dmDob ? demographicProvenance(dm?.dateOfBirthSource) : null;
+  const dmGender = normalizeGender(dm?.gender);
+  const dmGenderSlot = dmGender ? demographicProvenance(dm?.genderSource) : null;
+
   const dob = pickBirthDate({
     nik: nd?.valid ? { iso: toIsoDate(nd.birthDate), ambiguous: nd.yearOutOfRange } : null,
     staging: staging && staging.status === "parsed" ? { iso: toIsoDate(staging.iso), ambiguous: staging.ambiguousDayMonth } : null,
     clinic: { iso: toIsoDate(cs?.dateOfBirth), ambiguous: false },
     hyrox: { iso: toIsoDate(hs?.tglLahir), ambiguous: false },
-    staff: { iso: toIsoDate(dm?.dateOfBirth), ambiguous: false },
+    progressive: dmDobSlot === "progressive" ? dmDob : null,
+    staff: dmDobSlot === "staff" ? dmDob : null,
   });
 
   const gender = pickGender({
     nik: nd?.valid ? (nd.gender ?? null) : null,
     clinic: normalizeGender(cs?.gender),
-    staff: normalizeGender(dm?.gender),
+    progressive: dmGenderSlot === "progressive" ? dmGender : null,
+    staff: dmGenderSlot === "staff" ? dmGender : null,
   });
 
   const emergency =

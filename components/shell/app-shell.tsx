@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { Sidebar } from "./sidebar";
+import { TopBar } from "./top-bar";
 import { NAV_ITEMS } from "./nav";
 import { THEME_COOKIE, resolveTheme } from "@/lib/theme";
 import { getCurrentUserRole } from "@/lib/auth/current-role";
@@ -8,9 +9,9 @@ import { getLang } from "@/lib/i18n/server";
 import { LangProvider } from "@/components/i18n/lang-provider";
 
 /**
- * Application chrome: always-dark sidebar + light/dark content surface. The
- * content sits on the body's `--bg-from → --bg-to` gradient, which re-tints with
- * the theme.
+ * Application chrome (Shop-inventory redesign, K-46): a LIGHT solid sidebar + a translucent TopBar for
+ * global controls (language, theme, user, sign-out), over the body's `--bg-from → --bg-to` gradient
+ * that re-tints with the theme.
  *
  * Nav is filtered SERVER-SIDE by the RBAC matrix (canSeeNav). Only href STRINGS
  * cross to the client Sidebar — icon components are not serializable and stay in the
@@ -51,6 +52,7 @@ export async function AppShell({
           allowedHrefs={allowedHrefs}
         />
         <main className="min-w-0 flex-1">
+          <TopBar userEmail={userEmail} initialTheme={theme} />
           <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 md:px-10 md:py-8">{children}</div>
         </main>
       </div>

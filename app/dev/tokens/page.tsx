@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { DevBanner } from "@/components/dev/dev-banner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -83,6 +84,7 @@ function Section({
 export default function TokensPage() {
   return (
     <div className="mx-auto max-w-5xl space-y-12 px-6 py-10">
+      <DevBanner mode="fixture" note="Katalog token & komponen statis — bukan data, bukan produksi." />
       <header className="space-y-2">
         <Badge tone="blue">Dev only</Badge>
         <h1 className="font-display text-[32px] font-black uppercase leading-none text-ink">

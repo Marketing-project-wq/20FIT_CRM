@@ -111,3 +111,24 @@ Tak satu pun menahan merge. Diurut dari paling mendesak (keamanan) ke opsional.
 - **Langkah:** set `ANTHROPIC_API_KEY` (server-only, jangan prefix `NEXT_PUBLIC_`); opsional `SEGMENT_AI_MODEL`.
   Nama di `.env.example`.
 - **Kalau dilewati:** bukan penghalang. Tanpa kunci, "Usulkan (AI)" menjawab 503; filter manual tetap lengkap.
+
+### B10. (T-35) 248 baris `crm_profile_demographic` ditulis pihak lain — konfirmasi + putuskan
+Ditemukan 25 Agu 2026. 248 baris ditulis satu batch (`2026-08-21 15:44:15 UTC`), seluruhnya
+`gender_source='progressive_profiling'`, tanpa kolom provenance. Ditulis lewat `service_role`
+bersama di proyek Supabase yang sama — **bukti pihak di luar CRM menulis ke `crm_*`**. Rincian
+lengkap + audit grant 13 tabel `crm_*` di **`docs/riwayat/TEMUAN.md` T-35**. Tiga tindakan manusia:
+
+- **B10a. Konfirmasi siapa/apa yang menulis 248 baris itu.** — **Siapa:** pemilik produk +
+  pemegang akses lintas-tim (siapa memegang `service_role`/pipeline "progressive profiling").
+  **Langkah:** telusuri sistem 20FIT mana yang menulis batch 21 Agu; pastikan 248 baris itu sah,
+  bukan tumpahan tak sengaja. **Kalau dilewati:** DOB/gender dari sumber tak-terverifikasi terbaca
+  seolah data internal. **Agen tidak menghapus/mengubah baris itu** — laporan lebih dulu.
+- **B10b. ~~Terapkan migrasi pencabutan grant `crm_*` (K-47)~~ — ✅ SELESAI (25 Agu 2026, ledger
+  `20260825164301`).** Pemilik produk meminta pencabutan eksplisit; diterapkan lewat `apply_migration`.
+  Verifikasi pasca-apply: ke-13 tabel `crm_*` kini `{postgres, service_role}`, RLS tetap ON di ke-13,
+  0 tabel memberi anon/authenticated. Pagar `scanCrmTableGrantsToAnonAuth` mencegah pembukaan ulang.
+  Tak ada tindakan manusia tersisa di butir ini.
+- **B10c. ~~Setujui posisi `progressive_profiling` di rantai DOB~~ — ✅ SELESAI (25 Agu 2026, K-48).**
+  Pemilik produk menyetujui `[nik, staging, clinic, hyrox, progressive, staff]`; DITERAPKAN. Lapisan
+  baca kini memeriksa `*_source` (`demographicProvenance`), tak lagi menganggap semua `staff` — 246 DOB
+  yang salah label kini "isian mandiri". Tak ada tindakan manusia tersisa di butir ini.

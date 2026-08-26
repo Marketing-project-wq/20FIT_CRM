@@ -7,6 +7,10 @@ export interface BarItem {
   /** Row label — a stored data value (unit / product name), shown verbatim in mono. */
   label: string;
   value: number;
+  /** Optional per-row bar colour (token class). Used where rows are good/bad rather than neutral
+   *  categories — e.g. contact coverage: green (reachable) → amber (partial) → red (unreachable).
+   *  Falls back to the list-wide `barClass`. Colour is presentation only; the number is unchanged. */
+  barClass?: string;
 }
 
 /**
@@ -39,10 +43,10 @@ export function BarList({
       {items.map((it) => (
         <li key={it.label} className="grid grid-cols-[8rem_1fr_auto] items-center gap-3">
           <span className="truncate font-mono text-[12px] text-ink-soft" title={it.label}>{it.label}</span>
-          <span className="h-2.5 overflow-hidden rounded-full bg-glass-border" aria-hidden>
-            <span className={`block h-full rounded-full ${barClass}`} style={{ width: `${width(it.value)}%` }} />
+          <span className="h-2.5 overflow-hidden rounded-full bg-surface-border" aria-hidden>
+            <span className={`block h-full rounded-full ${it.barClass ?? barClass}`} style={{ width: `${width(it.value)}%` }} />
           </span>
-          <span className="text-right font-display text-[14px] font-bold tabular-nums text-ink">
+          <span className="text-right font-display text-[14px] font-semibold tabular-nums text-ink">
             {formatCount(it.value, lang)}
           </span>
         </li>

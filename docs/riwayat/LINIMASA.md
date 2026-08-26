@@ -145,3 +145,104 @@ Manager** (peran) · **Consent** (arsip baca-saja) · **WhatsApp Business API** 
   di render pertama; dipindah ke modul biasa. Terbukti render lewat fixture `/dev/preview-settings`.
 
 Gerbang: `tsc` bersih · `next lint` bersih · **vitest 1172 → 1184** · `NODE_ENV=production build` lulus.
+
+---
+
+## 25 Agu 2026 (setelah PR #15 merge) — tiga peran aktif, dua cacat di layar yang sama, pagar `"use server"`
+
+PR #15 **ter-merge ke `main`** oleh pemilik produk (bukan agen) → kode sesi ini tayang di produksi.
+Branch di-restart dari `main` untuk pekerjaan lanjutan (PR merged = selesai; tak ditumpangi).
+
+- **Tiga peran aktif (K-44):** `ACTIVE_ROLES` = super_admin/crm_manager/viewer; empat peran PRD lain
+  **tetap di matriks** (paritas PRD, pembalikan satu baris) tapi tak ditawarkan (dropdown tiga) & tak
+  dihormati. `effectiveRole()` fail-closed: peran tersimpan yang pensiunan → `null` → tanpa akses.
+  Ditandai deviasi PRD, menunggu Jeff (seperti K-32/K-43). Test mengunci fail-closed + paritas matriks.
+- **Email tampil, bukan UUID (T-33):** `listUsers()` cuma halaman-1 dari 935 akun bersama → anggota di
+  peringkat 110 tak terlihat. Diganti `getUserById` tertarget (`lib/auth/user-directory.ts`); bila
+  benar-benar tak teresolusi, layar **mengatakannya**, bukan menyodorkan UUID.
+- **Kalimat usang (TUGAS 3):** subjudul Settings "keduanya read-only" — sudah salah (peran kini
+  beri/ubah/cabut). Diganti di id + en.
+- **Pagar kelas T-32:** `lib/dev/use-server-exports.ts` + test menggagalkan build bila modul
+  `"use server"` mengekspor selain fungsi async. Terbukti menggigit (sisip `export const`, gagal,
+  kembalikan). Nol pelanggaran lain di repo.
+
+Gerbang: `tsc` bersih · `next lint` bersih · **vitest 1184 → 1195** · `NODE_ENV=production build` lulus.
+
+---
+
+## 25 Agu 2026 — Campaigns: alur bertahap + filter bertingkat (komponen bersama)
+
+Layar Campaigns dirombak: **satu judul, tiga langkah berurutan** (1 Siapa · 2 Pesan · 3 Kirim,
+`campaign-flow.tsx`). Langkah selesai menyusut jadi ringkasan yang bisa dibuka lagi; langkah
+berikutnya terkunci sampai yang sebelumnya punya hasil. Logika kirim/gerbang/batas **tak diubah** —
+memakai server action yang sama; penerima **dihitung ulang saat kirim** (selisih ditampilkan).
+
+**Filter dikelompokkan menurut PERTANYAAN, bukan sumber data** (di `SegmentBuilder` bersama, jadi
+Exports ikut membaik): **Demografi** (tree: kota/revenue/unit/segmen) · **Kontak** (punya
+email/telepon — dipindah dari field-picker jadi toggle tersendiri, satu sumber via baris tree) ·
+**Perilaku** (ekosistem, sumber, program, RFM). Asisten AI jadi **pintasan opsional** (details) di
+atas ketiganya. Catatan kejujuran (kota 7,03%, `last_seen_at` cap muat, OR lintas-tabel, RFM ejaan)
+pindah ke `<Why>` — tetap ada, tak lagi memenuhi ruang antar kontrol.
+
+**Temuan tumpang-tindih filter:** Hyrox **berbeda** (tabel `cf_hyrox_participants` sendiri, bukan di
+ekosistem/staging). Arena/gym/klinik bisa dinyatakan lewat sampai TIGA jalur (centang sumber, unit
+ekosistem, program staging); program staging `Arena`/`GYM`/`Paid Shop` **kosong terukur (0)** —
+duplikat mati. Diselesaikan lewat pengelompokan + `<Why>` yang menjelaskan beda jalur match.
+
+**Keadaan terblokir naik ke atas** (tanpa template aktif, host unsubscribe tak cocok) — sebelum
+kriteria. Panel dokumentasi + uji-kirim-internal turun ke bawah, terpisah (uji hanya saat mode aman).
+`CampaignComposer` lama dihapus (mati). Kalimat usang footer "not built yet" diganti (id+en).
+
+Gerbang: `tsc` bersih · `next lint` bersih · **vitest 1195** · `NODE_ENV=production build` lulus.
+
+---
+
+## 25 Agu 2026 — Exports dihapus sepenuhnya; nav tujuh → enam
+
+**Menu:** Dashboard · Audience · Workflows · Campaigns · Templates · Settings (dari 7). Ekspor CSV
+dibuang sepenuhnya — inti sistem mengelola audiens + mengirim langsung, bukan memindahkan data keluar;
+dan ekspor CSV adalah **satu-satunya jalur keluar yang tak menghormati unsubscribe**.
+
+**Mati (kode dihapus, preseden 3G):** `app/api/exports/route.ts` (9,5 KB), `lib/crm/export.ts`,
+`export-constants.ts`, `export-constants.test.ts`, `export-row-path.test.ts` — beserta streaming CSV,
+`EOF total_baris=`, `# GAGAL`, paksa-teks-Excel, BOM, nama-berkas per kategori, ambang 1.000 +
+pembagian gerbang. **−32 test hilang bersama kodenya.** Tombol ekspor per-kategori di kartu cakupan
+Dashboard + `exportCoverage`/`coverageTree`/`COVERAGE_COMBOS` dibuang. `SegmentBuilder` kehilangan
+`canExport`/tombol ekspor (komponen tetap, dipakai Campaigns). i18n key khusus-ekspor dibuang (13/lang).
+
+**Diubah:** `/exports` → **redirect** ke `/campaigns` (166 B). `canSeeNav("/exports")` case dibuang.
+
+**Dipertahankan (WAJIB):** audit `export.performed` (id 193/194/197, di DB, tak tersentuh); klasifikasi
+kepatuhan `export.%` di `retention-policy.ts` + test paritas (`send-constants.test` kini meng-inline
+string `export.performed`); kartu cakupan kontak + angkanya; daun filter `noEmail`/`noPhone` (dipakai
+kriteria + AI + combo kartu); aksi RBAC `export.*` tetap di matriks (paritas PRD 17.2, K-44).
+
+**Kalimat usang (TUGAS 5):** disisir — diperbaiki `segments.subtitleA` ("penyimpanan ditunda" → saving
+ada), `/quality` "sprint ini" dilepas; dibuang key mati `pendingTitle/pendingBody/templatesActive/
+templatesNone`. **Pagar dipasang:** `lib/i18n/stale-phrase-scan.ts` + test — memindai string tampilan
+untuk frasa "coming soon / not built yet / deferred / this sprint / menyusul"; gagal kecuali path-nya
+ada di allowlist "sudah ditinjau, masih benar" (5 entri bertanggal: notEnglishYet, comingSoon,
+waSubtitle, merge-belum-dibangun, province-ref). Terbukti menggigit (unit test).
+
+Gerbang: `tsc` bersih · `next lint` bersih · **vitest 1195 → 1166** (−32 test ekspor, +3 pagar) ·
+`NODE_ENV=production build` lulus.
+
+## 25 Agu 2026 — RANGKUMAN dipasang + investigasi 248 baris `crm_profile_demographic` (T-35)
+
+**Dokumen (bukan kode).** `docs/riwayat/RANGKUMAN.md` dipasang sebagai titik-mulai keadaan sistem per
+25 Agu — ditautkan dari `PANDUAN-LANJUTAN.md` (callout 🟢 di atas) dan `README.md`. Sepuluh angka §2
+**diukur ulang langsung ke produksi lewat SQL: nol selisih** (`crm_audit_log` satu-satunya yang hidup,
+233→236 dalam sesi).
+
+**Investigasi (laporan lebih dulu — nol baris/policy/grant disentuh).** `crm_profile_demographic` = 248
+baris, ditulis **satu batch** `2026-08-21 15:44:15 UTC`, seluruhnya `gender_source='progressive_profiling'`
+(246 juga DOB progressive), tanpa kolom provenance. Audit grant **13 tabel `crm_*`**: 6 terkunci
+`{postgres, service_role}`; 7 masih memberi `arwdDxtm` ke `anon`+`authenticated` (audit_log, consent,
+profile_behavior, profile_demographic, profile_scores, suppression, user_role) — kini dinetralkan
+RLS ON/0-policy tapi laten. Kesimpulan: **248 baris ditulis pihak di luar CRM lewat `service_role`
+bersama** → asumsi "hanya CRM menulis `crm_*`" **salah** dan dikoreksi di PANDUAN §1 + T-35. Rantai DOB
+membaca tabel ini sebagai `staff` **tanpa** cek `*_source`, jadi 246 DOB salah-label; usulan posisi
+`[nik, staging, clinic, hyrox, progressive, staff]` **belum diterapkan** (tunggu persetujuan, B10c).
+
+**Register:** T-35 (TEMUAN) · B10a/b/c (MENUNGGU) · §1 PANDUAN dikoreksi · RANGKUMAN §2 diverifikasi.
+Gerbang penuh dijalankan ulang (dokumen saja — tak ada kode berubah di petak ini).

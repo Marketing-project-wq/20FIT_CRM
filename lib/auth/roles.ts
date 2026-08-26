@@ -50,6 +50,36 @@ export function isRole(value: unknown): value is Role {
 }
 
 /**
+ * ACTIVE_ROLES — the roles the product ACTUALLY uses now (product-owner decision, 25 Agu 2026, K-44):
+ * `super_admin`, `crm_manager`, `viewer`. The four others (`crm_operator`, `unit_manager`, `analyst`,
+ * `data_steward`) are RETIRED from use but **kept in ROLES and MATRIX** on purpose.
+ *
+ * This is a DEVIATION from PRD 17.2 (six roles, approved Jeff 10 Agu) — marked, dated, PENDING JEFF,
+ * exactly like the earlier extensions `profile.edit_demographic` (K-32) and `viewer` (K-43). It is NOT
+ * smuggled in as if the PRD said three: the matrix still mirrors the PRD's six-role table (parity
+ * preserved, reversal is one line here), the retired roles are simply (a) not OFFERED — GRANTABLE_ROLES
+ * = ACTIVE_ROLES — and (b) not HONORED — a crm_user_role row carrying a retired role FAILS CLOSED at
+ * resolution via `effectiveRole()`, treated as no-access, never as a known role that quietly grants.
+ */
+export const ACTIVE_ROLES = ["super_admin", "crm_manager", "viewer"] as const;
+
+export type ActiveRole = (typeof ACTIVE_ROLES)[number];
+
+export function isActiveRole(value: unknown): value is ActiveRole {
+  return typeof value === "string" && (ACTIVE_ROLES as readonly string[]).includes(value);
+}
+
+/**
+ * Map a stored crm_user_role value to the role that is EFFECTIVE right now. Fail-closed: anything not
+ * in ACTIVE_ROLES — an unknown string OR a retired-but-known PRD role (analyst, …) — resolves to null =
+ * no access. This is the one place the "three roles only" decision (K-44) becomes enforcement; every
+ * guard already denies a null role. getCurrentUserRole() runs every stored role through this.
+ */
+export function effectiveRole(stored: unknown): Role | null {
+  return isActiveRole(stored) ? stored : null;
+}
+
+/**
  * PRD 17.2 actions — one per row of the PRD table, with export/send split per threshold. This
  * list MUST equal the PRD exactly (approved Jeff 2026-08-10); renaming or removing a member is a
  * PRD-level change. roles.test.ts locks these cells against a machine copy of the PRD table.
@@ -421,10 +451,9 @@ export function canSeeNav(role: unknown, href: string, ctx: AccessContext = {}):
     case "/quality":
       // Data-quality dashboard: anyone who can see the profile list can see quality.
       return canViewProfileList(role, ctx);
-    case "/exports":
-      // Exports screen: visible to anyone who may export or REQUEST an export
-      // (allow or approval), hidden where export is a flat deny.
-      return grantFor(role, "export.at_or_below_threshold") !== "deny";
+    // NOTE: "/exports" is intentionally absent — the Exports screen was removed (the route now
+    // redirects to /campaigns). The export.* actions stay in the matrix for PRD 17.2 parity (K-44
+    // precedent) but no nav destination surfaces them.
     case "/settings":
       // Settings holds the RBAC/audit surface -> gate on audit.view (super_admin,
       // crm_manager). Others have no business on it.

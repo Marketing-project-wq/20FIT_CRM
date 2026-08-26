@@ -4,7 +4,6 @@ import {
   GitBranch,
   Megaphone,
   FileText,
-  Download,
   Settings,
   type LucideIcon,
 } from "lucide-react";
@@ -22,17 +21,17 @@ export function navLabel(t: Dict, href: string, fallback: string): string {
     "/workflows": t.nav.workflows,
     "/campaigns": t.nav.campaigns,
     "/templates": t.nav.templates,
-    "/exports": t.nav.exports,
     "/settings": t.nav.settings,
   };
   return map[href] ?? fallback;
 }
 
 /**
- * Sidebar navigation — SEVEN menus (nav rebuild, was eleven). The four dropped screens moved INTO
- * these, not away: Segments → the shared builder in Campaigns + Exports; Messages → a Templates tab;
- * Consent → the unsubscribe tab in Audience + the consent-basis archive in Settings; Quality → a tab
- * in Audience. The old routes redirect to their new home, so no bookmark 404s.
+ * Sidebar navigation — SIX menus (was eleven, then seven). Exports was removed entirely: CSV export
+ * was the only data exit that did NOT honour unsubscribe, and the product manages audiences + sends
+ * directly rather than moving data out. The criteria builder Exports hosted now lives only in
+ * Campaigns; the old /exports route redirects there so no bookmark 404s. (The other dropped screens —
+ * Segments, Messages, Consent, Quality — moved into Campaigns / Templates / Audience / Settings.)
  */
 export const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -40,6 +39,5 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Workflows", href: "/workflows", icon: GitBranch },
   { label: "Campaigns", href: "/campaigns", icon: Megaphone },
   { label: "Templates", href: "/templates", icon: FileText },
-  { label: "Exports", href: "/exports", icon: Download },
   { label: "Settings", href: "/settings", icon: Settings },
 ];

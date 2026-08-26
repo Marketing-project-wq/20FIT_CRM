@@ -25,6 +25,13 @@ describe("evaluateGrant — add / change", () => {
     expect(evaluateGrant("", base)).toBe("bad_role");
   });
 
+  it("rejects a RETIRED PRD role — only the three active roles are grantable (K-44)", () => {
+    expect(evaluateGrant("analyst", base)).toBe("bad_role");
+    expect(evaluateGrant("crm_operator", base)).toBe("bad_role");
+    expect(evaluateGrant("unit_manager", base)).toBe("bad_role");
+    expect(evaluateGrant("data_steward", base)).toBe("bad_role");
+  });
+
   it("blocks a Super Admin from demoting THEMSELVES", () => {
     const s: RoleState = { ...base, targetUserId: "actor", targetCurrentRole: "super_admin", superAdminCount: 3 };
     expect(evaluateGrant("crm_manager", s)).toBe("self_demote");
@@ -46,8 +53,8 @@ describe("evaluateGrant — add / change", () => {
     expect(evaluateGrant("crm_manager", s)).toBeNull();
   });
 
-  it("allows changing a non-super-admin freely", () => {
-    expect(evaluateGrant("analyst", { ...base, targetCurrentRole: "crm_manager" })).toBeNull();
+  it("allows changing a non-super-admin freely (to another active role)", () => {
+    expect(evaluateGrant("viewer", { ...base, targetCurrentRole: "crm_manager" })).toBeNull();
   });
 });
 

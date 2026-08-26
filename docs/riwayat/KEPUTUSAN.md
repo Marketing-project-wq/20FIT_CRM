@@ -864,3 +864,98 @@ disimpan permanen). Test mengunci bahwa CRM Manager & Viewer tak bisa menyentuhn
 **Status:** peran + aksi ini EXTENSION di luar PRD 17.2, dicatat terpisah (seperti K-32), **menunggu
 persetujuan Jeff**. Ketiga akun produksi masih `super_admin`; cara memberi peran disiapkan tapi
 **tidak dijalankan agen** (tindakan pemilik produk).
+
+## K-44 · Tiga peran AKTIF saja (Super Admin / CRM Manager / Viewer) — empat peran PRD 17.2 lain dipensiunkan, TAPI tetap di matriks
+
+**Keputusan pemilik produk (25 Agu 2026):** hanya tiga peran yang dipakai — `super_admin`,
+`crm_manager`, `viewer`. Empat lainnya (`crm_operator`, `unit_manager`, `analyst`, `data_steward`)
+dipensiunkan dari pemakaian.
+
+**Pilihan implementasi (dipertimbangkan, dan alasannya):** ada dua cara — (A) hapus keempat peran dari
+`ROLES`/`MATRIX`, atau (B) biarkan di matriks tapi tak bisa diberikan. **Dipilih B.** Alasan: matriks
+sengaja dijaga sama-persis dengan PRD 17.2 (enam peran, disetujui Jeff 10 Agu) sejak Sprint 3A —
+menghapus empat baris membuat matriks tak lagi mencerminkan PRD, dan pembalikannya mahal. B menjaga
+paritas PRD dan membuat pembalikan **satu baris** (`ACTIVE_ROLES`), dengan ongkos: empat baris matriks
+jadi kode tak-terpakai (dianggap sepadan demi paritas + reversibilitas).
+
+**Penyimpangan dari PRD — DITANDAI, bukan diselundupkan:** ini deviasi dari PRD 17.2, dicatat
+bertanggal dan **menunggu Jeff**, persis seperti K-32 (`profile.edit_demographic`) dan K-43 (`viewer`).
+Matriks tetap enam peran; yang berubah hanya: peran pensiunan (a) **tak ditawarkan** — `GRANTABLE_ROLES
+= ACTIVE_ROLES` (dropdown tiga), dan (b) **tak dihormati** — `effectiveRole()` memetakan peran
+tersimpan yang tak-aktif ke `null`.
+
+**Yang WAJIB (fail-closed):** bila suatu saat ada baris `crm_user_role` berisi peran pensiunan (mis.
+`analyst`), sistem memperlakukannya **sebagai tanpa akses**, bukan peran dikenal yang lolos.
+`getCurrentUserRole()` menjalankan tiap nilai tersimpan lewat `effectiveRole()`; test mengunci ini
+(retired → `null` → ditolak di setiap aksi). Tidak ada baris `crm_user_role` yang dihapus — ketiga
+akun produksi `super_admin`, aman.
+
+## K-45 · Ekspor CSV dihapus sepenuhnya — permukaan dipersempit, unsubscribe dihormati di semua jalur keluar
+
+**Keputusan pemilik produk (25 Agu 2026):** buang fitur ekspor CSV (menu Exports + tombol per-kategori
+di Dashboard). Inti sistem: mengelola audiens dan **mengirim pesan langsung**, bukan memindahkan data
+audiens ke sistem lain.
+
+**Alasan tambahan (keamanan):** ekspor CSV adalah **satu-satunya jalur keluar data yang tak menghormati
+unsubscribe** — begitu berkas terunduh ia beredar tanpa gerbang. Semua jalur keluar lain (kirim)
+memeriksa suppression saat kirim. Menghapus ekspor mempersempit permukaan paparan.
+
+**Yang TIDAK ikut mati (append-only / paritas):** baris audit `export.performed` (bukti permanen bahwa
+ekspor pernah terjadi); klasifikasi kepatuhan `export.%` di migrasi 8 / `retention-policy.ts` (bila
+prefiks itu muncul lagi ia harus mendarat di kelas benar); aksi RBAC `export.*` tetap di matriks
+(paritas PRD 17.2, seperti peran pensiunan di K-44). Enforcement (route + ambang) yang mati, bukan
+definisinya.
+
+**Penyusun kriteria tetap hidup** di Campaigns (komponen bersama `SegmentBuilder`); yang dibuang titik
+pasangnya di Exports, bukan komponennya — dan komponen itu justru membaik (rombak Campaigns).
+
+## K-46 · Redesign "20FIT Shop": bahasa permukaan SOLID + sidebar terang, di samping glass DS v1.0
+
+**Keputusan pemilik produk (25 Agu 2026):** rombak tampilan mengikuti inventory 20FIT Shop — sidebar
+**terang** (bukan gelap-paksa PRD §18.8), kartu **solid putih tanpa aksen kiri** (bukan glass), angka
+lebih ringan, top-bar untuk kontrol global. Ini **deviasi sadar** dari Design System v1.0 (glass-only)
+dan PRD §18.8; **menunggu amandemen DS formal**, tapi token dipasang lebih dulu agar layar bisa migrasi
+bertahap. Token hidup di `app/globals.css` sebagai CSS var (`--surface*`, `--sidebar*`, `--topbar`,
+`--shadow-card`) + kelas `.card`/`.pill-outline-*` — **nol hex di komponen** (K-11 tetap berlaku).
+
+**Pembalikan:** bila DS v1.0 dipertahankan glass-only, cabut token + kelas ini; komponen yang belum
+migrasi masih memakai `.glass`, jadi pembalikan lokal.
+
+## K-47 · Grant `crm_*` ke `anon`/`authenticated` dicabut + dipagari — hanya `service_role` menulis
+
+**Keputusan (25 Agu 2026, T-35/B10b):** tujuh tabel `crm_*` era-2B yang memberi `arwdDxtm` ke `anon`
+DAN `authenticated` (audit_log, consent, profile_behavior, profile_demographic, profile_scores,
+suppression, user_role) dicabut ke `{postgres, service_role}` saja, sejajar enam tabel yang lebih baru.
+Migrasi `20260825150000_revoke_...` **DITERAPKAN 25 Agu 2026** (ledger `20260825164301`) lewat
+`apply_migration` — pekerjaan CRM sendiri: tabel milik CRM, mencabut grant tak menyentuh data.
+Verifikasi pasca-apply: ke-13 tabel `crm_*` `{postgres, service_role}`, RLS ON di ke-13, 0 tabel
+memberi anon/authenticated.
+
+**Alasan:** grant itu dinetralkan RLS hari ini (RLS ON + 0 policy), tapi jaraknya ke tulis-penuh anon =
+**satu policy** `USING(true)` — dan langkah itu SUDAH terjadi (T-17: `master_customer` punya
+`authenticated_full_access`). Nol-grant menutup ledakan di sumbernya: pada `crm_user_role` = self-grant
+super_admin; pada `crm_suppression` = hapus/masukkan orang dari daftar berhenti.
+
+**Ketergantungan diperiksa (bukan diasumsikan):** 0 policy, 0 view milik anon/authenticated, 0 pewarisan
+peran; 248 baris ditulis via BYPASSRLS yang grant-nya tetap. **Pagar permanen:** test
+`scanCrmTableGrantsToAnonAuth` — gagal bila migrasi mana pun memberi privilege ke anon/authenticated pada
+relasi `crm_*` (pola sama seperti pagar EXECUTE/matview; terbukti menggigit atas input sintetis).
+
+**Pembalikan:** blok ROLLBACK di migrasi (grant ulang) — hanya bila sesuatu di luar CRM ternyata
+bergantung; tak ada yang ditemukan.
+
+## K-48 · `progressive_profiling` masuk rantai prioritas DOB/gender, tepat di atas `staff`
+
+**Keputusan pemilik produk (25 Agu 2026, T-35/B10c — disetujui + diterapkan):** rantai jadi
+`[nik, staging, clinic, hyrox, progressive, staff]`. Nilai `crm_profile_demographic` dibaca menurut
+kolom `*_source`-nya (`demographicProvenance`), **tidak lagi dianggap semua `staff`** — memperbaiki 246
+DOB yang salah label.
+
+**Alasan:** laporan-diri (self-report) DOB pada prinsipnya andal (orang tahu tanggal lahirnya), jadi
+**di atas** entri staff kosong-fallback; TAPI 248 baris tiba satu batch lewat `service_role` bersama
+lewat jalur eksternal tak-teraudit bermutu tak diketahui, jadi **di bawah** sumber ber-provenance
+(NIK/staging/clinic/hyrox). Konservatif saat ragu; nilai tetap muncul sebagai isyarat konflik bila
+berbeda — tak ada yang disembunyikan.
+
+**Pembalikan:** ubah `DOB_PRIORITY`/`GENDER_PRIORITY` di `lib/crm/demographic-pick.ts` (satu tempat,
+tertutup test) bila pemilik memutuskan self-report harus diperingkat lain.

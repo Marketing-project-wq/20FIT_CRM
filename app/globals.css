@@ -22,6 +22,18 @@
      glass surfaces read as raised. Awaiting design sign-off (PRD §18 pattern). */
   --shadow-glass:0 8px 32px rgba(29,29,31,.10);
   --shadow-glass-lg:0 24px 64px rgba(29,29,31,.16);
+
+  /* ── Shop-inventory redesign tokens (25 Agu 2026) — a SOLID, low-elevation surface
+     language beside the existing glass. Deviation from DS v1.0 glass-only cards +
+     PRD §18.8 dark sidebar, owner-approved (K-46), awaiting formal DS amendment. No
+     hard-coded hex leaves this file (K-11). ── */
+  --surface:#FFFFFF;                       /* solid card face (reference uses white cards)         */
+  --surface-2:#FBFAF9;                     /* subtly recessed row / header band                    */
+  --surface-border:rgba(29,29,31,.08);     /* very fine hairline edge                               */
+  --shadow-card:0 1px 2px rgba(29,29,31,.05), 0 1px 3px rgba(29,29,31,.04);
+  --sidebar:#FFFFFF;                        /* LIGHT sidebar (was forced dark, PRD §18.8) — K-46     */
+  --sidebar-border:rgba(29,29,31,.08);
+  --topbar:rgba(255,255,255,.72);          /* translucent top control bar                          */
 }
 [data-theme="dark"] {
   --red:#FF3B57; --blue:#4DA8FF; --amber:#FFB454; --green:#34C77B;
@@ -33,6 +45,16 @@
 
   --shadow-glass:0 8px 32px rgba(0,0,0,.44);
   --shadow-glass-lg:0 24px 64px rgba(0,0,0,.60);
+
+  /* Redesign tokens, dark variants (K-46). The light sidebar becomes a dark solid in dark mode —
+     the reference is light-only, so dark mode keeps a coherent dark surface, not a glaring white rail. */
+  --surface:rgba(255,255,255,.05);
+  --surface-2:rgba(255,255,255,.03);
+  --surface-border:rgba(255,255,255,.10);
+  --shadow-card:0 1px 2px rgba(0,0,0,.30), 0 1px 3px rgba(0,0,0,.24);
+  --sidebar:#141416;
+  --sidebar-border:rgba(255,255,255,.08);
+  --topbar:rgba(20,20,22,.72);
 }
 .glass {
   background: var(--glass);
@@ -55,6 +77,24 @@
   border: 1px solid var(--glass-border);
   border-radius: var(--radius);
 }
+
+/* Redesign SOLID card (Shop-inventory language, K-46): a white low-elevation surface with a hairline
+   edge and a small shadow — the reference's card, no left accent. Sits beside .glass (existing screens
+   keep glass until migrated). Radius from the token. */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+}
+.card-2 { background: var(--surface-2); }
+
+/* Outlined status pill (reference: bordered for warnings, soft fill for neutral). The soft-fill
+   variants are the existing .tint-* below; these add the bordered treatment on the same 4+1 palette. */
+.pill-outline-red   { border:1px solid color-mix(in srgb, var(--red) 45%, transparent);   color: var(--red);   }
+.pill-outline-amber { border:1px solid color-mix(in srgb, var(--amber) 50%, transparent); color: var(--amber); }
+.pill-outline-green { border:1px solid color-mix(in srgb, var(--green) 45%, transparent); color: var(--green); }
+.pill-outline-blue  { border:1px solid color-mix(in srgb, var(--blue) 45%, transparent);  color: var(--blue);  }
 
 /* Status pill tints — the four fixed status colours + neutral (PRD §18.6).
    CRM states are folded onto these; the palette is never expanded. */

@@ -90,7 +90,7 @@ export function ProfileSearch() {
   }
 
   return (
-    <section className="glass rounded-card p-5">
+    <section className="card p-5">
       <div className="flex items-center gap-2">
         <UserSearch className="h-4 w-4 text-ink-soft" aria-hidden />
         <h2 className="font-display text-[15px] font-bold uppercase tracking-wide text-ink">
@@ -98,11 +98,7 @@ export function ProfileSearch() {
         </h2>
       </div>
       <p className="mt-1 font-body text-[13px] leading-relaxed text-ink-soft">
-        {t.audience.warn.searchIntroA}
-        <span className="font-mono text-[12px]">search.performed</span>
-        {t.audience.warn.searchIntroB}
-        <span className="font-mono text-[12px]">list.viewed</span>
-        {t.audience.warn.searchIntroC}
+        {t.audience.warn.searchIntro}
       </p>
 
       <form onSubmit={submit} className="mt-4 flex flex-wrap items-center gap-2">
@@ -118,7 +114,7 @@ export function ProfileSearch() {
             }}
             placeholder={PLACEHOLDER[kind]}
             inputMode={kind === "phone" ? "tel" : kind === "email" ? "email" : "text"}
-            className="h-10 w-full rounded-sm border border-glass-border bg-glass pl-9 pr-3 font-body text-[14px] text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-red"
+            className="h-10 w-full rounded-sm border border-surface-border bg-surface pl-9 pr-3 font-body text-[14px] text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-red"
           />
         </div>
 
@@ -148,7 +144,7 @@ export function ProfileSearch() {
                   setError(null);
                 }}
                 className={`rounded-sm px-2 py-0.5 font-display text-[11px] font-bold uppercase tracking-wide transition-colors ${
-                  kind === k ? "tint-red text-ink" : "text-ink-soft hover:bg-glass"
+                  kind === k ? "tint-red text-ink" : "text-ink-soft hover:bg-surface-2"
                 }`}
               >
                 {KIND_LABEL[k]}
@@ -189,12 +185,12 @@ export function ProfileSearch() {
               <Badge tone="amber" className="gap-1.5"><Lock className="h-3 w-3" /> {t.audience.maskedShort}</Badge>
             )}
           </div>
-          <ul className="divide-y divide-glass-border rounded-sm border border-glass-border">
+          <ul className="divide-y divide-surface-border rounded-sm border border-surface-border">
             {result.rows.map((r) => (
               <li key={r.customer_id}>
                 <Link
                   href={`/audience/${r.customer_id}`}
-                  className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 transition-colors hover:bg-glass"
+                  className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 transition-colors hover:bg-surface-2"
                 >
                   <span className="flex flex-col">
                     <span className="font-semibold text-ink">{formatDisplayName(r.full_name) ?? t.audience.noName}</span>

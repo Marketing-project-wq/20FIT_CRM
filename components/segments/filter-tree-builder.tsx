@@ -39,7 +39,11 @@ function fieldLabel(t: Dict, field: LeafField): string {
   }
 }
 
-const FIELDS: LeafField[] = ["unit", "segment", "city", "revenue", "hasPhone", "hasEmail"];
+// hasPhone/hasEmail are NOT offered here: they moved to the dedicated "Kontak" group in the segment
+// builder (contact presence is a question of its own, not a demographic attribute). They remain valid
+// LeafFields (older saved segments may carry them, and the Kontak toggles add them as tree conditions —
+// one source, no duplication), so fieldLabel stays exhaustive over them.
+const FIELDS: LeafField[] = ["unit", "segment", "city", "revenue"];
 
 /** Default value when a field is chosen, so the row is valid immediately. */
 function defaultValue(field: LeafField): string {

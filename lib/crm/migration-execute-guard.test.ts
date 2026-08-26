@@ -298,3 +298,120 @@ describe("crm_* materialized view SELECT lock guard", () => {
     expect(scanUnlockedCrmMatviews([{ path: "split.sql", content: split }])).toEqual([]);
   });
 });
+
+/**
+ * GUARD (T-35, B10b): NO migration in this repo may GRANT any privilege to `anon` or
+ * `authenticated` on a `crm_*` TABLE (or view / matview / sequence).
+ *
+ * WHY — read before weakening: seven era-2B crm_* tables (audit_log, consent, profile_behavior,
+ * profile_demographic, profile_scores, suppression, user_role) shipped granting arwdDxtm — ALL
+ * privileges — to anon+authenticated. They are RLS-neutralised today (RLS ON + 0 policy denies
+ * regardless of grant), so the distance from "safe" to "total collapse" is exactly ONE permissive
+ * policy — and that step has ALREADY happened in this project: master_customer carries
+ * `authenticated_full_access`, a `USING(true)` someone added to an RLS-on table (T-17). If the same
+ * lands on crm_user_role, an anon-key holder self-grants super_admin; on crm_suppression, they erase
+ * themselves from the stop-list or add someone else. The revoke of those live grants is a gated
+ * migration (20260825150000). This guard makes sure no FUTURE crm_* migration re-opens the door:
+ * grants on crm_* go to service_role only, never anon/authenticated.
+ *
+ * SCOPE: `crm_*` relations only (this repo owns only crm_* DDL; other teams' tables are not ours —
+ * same scoping as the EXECUTE guard). Function EXECUTE grants are covered by the EXECUTE guard above,
+ * so this one ignores `grant ... on function ...` to avoid double-reporting the same hazard.
+ */
+
+/** Strip SQL comments so a commented-out example/rollback GRANT is never scanned as live SQL. */
+export function stripSqlComments(sql: string): string {
+  return sql.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/--[^\n]*/g, " ");
+}
+
+export interface TableGrantViolation {
+  table: string;
+  role: "anon" | "authenticated";
+  file: string;
+}
+
+/** Flag every `grant <privs> on [table] public.crm_* to <roles>` whose role list includes anon or
+ *  authenticated. Handles multi-table and multi-role grants; ignores function grants and comments. */
+export function scanCrmTableGrantsToAnonAuth(
+  files: { path: string; content: string }[],
+): TableGrantViolation[] {
+  const out: TableGrantViolation[] = [];
+  const re = /grant\s+[\s\S]*?\s+on\s+([\s\S]*?)\s+to\s+([^;]+);/gi;
+  for (const f of files) {
+    const sql = stripSqlComments(f.content);
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(sql)) !== null) {
+      const objectClause = m[1].toLowerCase();
+      const roleClause = m[2].toLowerCase();
+      if (/\bfunction\b/.test(objectClause)) continue; // EXECUTE grants handled by the EXECUTE guard
+      const tables = Array.from(objectClause.matchAll(/public\.(crm_\w+)/g)).map((x) => x[1]);
+      if (tables.length === 0) continue;
+      for (const role of ["anon", "authenticated"] as const) {
+        if (new RegExp(`\\b${role}\\b`).test(roleClause)) {
+          for (const t of tables) out.push({ table: t, role, file: f.path });
+        }
+      }
+    }
+  }
+  return out;
+}
+
+describe("crm_* table grant guard (no anon/authenticated privileges)", () => {
+  const files = readMigrations();
+
+  it("no migration grants anon or authenticated any privilege on a crm_* relation", () => {
+    const violations = scanCrmTableGrantsToAnonAuth(files);
+    expect(
+      violations,
+      violations.length
+        ? "A migration grants anon/authenticated a privilege on a crm_* relation. crm_* tables are " +
+            "RLS-only; a grant to anon/authenticated is one permissive policy away from full public " +
+            "write (T-17 shows that policy already shipped once). Grant to service_role only.\nOffenders:\n" +
+            violations.map((v) => `  ${v.table} → ${v.role} (${v.file})`).join("\n")
+        : "",
+    ).toEqual([]);
+  });
+
+  // ── The guard BITES — proven on synthetic input (permanent proof it isn't inert) ──
+  it("flags a combined grant to anon", () => {
+    const bad = "grant all privileges on table public.crm_evil to anon, service_role;";
+    expect(scanCrmTableGrantsToAnonAuth([{ path: "bad.sql", content: bad }])).toEqual([
+      { table: "crm_evil", role: "anon", file: "bad.sql" },
+    ]);
+  });
+
+  it("flags a grant to authenticated without the `table` keyword", () => {
+    const bad = "grant select on public.crm_leak to authenticated;";
+    expect(scanCrmTableGrantsToAnonAuth([{ path: "bad.sql", content: bad }])).toEqual([
+      { table: "crm_leak", role: "authenticated", file: "bad.sql" },
+    ]);
+  });
+
+  it("flags BOTH roles and EVERY crm_* table in a multi-table multi-role grant", () => {
+    const bad = "grant all on table public.crm_a, public.crm_b to anon, authenticated;";
+    expect(scanCrmTableGrantsToAnonAuth([{ path: "bad.sql", content: bad }])).toHaveLength(4);
+  });
+
+  it("passes a grant to service_role only", () => {
+    const good = "grant select, insert on table public.crm_ok to service_role;";
+    expect(scanCrmTableGrantsToAnonAuth([{ path: "ok.sql", content: good }])).toEqual([]);
+  });
+
+  it("ignores a COMMENTED-OUT grant (e.g. a rollback note)", () => {
+    const commented =
+      "revoke all privileges on table public.crm_x from anon, authenticated;\n" +
+      "-- ROLLBACK: grant all privileges on table public.crm_x to anon, authenticated;\n" +
+      "/* grant all on public.crm_y to authenticated; */";
+    expect(scanCrmTableGrantsToAnonAuth([{ path: "revoke.sql", content: commented }])).toEqual([]);
+  });
+
+  it("ignores a function EXECUTE grant (covered by the EXECUTE guard, not double-reported)", () => {
+    const fn = "grant execute on function public.crm_fn(text) to anon;";
+    expect(scanCrmTableGrantsToAnonAuth([{ path: "fn.sql", content: fn }])).toEqual([]);
+  });
+
+  it("does NOT flag the revoke that closes the hazard", () => {
+    const revoke = "revoke all privileges on table public.crm_user_role from anon, authenticated;";
+    expect(scanCrmTableGrantsToAnonAuth([{ path: "revoke.sql", content: revoke }])).toEqual([]);
+  });
+});

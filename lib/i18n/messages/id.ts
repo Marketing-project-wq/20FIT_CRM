@@ -45,7 +45,6 @@ export const id = {
     messages: "Messages",
     consent: "Consent",
     quality: "Quality",
-    exports: "Exports",
     settings: "Settings",
     darkMode: "Mode gelap",
     lightMode: "Mode terang",
@@ -102,7 +101,7 @@ export const id = {
     blockFailed: "Bagian ini gagal dimuat.",
     blockRetry: "Coba lagi",
     audienceSize: "Ukuran audiens",
-    audienceSizeHint: "master_customer (baca saja)",
+    audienceSizeHint: "data audiens 20FIT (baca saja)",
     contactableMarketing: "Bisa dihubungi · marketing",
     contactableMarketingHint: "seluruh pool − yang berhenti berlangganan",
     contactableService: "Bisa dihubungi · layanan",
@@ -114,12 +113,12 @@ export const id = {
       "tanggal muatan batch terakhir (2 muatan: 20 Apr & 31 Jul 2026) — bukan feed berkelanjutan",
     importDob: "Tanggal lahir · data impor",
     importDobHint:
-      "baris staging_20fit_data punya tgl lahir (master_customer: 0) · ~99,5% cocok ke profil (diukur manual · 24 Agu 2026)",
-    rfmTitle: "Sebaran RFM · data impor 20FIT",
+      "baris data impor 20FIT punya tanggal lahir yang belum ada di pool utama · ~99,5% cocok ke profil (diukur manual · 24 Agu 2026)",
+    rfmTitle: "Sebaran tingkat pelanggan · data impor 20FIT",
     // The RFM note keeps the "− = no bucket, not empty" nuance and the "spelling kept" rule.
     rfmNote:
-      'Dari cermin (82.253 profil tercocokkan · snapshot) — sama dengan segment builder, jadi angkanya beda dari impor mentah staging (88.536). “−” = tanpa bucket (bukan kosong). Setiap bucket kosakata tertutup selalu tampil (0 = terukur, bukan hilang). Ejaan tersimpan dipertahankan apa adanya.',
-    rfmNoBucket: "− (tanpa bucket)",
+      'Tingkat pelanggan (aslinya “RFM”: seberapa baru, sering, dan besar transaksinya) — berasal dari data impor, bukan dari aktivitas terkini, jadi belum layak jadi dasar kampanye. “−” = tanpa kelompok (bukan kosong). Tiap kelompok selalu tampil (0 = terukur, bukan hilang). Ejaan tersimpan dipertahankan apa adanya.',
+    rfmNoBucket: "− (tanpa kelompok)",
     // Dashboard Visual sprint — tiga lapis, visualisasi, kesegaran.
     liveTitle: "Sumber hidup versus pool beku",
     liveNote: "Pool CRM adalah snapshot beku — muatan terakhir 31 Jul 2026, dan tak ada pipeline yang menyalurkan pendaftar baru ke dalamnya. Sumber di bawah dihitung langsung tiap request, jadi selisih “belum di pool” naik sendiri saat ada pendaftar baru — itu jawaban jujur untuk “terupdate otomatis”.",
@@ -153,16 +152,10 @@ export const id = {
     coverageNeither: "Tak punya keduanya",
     coveragePhoneNote: "“Telepon” = nomor telepon tersimpan. Status WhatsApp BELUM diverifikasi — jangan susun kampanye WhatsApp di atas angka ini. “Tak punya keduanya” = 0 terukur (bukan disembunyikan).",
     // Ekspor per kategori cakupan kontak → lewat mesin ekspor segmen yang sudah ada.
-    coverageExportTitle: "Ekspor CSV per kategori",
-    coverageExportBtn: "Ekspor",
-    coverageExportBusy: "Mengekspor…",
-    coverageExportEmpty: "0 — tak ada yang bisa diekspor",
     coveragePhoneOnlyWarn: "Kategori “telepon saja” tak punya email — daftar ini tak bisa dipakai untuk kampanye email.",
-    coverageExportNote: "Ekspor lewat mesin segmen yang sama: suppression dikecualikan, gerbang peran berlaku, NIK & data klinis tak pernah masuk berkas, dan jumlah baris nyata ditulis di akhir berkas.",
-    coverageExportFailed: "Ekspor gagal.",
     // D redesign — satu kartu ringkas (pool + jangkauan), tabel selisih, kartu kandidat, Fitco.
     summaryTitle: "Pool & jangkauan",
-    summaryPoolLabel: "Pool CRM (master_customer)",
+    summaryPoolLabel: "Data audiens 20FIT",
     summaryReachAll: "seluruh pool dapat dihubungi · nol berhenti berlangganan",
     gapTableSource: "Sumber",
     candTitle: "Kandidat belum di pool",
@@ -181,8 +174,8 @@ export const id = {
   // survives translation. Warnings live under audience.warn.* (guarded).
   audience: {
     maskedBadge: "Kontak disamarkan",
-    subtitlePre: "Pool audiens tunggal — ",
-    subtitleMid: " profil dibaca langsung dari ",
+    subtitlePre: "Data audiens 20FIT — ",
+    subtitleMid: " profil",
     subtitlePost: " (baca saja).",
     filterListLabel: "Saring daftar",
     cityPlaceholder: "Cari kota…",
@@ -247,9 +240,7 @@ export const id = {
       //      kata. Ini mencari SATU orang (search.performed) — berbeda dari menyaring daftar (list.viewed)."
       // EN below. Nuance at risk: that single-person search and list-browse are DIFFERENT audited
       // actions — collapsing them hides which one the user is doing (and which audit row it writes).
-      searchIntroA: "Untuk menemukan orang yang baru saja menelepon — lalu buka profil & catat permintaan berhenti dihubungi. Telepon & email dicocokkan sama persis (harus nomor/email lengkap), nama dengan potongan kata. Ini mencari satu orang (tercatat ",
-      searchIntroB: ") — berbeda dari menyaring daftar di bawah (",
-      searchIntroC: ").",
+      searchIntro: "Untuk menemukan orang yang baru saja menelepon — lalu buka profil & catat permintaan berhenti dihubungi. Telepon & email dicocokkan sama persis (harus nomor/email lengkap), nama dengan potongan kata. Ini mencari satu orang, berbeda dari menyaring daftar di bawah.",
       // ID: "Terlalu banyak hasil (lebih dari N). Persempit kata kuncinya — pencarian ini sengaja
       //      tidak menawarkan halaman berikutnya. Untuk menelusuri banyak orang, pakai daftar tersaring."
       // Nuance at risk: the cap is a DELIBERATE anti-harvest limit, not a technical page limit —
@@ -272,7 +263,7 @@ export const id = {
       bannerFooterB: ".",
       // Read-only provenance footer. Nuance: every list open and profile open is audited, and
       // contact is masked ON THE SERVER for analyst — not hidden in the client.
-      footer: "Baca saja · nol tombol ekspor/edit/hapus · klik nama untuk membuka profil (tercatat sebagai profile.viewed) · setiap pembukaan daftar tercatat (list.viewed) · kontak disamarkan di server untuk peran analyst.",
+      footer: "Baca saja · tak ada tombol ubah atau hapus · klik nama untuk membuka profil · setiap pembukaan tercatat · kontak disamarkan bagi peran tanpa izin melihatnya.",
     },
   },
 
@@ -442,9 +433,19 @@ export const id = {
   // an optional lang (default "id") so old tests are untouched. Nuance-bearing warnings live under
   // segments.warn.* (guarded). Numbers/counts are interpolated by the component, not stored here.
   segments: {
-    subtitleA: "Susun kriteria, lihat jumlahnya, ubah, lihat lagi. Tidak ada yang disimpan — tanpa tabel, tanpa nama segmen. Penyimpanan ditunda.",
+    subtitleA: "Susun kriteria, hitung jumlahnya, lalu simpan definisinya (kriteria, bukan daftar orang) untuk dipakai di Campaigns.",
     criteriaTitle: "Kriteria",
-    aiTitle: "Asisten AI (opsional)",
+    aiTitle: "Asisten AI",
+    aiOptional: "pintasan opsional",
+    groupDemografi: "Demografi",
+    groupDemografiHint: "Atribut orangnya — kota, revenue, unit, segmen — digabung dengan AND/OR.",
+    groupKontak: "Kontak",
+    groupKontakHint: "Apakah profil bisa dihubungi. Bukan atribut demografi, jadi berdiri sendiri.",
+    groupPerilaku: "Perilaku",
+    groupPerilakuHint: "Jejak lintas-tabel: keterlibatan ekosistem, sumber (Hyrox/arena/gym/klinik/my20fit), program, RFM.",
+    kontakHasEmail: "Hanya yang punya email",
+    kontakHasPhone: "Hanya yang punya telepon",
+    cityCaveatTitle: "Kota tak bisa diandalkan untuk memfilter",
     aiDescA: "Jelaskan segmennya dengan kata-kata (mis. “pelanggan yang ikut RUNFEST dan punya email”). AI mengusulkan kriteria — Anda tetap meninjau, mengubah, lalu menekan Hitung sendiri. Kriteria waktu tidak bisa (kolom waktu = cap muat); permintaan klinis butuh ",
     aiDescB: ".",
     aiPlaceholder: "Jelaskan segmen dengan kata-kata…",
@@ -470,20 +471,18 @@ export const id = {
     srcArenaLabel: "Ada di arena (kelas / booking / paket / member)",
     srcGymLabel: "Ada di gym (kelas / membership)",
     srcClinicPatientLabel: "Pasien klinik ",
-    srcClinicPatientTag: "(kesehatan · view_health)",
+    srcClinicPatientTag: "(butuh izin data kesehatan)",
     srcClinicTxnLabel: "Punya transaksi klinik ",
-    rfmLabel: "RFM (per paid order)",
-    rfmAll: "Semua RFM",
+    rfmLabel: "Tingkat pelanggan",
+    rfmAll: "Semua tingkat",
     programLabel: "Ikut program",
     programAll: "Semua program",
     programGroupNonClinical: "Program (non-klinis)",
-    programGroupClinical: "Klinik (kesehatan · view_health)",
+    programGroupClinical: "Klinik (butuh izin data kesehatan)",
     stagingGated: "digerbangi",
     stagingHidden: "disembunyikan —",
     computeBtn: "Hitung",
     computing: "Menghitung…",
-    exportBtn: "Ekspor CSV",
-    exporting: "Mengekspor…",
     savePlaceholder: "Nama segmen",
     saveBtn: "Simpan segmen",
     saving: "Menyimpan…",
@@ -500,7 +499,6 @@ export const id = {
     openConsent: "Buka Consent",
     computeFailed: "Gagal menghitung",
     connFailed: "Gagal terhubung ke server.",
-    exportFailed: "Gagal mengekspor",
     proposeFailed: "Gagal mengusulkan",
     // ── filter tree builder ──
     treeIntro: "Semua baris digabung dengan DAN. Sebuah baris bisa berupa satu kondisi, atau grup ATAU (mis. “punya email ATAU punya telepon”). Maks 2 tingkat, 12 kondisi.",
@@ -549,7 +547,7 @@ export const id = {
     rbGym: "ada di gym",
     rbClinicPatient: "pasien klinik",
     rbClinicTxn: "punya transaksi klinik",
-    rbRfm: "RFM",
+    rbRfm: "Tingkat pelanggan",
     rbProgram: "ikut program",
     rbWordCity: "kota",
     rbWordRevenue: "revenue",
@@ -570,7 +568,7 @@ export const id = {
     // ── route messages (server, via getServerDict) ──
     apiRoleDenied: "Membangun segmen butuh peran segment.build (super_admin, crm_manager, crm_operator, analyst).",
     apiBadJson: "Body JSON tidak valid.",
-    apiClinicalNeedsHealth: "Kriteria klinis butuh peran profile.view_health (menyaring pasien = menyimpulkan status kesehatan).",
+    apiClinicalNeedsHealth: "Kriteria klinis butuh izin melihat data kesehatan (menyaring pasien = menyimpulkan status kesehatan).",
     apiBadFilterA: "Filter ditolak: ",
     apiBadFilterB: ".",
     apiAuditFailed: "Perhitungan ditolak: gagal mencatat audit (akuntabilitas).",
@@ -619,8 +617,6 @@ export const id = {
       cityC: " dari ",
       cityD: "). Menyaring kota atas data yang ±93% kosong hanya menyaring “orang yang kotanya kebetulan tercatat” — hasilnya tampak tegas tapi menyesatkan.",
       // Export note. Nuance: the EOF row is the completeness proof; a truncated file must not be trusted.
-      exportNoteA: "Ekspor mengalirkan CSV (suppression dikecualikan, tanpa NIK / data klinis). Berkas diakhiri baris ",
-      exportNoteB: " — jika baris itu tak ada, unduhan terpotong & jangan dipakai sebagai data lengkap.",
       // Small-segment warning. Nuance at risk: below 25, a segment shifts from aggregate to individual
       // disclosure; the count is still shown (hiding 0 hides the measured), but not an anonymous aggregate.
       smallSegmentA: "Segmen sangat kecil (",
@@ -635,7 +631,7 @@ export const id = {
       svcZeroC: " aktif (atau suppression menang).",
       // Read-only footer. Nuance at risk: nothing is saved/exported/sent because the FLOW isn't built
       // yet — "a button that refuses is worse than no button" — not because the role lacks permission.
-      footer: "Baca saja · nol simpan/ekspor/kirim (belum ada; tombol yang menolak lebih buruk dari tak ada tombol) · nol daftar orang (segment builder yang mengeluarkan daftar = ekspor tanpa nama — pakai /audience) · tiap perhitungan tercatat (list.viewed).",
+      footer: "Menghitung berapa orang yang cocok — tidak menampilkan daftarnya · menyimpan kriteria butuh izin sesuai peran · tiap perhitungan tercatat.",
     },
   },
 
@@ -646,7 +642,8 @@ export const id = {
   // literal ", " separators, so only the prose is a dict key.
   audit: {
     settingsTitle: "Settings",
-    settingsSubtitle: "Tata kelola: peran RBAC dan jejak audit. Keduanya read-only di sprint ini.",
+    settingsSubtitle: "Tata kelola: peran RBAC (beri, ubah, cabut — khusus Super Admin), jejak audit (baca), arsip consent (baca), dan status WhatsApp Business API.",
+    emailUnresolved: "email tak teresolusi",
     diagnostikLink: "Buka Diagnostik — status verifikasi & pemeriksaan lapisan baca",
     pageDeniedRole: "Pengaturan (peran & audit log) hanya untuk super_admin dan crm_manager. Bila RBAC belum di-provision, semua akses ditolak — ini perilaku fail-closed yang benar.",
     // roles panel
@@ -797,8 +794,8 @@ export const id = {
       duplicatesTitle: "Duplikat",
       queuesTitle: "Antrean orphan & pengecualian",
       satellitesTitle: "Kurasi & skor",
-      ecosystemTitle: "Ekosistem 20FIT — customer_engagement",
-      stagingTitle: "Cakupan data impor — staging_20fit_data ★",
+      ecosystemTitle: "Keikutsertaan di layanan 20FIT",
+      stagingTitle: "Cakupan data impor 20FIT ★",
       enrichmentTitle: "Cakupan sumber ekosistem tak-tercocok",
       multisourceTitle: "Cakupan sumber lain — arena / gym",
       clinicTitle: "Cakupan klinik",
@@ -960,7 +957,7 @@ export const id = {
       issue_orphan:
         "Baris di customer_orphan — data yang tidak bisa dikaitkan ke satu profil master.",
       issue_excluded:
-        "Baris di customer_excluded. Jumlahnya besar dan alasan pengecualian belum ditinjau ulang di sprint ini.",
+        "Baris di customer_excluded. Jumlahnya besar dan alasan pengecualian belum ditinjau ulang.",
       satellite_demographic: "Tabel sudah ada, belum diisi — ingestion masih ditahan.",
       satellite_behavior:
         "Belum diisi. Sumber perilaku yang tersedia masih terlarang sampai diremediasi.",
@@ -1044,7 +1041,6 @@ export const id = {
     phase4: "Fase 4",
     campaigns: "Kampanye manual: pilih segmen, pilih template, lihat estimasi biaya, minta persetujuan, kirim.",
     messages: "Log setiap pengiriman — kanal, status, dan alasan pemblokiran yang selalu terlihat.",
-    exports: "Riwayat ekspor dengan pemohon, tujuan, jumlah baris, dan status persetujuan.",
     templates: "Register template WhatsApp dan email dengan status persetujuan Meta dan kategori.",
     workflows: "Mesin workflow marketing dengan sembilan guard. Diblokir sampai consent register aktif.",
   },
@@ -1082,6 +1078,29 @@ export const id = {
   campaignsPage: {
     subtitle: "Susun kirim: pilih segmen, pilih template, lihat penerima setelah suppression, konfirmasi, kirim.",
     deniedRole: "Peran Anda tidak memiliki akses untuk menyusun pengiriman.",
+    blockNoTemplateTitle: "Belum ada template email aktif",
+    blockNoTemplateBody: "Alur kirim berhenti di sini sampai ada template aktif yang memuat tautan unsubscribe. Buat dulu di Templates.",
+    blockHostTitle: "Domain tautan unsubscribe tak cocok dengan host",
+    blockHostBody: "Tautan unsubscribe akan menunjuk domain yang berbeda dari host yang menyajikan aplikasi — kirim akan ditolak. Setel NEXT_PUBLIC_APP_URL ke host yang benar dulu.",
+    docsTitle: "Cara kerja & batas (penjelasan, bukan kontrol)",
+    steps: {
+      step1Title: "1 · Siapa",
+      step1Hint: "Pilih segmen tersimpan, atau buat baru. Jumlah penerima pastinya (setelah suppression) muncul di langkah Pesan.",
+      step1SegmentLabel: "Segmen tersimpan",
+      step1SummarySuffix: "bisa dihubungi (marketing)",
+      step1BuildNew: "Buat segmen baru",
+      step1BuildNewHint: "Susun kriteria, hitung, lalu simpan. Segmen tersimpan akan muncul di daftar di atas.",
+      toStep2: "Lanjut ke Pesan",
+      step2Title: "2 · Pesan",
+      step2Hint: "Pilih template dan lihat isi yang akan dikirim, lalu hitung penerima setelah suppression.",
+      step2PreviewLabel: "Pratinjau isi",
+      step2CountBtn: "Hitung penerima",
+      step2SummarySuffix: "akan dikirimi",
+      toStep3: "Lanjut ke Kirim",
+      step3Title: "3 · Kirim",
+      step3Hint: "Pilih run, konfirmasi, kirim. Penerima dihitung ulang saat kirim; selisih ditampilkan.",
+      step3SummarySuffix: "terkirim",
+    },
     blockTitle: "Kirim nyata masih diblokir",
     blockBody: "Nol email kampanye ke alamat pelanggan sampai dua prasyarat beres: rotasi token Mailtrap dan SPF/DKIM/DMARC untuk 20fit.id. Sampai itu, hanya alamat internal @20fit.id yang bisa dikirimi.",
     flowTitle: "Alur kirim",
@@ -1095,10 +1114,6 @@ export const id = {
     limit2: "Konfirmasi kedua wajib di atas 500 penerima.",
     limit3: "Auto-stop bila bounce keras melewati 5% (disetujui 24 Agu).",
     suppressionNote: "Suppression diperiksa SAAT KIRIM, bukan saat segmen dihitung — unsubscribe yang masuk di antaranya tetap dihormati.",
-    templatesActive: "Template email aktif",
-    templatesNone: "Belum ada template email aktif — buat dulu di Templates.",
-    pendingTitle: "Form kirim langsung menyusul",
-    pendingBody: "Menyusun-dan-kirim di layar menyusul setelah segmen bisa disimpan dan kedua prasyarat kirim terpenuhi. Jalur kirim sendiri sudah dibangun dan teruji.",
     composer: {
       title: "Susun kirim",
       segmentLabel: "Segmen tersimpan",
@@ -1251,6 +1266,7 @@ export const id = {
     srcNik: "NIK",
     srcStaging: "data impor 20FIT",
     srcHyrox: "Hyrox",
+    srcProgressive: "isian mandiri",
     srcStaff: "input staf",
     // demographic fill form
     fillTitle: "Lengkapi demografi (isi yang kosong)",
@@ -1303,11 +1319,11 @@ export const id = {
     hyroxLabel: "Hyrox",
     teamPrefix: " · tim ",
     registerPrefix: " · daftar ",
-    bloodLabel: "Golongan darah (medis · view_health)",
+    bloodLabel: "Golongan darah (medis · butuh izin data kesehatan)",
     activityLabel: "Aktivitas nyata (my20fit)",
     activityVisitsSuffix: " kunjungan",
     activityLastActivePrefix: " · terakhir aktif ",
-    clinicTitle: "Klinik — keterlibatan (view_health)",
+    clinicTitle: "Klinik — keterlibatan (butuh izin data kesehatan)",
     clinicPatientPrefix: "Pasien ",
     clinicBooking: "Booking",
     clinicVisit: "Kunjungan",
@@ -1318,12 +1334,12 @@ export const id = {
     notConnectedBadge: "Tidak tersambung ke sumber lain",
     mirrorStampPrefix: " · penanda kehadiran cermin per ",
     // import (participation)
-    impRfm: "RFM (per paid order)",
+    impRfm: "Tingkat pelanggan",
     impRfmNoBucket: "− (tanpa bucket)",
     impPrograms: "Program yang diikuti",
     // footer
     footer:
-      "Baca saja · nol tombol edit/hapus/merge · pembukaan profil ini tercatat sekali (profile.viewed) — pindah tab bukan pembacaan baru · kontak & data sensitif ditahan di server untuk peran tanpa izin (tab hanya tata letak).",
+      "Baca saja · tak ada tombol ubah, hapus, atau gabung · membuka profil ini tercatat sekali — pindah tab bukan pembacaan baru · kontak & data sensitif ditahan bagi peran tanpa izin (tab hanya tata letak).",
 
     warn: {
       // "belum terisi" ≠ "empty" (a measured zero); guarded.
@@ -1380,7 +1396,7 @@ export const id = {
       dobConflictWhyC:
         "Prioritas: NIK (posisi digit baku, nol ambiguitas hari-bulan) → impor → sumber lain → input staf.",
       identityWhyA:
-        "NIK ditampilkan penuh (keputusan pemilik produk) — nilainya tetap TIDAK pernah masuk audit/metadata maupun ekspor CSV, dan tak pernah jadi kunci pencocokan. Gender/tanggal lahir/provinsi ",
+        "NIK ditampilkan penuh (keputusan pemilik produk) — nilainya tetap TIDAK pernah masuk catatan audit dan tak pernah jadi kunci pencocokan. Gender/tanggal lahir/provinsi ",
       identityWhyStrong: "diturunkan dari NIK",
       identityWhyB: " (",
       identityWhyC: "); provinsi = tempat KTP diterbitkan, bukan domisili. Identitas digerbangi ",
@@ -1489,35 +1505,6 @@ export const id = {
     themeLight: "Mode terang",
   },
 
-  export: {
-    // CSV header labels — these ARE user-facing (column titles in the downloaded file), so they
-    // follow the language. Stored values under them are never translated.
-    headers: {
-      customer_id: "customer_id",
-      full_name: "nama",
-      email: "email",
-      phone_normalized: "telepon",
-      city: "kota",
-      first_unit: "unit_pertama",
-      segment: "segment",
-      lifetime_value: "lifetime_value",
-    },
-    // Provenance block written inside the file so a leaked export stays traceable.
-    provTitle: "20FIT CRM — ekspor segmen",
-    provDate: "tanggal",
-    provBy: "oleh",
-    provCriteria: "kriteria",
-    provFooter:
-      "suppression dikecualikan · tanpa NIK / data klinis · jumlah baris ada di baris terakhir (EOF)",
-    provNoCriteria: "seluruh pool (tanpa kriteria)",
-    eofTotal: "total_baris",
-    auditFailed: "AUDIT_GAGAL",
-    // Leading word of the download file name (followed by category-date-time).
-    fileBaseName: "segmen",
-    // Written into the file when streaming throws mid-export, so a truncated download announces
-    // itself instead of looking complete (no EOF total = truncated, but this is explicit).
-    aborted: "GAGAL: ekspor terputus, jangan pakai berkas ini",
-  },
 
   ai: {
     // Reasons the assistant returns for requests it cannot express — surfaced in the user's
@@ -1525,7 +1512,7 @@ export const id = {
     replyLanguageName: "Bahasa Indonesia",
     timeUnexpressible:
       "Kriteria berbasis waktu tidak bisa: kolom waktu di data ini adalah cap muat, bukan aktivitas.",
-    clinicalBlocked: "Kriteria klinis diminta tapi dibuang — butuh profile.view_health.",
+    clinicalBlocked: "Kriteria klinis diminta tapi dibuang — butuh izin melihat data kesehatan.",
     unavailable: "Asisten AI sedang tidak tersedia. Pakai filter manual — semua kriteria tetap ada.",
   },
 } satisfies I18nShape;

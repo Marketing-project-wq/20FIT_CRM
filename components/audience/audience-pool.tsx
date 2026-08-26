@@ -108,9 +108,19 @@ function QualityBanner() {
 }
 
 const selectCls =
-  "h-10 rounded-sm border border-glass-border bg-glass px-3 font-body text-[14px] text-ink focus:outline-none focus:ring-2 focus:ring-red";
+  "h-10 rounded-sm border border-surface-border bg-surface px-3 font-body text-[14px] text-ink focus:outline-none focus:ring-2 focus:ring-red";
 
-export function AudiencePool() {
+/** Fixture payload for the dev preview — the same shape one /api/audience page returns. When present,
+ *  the component renders these rows directly and skips every fetch (so a session-less dev page shows
+ *  the REAL component, not a facsimile). */
+export interface AudiencePoolPreview {
+  rows: Row[];
+  total: number;
+  masked: boolean;
+}
+
+export function AudiencePool({ preview }: { preview?: AudiencePoolPreview } = {}) {
+  const isPreview = preview != null;
   const { lang, t } = useI18n();
   const [unit, setUnit] = useState("");
   const [segment, setSegment] = useState("");
@@ -122,11 +132,11 @@ export function AudiencePool() {
   // A filter change resets the accumulator to page 1; "Load more" appends the next page. Each fetch
   // still writes its own list.viewed audit row server-side (K-07) — five "load more" clicks are five
   // audited reads, which is the intended, honest record.
-  const [rows, setRows] = useState<Row[]>([]);
-  const [total, setTotal] = useState(0);
-  const [masked, setMasked] = useState(false);
-  const [loadedPages, setLoadedPages] = useState(0);
-  const [loading, setLoading] = useState(true); // initial / after-filter-change load
+  const [rows, setRows] = useState<Row[]>(preview?.rows ?? []);
+  const [total, setTotal] = useState(preview?.total ?? 0);
+  const [masked, setMasked] = useState(preview?.masked ?? false);
+  const [loadedPages, setLoadedPages] = useState(isPreview ? 1 : 0);
+  const [loading, setLoading] = useState(!isPreview); // initial / after-filter-change load
   const [loadingMore, setLoadingMore] = useState(false); // "Load more" in flight
   const [error, setError] = useState<string | null>(null);
 
@@ -183,11 +193,13 @@ export function AudiencePool() {
     [unit, segment, city, revenue, t],
   );
 
-  // Initial load + reset to page 1 whenever the filters (and thus loadPage) change.
+  // Initial load + reset to page 1 whenever the filters (and thus loadPage) change. Skipped in the
+  // dev preview, which renders its fixture rows directly (no session, no /api/audience fetch).
   useEffect(() => {
+    if (isPreview) return;
     loadPage(1, false);
     return () => abortRef.current?.abort();
-  }, [loadPage]);
+  }, [loadPage, isPreview]);
 
   const loaded = rows.length;
   const hasMore = loaded < total;
@@ -205,8 +217,7 @@ export function AudiencePool() {
             {t.nav.audience}
           </h1>
           <p className="mt-2 font-body text-[14px] text-ink-soft">
-            {t.audience.subtitlePre}{formatCount(total, lang)}{t.audience.subtitleMid}
-            <span className="font-mono text-[13px]">master_customer</span>{t.audience.subtitlePost}
+            {t.audience.subtitlePre}{formatCount(total, lang)}{t.audience.subtitleMid}{t.audience.subtitlePost}
           </p>
         </div>
         {masked && (
@@ -236,7 +247,7 @@ export function AudiencePool() {
             value={cityInput}
             onChange={(e) => setCityInput(e.target.value)}
             placeholder={t.audience.cityPlaceholder}
-            className="h-10 w-52 rounded-sm border border-glass-border bg-glass pl-9 pr-3 font-body text-[14px] text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-red"
+            className="h-10 w-52 rounded-sm border border-surface-border bg-surface pl-9 pr-3 font-body text-[14px] text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-red"
           />
         </div>
 
@@ -283,10 +294,10 @@ export function AudiencePool() {
       </div>
 
       {/* Table (wide screens). BAGIAN D: a per-row card list replaces it below md. */}
-      <div className="hidden overflow-x-auto rounded-card border border-glass-border md:block">
+      <div className="hidden overflow-x-auto card md:block">
         <table className="w-full border-collapse text-left">
           <thead>
-            <tr className="border-b border-glass-border font-display text-[12px] uppercase tracking-wide text-ink-faint">
+            <tr className="border-b border-surface-border font-display text-[12px] uppercase tracking-wide text-ink-faint">
               <th className="px-4 py-3 font-bold">{t.audience.thName}</th>
               <th className="px-4 py-3 font-bold">
                 <span className="inline-flex items-center gap-1.5">
@@ -327,11 +338,11 @@ export function AudiencePool() {
               </tr>
             ) : (
               rows.map((r) => (
-                <tr key={r.customer_id} className="border-b border-glass-border last:border-0 hover:bg-glass">
+                <tr key={r.customer_id} className="border-b border-surface-border last:border-0 hover:bg-surface-2">
                   <td className="px-4 py-3">
                     <Link
                       href={`/audience/${r.customer_id}`}
-                      className="font-semibold text-ink underline decoration-glass-border underline-offset-2 hover:decoration-red"
+                      className="font-semibold text-ink underline decoration-surface-border underline-offset-2 hover:decoration-red"
                     >
                       {formatDisplayName(r.full_name) ?? t.audience.noName}
                     </Link>
@@ -371,7 +382,7 @@ export function AudiencePool() {
         {loading ? (
           <p className="px-1 py-8 text-center font-body text-[13px] text-ink-soft">{t.audience.loading}</p>
         ) : error ? (
-          <div className="rounded-card border border-glass-border p-6 text-center">
+          <div className="card p-6 text-center">
             <Badge tone="red">{t.audience.failed}</Badge>
             <p className="mt-2 font-body text-[13px] text-ink-soft">{error}</p>
           </div>
@@ -379,11 +390,11 @@ export function AudiencePool() {
           <p className="px-1 py-8 text-center font-body text-[13px] text-ink-soft">{t.audience.noMatch}</p>
         ) : (
           rows.map((r) => (
-            <div key={r.customer_id} className="rounded-card border border-glass-border p-3">
+            <div key={r.customer_id} className="card p-3">
               <div className="flex items-start justify-between gap-2">
                 <Link
                   href={`/audience/${r.customer_id}`}
-                  className="font-body text-[14px] font-semibold text-ink underline decoration-glass-border underline-offset-2 hover:decoration-red"
+                  className="font-body text-[14px] font-semibold text-ink underline decoration-surface-border underline-offset-2 hover:decoration-red"
                 >
                   {formatDisplayName(r.full_name) ?? t.audience.noName}
                 </Link>
@@ -417,7 +428,7 @@ export function AudiencePool() {
             type="button"
             onClick={loadMore}
             disabled={loading || loadingMore}
-            className="rounded-sm border border-glass-border px-4 py-1.5 font-display text-[12px] font-bold uppercase tracking-wide text-ink-soft transition-colors hover:bg-glass disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-sm border border-surface-border px-4 py-1.5 font-display text-[12px] font-bold uppercase tracking-wide text-ink-soft transition-colors hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {loadingMore ? t.audience.loading : t.audience.loadMore}
           </button>
