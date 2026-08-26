@@ -36,6 +36,7 @@
   --topbar:rgba(255,255,255,.72);          /* translucent top control bar                          */
 }
 [data-theme="dark"] {
+  color-scheme: dark;
   --red:#FF3B57; --blue:#4DA8FF; --amber:#FFB454; --green:#34C77B;
   --ink:#F5F5F5; --ink-soft:#A1A1A6; --ink-faint:#6E6E73;
   --bg-from:#1C1C1E; --bg-to:#0B0B0D;
