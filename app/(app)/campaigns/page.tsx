@@ -77,7 +77,7 @@ export default async function CampaignsPage({
     listSegments(),
     loadEligibleTemplates(),
     canBuild ? loadCityFill() : Promise.resolve({ total: 0, cityFilled: 0, cityFillPct: 0 }),
-    !enabled ? listTestRecipientsAction().then((r) => r.recipients) : Promise.resolve([]),
+    listTestRecipientsAction().then((r) => r.recipients),
   ]);
 
   const noTemplate = templates.length === 0;
@@ -88,7 +88,7 @@ export default async function CampaignsPage({
   const tabs = [
     { key: "kirim", label: c.tabKirim, href: "/campaigns?tab=kirim" },
     { key: "segmen", label: c.tabSegmen, href: "/campaigns?tab=segmen" },
-    ...((!enabled) ? [{ key: "uji", label: c.tabUji, href: "/campaigns?tab=uji" }] : []),
+    { key: "uji", label: c.tabUji, href: "/campaigns?tab=uji" },
   ];
 
   return (
@@ -166,8 +166,8 @@ export default async function CampaignsPage({
         />
       )}
 
-      {/* ── TAB: UJI KIRIM (hanya saat real send off) ── */}
-      {tab === "uji" && !enabled && (
+      {/* ── TAB: UJI KIRIM ── */}
+      {tab === "uji" && (
         <div className="flex flex-col gap-6">
           <TestRecipientsPanel initial={testRecipients} />
           <div className="rounded-card border border-dashed border-glass-border p-1">
