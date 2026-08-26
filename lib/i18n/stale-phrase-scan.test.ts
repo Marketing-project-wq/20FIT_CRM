@@ -29,6 +29,15 @@ describe("stale-phrase guard bites", () => {
     // reviewing it (adding the path) silences it — exactly how a still-true phrase is permitted
     expect(scanStalePhrases(sample, new Set(["screen.note"]))).toEqual([]);
   });
+
+  it("flags a reference to the REMOVED export feature (the class the guard missed before)", () => {
+    // The Audience + segment footers kept saying "ekspor / export" after CSV export was deleted
+    // (K-45); the future-promise patterns did not catch it. These now fail.
+    expect(scanStalePhrases({ a: { footer: "simpan kriteria & ekspor digerbangi peran" } }, new Set()))
+      .toHaveLength(1);
+    expect(scanStalePhrases({ a: { footer: "saving criteria & exporting are role-gated" } }, new Set()))
+      .toHaveLength(1);
+  });
 });
 
 describe("no unreviewed stale 'coming soon / deferred' phrases in rendered strings", () => {

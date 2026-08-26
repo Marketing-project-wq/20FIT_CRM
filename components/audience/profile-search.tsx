@@ -98,11 +98,7 @@ export function ProfileSearch() {
         </h2>
       </div>
       <p className="mt-1 font-body text-[13px] leading-relaxed text-ink-soft">
-        {t.audience.warn.searchIntroA}
-        <span className="font-mono text-[12px]">search.performed</span>
-        {t.audience.warn.searchIntroB}
-        <span className="font-mono text-[12px]">list.viewed</span>
-        {t.audience.warn.searchIntroC}
+        {t.audience.warn.searchIntro}
       </p>
 
       <form onSubmit={submit} className="mt-4 flex flex-wrap items-center gap-2">

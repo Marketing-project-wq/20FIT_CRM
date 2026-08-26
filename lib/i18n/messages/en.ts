@@ -87,7 +87,7 @@ export const en: Messages = {
     blockFailed: "This section failed to load.",
     blockRetry: "Retry",
     audienceSize: "Audience size",
-    audienceSizeHint: "master_customer (read-only)",
+    audienceSizeHint: "20FIT audience data (read-only)",
     contactableMarketing: "Contactable · marketing",
     contactableMarketingHint: "whole pool − those who unsubscribed",
     contactableService: "Contactable · service",
@@ -99,11 +99,11 @@ export const en: Messages = {
       "date of the last batch load (2 loads: 20 Apr & 31 Jul 2026) — not a continuous feed",
     importDob: "Date of birth · import data",
     importDobHint:
-      "staging_20fit_data rows have a birth date (master_customer: 0) · ~99.5% matched to a profile (measured manually · 24 Aug 2026)",
-    rfmTitle: "RFM spread · 20FIT import data",
+      "20FIT import rows have a birth date not yet in the main pool · ~99.5% matched to a profile (measured manually · 24 Aug 2026)",
+    rfmTitle: "Customer tier spread · 20FIT import data",
     rfmNote:
-      'From the mirror (82,253 matched profiles · snapshot) — same as the segment builder, so the numbers differ from the raw staging import (88,536). “−” = no bucket (not empty). Every closed-vocabulary bucket always shows (0 = measured, not missing). Stored spelling kept as-is.',
-    rfmNoBucket: "− (no bucket)",
+      'Customer tier (originally “RFM”: how recent, how frequent, and how large the transactions) — it comes from the imported data, not recent activity, so it is not yet fit to base a campaign on. “−” = no tier (not empty). Every tier always shows (0 = measured, not missing). Stored spelling kept as-is.',
+    rfmNoBucket: "− (no tier)",
     liveTitle: "Live sources vs the frozen pool",
     liveNote: "The CRM pool is a frozen snapshot — its last load was 31 Jul 2026, and no pipeline feeds new registrants into it. The sources below are counted live per request, so the “not yet in pool” gap rises on its own as people register — the honest answer to “does it update automatically”.",
     poolLayerA: "CRM pool: ",
@@ -138,7 +138,7 @@ export const en: Messages = {
     // Per-category contact-coverage export → through the existing segment export engine.
     coveragePhoneOnlyWarn: "The “phone only” category has no email — this list cannot be used for an email campaign.",
     summaryTitle: "Pool & reach",
-    summaryPoolLabel: "CRM pool (master_customer)",
+    summaryPoolLabel: "20FIT audience data",
     summaryReachAll: "whole pool contactable · zero unsubscribed",
     gapTableSource: "Source",
     candTitle: "Candidates not yet in the pool",
@@ -213,10 +213,8 @@ export const en: Messages = {
     detectOverrideHint: "Change type:",
     detectBackToAuto: "auto",
     warn: {
-      searchIntroA:
-        "To find someone who just called — then open the profile & record their stop-contact request. Phone & email are matched EXACTLY (the full number/email is required), name by word fragments. This looks up ONE person (recorded as ",
-      searchIntroB: ") — different from filtering the list below (",
-      searchIntroC: ").",
+      searchIntro:
+        "To find someone who just called — then open their profile & record their stop-contact request. Phone & email are matched EXACTLY (the full number/email is required), name by word fragments. This looks up ONE person, different from filtering the list below.",
       tooManyA: "Too many results (more than ",
       tooManyB:
         "). Narrow your keywords — this search deliberately offers no next page. To browse many people, use the filtered list below.",
@@ -233,7 +231,7 @@ export const en: Messages = {
       bannerFooterA: "The exact figures are computed straight from the database on ",
       bannerFooterB: ".",
       footer:
-        "Read-only · no export/edit/delete buttons · click a name to open the profile (recorded as profile.viewed) · every list open is recorded (list.viewed) · contacts are masked on the server for the analyst role.",
+        "Read-only · no edit or delete buttons · click a name to open a profile · every open is recorded · contacts are masked for roles without permission to see them.",
     },
   },
 
@@ -417,8 +415,8 @@ export const en: Messages = {
     srcClinicPatientLabel: "Clinic patient ",
     srcClinicPatientTag: "(health · view_health)",
     srcClinicTxnLabel: "Has a clinic transaction ",
-    rfmLabel: "RFM (per paid order)",
-    rfmAll: "All RFM",
+    rfmLabel: "Customer tier",
+    rfmAll: "All tiers",
     programLabel: "Joined a program",
     programAll: "All programs",
     programGroupNonClinical: "Programs (non-clinical)",
@@ -489,7 +487,7 @@ export const en: Messages = {
     rbGym: "present in gym",
     rbClinicPatient: "clinic patient",
     rbClinicTxn: "has a clinic transaction",
-    rbRfm: "RFM",
+    rbRfm: "Customer tier",
     rbProgram: "joined program",
     rbWordCity: "city",
     rbWordRevenue: "revenue",
@@ -567,7 +565,7 @@ export const en: Messages = {
       svcZeroC: " consent (or suppression wins).",
       // Nuance kept: nothing is saved/exported/sent because the FLOW isn't built yet — "a button that
       // refuses is worse than no button" — not because the role lacks permission.
-      footer: "Zero list of people (a builder that emits a list of people = an export without names — use /audience) · saving criteria & exporting are role-gated (PRD 17.2) · every computation is recorded (list.viewed).",
+      footer: "Counts how many people match — it does not list them · saving criteria needs role permission · every computation is recorded.",
     },
   },
 
@@ -1234,11 +1232,11 @@ export const en: Messages = {
     clinicLatestBooking: "Latest booking: ",
     notConnectedBadge: "Not connected to other sources",
     mirrorStampPrefix: " · mirror presence marker as of ",
-    impRfm: "RFM (per paid order)",
+    impRfm: "Customer tier",
     impRfmNoBucket: "− (no bucket)",
     impPrograms: "Programs joined",
     footer:
-      "Read-only · zero edit/delete/merge buttons · opening this profile is logged once (profile.viewed) — switching tabs is not a new read · contact & sensitive data are withheld on the server for roles without permission (tabs are layout only).",
+      "Read-only · no edit, delete, or merge buttons · opening this profile is logged once — switching tabs is not a new read · contact & sensitive data are withheld for roles without permission (tabs are layout only).",
 
     warn: {
       emptyField: "not filled in",
@@ -1288,7 +1286,7 @@ export const en: Messages = {
       dobConflictWhyC:
         "Priority: NIK (fixed digit positions, zero day-month ambiguity) → import → other sources → staff entry.",
       identityWhyA:
-        "The NIK is shown in full (product-owner decision) — its value still NEVER enters the audit/metadata or a CSV export, and is never a matching key. Gender/date of birth/province are ",
+        "The NIK is shown in full (product-owner decision) — its value still NEVER enters the audit record and is never a matching key. Gender/date of birth/province are ",
       identityWhyStrong: "derived from the NIK",
       identityWhyB: " (",
       identityWhyC: "); province = where the KTP was issued, not domicile. Identity is gated by ",
@@ -1387,30 +1385,6 @@ export const en: Messages = {
     hidePassword: "Hide password",
     themeDark: "Dark mode",
     themeLight: "Light mode",
-  },
-
-  export: {
-    headers: {
-      customer_id: "customer_id",
-      full_name: "name",
-      email: "email",
-      phone_normalized: "phone",
-      city: "city",
-      first_unit: "first_unit",
-      segment: "segment",
-      lifetime_value: "lifetime_value",
-    },
-    provTitle: "20FIT CRM — segment export",
-    provDate: "date",
-    provBy: "by",
-    provCriteria: "criteria",
-    provFooter:
-      "suppression excluded · no NIK / clinical data · row count is on the last line (EOF)",
-    provNoCriteria: "whole pool (no criteria)",
-    eofTotal: "total_rows",
-    auditFailed: "AUDIT_FAILED",
-    aborted: "FAILED: export truncated, do not use this file",
-    fileBaseName: "segment",
   },
 
   ai: {

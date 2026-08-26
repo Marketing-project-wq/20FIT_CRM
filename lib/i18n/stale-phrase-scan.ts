@@ -1,18 +1,25 @@
 /**
- * GUARD for the "written while something didn't exist, then left behind after it landed" class of
- * stale sentence (nav rebuild TUGAS 5). It bit three times: Settings "read-only this sprint",
- * Campaigns/Exports "not built yet", and the segment builder "saving is deferred" — each written when
- * the feature was absent and never revisited when it arrived.
+ * GUARD for stale sentences in rendered strings. TWO classes, both of which have bitten:
  *
- * The DESIGN is a REVIEW-LIST, not a blunt fail: a pure fail-guard would block legitimately-true notes
- * ("the merge/unmerge flow is not built"), and a docs checklist gets skipped (that's how these
- * survived). So this scans every rendered dictionary string for the suspect phrases and fails on any
- * hit whose PATH is not in an allowlist of entries a human has reviewed and confirmed STILL TRUE —
- * with a date. When such a feature lands, the string AND its allowlist entry must both be removed (the
- * phrase is now false); a NEW suspect phrase fails the build until someone reviews it.
+ *  1. FUTURE-PROMISE — "written while something didn't exist, then left behind after it landed"
+ *     (nav rebuild TUGAS 5): Settings "read-only this sprint", Campaigns "not built yet", the
+ *     segment builder "saving is deferred".
+ *  2. REMOVED-FEATURE — a reference to a feature that was later DELETED and never swept from the
+ *     strings. The CSV export was removed entirely (K-45), yet the segment-builder and Audience
+ *     footers kept saying "ekspor / export" — and the future-promise patterns did not catch it,
+ *     because "export" is not a coming-soon phrase. Added `ekspor`/`export` so any rendered mention
+ *     of the removed feature fails until it is rewritten.
+ *
+ * The DESIGN is a REVIEW-LIST, not a blunt fail: a pure fail-guard would block legitimately-true
+ * notes, and a docs checklist gets skipped (that's how these survived). So this scans every rendered
+ * dictionary string for the suspect phrases and fails on any hit whose PATH is not in an allowlist of
+ * entries a human has reviewed and confirmed STILL TRUE — with a date. When such a feature lands (or
+ * is removed), the string AND its allowlist entry must both be removed; a NEW suspect phrase fails the
+ * build until someone reviews it.
  */
 
 export const SUSPECT_PATTERNS: readonly RegExp[] = [
+  // Class 1 — future promise.
   /not built yet/i,
   /not yet built/i,
   /belum dibangun/i,
@@ -22,6 +29,10 @@ export const SUSPECT_PATTERNS: readonly RegExp[] = [
   /\bdeferred\b/i,
   /menyusul/i,
   /coming soon/i,
+  // Class 2 — reference to a REMOVED feature (CSV export, deleted K-45). No trailing boundary so
+  // "export/exporting/exported" and "ekspor/mengekspor/diekspor" all match.
+  /ekspor/i,
+  /export/i,
 ] as const;
 
 export interface PhraseHit {
