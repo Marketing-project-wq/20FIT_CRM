@@ -8,6 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { useI18n } from "@/components/i18n/lang-provider";
 import { formatCount } from "@/lib/i18n";
 import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
   previewCampaignAction,
   listRunsAction,
   sendCampaignAction,
@@ -240,18 +243,18 @@ export function CampaignFlow({
             <div className="flex flex-col gap-2">
               <label className="flex flex-col gap-1.5">
                 <span className="font-body text-[12px] font-semibold text-ink-soft">{c.step1SegmentLabel}</span>
-                <select
-                  className={selectCls}
-                  value={segmentId}
-                  onChange={(e) => pickSegment(e.target.value)}
-                >
-                  <option value="">—</option>
-                  {segments.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}{s.requiresClinical ? " ⚕" : ""}
-                    </option>
-                  ))}
-                </select>
+                <Select value={segmentId} onValueChange={pickSegment}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="—" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {segments.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name}{s.requiresClinical ? " ⚕" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </label>
               <Link href="/segments" className="inline-flex items-center gap-1.5 font-body text-[12px] text-ink-faint hover:text-ink">
                 <ExternalLink className="h-3 w-3" aria-hidden />
@@ -282,12 +285,16 @@ export function CampaignFlow({
           ) : (
             <label className="flex flex-col gap-1.5">
               <span className="font-body text-[12px] text-ink-soft">{cc.templateLabel}</span>
-              <select className={selectCls} value={templateKey} onChange={(e) => {
-                setTemplateKey(e.target.value); setPreview(null); setRunSel(null); setResult(null);
+              <Select value={templateKey} onValueChange={(v) => {
+                setTemplateKey(v); setPreview(null); setRunSel(null); setResult(null);
               }}>
-                <option value="">—</option>
-                {templates.map((tp) => <option key={tp.key} value={tp.key}>{tp.name}</option>)}
-              </select>
+                <SelectTrigger>
+                  <SelectValue placeholder="—" />
+                </SelectTrigger>
+                <SelectContent>
+                  {templates.map((tp) => <SelectItem key={tp.key} value={tp.key}>{tp.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </label>
           )}
 
