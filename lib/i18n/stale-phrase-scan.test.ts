@@ -13,11 +13,12 @@ import { scanStalePhrases } from "./stale-phrase-scan";
 // Paths reviewed 2026-08-25 and confirmed STILL TRUE (the feature the phrase refers to genuinely does
 // not exist yet). Remove an entry the moment its feature ships.
 const REVIEWED_STILL_TRUE: ReadonlySet<string> = new Set([
-  "coverage.notEnglishYet",      // English translation genuinely absent for this string
-  "stubs.comingSoon",            // Workflows author surface — still a ComingSoon stub
-  "messaging.waSubtitle",        // WhatsApp Business API credentials genuinely not set (panel reads "Not connected")
-  "quality.caption.duplicates",  // the merge/unmerge flow is genuinely not built (numbers only rise)
-  "profile.provinceCodeB",       // province/region reference data genuinely not available
+  "coverage.notEnglishYet",                   // English translation genuinely absent for this string
+  "stubs.comingSoon",                          // Workflows author surface — still a ComingSoon stub
+  "messaging.waSubtitle",                      // WhatsApp Business API credentials genuinely not set (panel reads "Not connected")
+  "quality.caption.duplicates",               // the merge/unmerge flow is genuinely not built (numbers only rise)
+  "profile.provinceCodeB",                    // province/region reference data genuinely not available
+  "campaignsPage.steps.step0WhatsappDesc",    // reviewed 2026-08-26: WhatsApp Business integration genuinely not built yet
 ]);
 
 describe("stale-phrase guard bites", () => {
