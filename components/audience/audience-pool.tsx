@@ -217,8 +217,7 @@ export function AudiencePool({ preview }: { preview?: AudiencePoolPreview } = {}
             {t.nav.audience}
           </h1>
           <p className="mt-2 font-body text-[14px] text-ink-soft">
-            {t.audience.subtitlePre}{formatCount(total, lang)}{t.audience.subtitleMid}
-            <span className="font-mono text-[13px]">master_customer</span>{t.audience.subtitlePost}
+            {t.audience.subtitlePre}{formatCount(total, lang)}{t.audience.subtitleMid}{t.audience.subtitlePost}
           </p>
         </div>
         {masked && (
