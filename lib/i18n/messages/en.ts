@@ -1048,6 +1048,7 @@ export const en: Messages = {
       step2CountBtn: "Count recipients",
       step2SummarySuffix: "sendable",
       toStep3: "Continue to Send",
+      step2TestTitle: "Send a test to admin first",
       step3Title: "3 · Send",
       step3Hint: "Pick a run, confirm, send. Recipients are re-counted on send; any drift is shown.",
       step3SummarySuffix: "sent",

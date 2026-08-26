@@ -125,6 +125,7 @@ export default async function CampaignsPage({
             segments={segments.map((s) => ({ id: s.id, name: s.name, requiresClinical: s.requiresClinical }))}
             templates={templates}
             realSend={enabled}
+            testRecipients={testRecipients}
             builder={{ cityFillPct: cityFill.cityFillPct, cityFilled: cityFill.cityFilled, total: cityFill.total, canViewHealth, canBuild }}
           />
           <details className="glass-strong rounded-card p-5">

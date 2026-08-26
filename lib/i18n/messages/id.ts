@@ -1141,6 +1141,7 @@ export const id = {
       step2CountBtn: "Hitung penerima",
       step2SummarySuffix: "akan dikirimi",
       toStep3: "Lanjut ke Kirim",
+      step2TestTitle: "Uji kirim ke admin dulu",
       step3Title: "3 · Kirim",
       step3Hint: "Pilih run, konfirmasi, kirim. Penerima dihitung ulang saat kirim; selisih ditampilkan.",
       step3SummarySuffix: "terkirim",

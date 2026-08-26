@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useI18n } from "@/components/i18n/lang-provider";
 import { formatCount } from "@/lib/i18n";
+import { SendTestPanel } from "./send-test-panel";
+import type { TestRecipient } from "./test-recipient-actions";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -47,10 +49,12 @@ export function CampaignFlow({
   segments,
   templates,
   realSend,
+  testRecipients = [],
 }: {
   segments: SegmentOption[];
   templates: TemplateOption[];
   realSend: boolean;
+  testRecipients?: TestRecipient[];
   // builder prop accepted but unused — page.tsx still passes it
   builder: { cityFillPct: number; cityFilled: number; total: number; canViewHealth: boolean; canBuild: boolean };
 }) {
@@ -320,6 +324,19 @@ export function CampaignFlow({
               <Badge tone="green">{cc.sendable}: {fmt(preview.sendable ?? 0)}</Badge>
             </div>
           )}
+
+          {/* Uji kirim ke admin sebelum kirim ke audiens luas */}
+          {preview?.ok && (
+            <details className="rounded-card border border-glass-border p-4">
+              <summary className="cursor-pointer select-none font-display text-[12px] font-bold uppercase tracking-wide text-ink-soft">
+                {c.step2TestTitle}
+              </summary>
+              <div className="mt-4">
+                <SendTestPanel />
+              </div>
+            </details>
+          )}
+
           {preview?.ok && (
             <div><Button size="sm" onClick={() => setOpen(3)}>{c.toStep3}</Button></div>
           )}
