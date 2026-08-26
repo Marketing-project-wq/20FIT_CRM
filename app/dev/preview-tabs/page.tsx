@@ -3,6 +3,7 @@ import { LangProvider } from "@/components/i18n/lang-provider";
 import { TabBar, type TabDef } from "@/components/shell/tab-bar";
 import { Badge } from "@/components/ui/badge";
 import { DevBanner } from "@/components/dev/dev-banner";
+import { AudiencePool, type AudiencePoolPreview } from "@/components/audience/audience-pool";
 
 export const dynamic = "force-dynamic";
 
@@ -24,60 +25,18 @@ const TEMPLATE_TABS: TabDef[] = [
   { key: "history", label: "Riwayat Kirim", href: "/dev/preview-tabs#hist" },
 ];
 
-const ROWS = [
-  { name: "Andi Wijaya", phone: "62812••••8953", email: "a••@mail.com", city: "Jakarta", unit: "membership", ltv: "Rp 4.200.000" },
-  { name: "Siti Rahmawati", phone: "62813••••1120", email: "s••@mail.com", city: "Bandung", unit: "event", ltv: "Rp 980.000" },
-  { name: "Budi Santoso", phone: "—", email: "b••@mail.com", city: "Surabaya", unit: "arena", ltv: "Rp 0" },
-];
-
-function FixtureList() {
-  return (
-    <>
-      {/* Wide: table. */}
-      <div className="hidden overflow-x-auto rounded-card border border-glass-border md:block">
-        <table className="w-full border-collapse text-left">
-          <thead>
-            <tr className="border-b border-glass-border font-display text-[12px] uppercase tracking-wide text-ink-faint">
-              <th className="px-4 py-3 font-bold">Nama</th>
-              <th className="px-4 py-3 font-bold">Telepon</th>
-              <th className="px-4 py-3 font-bold">Email</th>
-              <th className="px-4 py-3 font-bold">Kota</th>
-              <th className="px-4 py-3 font-bold">Unit</th>
-              <th className="px-4 py-3 text-right font-bold">LTV</th>
-            </tr>
-          </thead>
-          <tbody className="font-body text-[14px] text-ink">
-            {ROWS.map((r) => (
-              <tr key={r.name} className="border-b border-glass-border last:border-0">
-                <td className="px-4 py-3 font-semibold">{r.name}</td>
-                <td className="px-4 py-3 font-mono text-[13px]">{r.phone}</td>
-                <td className="px-4 py-3 font-mono text-[13px]">{r.email}</td>
-                <td className="px-4 py-3">{r.city}</td>
-                <td className="px-4 py-3">{r.unit}</td>
-                <td className="px-4 py-3 text-right font-mono text-[13px]">{r.ltv}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {/* Narrow: cards. */}
-      <div className="flex flex-col gap-2 md:hidden">
-        {ROWS.map((r) => (
-          <div key={r.name} className="rounded-card border border-glass-border p-3">
-            <div className="flex items-start justify-between gap-2">
-              <span className="font-body text-[14px] font-semibold text-ink">{r.name}</span>
-              <span className="shrink-0 font-mono text-[12px] text-ink-soft">{r.ltv}</span>
-            </div>
-            <div className="mt-1.5 flex flex-col gap-0.5 font-body text-[12px] text-ink-soft">
-              <span className="font-mono">{r.phone} · {r.email}</span>
-              <span>{r.city} · {r.unit}</span>
-            </div>
-          </div>
-        ))}
-      </div>
-    </>
-  );
-}
+// Fixture rows in the SAME shape /api/audience returns, so the preview renders the REAL AudiencePool
+// component (table + filters + search + quality banner), not a facsimile. `masked: true` exercises the
+// contact-masking state; the empty phone + Rp 0 rows exercise the honest empty/zero display.
+const AUDIENCE_PREVIEW: AudiencePoolPreview = {
+  masked: true,
+  total: 82253,
+  rows: [
+    { customer_id: "a1", full_name: "Andi Wijaya", phone: "62812••••8953", email: "a••@mail.com", city: "Jakarta", first_unit: "membership", segment: "Loyal", lifetime_value: 4200000, created_at: "2026-07-31T00:00:00Z" },
+    { customer_id: "a2", full_name: "Siti Rahmawati", phone: "62813••••1120", email: "s••@mail.com", city: "Bandung", first_unit: "event", segment: null, lifetime_value: 980000, created_at: "2026-07-31T00:00:00Z" },
+    { customer_id: "a3", full_name: "Budi Santoso", phone: null, email: "b••@mail.com", city: "Surabaya", first_unit: "arena", segment: "New User", lifetime_value: 0, created_at: "2026-07-31T00:00:00Z" },
+  ],
+};
 
 export default function PreviewTabs() {
   return (
@@ -92,7 +51,7 @@ export default function PreviewTabs() {
             </div>
             <h1 className="font-display text-[32px] font-black uppercase leading-none text-ink">Audience</h1>
             <TabBar tabs={AUDIENCE_TABS} active="list" />
-            <FixtureList />
+            <AudiencePool preview={AUDIENCE_PREVIEW} />
           </section>
 
           <section id="templates" className="flex flex-col gap-4">

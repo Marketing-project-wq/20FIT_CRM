@@ -94,9 +94,10 @@ persetujuan Jeff (K-32/K-43/K-44 tiga-peran) · remediasi T-17 (887 akun bisa tu
 - **Ingestion.** Terbesar. Tanpa itu pool beku, selisih naik.
 - **Terjemahan** detail profil & `/settings/diagnostik`.
 - **Redesign** mengikuti 20FIT Shop: token & primitif (langkah 1), **kerangka** (sidebar terang, top
-  bar kontrol global, drawer mobile — K-46), dan **Dashboard** (kartu solid tanpa aksen kiri, ikon
-  kecil, angka lebih ringan, bar hijau/amber/merah untuk cakupan) **selesai**; layar lain (Audience,
-  Campaigns, Templates, Settings) tertunda.
+  bar kontrol global, drawer mobile — K-46), **Dashboard** (kartu solid, ikon kecil, angka ringan, bar
+  hijau/amber/merah), dan **Audience** — tab Daftar (tabel padat→kartu, permukaan solid) + Cari
+  **selesai**. Tab Unsubscribe ikut; tab **Kualitas** (QualityDashboard, besar) + layar Campaigns,
+  Templates, Settings tertunda. Pagar penanda halaman `/dev/*` (fixture vs data-langsung) dipasang.
 
 ## 8. Cara kerja yang berlaku
 

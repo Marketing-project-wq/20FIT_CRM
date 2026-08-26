@@ -63,7 +63,7 @@ export function SuppressionPanel() {
       <SuppressionWins />
 
       {error && (
-        <div className="rounded-card border border-glass-border p-6 text-center">
+        <div className="card p-6 text-center">
           <Badge tone="red">{t.consent.failed}</Badge>
           <p className="mt-2 font-body text-[13px] text-ink-soft">{error}</p>
         </div>
@@ -88,10 +88,10 @@ export function SuppressionPanel() {
         ) : suppression ? (
           <>
             {/* Wide screens: table. */}
-            <div className="hidden overflow-x-auto rounded-card border border-glass-border md:block">
+            <div className="hidden overflow-x-auto card md:block">
               <table className="w-full border-collapse text-left">
                 <thead>
-                  <tr className="border-b border-glass-border font-display text-[12px] uppercase tracking-wide text-ink-faint">
+                  <tr className="border-b border-surface-border font-display text-[12px] uppercase tracking-wide text-ink-faint">
                     <th className="px-4 py-3 font-bold">{t.consent.thKind}</th>
                     <th className="px-4 py-3 font-bold">{t.consent.thIdentity}</th>
                     <th className="px-4 py-3 font-bold">{t.consent.thReason}</th>
@@ -102,7 +102,7 @@ export function SuppressionPanel() {
                 </thead>
                 <tbody className="font-body text-[13px] text-ink">
                   {suppression.rows.map((r) => (
-                    <tr key={r.id} className="border-b border-glass-border last:border-0">
+                    <tr key={r.id} className="border-b border-surface-border last:border-0">
                       <td className="px-4 py-3">{r.identity_kind}</td>
                       <td className="px-4 py-3 font-mono text-[12px]">{r.identity_key ?? "—"}</td>
                       <td className="px-4 py-3">{r.reason_code}</td>
@@ -120,7 +120,7 @@ export function SuppressionPanel() {
             {/* Narrow screens: one card per row. */}
             <div className="flex flex-col gap-2 md:hidden">
               {suppression.rows.map((r) => (
-                <div key={r.id} className="rounded-card border border-glass-border p-3">
+                <div key={r.id} className="card p-3">
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-mono text-[13px] text-ink">{r.identity_key ?? "—"}</span>
                     <Badge tone={r.status === "active" ? "red" : "neutral"}>{r.status}</Badge>

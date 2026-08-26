@@ -31,7 +31,7 @@ export default async function AudiencePage({ searchParams }: { searchParams?: { 
     return (
       <div>
         <h1 className="font-display text-[32px] font-black uppercase leading-none text-ink">{t.nav.audience}</h1>
-        <div className="mt-8 flex flex-col items-center justify-center gap-4 rounded-card border border-dashed border-glass-border px-6 py-20 text-center">
+        <div className="mt-8 flex flex-col items-center justify-center gap-4 rounded-card border border-dashed border-surface-border px-6 py-20 text-center">
           <Badge tone="red">{t.access.deniedBadge}</Badge>
           <p className="max-w-md font-body text-[14px] leading-relaxed text-ink-soft">
             {decision === "needs_scope" ? t.access.audienceDeniedScope : t.access.audienceDeniedRole}
