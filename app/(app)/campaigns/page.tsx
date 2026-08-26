@@ -15,6 +15,8 @@ import { loadCityFill } from "@/lib/crm/city-fill";
 import { CampaignFlow, type TemplateOption } from "./campaign-flow";
 import { SendTestPanel } from "./send-test-panel";
 import { SegmentsTab } from "./segments-tab";
+import { TestRecipientsPanel } from "./test-recipients-panel";
+import { listTestRecipientsAction } from "./test-recipient-actions";
 
 export const metadata: Metadata = { title: "Campaigns" };
 export const dynamic = "force-dynamic";
@@ -71,10 +73,11 @@ export default async function CampaignsPage({
   const enabled = realSendEnabled();
   const canBuild = isPermitted(role, "segment.build");
   const canViewHealth = isPermitted(role, "profile.view_health");
-  const [segments, templates, cityFill] = await Promise.all([
+  const [segments, templates, cityFill, testRecipients] = await Promise.all([
     listSegments(),
     loadEligibleTemplates(),
     canBuild ? loadCityFill() : Promise.resolve({ total: 0, cityFilled: 0, cityFillPct: 0 }),
+    !enabled ? listTestRecipientsAction().then((r) => r.recipients) : Promise.resolve([]),
   ]);
 
   const noTemplate = templates.length === 0;
@@ -165,8 +168,11 @@ export default async function CampaignsPage({
 
       {/* ── TAB: UJI KIRIM (hanya saat real send off) ── */}
       {tab === "uji" && !enabled && (
-        <div className="rounded-card border border-dashed border-glass-border p-1">
-          <SendTestPanel />
+        <div className="flex flex-col gap-6">
+          <TestRecipientsPanel initial={testRecipients} />
+          <div className="rounded-card border border-dashed border-glass-border p-1">
+            <SendTestPanel />
+          </div>
         </div>
       )}
     </div>
