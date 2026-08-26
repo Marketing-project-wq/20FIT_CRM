@@ -153,13 +153,17 @@ async function ensureTestSegment(admin: SupabaseClient): Promise<string | null> 
  * Run the internal send test. `actor` identifies who triggered it (for the campaign.sent audit row).
  * Returns the real artifacts read back from crm_message_log / crm_audit_log / crm_campaign_run.
  */
-export async function runInternalSendTest(actor: { actorId: string; actorEmail: string | null }): Promise<SendTestResult> {
+export async function runInternalSendTest(actor: { actorId: string; actorEmail: string | null }, overrideTargets?: string[]): Promise<SendTestResult> {
   // Guard 1: safe mode only.
   if (realSendEnabled()) return { ok: false, error: "real_send_enabled" };
-  // Guard 2: destination from env, and must be internal.
-  const target = (process.env[INTERNAL_TEST_ENV_VAR] ?? "").trim();
-  if (!target) return { ok: false, error: "no_target_configured" };
-  if (!isInternalAddress(target)) return { ok: false, error: "target_not_internal" };
+
+  // Guard 2: resolve targets — from caller (DB list or UI input) OR env var fallback.
+  const targets: string[] = overrideTargets && overrideTargets.length > 0
+    ? overrideTargets
+    : [(process.env[INTERNAL_TEST_ENV_VAR] ?? "").trim()].filter(Boolean);
+  if (targets.length === 0) return { ok: false, error: "no_target_configured" };
+  const badTarget = targets.find((t) => !isInternalAddress(t));
+  if (badTarget) return { ok: false, error: "target_not_internal" };
 
   // Pre-flight: report ALL missing required send vars at once, BEFORE creating any run — so the owner
   // fixes them in one pass (not one failed attempt per missing var), and a doomed run is never created.
@@ -200,7 +204,11 @@ export async function runInternalSendTest(actor: { actorId: string; actorEmail: 
         actorId: actor.actorId,
         actorEmail: actor.actorEmail,
         confirmedLargeSend: false,
-        overrideRecipients: [{ customerId: INTERNAL_TEST_CUSTOMER_ID, email: target, language: "id" }],
+        overrideRecipients: targets.map((email, i) => ({
+          customerId: `${INTERNAL_TEST_CUSTOMER_ID}-${i}`,
+          email,
+          language: "id" as const,
+        })),
       },
       nowIso,
     );
@@ -248,7 +256,7 @@ export async function runInternalSendTest(actor: { actorId: string; actorEmail: 
 
   return {
     ok: true,
-    targetMasked: maskEmail(target),
+    targetMasked: maskEmail(targets[0]),
     runId: run.id,
     runStatus,
     templateKey: INTERNAL_TEST_TEMPLATE_KEY,

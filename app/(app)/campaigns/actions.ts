@@ -312,10 +312,9 @@ export async function sendCampaignAction(args: {
  */
 export type InternalTestResult = SendTestResult | { ok: false; error: "denied" };
 
-export async function runInternalSendTestAction(): Promise<InternalTestResult> {
+export async function runInternalSendTestAction(quickEmail?: string): Promise<InternalTestResult> {
   const role = await getCurrentUserRole();
   if (grantFor(role, "send.at_or_below_threshold") === "deny") return { ok: false, error: "denied" };
-  // Same host gate as the real send: refuse if the test email's unsubscribe link would be dead.
   const hostBlock = unsubscribeHostBlocked();
   if (hostBlock) return { ok: false, error: "unsubscribe_host_mismatch", linkHost: hostBlock.linkHost, servingHost: hostBlock.servingHost };
   let actorId = "unknown";
@@ -325,9 +324,29 @@ export async function runInternalSendTestAction(): Promise<InternalTestResult> {
     actorId = data.user?.id ?? "unknown";
     actorEmail = data.user?.email ?? null;
   } catch {
-    // fail-closed identity; the audit actor is 'unknown'
+    // fail-closed identity
   }
-  return runInternalSendTest({ actorId, actorEmail });
+
+  // Resolve targets: UI quick-input > crm_test_recipient list > env var fallback (in harness).
+  let overrideTargets: string[] | undefined;
+  if (quickEmail) {
+    overrideTargets = [quickEmail.trim().toLowerCase()];
+  } else {
+    try {
+      const admin = createAdminClient();
+      const { data } = await admin
+        .from("crm_test_recipient")
+        .select("email")
+        .eq("is_active", true)
+        .order("added_at", { ascending: true });
+      const emails = (data ?? []).map((r: { email: string }) => r.email).filter(Boolean);
+      if (emails.length > 0) overrideTargets = emails;
+    } catch {
+      // fall through to env var fallback in harness
+    }
+  }
+
+  return runInternalSendTest({ actorId, actorEmail }, overrideTargets);
 }
 
 export type InternalTestCleanupResult = SendTestCleanupResult | { ok: false; error: "denied" };

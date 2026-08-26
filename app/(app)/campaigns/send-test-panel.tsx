@@ -28,6 +28,7 @@ export function SendTestPanel() {
   const [result, setResult] = useState<InternalTestResult | null>(null);
   const [cleanup, setCleanup] = useState<InternalTestCleanupResult | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [quickEmail, setQuickEmail] = useState("");
 
   const errText = (e: string | undefined): string => {
     switch (e) {
@@ -47,7 +48,7 @@ export function SendTestPanel() {
     setNotice(null);
     setCleanup(null);
     try {
-      const r = await runInternalSendTestAction();
+      const r = await runInternalSendTestAction(quickEmail.trim() || undefined);
       if (!r.ok) {
         setResult(null);
         if (r.error === "missing_env" && "missingEnv" in r && r.missingEnv?.length) {
@@ -98,13 +99,26 @@ export function SendTestPanel() {
         <p className="mt-2 font-body text-[13px] leading-relaxed text-ink-soft">{st.desc}</p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <Button size="sm" onClick={onRun} disabled={running}>
-          {running ? st.running : st.runBtn}
-        </Button>
-        <Button size="sm" variant="ghost" onClick={onCleanup} disabled={cleaning}>
-          {cleaning ? st.cleaning : st.cleanupBtn}
-        </Button>
+      <div className="flex flex-col gap-2">
+        <label className="font-body text-[12px] text-ink-soft">
+          Email tujuan uji — kosongkan untuk pakai daftar penerima uji atau env var
+        </label>
+        <div className="flex flex-wrap items-center gap-3">
+          <input
+            type="email"
+            value={quickEmail}
+            onChange={(e) => setQuickEmail(e.target.value)}
+            placeholder="nama@20fit.id (opsional)"
+            className="h-10 rounded-sm border border-glass-border bg-glass px-3 font-body text-[14px] text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-red sm:w-72"
+            onKeyDown={(e) => e.key === "Enter" && !running && onRun()}
+          />
+          <Button size="sm" onClick={onRun} disabled={running}>
+            {running ? st.running : st.runBtn}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={onCleanup} disabled={cleaning}>
+            {cleaning ? st.cleaning : st.cleanupBtn}
+          </Button>
+        </div>
       </div>
 
       {notice && <p role="alert" className="font-body text-[13px] leading-relaxed text-red">{notice}</p>}
