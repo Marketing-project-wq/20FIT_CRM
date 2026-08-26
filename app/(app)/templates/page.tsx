@@ -2,10 +2,11 @@ import type { Metadata } from "next";
 import { getCurrentUserRole } from "@/lib/auth/current-role";
 import { grantFor } from "@/lib/auth/roles";
 import { Badge } from "@/components/ui/badge";
-import { ComingSoon } from "@/components/shell/coming-soon";
 import { SendHistoryPanel } from "@/components/messages/send-history-panel";
 import { TabBar, type TabDef } from "@/components/shell/tab-bar";
 import { getServerDict } from "@/lib/i18n/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { TemplateList } from "@/components/templates/template-list";
 
 export const metadata: Metadata = { title: "Templates" };
 export const dynamic = "force-dynamic";
@@ -19,9 +20,39 @@ type TemplatesTab = "template" | "history";
  * needs send.* (the old /messages gate), so a role that may author templates but not send sees only
  * the Template tab.
  */
+async function loadTemplates() {
+  try {
+    const admin = createAdminClient();
+    const { data, error } = await admin
+      .from("crm_message_template")
+      .select("id, template_key, channel, language, name, subject, version, wa_approval_status, created_at")
+      .eq("is_active", true)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Failed to load templates:", error);
+      return [];
+    }
+
+    // Deduplicate by template_key — only return the latest version
+    const seen = new Set<string>();
+    const unique = [];
+    for (const tpl of data ?? []) {
+      if (!seen.has(tpl.template_key)) {
+        seen.add(tpl.template_key);
+        unique.push(tpl);
+      }
+    }
+    return unique;
+  } catch (err) {
+    console.error("Failed to load templates:", err);
+    return [];
+  }
+}
+
 export default async function TemplatesPage({ searchParams }: { searchParams?: { tab?: string } }) {
   const role = await getCurrentUserRole();
-  const { t } = getServerDict();
+  const { t, lang } = getServerDict();
 
   if (grantFor(role, "workflow.create") === "deny") {
     return (
@@ -43,13 +74,15 @@ export default async function TemplatesPage({ searchParams }: { searchParams?: {
   const requested = (searchParams?.tab ?? "template") as TemplatesTab;
   const active: TemplatesTab = tabs.some((tab) => tab.key === requested) ? requested : "template";
 
+  const templates = active === "template" ? await loadTemplates() : [];
+
   return (
     <div className="flex flex-col gap-6">
       <h1 className="font-display text-[32px] font-black uppercase leading-none text-ink">{t.nav.templates}</h1>
       <TabBar tabs={tabs} active={active} />
 
       {active === "template" ? (
-        <ComingSoon title={t.nav.templates} description={t.stubs.templates} phase={t.stubs.phase4} />
+        <TemplateList templates={templates} lang={lang} />
       ) : (
         <SendHistoryPanel />
       )}
