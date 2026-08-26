@@ -1009,6 +1009,7 @@ export const en: Messages = {
       step1CatKontak: "Contact",
       step1BuildNew: "Build new criteria",
       step1BuildNewHint: "Compose criteria, compute, then save. Saved segments appear in the list above.",
+      step1GoToSegments: "Build a new segment in the Segments page",
       toStep2: "Continue to Message",
       step2Title: "2 · Message",
       step2Hint: "Pick a template and see what will be sent, then count recipients after suppression.",

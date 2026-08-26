@@ -1102,6 +1102,7 @@ export const id = {
       step1CatKontak: "Kontak",
       step1BuildNew: "Susun kriteria baru",
       step1BuildNewHint: "Susun kriteria, hitung, lalu simpan. Segmen tersimpan akan muncul di daftar di atas.",
+      step1GoToSegments: "Buat segmen baru di halaman Segments",
       toStep2: "Lanjut ke Pesan",
       step2Title: "2 · Pesan",
       step2Hint: "Pilih template dan lihat isi yang akan dikirim, lalu hitung penerima setelah suppression.",
