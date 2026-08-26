@@ -2,6 +2,7 @@ import { AppShell } from "@/components/shell/app-shell";
 import { DashboardContent } from "@/components/dashboard/dashboard-content";
 import { ProfileDetail } from "@/components/audience/profile-detail";
 import { LangProvider } from "@/components/i18n/lang-provider";
+import { DevBanner } from "@/components/dev/dev-banner";
 import { PROFILE_FIXTURES } from "./profile-fixtures";
 
 export const dynamic = "force-dynamic";
@@ -103,6 +104,7 @@ function Case({ id, title, note, children }: { id?: string; title: string; note:
 export default function DevDashboardPreview() {
   return (
     <AppShell userEmail="marketing@20fit.id" activePath="/" showAllNav>
+      <DevBanner mode="fixture" />
       <div id="shot-full"><DashboardContent previewStats={FIXTURE} /></div>
 
       {/* Progressive-load states (TUGAS 4) — the three cases the sprint asks to see: everything

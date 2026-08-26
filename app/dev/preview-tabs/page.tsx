@@ -2,6 +2,7 @@ import { AppShell } from "@/components/shell/app-shell";
 import { LangProvider } from "@/components/i18n/lang-provider";
 import { TabBar, type TabDef } from "@/components/shell/tab-bar";
 import { Badge } from "@/components/ui/badge";
+import { DevBanner } from "@/components/dev/dev-banner";
 
 export const dynamic = "force-dynamic";
 
@@ -82,6 +83,7 @@ export default function PreviewTabs() {
   return (
     <LangProvider lang="id">
       <AppShell userEmail="marketing@20fit.id" activePath="/audience" showAllNav>
+        <DevBanner mode="fixture" />
         <div className="flex flex-col gap-10">
           <section id="audience" className="flex flex-col gap-4">
             <div className="rounded-sm bg-glass px-3 py-2">

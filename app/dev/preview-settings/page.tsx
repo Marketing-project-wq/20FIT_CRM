@@ -4,6 +4,7 @@ import { TabBar, type TabDef } from "@/components/shell/tab-bar";
 import { RoleGrantForm } from "@/components/settings/role-grant-form";
 import { WhatsappPanel } from "@/components/settings/whatsapp-panel";
 import { Badge } from "@/components/ui/badge";
+import { DevBanner } from "@/components/dev/dev-banner";
 
 export const dynamic = "force-dynamic";
 
@@ -61,6 +62,7 @@ export default function PreviewSettings() {
   return (
     <LangProvider lang="id">
       <AppShell userEmail="marketing@20fit.id" activePath="/settings" showAllNav>
+        <DevBanner mode="fixture" />
         <div className="flex flex-col gap-8">
           <div>
             <h1 className="font-display text-[32px] font-black uppercase leading-none text-ink">Settings</h1>

@@ -3,6 +3,7 @@ import { LangProvider } from "@/components/i18n/lang-provider";
 import { CampaignFlow } from "@/app/(app)/campaigns/campaign-flow";
 import { SegmentBuilder } from "@/components/segments/segment-builder";
 import { Badge } from "@/components/ui/badge";
+import { DevBanner } from "@/components/dev/dev-banner";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +32,7 @@ export default function PreviewCampaign() {
   return (
     <LangProvider lang="id">
       <AppShell userEmail="marketing@20fit.id" activePath="/campaigns" showAllNav>
+        <DevBanner mode="fixture" />
         <div className="flex flex-col gap-8">
           <div>
             <h1 className="font-display text-[32px] font-black uppercase leading-none text-ink">Campaigns</h1>
