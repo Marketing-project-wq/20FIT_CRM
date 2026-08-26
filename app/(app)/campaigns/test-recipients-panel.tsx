@@ -4,7 +4,6 @@ import { useState } from "react";
 import { UserPlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/components/i18n/lang-provider";
-import { formatDateTime } from "@/lib/i18n";
 import {
   addTestRecipientAction,
   removeTestRecipientAction,
@@ -15,7 +14,7 @@ const inputCls =
   "h-10 rounded-sm border border-glass-border bg-glass px-3 font-body text-[14px] text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-red";
 
 export function TestRecipientsPanel({ initial }: { initial: TestRecipient[] }) {
-  const { lang, t } = useI18n();
+  const { t } = useI18n();
   const p = t.campaignsPage.testRecipientsPanel;
   const [recipients, setRecipients] = useState(initial);
   const [email, setEmail] = useState("");
