@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useI18n } from "@/components/i18n/lang-provider";
 import { formatCount } from "@/lib/i18n";
-import { SendTestPanel } from "./send-test-panel";
+import { PreviewEmailPanel } from "./preview-email-panel";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -335,8 +335,7 @@ export function CampaignFlow({
 
           {/* Uji kirim ke admin */}
           <div className="rounded-card border border-glass-border p-4">
-            <p className="font-display text-[12px] font-bold uppercase tracking-wide text-ink-soft mb-3">{c.step3TestTitle}</p>
-            <SendTestPanel />
+            <PreviewEmailPanel templateKey={templateKey} />
           </div>
 
           {preview?.ok && (

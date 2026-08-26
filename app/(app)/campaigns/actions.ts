@@ -23,6 +23,8 @@ import { headers } from "next/headers";
 import { runInternalSendTest, cleanupInternalSendTest, type SendTestResult, type SendTestCleanupResult } from "@/lib/crm/send-test-harness";
 import { extractVariables } from "@/lib/crm/template";
 
+export type InternalTestResult = SendTestResult | { ok: false; error: "denied" };
+
 /**
  * Campaign compose server actions. Every path re-checks the clinical gate against the USING role
  * (not the segment's creator) and refuses a template with no unsubscribe variable — both are
@@ -310,7 +312,61 @@ export async function sendCampaignAction(args: {
  * Internal send-test harness actions (pre-launch only). Same send.* gate as the composer, then the
  * harness enforces safe-mode + internal-target guards. See lib/crm/send-test-harness.ts.
  */
-export type InternalTestResult = SendTestResult | { ok: false; error: "denied" };
+export interface PreviewEmailResult {
+  ok: boolean;
+  error?: "denied" | "missing_env" | "no_template" | "send_failed";
+  detail?: string;
+  sentTo?: string[];
+}
+
+/**
+ * Send a preview email directly via Mailtrap — uses the real send path but to specified
+ * addresses only, bypassing the campaign engine/harness. For admin review before campaign send.
+ */
+export async function sendPreviewEmailAction(
+  toEmails: string[],
+  templateKey: string,
+): Promise<PreviewEmailResult> {
+  const role = await getCurrentUserRole();
+  if (grantFor(role, "send.at_or_below_threshold") === "deny") return { ok: false, error: "denied" };
+
+  const admin = createAdminClient();
+  const { data: tplData } = await admin
+    .from("crm_message_template")
+    .select("name, subject, body")
+    .eq("template_key", templateKey)
+    .eq("channel", "email")
+    .eq("is_active", true)
+    .order("version", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!tplData) return { ok: false, error: "no_template" };
+  const tpl = tplData as { name: string; subject: string | null; body: string };
+
+  // Replace template variables with placeholder values for preview
+  const previewUnsubUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? "https://crm.20fit.id"}/unsubscribe?token=PREVIEW`;
+  const body = tpl.body
+    .replace(/\{\{unsubscribe_url\}\}/g, previewUnsubUrl)
+    .replace(/\{\{([^}]+)\}\}/g, (_, key) => `[${key}]`);
+  const subject = `[PREVIEW] ${tpl.subject ?? tpl.name}`;
+
+  const { sendTransactionalEmail } = await import("@/lib/email/mailtrap");
+  const sentTo: string[] = [];
+  const errors: string[] = [];
+
+  for (const to of toEmails) {
+    try {
+      await sendTransactionalEmail({ to, subject, text: body.replace(/<[^>]+>/g, ""), html: body }, "campaign-preview");
+      sentTo.push(to);
+    } catch {
+      errors.push(to);
+    }
+  }
+
+  if (sentTo.length === 0) return { ok: false, error: "send_failed", detail: errors.join(", ") };
+  return { ok: true, sentTo };
+}
 
 export async function runInternalSendTestAction(quickEmail?: string): Promise<InternalTestResult> {
   const role = await getCurrentUserRole();
