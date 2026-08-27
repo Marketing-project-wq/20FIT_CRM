@@ -116,6 +116,7 @@ describe("activeCriteriaCount", () => {
         srcHyrox: true, srcMy20fit: true, srcRecency: true,
         srcArena: false, srcGym: false, srcClinicPatient: false, srcClinicTxn: false,
         srcRfm: null, srcProgram: null,
+        joinedWithinDays: null, inactiveForDays: null,
       }),
     ).toBe(11);
   });

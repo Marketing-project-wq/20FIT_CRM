@@ -34,24 +34,54 @@ const SMALL_SEGMENT = 25;
 /** The rule this whole screen exists to make visible (PRD §18.8). K-28: the title is the one-line
  *  screen-wide warning; the "why" (load-stamp explanation) is collapsed, and the K-code / docs
  *  references are gone from the screen (they live in the code + docs/KOLOM-WAKTU.md). */
-function TimeBanned() {
-  const w = useI18n().t.segments.warn;
+function TimeCriteria({
+  joinedWithinDays,
+  inactiveForDays,
+  onJoined,
+  onInactive,
+}: {
+  joinedWithinDays: number | null;
+  inactiveForDays: number | null;
+  onJoined: (v: number | null) => void;
+  onInactive: (v: number | null) => void;
+}) {
+  const w = useI18n().t.segments.timeCriteria;
+  const numInput =
+    "h-9 w-24 rounded-sm border border-glass-border bg-glass px-2 font-body text-[13px] text-ink focus:outline-none focus:ring-2 focus:ring-red";
+  const parse = (s: string): number | null => {
+    const n = Number(s);
+    return s.trim() !== "" && Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
+  };
   return (
     <div className="tint-blue rounded-card p-4">
       <div className="flex items-center gap-2">
         <Clock className="h-4 w-4 shrink-0" aria-hidden />
-        <h3 className="font-display text-[13px] font-bold uppercase tracking-wide text-ink">
-          {w.timeBannedTitle}
-        </h3>
+        <h3 className="font-display text-[13px] font-bold uppercase tracking-wide text-ink">{w.title}</h3>
       </div>
-      <Why>
-        <p className="text-[12px] leading-relaxed text-ink-soft">
-          {w.timeBannedA}
-          <span className="font-mono">created_at</span>{w.timeBannedB}
-          <span className="font-mono">first_seen_at</span>{w.timeBannedC}
-          <span className="font-mono">last_activity_at</span>{w.timeBannedD}
-        </p>
-      </Why>
+      <p className="mt-1 font-body text-[12px] leading-relaxed text-ink-soft">{w.intro}</p>
+      <div className="mt-3 flex flex-col gap-3">
+        <label className="flex flex-wrap items-center gap-2">
+          <span className="font-body text-[13px] text-ink">{w.joinedA}</span>
+          <input
+            type="number" min={1} className={numInput}
+            value={joinedWithinDays ?? ""}
+            onChange={(e) => onJoined(parse(e.target.value))}
+            placeholder="—"
+          />
+          <span className="font-body text-[13px] text-ink">{w.joinedB}</span>
+        </label>
+        <label className="flex flex-wrap items-center gap-2">
+          <span className="font-body text-[13px] text-ink">{w.inactiveA}</span>
+          <input
+            type="number" min={1} className={numInput}
+            value={inactiveForDays ?? ""}
+            onChange={(e) => onInactive(parse(e.target.value))}
+            placeholder="—"
+          />
+          <span className="font-body text-[13px] text-ink">{w.inactiveB}</span>
+        </label>
+      </div>
+      <p className="mt-3 font-body text-[12px] leading-relaxed text-amber">{w.caveat}</p>
     </div>
   );
 }
@@ -122,6 +152,8 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
       srcClinicTxn: c.srcClinicTxn,
       srcRfm: c.srcRfm,
       srcProgram: c.srcProgram,
+      joinedWithinDays: c.joinedWithinDays,
+      inactiveForDays: c.inactiveForDays,
     };
   }
 
@@ -182,8 +214,13 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
         }}
       />
 
-        {/* No time criteria — the one screen-wide invariant, stays visible (its "why" is collapsed). */}
-        <TimeBanned />
+        {/* Time criteria (Fase 2) — now available, resolved against real activity timestamps. */}
+        <TimeCriteria
+          joinedWithinDays={c.joinedWithinDays}
+          inactiveForDays={c.inactiveForDays}
+          onJoined={(v) => set("joinedWithinDays", v)}
+          onInactive={(v) => set("inactiveForDays", v)}
+        />
 
         {/* Three groups by QUESTION (mirrors the profile screen), not by data source. */}
         <section className="glass space-y-5 rounded-card p-5">

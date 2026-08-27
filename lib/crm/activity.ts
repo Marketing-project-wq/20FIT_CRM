@@ -1,4 +1,5 @@
 import "server-only";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 /**
@@ -41,3 +42,39 @@ export async function loadActivityCoverage(): Promise<ActivityCoverage> {
     refreshedAt: recentRow?.refreshed_at ?? null,
   };
 }
+
+const IN_CHUNK = 500; // uuids per .in() batch — bounded URL length
+
+/**
+ * Resolve the set of customer_ids matching a TIME criterion, from crm_customer_activity:
+ *  - joinedWithinDays: joined_at >= now() - N days  (welcome — recently joined)
+ *  - inactiveForDays:  last_active_at <= now() - N days  (re-engagement — gone quiet)
+ * Both apply ONLY to profiles that HAVE an activity row (the 725, not the whole pool). A profile
+ * with no activity signal simply is not in this table, so it cannot match a time filter — which
+ * is the honest behaviour (K-19): we never invent a date for someone we have no activity for.
+ * Returns the id set, or null when neither time criterion is set.
+ */
+export async function resolveActivityTimeIds(
+  admin: SupabaseClient,
+  joinedWithinDays: number | null,
+  inactiveForDays: number | null,
+): Promise<Set<string> | null> {
+  if (joinedWithinDays == null && inactiveForDays == null) return null;
+  let q = admin.from("crm_customer_activity").select("customer_id");
+  if (joinedWithinDays != null) {
+    const since = new Date(Date.now() - joinedWithinDays * 86_400_000).toISOString();
+    q = q.gte("joined_at", since);
+  }
+  if (inactiveForDays != null) {
+    const before = new Date(Date.now() - inactiveForDays * 86_400_000).toISOString();
+    q = q.lte("last_active_at", before);
+  }
+  const { data, error } = await q;
+  if (error) throw error;
+  const out = new Set<string>();
+  for (const r of (data ?? []) as { customer_id: string }[]) out.add(r.customer_id);
+  return out;
+}
+
+export { IN_CHUNK as ACTIVITY_IN_CHUNK };
+

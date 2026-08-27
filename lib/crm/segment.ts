@@ -75,6 +75,17 @@ export interface SegmentCriteria {
    */
   srcRfm: string | null;
   srcProgram: string | null;
+  /**
+   * TIME criteria (Fase 2) — resolved against crm_customer_activity, which carries REAL activity
+   * timestamps (joined_at = earliest real event, last_active_at = latest) built from live source
+   * tables, NOT master_customer's load-stamp columns (K-19). They apply ONLY to profiles that have
+   * an activity signal (725 of the pool as of 2026-08-27); a profile with no real activity is not
+   * in that table and cannot match a time filter — the honest behaviour, disclosed in the UI.
+   * `joinedWithinDays` = joined ≤ N days ago (welcome). `inactiveForDays` = last active ≥ N days
+   * ago (re-engagement). Null = not applied. AND-only, intersected like the other id-set criteria.
+   */
+  joinedWithinDays: number | null;
+  inactiveForDays: number | null;
 }
 
 /** Whether any CLINICAL (health-inferring) source criterion is set — the route gates these on
@@ -103,6 +114,8 @@ export const EMPTY_CRITERIA: SegmentCriteria = {
   srcClinicTxn: false,
   srcRfm: null,
   srcProgram: null,
+  joinedWithinDays: null,
+  inactiveForDays: null,
 };
 
 /** How many criteria are actively narrowing the pool (0 = whole pool). */
@@ -125,6 +138,8 @@ export function activeCriteriaCount(c: SegmentCriteria): number {
   if (c.srcClinicTxn) n++;
   if (c.srcRfm) n++;
   if (c.srcProgram) n++;
+  if (c.joinedWithinDays != null) n++;
+  if (c.inactiveForDays != null) n++;
   return n;
 }
 
@@ -150,6 +165,11 @@ export function parseCriteria(raw: unknown): SegmentCriteria {
   // Both fall back to null (any) when unknown — no free text, no time field.
   const srcRfm = isRfmValue(o.srcRfm) ? (o.srcRfm as string) : null;
   const srcProgram = typeof o.srcProgram === "string" && programByKey(o.srcProgram) ? o.srcProgram : null;
+  // TIME criteria: positive integer days, capped at 3650 (10y) to bound the value. Anything
+  // else (0, negative, non-number, absurd) → null (not applied). No date passes through — only
+  // a day-count, resolved against real activity timestamps server-side.
+  const joinedWithinDays = clampDays(o.joinedWithinDays);
+  const inactiveForDays = clampDays(o.inactiveForDays);
   return {
     unit,
     segment,
@@ -168,7 +188,16 @@ export function parseCriteria(raw: unknown): SegmentCriteria {
     srcClinicTxn: o.srcClinicTxn === true,
     srcRfm,
     srcProgram,
+    joinedWithinDays,
+    inactiveForDays,
   };
+}
+
+/** A time criterion is a positive whole number of days, capped at 3650 (10y). Anything else → null. */
+function clampDays(v: unknown): number | null {
+  const n = typeof v === "number" ? v : typeof v === "string" ? Number(v) : NaN;
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) return null;
+  return Math.min(n, 3650);
 }
 
 export { SEGMENT_NULL };

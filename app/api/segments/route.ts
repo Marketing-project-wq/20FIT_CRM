@@ -136,6 +136,8 @@ export async function POST(request: NextRequest) {
         src_clinic_txn: criteria.srcClinicTxn,
         src_rfm: criteria.srcRfm,
         src_program: criteria.srcProgram,
+        joined_within_days: criteria.joinedWithinDays,
+        inactive_for_days: criteria.inactiveForDays,
       },
       // AND/OR tree structure (closed-list fields/values; city leaf capped at 60 in
       // validateFilterTree, K-17). Null when the flat criteria path was used.

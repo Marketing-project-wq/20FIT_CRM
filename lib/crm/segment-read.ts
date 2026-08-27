@@ -11,6 +11,7 @@ import { resolveEnrichmentCustomerIds } from "./enrichment";
 import { resolveClinicTxnCustomerIds } from "./clinic-source";
 import { resolveStagingRfmCustomerIds, resolveStagingProgramCustomerIds } from "./staging";
 import { resolveMirrorSourceIds } from "./mirror";
+import { resolveActivityTimeIds } from "./activity";
 import type { EcosystemUnit } from "./engagement-constants";
 
 /** Intersect a list of id sets (AND). Iterates the smallest for speed. Empty input → null. */
@@ -157,6 +158,10 @@ export async function resolveRestrictIds(
   if (criteria.srcClinicTxn) idSets.push(await resolveClinicTxnCustomerIds(admin));
   if (criteria.srcRfm) idSets.push(await resolveStagingRfmCustomerIds(admin, criteria.srcRfm));
   if (criteria.srcProgram) idSets.push(await resolveStagingProgramCustomerIds(admin, criteria.srcProgram));
+  // TIME criteria (Fase 2): resolved against crm_customer_activity (real timestamps). Applies
+  // only to profiles with an activity signal — intersected with the rest AND-only.
+  const timeIds = await resolveActivityTimeIds(admin, criteria.joinedWithinDays, criteria.inactiveForDays);
+  if (timeIds) idSets.push(timeIds);
   return intersectSets(idSets);
 }
 
