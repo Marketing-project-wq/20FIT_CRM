@@ -78,54 +78,64 @@ begin
   delete from public.crm_activity_event;
 
   insert into public.crm_activity_event (customer_id, event_type, occurred_at, source)
-  -- arena_bookings → email/phone → master_customer
+  -- Each source is split into an email-match branch and a phone-match branch, UNION'd — never a
+  -- single OR join. OR across two columns defeats the index; two indexed lookups UNION'd is fast
+  -- enough to run inside the SQL editor's timeout (K-30 perf note). DISTINCT/UNION de-dupes a row
+  -- that matches on both email and phone.
+
+  -- arena_bookings → email
   select distinct m.customer_id, 'arena_booking', ab.booking_date::timestamptz, 'arena_bookings'
     from public.arena_bookings ab
-    join public.master_customer m
-      on m.email_normalized = normalize_email(ab.email)
-      or m.phone_normalized = crm_norm_phone(ab.phone)
-   where ab.booking_date is not null
-     and ab.booking_date::timestamptz <= now()
+    join public.master_customer m on m.email_normalized = normalize_email(ab.email)
+   where ab.booking_date is not null and ab.booking_date::timestamptz <= now()
+  union
+  -- arena_bookings → phone
+  select distinct m.customer_id, 'arena_booking', ab.booking_date::timestamptz, 'arena_bookings'
+    from public.arena_bookings ab
+    join public.master_customer m on m.phone_normalized = crm_norm_phone(ab.phone)
+   where ab.booking_date is not null and ab.booking_date::timestamptz <= now()
 
   union
-  -- clinic_bookings → email/phone → master_customer (check_in_at = kunjungan nyata)
+  -- clinic_bookings → email
   select distinct m.customer_id, 'clinic_visit', cb.check_in_at, 'clinic_bookings'
     from public.clinic_bookings cb
-    join public.master_customer m
-      on m.email_normalized = normalize_email(cb.email::text)
-      or m.phone_normalized = crm_norm_phone(cb.phone::text)
-   where cb.check_in_at is not null
-     and cb.check_in_at <= now()
+    join public.master_customer m on m.email_normalized = normalize_email(cb.email::text)
+   where cb.check_in_at is not null and cb.check_in_at <= now()
+  union
+  -- clinic_bookings → phone
+  select distinct m.customer_id, 'clinic_visit', cb.check_in_at, 'clinic_bookings'
+    from public.clinic_bookings cb
+    join public.master_customer m on m.phone_normalized = crm_norm_phone(cb.phone::text)
+   where cb.check_in_at is not null and cb.check_in_at <= now()
 
   union
-  -- clinic_transactions → patient_id → clinic_patients → email/phone → master_customer
+  -- clinic_transactions → patient → email
   select distinct m.customer_id, 'clinic_txn', ct.created_at, 'clinic_transactions'
     from public.clinic_transactions ct
     join public.clinic_patients cp on cp.id = ct.patient_id
-    join public.master_customer m
-      on m.email_normalized = normalize_email(cp.email)
-      or m.phone_normalized = crm_norm_phone(cp.phone)
-   where ct.patient_id is not null
-     and ct.created_at is not null
-     and ct.created_at <= now()
+    join public.master_customer m on m.email_normalized = normalize_email(cp.email)
+   where ct.patient_id is not null and ct.created_at is not null and ct.created_at <= now()
+  union
+  -- clinic_transactions → patient → phone
+  select distinct m.customer_id, 'clinic_txn', ct.created_at, 'clinic_transactions'
+    from public.clinic_transactions ct
+    join public.clinic_patients cp on cp.id = ct.patient_id
+    join public.master_customer m on m.phone_normalized = crm_norm_phone(cp.phone)
+   where ct.patient_id is not null and ct.created_at is not null and ct.created_at <= now()
 
   union
-  -- cf_hyrox_participants → email → master_customer
+  -- cf_hyrox_participants → email
   select distinct m.customer_id, 'hyrox_registration', h.registered_at, 'cf_hyrox_participants'
     from public.cf_hyrox_participants h
-    join public.master_customer m
-      on m.email_normalized = normalize_email(h.email)
-   where h.registered_at is not null
-     and h.registered_at <= now()
+    join public.master_customer m on m.email_normalized = normalize_email(h.email)
+   where h.registered_at is not null and h.registered_at <= now()
 
   union
-  -- my20fit_user_activity → email → master_customer (last_active_at = recency asli)
+  -- my20fit_user_activity → email (last_active_at = recency asli)
   select distinct m.customer_id, 'app_activity', ua.last_active_at, 'my20fit_user_activity'
     from public.my20fit_user_activity ua
-    join public.master_customer m
-      on m.email_normalized = normalize_email(ua.email)
-   where ua.last_active_at is not null
-     and ua.last_active_at <= now();
+    join public.master_customer m on m.email_normalized = normalize_email(ua.email)
+   where ua.last_active_at is not null and ua.last_active_at <= now();
 
   get diagnostics n = row_count;
   return n;
