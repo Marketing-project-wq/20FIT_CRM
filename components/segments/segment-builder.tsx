@@ -13,6 +13,7 @@ import { saveSegmentAction } from "@/app/(app)/segments/actions";
 import { Why } from "@/components/ui/why";
 import { useI18n } from "@/components/i18n/lang-provider";
 import { formatCount, formatPct, formatDateTime } from "@/lib/i18n";
+import { QuickSegments } from "@/components/segments/quick-segments";
 
 interface Counts {
   matched: number;
@@ -219,6 +220,17 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
           </div>
         </header>
       )}
+
+      {/* Quick preset segments — klik langsung set criteria */}
+      <QuickSegments
+        canViewHealth={canViewHealth}
+        onSelect={(preset) => {
+          setC({ ...EMPTY_CRITERIA, ...preset });
+          setRows([]);
+          setCounts(null);
+          onComputed?.(null);
+        }}
+      />
 
       {/* AI shortcut — OPTIONAL, sits ABOVE the three filter groups and is collapsed by default, so it
           reads as a shortcut, not a seventh mechanism. Describe the segment in words → the server maps
