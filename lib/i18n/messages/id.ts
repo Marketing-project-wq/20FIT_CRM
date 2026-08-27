@@ -434,6 +434,18 @@ export const id = {
   // segments.warn.* (guarded). Numbers/counts are interpolated by the component, not stored here.
   segments: {
     subtitleA: "Susun kriteria, hitung jumlahnya, lalu simpan definisinya (kriteria, bukan daftar orang) untuk dipakai di Campaigns.",
+    quickStart: "Mulai dari sini",
+    quickAll: "Semua audiens",
+    quickHasEmail: "Punya email",
+    quickHasPhone: "Punya telepon",
+    quickMembership: "Member Fitco",
+    quickEvent: "User event",
+    quickArena: "User arena",
+    quickMy20fit: "Pengguna My20FIT",
+    quickLoyal: "Pelanggan setia",
+    quickClinic: "Pasien klinik",
+    quickClinicNote: "butuh izin data kesehatan",
+    quickProfilesSuffix: "profil",
     criteriaTitle: "Kriteria",
     aiTitle: "Asisten AI",
     aiOptional: "pintasan opsional",

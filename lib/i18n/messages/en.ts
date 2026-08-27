@@ -376,6 +376,18 @@ export const en: Messages = {
 
   segments: {
     subtitleA: "Compose criteria, compute the count, then save the definition (criteria, not a list of people) for use in Campaigns.",
+    quickStart: "Start here",
+    quickAll: "All audience",
+    quickHasEmail: "Has email",
+    quickHasPhone: "Has phone",
+    quickMembership: "Fitco members",
+    quickEvent: "Event users",
+    quickArena: "Arena users",
+    quickMy20fit: "My20FIT users",
+    quickLoyal: "Loyal customers",
+    quickClinic: "Clinic patients",
+    quickClinicNote: "needs health-data permission",
+    quickProfilesSuffix: "profiles",
     criteriaTitle: "Criteria",
     aiTitle: "AI assistant",
     aiOptional: "optional shortcut",
