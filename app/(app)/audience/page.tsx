@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { AudiencePool } from "@/components/audience/audience-pool";
 import { SuppressionPanel } from "@/components/consent/suppression-panel";
 import { QualityDashboard } from "@/components/quality/quality-dashboard";
+import { ActivityCoveragePanel } from "@/components/quality/activity-coverage-panel";
 import { CoverageNotice } from "@/components/i18n/coverage-notice";
 import { TabBar, type TabDef } from "@/components/shell/tab-bar";
 import { getServerDict } from "@/lib/i18n/server";
@@ -72,6 +73,7 @@ export default async function AudiencePage({ searchParams }: { searchParams?: { 
       {active === "quality" && (
         <>
           <CoverageNotice screen="quality" />
+          <ActivityCoveragePanel />
           <QualityDashboard />
         </>
       )}

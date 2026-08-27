@@ -697,8 +697,19 @@ export const en: Messages = {
     },
   },
 
-  quality: {
-    title: "Quality",
+  activityCoverage: {
+    title: "Activity coverage",
+    intro: "Real activity signals — when a person first appeared and when they were last active — come from live source tables (arena, clinic, event, app), not from the frozen master pool whose time columns are load stamps.",
+    ofTotalA: "of ",
+    ofTotalB: " profiles",
+    mostRecentLabel: "Most recent activity",
+    mostRecentSub: "Proof the layer is live, not frozen",
+    refreshedLabel: "Last refreshed",
+    refreshedSub: "Recomputed daily at 03:30 WIB",
+    caveat: "Time-based segment criteria (joined within N days, inactive for N days) apply ONLY to these profiles. The rest have no real activity date and will not match a time filter — that is a data-coverage limit, shown honestly, not hidden.",
+  },
+
+  quality: {title: "Quality",
     subtitlePre: "The data exactly as it is in",
     subtitlePost: "— recomputed every time the page opens, no figure written by hand.",
     recompute: "Recompute",

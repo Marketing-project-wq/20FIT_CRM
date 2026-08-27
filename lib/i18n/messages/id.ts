@@ -781,6 +781,18 @@ export const id = {
   // data key (fill/issue/satellite/artifact) so the client resolves label + warning by key, with
   // the server's Indonesian text as the fallback. Stored data values (Campion user, table/column
   // names, program names) are NOT translated — they are data, verbatim in both languages.
+  activityCoverage: {
+    title: "Cakupan aktivitas",
+    intro: "Sinyal aktivitas nyata — kapan seseorang pertama muncul dan kapan terakhir aktif — berasal dari tabel sumber yang hidup (arena, klinik, event, app), bukan dari pool master beku yang kolom waktunya cap muat.",
+    ofTotalA: "dari ",
+    ofTotalB: " profil",
+    mostRecentLabel: "Aktivitas terbaru",
+    mostRecentSub: "Bukti lapisan ini hidup, bukan beku",
+    refreshedLabel: "Terakhir disegarkan",
+    refreshedSub: "Dihitung ulang harian 03:30 WIB",
+    caveat: "Kriteria waktu di segmen (bergabung ≤ N hari, tidak aktif ≥ N hari) HANYA berlaku untuk profil ini. Sisanya tak punya tanggal aktivitas nyata dan tak akan cocok dengan filter waktu — ini batas cakupan data, ditampilkan jujur, bukan disembunyikan.",
+  },
+
   quality: {
     title: "Quality",
     subtitlePre: "Kondisi data apa adanya di",
