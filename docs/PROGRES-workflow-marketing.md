@@ -56,13 +56,28 @@ Cacat T-14: arena/hyrox/clinic_tx punya tanggal masa depan s/d Des 2026 → di-c
 
 **Prinsip jujur:** kriteria waktu HANYA berlaku untuk profil yang ada di crm_customer_activity (725). Profil tanpa jejak aktivitas tak akan cocok — disclosure eksplisit di UI (K-19 spirit).
 
-## FASE 3 — Workflow UI + engine ⏳ BELUM
+## FASE 3 — Workflow UI + engine ✅ SELESAI (kode; migrasi belum di-apply)
 
-Rencana:
-- Migrasi `crm_workflow` (id, name, type welcome|reengagement, trigger_config jsonb, template_key, is_active) + `crm_workflow_enrollment` (workflow_id, customer_id, enrolled_at, step, status, last_sent_at)
-- UI `/workflows` (ganti ComingSoon): daftar workflow, buat baru (tipe + template + ambang hari), enrollment count, uji kirim ke admin dulu
-- Engine: pg_cron harian evaluasi trigger → enroll profil yang match + belum enrolled → kirim lewat sendCampaign yang ADA (hormati suppression + gate + audit, idempoten per customer+workflow)
-- Welcome: trigger joined_at ≤ N hari. Re-engagement: trigger last_active_at ≥ N hari.
+**Migrasi (BELUM di-apply):**
+- `20260827110000_crm_workflow.sql` — `crm_workflow` (name, type welcome|reengagement, trigger_days, template_key, is_active) + `crm_workflow_enrollment` (workflow_id, customer_id, status queued|sent|failed|skipped, unique workflow+customer = idempoten cegah kirim ganda)
+
+**Kode:**
+- `lib/crm/workflow-store.ts` — listWorkflows (dengan enrolled/sent count), createWorkflow, setWorkflowActive, getWorkflowById
+- `app/(app)/workflows/actions.ts` — listWorkflowsAction, createWorkflowAction, setWorkflowActiveAction, runWorkflowAction (ENGINE: resolveActivityTimeIds → enroll baru → kirim queued lewat sendCampaign dengan overrideRecipients dari master email)
+- `app/(app)/workflows/workflows-client.tsx` — UI: daftar workflow, form buat baru (tipe + template + ambang hari), tombol Jalankan/Aktifkan/Jeda, hasil run (enrolled/sent/withheld)
+- `app/(app)/workflows/page.tsx` — ganti ComingSoon, gate send.at_or_below_threshold, load eligible templates
+- i18n workflowsPage.* (id + en)
+
+**Cara kerja:**
+- Welcome: trigger joined_at ≤ N hari (resolveActivityTimeIds welcome). Re-engagement: last_active_at ≥ N hari.
+- Enroll idempoten (unique workflow+customer) → cegah welcome ganda.
+- Kirim lewat sendCampaign yang ADA (overrideRecipients dari email master), hormati suppression + pre-launch withhold + audit.
+- Workflow dibuat NON-AKTIF; operator uji "Jalankan sekarang" dulu, lalu Aktifkan.
+- Run manual dari UI sekarang; pg_cron otomatis bisa ditambah nanti (pola migrasi 19).
+
+**PENDING kecil:** pg_cron auto-run harian belum dibuat (sekarang manual "Jalankan sekarang"). Bisa ditambah setelah owner puas dengan run manual.
+
+**Gate:** tsc clean · vitest 1170 · build clean.
 
 ## Prinsip yang dipegang sepanjang
 
