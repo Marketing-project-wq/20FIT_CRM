@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { ECOSYSTEM_UNITS, ECOSYSTEM_PRODUCTS_BY_UNIT } from "@/lib/crm/engagement-constants";
 import { STAGING_RFM_VALUES, STAGING_PROGRAMS } from "@/lib/crm/staging-constants";
 import { EMPTY_CRITERIA, type SegmentCriteria } from "@/lib/crm/segment";
-import { FilterTreeBuilder, rowsToTree, type Row } from "@/components/segments/filter-tree-builder";
+import { rowsToTree, type Row } from "@/components/segments/filter-tree-builder";
+import { SimpleFilterBuilder } from "@/components/segments/simple-filter-builder";
 import { saveSegmentAction } from "@/app/(app)/segments/actions";
 import { Why } from "@/components/ui/why";
 import { useI18n } from "@/components/i18n/lang-provider";
@@ -194,7 +195,7 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
             </div>
             <p className="mt-1 font-body text-[12px] text-ink-soft">{t.segments.groupDemografiHint}</p>
             <div className="mt-3">
-              <FilterTreeBuilder rows={rows} setRows={setRowsAndClear} />
+              <SimpleFilterBuilder rows={rows} setRows={setRowsAndClear} />
             </div>
           </div>
 
