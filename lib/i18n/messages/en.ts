@@ -947,6 +947,8 @@ export const en: Messages = {
     invalidTitle: "Link not valid",
     invalidBody: "This link is not valid or is no longer active. If you would like to stop being contacted, reply to the email you received or contact the 20FIT team.",
     unavailableBody: "The service is currently unavailable. Please try again later.",
+    previewTitle: "This is a preview email",
+    previewBody: "The unsubscribe link only works on real campaign emails sent to customers. A preview (test) email has no recipient to unsubscribe.",
     promptEmail: "You are about to stop receiving emails from the 20FIT CRM at:",
     promptPhone: "You are about to stop receiving messages from the 20FIT CRM at:",
     confirmButton: "Yes, unsubscribe",

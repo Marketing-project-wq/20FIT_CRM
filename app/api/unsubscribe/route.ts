@@ -78,6 +78,12 @@ function maskedOf(kind: IdentityKind, key: string): string {
 
 export async function GET(request: NextRequest) {
   const token = request.nextUrl.searchParams.get("token");
+  // Preview emails carry the literal placeholder token "PREVIEW" — the layout is real, but there is
+  // no recipient to unsubscribe. Return a distinct "preview" state so the page explains that rather
+  // than showing the alarming "invalid link" message to an admin testing a template.
+  if (token === "PREVIEW") {
+    return NextResponse.json({ valid: false, error: "preview" }, { status: 200, headers: { "Cache-Control": "no-store" } });
+  }
   const r = await resolve(token);
   if (!r.ok) {
     return NextResponse.json({ valid: false, error: r.error }, { status: r.status, headers: { "Cache-Control": "no-store" } });

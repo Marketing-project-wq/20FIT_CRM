@@ -1038,6 +1038,8 @@ export const id = {
     invalidTitle: "Tautan tidak berlaku",
     invalidBody: "Tautan ini tidak sah atau sudah tidak berlaku. Bila Anda ingin berhenti dihubungi, balas email yang Anda terima atau hubungi tim 20FIT.",
     unavailableBody: "Layanan sedang tidak tersedia. Coba lagi nanti.",
+    previewTitle: "Ini email pratinjau",
+    previewBody: "Tautan berhenti berlangganan hanya berfungsi pada email kampanye asli yang dikirim ke pelanggan. Email pratinjau (uji) tidak punya penerima untuk di-unsubscribe.",
     promptEmail: "Anda akan berhenti menerima email dari CRM 20FIT di alamat:",
     promptPhone: "Anda akan berhenti menerima pesan dari CRM 20FIT di nomor:",
     confirmButton: "Ya, berhenti berlangganan",

@@ -13,7 +13,7 @@ import { getDictionary, parseLang } from "@/lib/i18n";
  * unsubscribe anyone.
  */
 
-type Phase = "checking" | "invalid" | "unavailable" | "prompt" | "working" | "done" | "already" | "failed";
+type Phase = "checking" | "invalid" | "preview" | "unavailable" | "prompt" | "working" | "done" | "already" | "failed";
 
 function UnsubscribeFlow() {
   const params = useSearchParams();
@@ -36,7 +36,8 @@ function UnsubscribeFlow() {
         if (cancelled) return;
         if (res.status === 503) return setPhase("unavailable");
         if (!res.ok) return setPhase("invalid");
-        const body = (await res.json()) as { valid?: boolean; kind?: "phone" | "email"; identity?: string };
+        const body = (await res.json()) as { valid?: boolean; kind?: "phone" | "email"; identity?: string; error?: string };
+        if (body.error === "preview") return setPhase("preview");
         if (!body.valid) return setPhase("invalid");
         setKind(body.kind ?? null);
         setIdentity(body.identity ?? "");
@@ -83,6 +84,13 @@ function UnsubscribeFlow() {
         )}
 
         {phase === "unavailable" && <p className="mt-4 font-body text-[14px] text-ink-soft">{t.unavailableBody}</p>}
+
+        {phase === "preview" && (
+          <div className="mt-4 space-y-2">
+            <p className="font-body text-[15px] font-semibold text-ink">{t.previewTitle}</p>
+            <p className="font-body text-[13px] leading-relaxed text-ink-soft">{t.previewBody}</p>
+          </div>
+        )}
 
         {(phase === "prompt" || phase === "working") && (
           <div className="mt-4 space-y-4">
