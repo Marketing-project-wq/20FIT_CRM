@@ -73,17 +73,32 @@ begin
            ek, pk, nm, unit
       from new_people
      order by ek, pri, (pk is not null) desc, (nm is not null) desc
+  ),
+  -- Kosongkan telepon yang BENTROK: master punya unique index pada phone_normalized. Bila telepon
+  -- kandidat sudah dipakai profil master lain, ATAU dipakai kandidat lain di batch ini, buang
+  -- teleponnya (email tetap unik → profil tetap dibuat, hanya tanpa telepon bentrok). Jujur:
+  -- lebih baik profil tanpa telepon daripada gagal total atau menabrak identitas orang lain.
+  phone_safe as (
+    select
+      d.ek, d.nm, d.unit,
+      case
+        when d.pk is null then null
+        when exists (select 1 from public.master_customer m where m.phone_normalized = d.pk) then null
+        when count(*) over (partition by d.pk) > 1 then null
+        else d.pk
+      end as pk
+    from deduped d
   )
   insert into public.master_customer
     (full_name, email, email_normalized, phone_normalized, first_unit,
      source, tags, first_seen_at, created_at, updated_at)
   select
-    d.nm, d.ek, d.ek, d.pk, d.unit,
+    p.nm, p.ek, p.ek, p.pk, p.unit,
     'activity_ingest', array['activity_ingest'], now(), now(), now()
-  from deduped d
+  from phone_safe p
   -- Guard idempoten kedua (kalau fungsi dijalankan ulang setelah insert sebagian).
   where not exists (
-    select 1 from public.master_customer m where m.email_normalized = d.ek
+    select 1 from public.master_customer m where m.email_normalized = p.ek
   );
 
   get diagnostics n = row_count;
