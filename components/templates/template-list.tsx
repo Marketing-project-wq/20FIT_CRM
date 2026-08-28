@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Mail, MessageCircle, Edit } from "lucide-react";
+import { Mail, MessageCircle, Edit, Eye, ExternalLink, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatDateTime } from "@/lib/i18n";
@@ -31,9 +31,57 @@ export function TemplateList({ templates, lang }: TemplateListProps) {
   const [showWhatsAppBuilder, setShowWhatsAppBuilder] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
   const [isLoadingEdit, setIsLoadingEdit] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   const emailTemplates = templates.filter((t) => t.channel === "email");
   const whatsappTemplates = templates.filter((t) => t.channel === "whatsapp");
+
+  async function openEdit(id: string, isWhatsApp: boolean) {
+    setIsLoadingEdit(true);
+    try {
+      const res = await fetch(`/api/templates?id=${id}`);
+      if (!res.ok) throw new Error("Failed to fetch template");
+      const { template } = await res.json();
+      setEditingTemplate(template);
+      if (isWhatsApp) setShowWhatsAppBuilder(true); else setShowEmailBuilder(true);
+    } catch (err) {
+      console.error("Failed to load template:", err);
+      alert("Failed to load template for editing");
+    } finally {
+      setIsLoadingEdit(false);
+    }
+  }
+
+  /** Inline preview modal: fetch body, fill sample vars, render in iframe. */
+  async function openPreview(id: string) {
+    try {
+      const res = await fetch(`/api/templates?id=${id}`);
+      if (!res.ok) throw new Error("Failed to fetch template");
+      const { template } = await res.json();
+      const html = String(template.body ?? "")
+        .replace(/\{\{first_name\}\}/g, "Andi")
+        .replace(/\{\{last_name\}\}/g, "Wijaya")
+        .replace(/\{\{email\}\}/g, "andi@example.com")
+        .replace(/\{\{unsubscribe_url\}\}/g, "#unsubscribe-preview");
+      setPreviewHtml(html);
+    } catch {
+      alert("Failed to load preview");
+    }
+  }
+
+  async function onDelete(key: string, name: string) {
+    if (!confirm(`Hapus template "${name}"? Tindakan ini menyembunyikannya dari daftar & pengiriman.`)) return;
+    setDeleting(key);
+    try {
+      const res = await fetch(`/api/templates?key=${encodeURIComponent(key)}`, { method: "DELETE" });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); alert(`Gagal menghapus: ${e.error ?? res.status}`); return; }
+      window.location.reload();
+    } finally {
+      setDeleting(null);
+    }
+  }
+
 
   return (
     <div className="flex flex-col gap-6">
@@ -109,27 +157,17 @@ export function TemplateList({ templates, lang }: TemplateListProps) {
                         {formatDateTime(tpl.created_at, lang)}
                       </span>
                       <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                        <button
-                          className="rounded p-1 hover:bg-glass"
-                          disabled={isLoadingEdit}
-                          onClick={async () => {
-                            setIsLoadingEdit(true);
-                            try {
-                              const res = await fetch(`/api/templates?id=${tpl.id}`);
-                              if (!res.ok) throw new Error("Failed to fetch template");
-
-                              const { template } = await res.json();
-                              setEditingTemplate(template);
-                              setShowEmailBuilder(true);
-                            } catch (err) {
-                              console.error("Failed to load template:", err);
-                              alert("Failed to load template for editing");
-                            } finally {
-                              setIsLoadingEdit(false);
-                            }
-                          }}
-                        >
+                        <button className="rounded p-1 hover:bg-glass" title="Pratinjau" onClick={() => openPreview(tpl.id)}>
+                          <Eye className="h-3.5 w-3.5 text-ink-soft" />
+                        </button>
+                        <a className="rounded p-1 hover:bg-glass" title="Pratinjau tab baru" href={`/api/templates/preview?id=${tpl.id}`} target="_blank" rel="noopener noreferrer">
+                          <ExternalLink className="h-3.5 w-3.5 text-ink-soft" />
+                        </a>
+                        <button className="rounded p-1 hover:bg-glass" title="Edit" disabled={isLoadingEdit} onClick={() => openEdit(tpl.id, false)}>
                           <Edit className="h-3.5 w-3.5 text-ink-soft" />
+                        </button>
+                        <button className="rounded p-1 hover:bg-glass" title="Hapus" disabled={deleting === tpl.template_key} onClick={() => onDelete(tpl.template_key, tpl.name)}>
+                          <Trash2 className="h-3.5 w-3.5 text-ink-soft hover:text-red" />
                         </button>
                       </div>
                     </div>
@@ -179,27 +217,14 @@ export function TemplateList({ templates, lang }: TemplateListProps) {
                         {formatDateTime(tpl.created_at, lang)}
                       </span>
                       <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                        <button
-                          className="rounded p-1 hover:bg-glass"
-                          disabled={isLoadingEdit}
-                          onClick={async () => {
-                            setIsLoadingEdit(true);
-                            try {
-                              const res = await fetch(`/api/templates?id=${tpl.id}`);
-                              if (!res.ok) throw new Error("Failed to fetch template");
-
-                              const { template } = await res.json();
-                              setEditingTemplate(template);
-                              setShowWhatsAppBuilder(true);
-                            } catch (err) {
-                              console.error("Failed to load template:", err);
-                              alert("Failed to load template for editing");
-                            } finally {
-                              setIsLoadingEdit(false);
-                            }
-                          }}
-                        >
+                        <button className="rounded p-1 hover:bg-glass" title="Pratinjau" onClick={() => openPreview(tpl.id)}>
+                          <Eye className="h-3.5 w-3.5 text-ink-soft" />
+                        </button>
+                        <button className="rounded p-1 hover:bg-glass" title="Edit" disabled={isLoadingEdit} onClick={() => openEdit(tpl.id, true)}>
                           <Edit className="h-3.5 w-3.5 text-ink-soft" />
+                        </button>
+                        <button className="rounded p-1 hover:bg-glass" title="Hapus" disabled={deleting === tpl.template_key} onClick={() => onDelete(tpl.template_key, tpl.name)}>
+                          <Trash2 className="h-3.5 w-3.5 text-ink-soft hover:text-red" />
                         </button>
                       </div>
                     </div>
@@ -229,6 +254,20 @@ export function TemplateList({ templates, lang }: TemplateListProps) {
             setEditingTemplate(null);
           }}
         />
+      )}
+
+      {previewHtml !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setPreviewHtml(null)}>
+          <div className="flex h-full max-h-[90vh] w-full max-w-2xl flex-col rounded-lg bg-surface shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-glass-border px-6 py-4">
+              <h2 className="font-display text-[16px] font-bold text-ink">Pratinjau Email</h2>
+              <button onClick={() => setPreviewHtml(null)} className="rounded p-2 hover:bg-glass">
+                <span className="font-display text-[13px] font-bold text-ink-soft">✕</span>
+              </button>
+            </div>
+            <iframe srcDoc={previewHtml} sandbox="allow-same-origin" className="flex-1 rounded-b-lg bg-white" title="Preview" />
+          </div>
+        </div>
       )}
     </div>
   );
