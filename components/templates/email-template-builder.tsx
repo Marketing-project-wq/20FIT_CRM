@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { X, Save, Eye, Image as ImageIcon, LayoutTemplate, Upload, Trash2 } from "lucide-react";
+import { X, Save, Eye, Image as ImageIcon, LayoutTemplate, Upload, Trash2, Blocks, Code } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { STARTER_TEMPLATES } from "./starter-templates";
+import { BlockEditor, blocksToHtml, newBlock, type Block } from "./block-editor";
 import {
   listBrandAssetsAction,
   uploadBrandAssetAction,
@@ -24,15 +25,22 @@ interface EmailTemplateBuilderProps {
 }
 
 const DEFAULT_HTML = STARTER_TEMPLATES[0].html;
+type EditMode = "blocks" | "html" | "preview";
 
 export function EmailTemplateBuilder({ template, onClose }: EmailTemplateBuilderProps) {
   const isEditing = !!template;
   // A brand-new template starts on the starter gallery; editing jumps straight to the editor.
   const [step, setStep] = useState<"gallery" | "editor">(isEditing ? "editor" : "gallery");
-  const [mode, setMode] = useState<"html" | "preview">("html");
+  // Editing an existing template opens in HTML (we don't parse HTML back into blocks). A fresh
+  // "blank" pick starts in Blocks mode (set in pickStarter). Others open in HTML.
+  const [mode, setMode] = useState<EditMode>("html");
   const [senderName, setSenderName] = useState(template?.sender_name || "20FIT");
   const [subject, setSubject] = useState(template?.subject || "");
   const [htmlContent, setHtmlContent] = useState(template?.body || DEFAULT_HTML);
+  // Block state — only authoritative while mode === "blocks". Switching to HTML/Preview flushes it
+  // to htmlContent; we never parse HTML back to blocks (one-way, honest).
+  const [blocks, setBlocks] = useState<Block[]>([]);
+  const [htmlEdited, setHtmlEdited] = useState(false); // once raw HTML is touched, block mode is locked
 
   // Brand assets (logos)
   const [assets, setAssets] = useState<BrandAsset[]>([]);
@@ -48,9 +56,27 @@ export function EmailTemplateBuilder({ template, onClose }: EmailTemplateBuilder
 
   function pickStarter(id: string) {
     const s = STARTER_TEMPLATES.find((x) => x.id === id) ?? STARTER_TEMPLATES[0];
-    setHtmlContent(s.html);
     if (s.subject) setSubject(s.subject);
+    if (id === "blank") {
+      // Blank → drag-and-drop block mode with a sensible starting set.
+      setBlocks([newBlock("logo"), newBlock("heading"), newBlock("text"), newBlock("button")]);
+      setMode("blocks");
+      setHtmlEdited(false);
+    } else {
+      // Prebuilt HTML starters open in HTML mode (not parsed into blocks).
+      setHtmlContent(s.html);
+      setMode("html");
+      setHtmlEdited(true);
+    }
     setStep("editor");
+  }
+
+  /** Switch modes, flushing block state → HTML when leaving blocks mode. */
+  function switchMode(next: EditMode) {
+    if (mode === "blocks" && next !== "blocks") {
+      setHtmlContent(blocksToHtml(blocks));
+    }
+    setMode(next);
   }
 
   async function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -77,8 +103,13 @@ export function EmailTemplateBuilder({ template, onClose }: EmailTemplateBuilder
     if (res.ok) setAssets((prev) => prev.filter((a) => a.id !== id));
   }
 
-  /** Insert an <img> tag for a logo at the cursor (or before </body>). */
+  /** Insert a logo — in blocks mode add a logo block; in HTML mode inject the tag. */
   function insertLogo(asset: BrandAsset) {
+    if (mode === "blocks") {
+      setBlocks((prev) => [...prev, { ...newBlock("logo"), url: asset.publicUrl, alt: asset.name } as Block]);
+      setShowAssets(false);
+      return;
+    }
     const tag = `<img src="${asset.publicUrl}" alt="${asset.name}" style="max-width:180px;height:auto;display:block;margin:0 auto 16px;" />`;
     const ta = textareaRef.current;
     if (ta && mode === "html") {
@@ -101,14 +132,17 @@ export function EmailTemplateBuilder({ template, onClose }: EmailTemplateBuilder
     return html + unsubLink;
   };
 
-  const previewHtml = injectUnsubscribeLink(htmlContent)
+  // The HTML source of truth: from blocks while in blocks mode, else the raw htmlContent.
+  const currentHtml = () => (mode === "blocks" ? blocksToHtml(blocks) : htmlContent);
+
+  const previewHtml = injectUnsubscribeLink(currentHtml())
     .replace(/\{\{first_name\}\}/g, "Andi")
     .replace(/\{\{last_name\}\}/g, "Wijaya")
     .replace(/\{\{email\}\}/g, "andi@example.com")
     .replace(/\{\{unsubscribe_url\}\}/g, "/unsubscribe?token=preview");
 
   const handleSave = async () => {
-    const finalHtml = injectUnsubscribeLink(htmlContent);
+    const finalHtml = injectUnsubscribeLink(currentHtml());
     const templateKey = template?.template_key || `email_${Date.now()}`;
     try {
       const res = await fetch("/api/templates", {
@@ -144,10 +178,12 @@ export function EmailTemplateBuilder({ template, onClose }: EmailTemplateBuilder
           <StarterGallery onPick={pickStarter} />
         ) : (
           <EditorBody
-            mode={mode} setMode={setMode}
+            mode={mode} switchMode={switchMode}
             senderName={senderName} setSenderName={setSenderName}
             subject={subject} setSubject={setSubject}
-            htmlContent={htmlContent} setHtmlContent={setHtmlContent}
+            htmlContent={htmlContent} setHtmlContent={(v: string) => { setHtmlContent(v); setHtmlEdited(true); }}
+            blocks={blocks} setBlocks={setBlocks}
+            htmlEdited={htmlEdited}
             textareaRef={textareaRef}
             previewHtml={previewHtml}
             assets={assets} showAssets={showAssets} setShowAssets={setShowAssets}
@@ -225,10 +261,16 @@ function EditorBody(p: any) {
       <p className="font-mono text-[11px] text-ink-faint">Variabel: {"{{first_name}}"}, {"{{last_name}}"}, {"{{email}}"}</p>
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" variant={p.mode === "html" ? "primary" : "outline"} onClick={() => p.setMode("html")}>HTML</Button>
-        <Button size="sm" variant={p.mode === "preview" ? "primary" : "outline"} onClick={() => p.setMode("preview")}><Eye className="mr-1 h-4 w-4" />Preview</Button>
+        <Button size="sm" variant={p.mode === "blocks" ? "primary" : "outline"} onClick={() => p.switchMode("blocks")} disabled={p.htmlEdited} title={p.htmlEdited ? "Sudah diedit sebagai HTML" : undefined}>
+          <Blocks className="mr-1 h-4 w-4" />Blok
+        </Button>
+        <Button size="sm" variant={p.mode === "html" ? "primary" : "outline"} onClick={() => p.switchMode("html")}><Code className="mr-1 h-4 w-4" />HTML</Button>
+        <Button size="sm" variant={p.mode === "preview" ? "primary" : "outline"} onClick={() => p.switchMode("preview")}><Eye className="mr-1 h-4 w-4" />Preview</Button>
         <Button size="sm" variant="outline" onClick={() => p.setShowAssets((v: boolean) => !v)}><ImageIcon className="mr-1 h-4 w-4" />Logo &amp; Gambar</Button>
       </div>
+      {p.mode === "blocks" && (
+        <p className="font-body text-[11px] text-ink-faint">Susun blok dengan drag-and-drop. Beralih ke HTML untuk edit manual (setelah itu mode Blok terkunci).</p>
+      )}
 
       {p.showAssets && (
         <div className="rounded-md border border-glass-border bg-glass p-4">
@@ -257,7 +299,9 @@ function EditorBody(p: any) {
         </div>
       )}
 
-      {p.mode === "html" ? (
+      {p.mode === "blocks" ? (
+        <BlockEditor blocks={p.blocks} setBlocks={p.setBlocks} assets={p.assets} />
+      ) : p.mode === "html" ? (
         <textarea
           ref={p.textareaRef}
           value={p.htmlContent}
