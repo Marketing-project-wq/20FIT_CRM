@@ -7,7 +7,7 @@ import { isPermitted } from "@/lib/auth/roles";
 import { saveSegment } from "@/lib/crm/segment-store";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { validateFilterTree, filterTreeToExpr, type FilterNode } from "@/lib/crm/filter-tree";
-import type { SegmentCriteria } from "@/lib/crm/segment";
+import { EMPTY_CRITERIA, type SegmentCriteria } from "@/lib/crm/segment";
 
 /**
  * Save a segment DEFINITION (K-40). Gate: segment.build (same as the builder). The AND/OR tree is
@@ -43,6 +43,42 @@ export async function saveSegmentAction(input: {
   const res = await saveSegment({
     name: input.name,
     stored: { criteria: input.criteria, masterFilterExpr },
+    createdBy: email,
+  });
+  return { ok: res.ok, error: res.error };
+}
+
+/** Save a STATIC email-list segment (manual). Gate: segment.build. Emails normalised (trim+lower),
+ *  deduped, validated to contain '@'. Stored as emailList in the segment definition — targets those
+ *  addresses via overrideRecipients at send, never touching master_customer. Suppression still applies. */
+export async function saveEmailListSegmentAction(input: {
+  name: string;
+  emailsRaw: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const role = await getCurrentUserRole();
+  if (!isPermitted(role, "segment.build")) return { ok: false, error: "denied" };
+  if (!input.name.trim()) return { ok: false, error: "empty_name" };
+
+  const emails = Array.from(
+    new Set(
+      input.emailsRaw
+        .split(/[\s,;]+/)
+        .map((e) => e.trim().toLowerCase())
+        .filter((e) => e.length > 0 && e.includes("@")),
+    ),
+  );
+  if (emails.length === 0) return { ok: false, error: "no_valid_emails" };
+
+  let email: string | null = null;
+  try {
+    email = (await createClient().auth.getUser()).data.user?.email ?? null;
+  } catch {
+    // fail-open on identity only
+  }
+
+  const res = await saveSegment({
+    name: input.name,
+    stored: { criteria: EMPTY_CRITERIA, masterFilterExpr: null, emailList: emails },
     createdBy: email,
   });
   return { ok: res.ok, error: res.error };

@@ -2,13 +2,11 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Filter, Clock, Users, Send, Network } from "lucide-react";
+import { Filter, Clock, Users, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ECOSYSTEM_UNITS, ECOSYSTEM_PRODUCTS_BY_UNIT } from "@/lib/crm/engagement-constants";
-import { STAGING_RFM_VALUES, STAGING_PROGRAMS } from "@/lib/crm/staging-constants";
 import { EMPTY_CRITERIA, type SegmentCriteria } from "@/lib/crm/segment";
 import { rowsToTree, type Row } from "@/components/segments/filter-tree-builder";
-import { SimpleFilterBuilder } from "@/components/segments/simple-filter-builder";
+import { UnifiedFilterBuilder } from "@/components/segments/unified-filter-builder";
 import { saveSegmentAction } from "@/app/(app)/segments/actions";
 import { Why } from "@/components/ui/why";
 import { useI18n } from "@/components/i18n/lang-provider";
@@ -23,9 +21,6 @@ interface Counts {
    *  this count (that part is read from crm_customer_mirror). Null otherwise. */
   mirrorRefreshedAt?: string | null;
 }
-
-const selectCls =
-  "h-10 rounded-sm border border-glass-border bg-glass px-3 font-body text-[14px] text-ink focus:outline-none focus:ring-2 focus:ring-red";
 
 /** Below this many matched profiles a segment practically points at individuals — a warning
  *  shows (the count is NOT suppressed; this builder never emits a list of people anyway). */
@@ -125,17 +120,6 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
     onComputed?.(null);
   }
 
-  // KONTAK group (nav rebuild): "punya email" / "punya telepon" are their own question, not demographic
-  // attributes, so they live here as dedicated toggles instead of in the free field picker. They still
-  // resolve as tree conditions (one source, no duplication, no engine change) — toggling adds/removes a
-  // single hasEmail/hasPhone condition row.
-  const hasContactRow = (field: "hasEmail" | "hasPhone") =>
-    rows.some((r) => r.t === "cond" && r.field === field);
-  function setContactRow(field: "hasEmail" | "hasPhone", on: boolean) {
-    const without = rows.filter((r) => !(r.t === "cond" && r.field === field));
-    setRowsAndClear(on ? [...without, { t: "cond", field, value: "" }] : without);
-  }
-
   // The request body — master fields come from the AND/OR tree; ecosystem + source presence stay
   // separate top-level ANDs (cross-table OR isn't expressible in one query).
   function buildBody() {
@@ -222,173 +206,20 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
           onInactive={(v) => set("inactiveForDays", v)}
         />
 
-        {/* Three groups by QUESTION (mirrors the profile screen), not by data source. */}
-        <section className="glass space-y-5 rounded-card p-5">
-          {/* ── DEMOGRAFI — attributes of the person, combined AND/OR ── */}
-          <div>
-            <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-ink-soft" aria-hidden />
-              <h3 className="font-display text-[14px] font-bold uppercase tracking-wide text-ink">{t.segments.groupDemografi}</h3>
-            </div>
-            <p className="mt-1 font-body text-[12px] text-ink-soft">{t.segments.groupDemografiHint}</p>
-            <div className="mt-3">
-              <SimpleFilterBuilder rows={rows} setRows={setRowsAndClear} />
-            </div>
-          </div>
-
-          {/* ── KONTAK — a question of its own, not a demographic attribute ── */}
-          <div className="border-t border-glass-border/60 pt-4">
-            <h3 className="font-display text-[14px] font-bold uppercase tracking-wide text-ink">{t.segments.groupKontak}</h3>
-            <p className="mt-1 font-body text-[12px] text-ink-soft">{t.segments.groupKontakHint}</p>
-            <div className="mt-2 flex flex-col gap-2">
-              <label className="inline-flex cursor-pointer items-center gap-2 font-body text-[13px] text-ink">
-                <input type="checkbox" checked={hasContactRow("hasEmail")} onChange={(e) => setContactRow("hasEmail", e.target.checked)} className="accent-red" />
-                {t.segments.kontakHasEmail}
-              </label>
-              <label className="inline-flex cursor-pointer items-center gap-2 font-body text-[13px] text-ink">
-                <input type="checkbox" checked={hasContactRow("hasPhone")} onChange={(e) => setContactRow("hasPhone", e.target.checked)} className="accent-red" />
-                {t.segments.kontakHasPhone}
-              </label>
-            </div>
-          </div>
-
-          {/* ── PERILAKU — cross-table presence (ecosystem, sources, program) ── */}
-        <div className="mt-1 border-t border-glass-border/60 pt-4">
+        {/* ONE unified condition list (Mailchimp-style) — contact + demographic + participation in a
+            single "add condition" flow. Replaces the old three separate sections. */}
+        <section className="glass space-y-4 rounded-card p-5">
           <div className="flex items-center gap-2">
-            <Network className="h-4 w-4 text-ink-soft" aria-hidden />
-            <h3 className="font-display text-[14px] font-bold uppercase tracking-wide text-ink">
-              {t.segments.groupPerilaku}
-            </h3>
+            <Filter className="h-4 w-4 text-ink-soft" aria-hidden />
+            <h3 className="font-display text-[14px] font-bold uppercase tracking-wide text-ink">{t.segments.groupFilter}</h3>
           </div>
-          <p className="mt-1 font-body text-[12px] text-ink-soft">{t.segments.groupPerilakuHint}</p>
-          <Why>
-            <p className="text-[12px] leading-relaxed text-ink-soft">
-            {t.segments.warn.ecoDescA}<span className="font-mono">customer_engagement</span>{t.segments.warn.ecoDescB}<span className="font-mono">event</span>{t.segments.warn.ecoDescC}<span className="font-mono">membership</span>{t.segments.warn.ecoDescD}<span className="font-mono">last_seen_at</span>{t.segments.warn.ecoDescE}
-            </p>
-          </Why>
-          <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <label className="flex flex-col gap-1">
-              <span className="font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">{t.segments.ecoUnitLabel}</span>
-              <select className={selectCls} value={c.ecoUnit ?? ""} onChange={(e) => set("ecoUnit", e.target.value || null)}>
-                <option value="">{t.segments.ecoAllUnits}</option>
-                {ECOSYSTEM_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">{t.segments.ecoProductLabel}</span>
-              <select className={selectCls} value={c.ecoProduct ?? ""} onChange={(e) => set("ecoProduct", e.target.value || null)}>
-                <option value="">{t.segments.ecoAllProducts}</option>
-                {ECOSYSTEM_UNITS.map((u) => (
-                  <optgroup key={u} label={u}>
-                    {ECOSYSTEM_PRODUCTS_BY_UNIT[u].map((p) => <option key={p} value={p}>{p}</option>)}
-                  </optgroup>
-                ))}
-              </select>
-            </label>
-          </div>
-          {c.ecoUnit && c.ecoProduct && (
-            <p className="mt-2 font-body text-[11px] leading-relaxed text-ink-faint">
-              {t.segments.ecoBothNote}
-            </p>
-          )}
-
-          {/* Unmatched-source presence (Sprint 3R) — cocok lewat email ternormalisasi. */}
-          <div className="mt-3 flex flex-col gap-2 border-t border-glass-border/60 pt-3">
-            <label className="inline-flex cursor-pointer items-center gap-2 font-body text-[13px] text-ink">
-              <input type="checkbox" checked={c.srcHyrox} onChange={(e) => set("srcHyrox", e.target.checked)} className="accent-red" />
-              {t.segments.srcHyroxLabel}
-            </label>
-            <label className="inline-flex cursor-pointer items-center gap-2 font-body text-[13px] text-ink">
-              <input type="checkbox" checked={c.srcMy20fit} onChange={(e) => set("srcMy20fit", e.target.checked)} className="accent-red" />
-              {t.segments.srcMy20fitLabel}
-            </label>
-            <label className="inline-flex cursor-pointer items-center gap-2 font-body text-[13px] text-ink">
-              <input type="checkbox" checked={c.srcRecency} onChange={(e) => set("srcRecency", e.target.checked)} className="accent-red" />
-              {t.segments.srcRecencyLabel}
-            </label>
-            <Why>
-              <p className="text-[11px] leading-relaxed text-ink-faint">
-                {t.segments.warn.srcRecencyA}<span className="font-mono">last_active_at</span>{t.segments.warn.srcRecencyB}
-              </p>
-            </Why>
-          </div>
-
-          {/* Sumber lain (TUGAS 2) — arena/gym (email), klinik (telepon, digerbangi view_health). */}
-          <div className="mt-3 flex flex-col gap-2 border-t border-glass-border/60 pt-3">
-            <label className="inline-flex cursor-pointer items-center gap-2 font-body text-[13px] text-ink">
-              <input type="checkbox" checked={c.srcArena} onChange={(e) => set("srcArena", e.target.checked)} className="accent-red" />
-              {t.segments.srcArenaLabel}
-            </label>
-            <label className="inline-flex cursor-pointer items-center gap-2 font-body text-[13px] text-ink">
-              <input type="checkbox" checked={c.srcGym} onChange={(e) => set("srcGym", e.target.checked)} className="accent-red" />
-              {t.segments.srcGymLabel}
-            </label>
-            {canViewHealth ? (
-              <>
-                <label className="inline-flex cursor-pointer items-center gap-2 font-body text-[13px] text-ink">
-                  <input type="checkbox" checked={c.srcClinicPatient} onChange={(e) => set("srcClinicPatient", e.target.checked)} className="accent-red" />
-                  {t.segments.srcClinicPatientLabel}<span className="font-mono text-[11px] text-ink-faint">{t.segments.srcClinicPatientTag}</span>
-                </label>
-                <label className="inline-flex cursor-pointer items-center gap-2 font-body text-[13px] text-ink">
-                  <input type="checkbox" checked={c.srcClinicTxn} onChange={(e) => set("srcClinicTxn", e.target.checked)} className="accent-red" />
-                  {t.segments.srcClinicTxnLabel}<span className="font-mono text-[11px] text-ink-faint">{t.segments.srcClinicPatientTag}</span>
-                </label>
-              </>
-            ) : (
-              <p className="font-body text-[11px] italic text-ink-faint">
-                {t.segments.warn.clinicHiddenA}<span className="font-mono">profile.view_health</span>{t.segments.warn.clinicHiddenB}
-              </p>
-            )}
-            <Why>
-              <p className="text-[11px] leading-relaxed text-ink-faint">
-                {t.segments.warn.sourcesAndA}
-              </p>
-            </Why>
-          </div>
-
-          {/* Data impor 20FIT (staging_20fit_data, Sprint 3Y) — RFM + keikutsertaan program.
-              Cocok lewat email (K-06), 98,6% pool. Program klinik (pasien klinik) digerbangi
-              view_health seperti sumber klinis lain. */}
-          <div className="mt-3 flex flex-col gap-3 border-t border-glass-border/60 pt-3">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <label className="flex flex-col gap-1">
-                <span className="font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">{t.segments.rfmLabel}</span>
-                <select className={selectCls} value={c.srcRfm ?? ""} onChange={(e) => set("srcRfm", e.target.value || null)}>
-                  <option value="">{t.segments.rfmAll}</option>
-                  {STAGING_RFM_VALUES.map((v) => <option key={v} value={v}>{v}</option>)}
-                </select>
-                {c.srcRfm && (
-                  <span className="font-body text-[11px] leading-relaxed text-amber">
-                    {t.segments.warn.rfmA}<span className="font-mono">New User</span>{t.segments.warn.rfmB}<span className="font-mono">Loyal</span>{t.segments.warn.rfmC}<span className="font-mono">Campion</span>{t.segments.warn.rfmD}
-                  </span>
-                )}
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">{t.segments.programLabel}</span>
-                <select className={selectCls} value={c.srcProgram ?? ""} onChange={(e) => set("srcProgram", e.target.value || null)}>
-                  <option value="">{t.segments.programAll}</option>
-                  <optgroup label={t.segments.programGroupNonClinical}>
-                    {STAGING_PROGRAMS.filter((p) => !p.clinical).map((p) => (
-                      <option key={p.key} value={p.key}>{p.label}</option>
-                    ))}
-                  </optgroup>
-                  {canViewHealth && (
-                    <optgroup label={t.segments.programGroupClinical}>
-                      {STAGING_PROGRAMS.filter((p) => p.clinical).map((p) => (
-                        <option key={p.key} value={p.key}>{p.label}</option>
-                      ))}
-                    </optgroup>
-                  )}
-                </select>
-              </label>
-            </div>
-            <Why>
-              <p className="text-[11px] leading-relaxed text-ink-faint">
-                {t.segments.warn.stagingA}<span className="font-mono">staging_20fit_data</span>{t.segments.warn.stagingB}<span className="font-mono">Campion user</span>{t.segments.warn.stagingC}{canViewHealth ? t.segments.stagingGated : t.segments.stagingHidden}{t.segments.warn.stagingD}<span className="font-mono">profile.view_health</span>{t.segments.warn.stagingE}
-              </p>
-            </Why>
-          </div>
-        </div>
+          <UnifiedFilterBuilder
+            rows={rows}
+            setRows={setRowsAndClear}
+            criteria={c}
+            setCriterion={set}
+            canViewHealth={canViewHealth}
+          />
 
         {/* City-fill caveat — a "why city filtering is unreliable" note, no longer filling the space
             between controls: title on the line, the numbers + reason collapsed (nav rebuild). */}

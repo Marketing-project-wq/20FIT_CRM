@@ -96,6 +96,22 @@ interface RawRecipient {
   language: "id" | "en";
 }
 
+/** Turn a static email list into recipients (manual/email_list segment). customer_id is a stable
+ *  synthetic key (`manual:<email>`) so the idempotency key is deterministic per email without any
+ *  master_customer row. Deduped by normalised email. Suppression + pre-launch withhold still apply
+ *  downstream exactly as for a resolved segment. */
+export function emailListToRecipients(emails: string[]): RawRecipient[] {
+  const seen = new Set<string>();
+  const out: RawRecipient[] = [];
+  for (const raw of emails) {
+    const email = (raw ?? "").trim().toLowerCase();
+    if (!email || !email.includes("@") || seen.has(email)) continue;
+    seen.add(email);
+    out.push({ customerId: `manual:${email}`, email, language: "id" });
+  }
+  return out;
+}
+
 /** Page master_customer for the segment, collecting recipients that have a usable canonical email.
  *  Suppression is NOT applied here — it is checked at send (per the binding rule). */
 async function resolveRecipients(
@@ -157,12 +173,14 @@ export interface CampaignPreview {
  * fixes the daily-window read. No email is sent.
  */
 export async function previewCampaign(
-  input: { criteria: SegmentCriteria; masterFilterExpr: string | null; dailyLimit?: number },
+  input: { criteria: SegmentCriteria; masterFilterExpr: string | null; dailyLimit?: number; emailList?: string[] },
   nowIso: string,
 ): Promise<CampaignPreview> {
   const admin = createAdminClient();
   const [{ recipients, noContact }, suppressed] = await Promise.all([
-    resolveRecipients(admin, input.criteria, input.masterFilterExpr),
+    input.emailList && input.emailList.length > 0
+      ? Promise.resolve({ recipients: emailListToRecipients(input.emailList), noContact: 0 })
+      : resolveRecipients(admin, input.criteria, input.masterFilterExpr),
     fetchSuppressedCustomerIds(admin),
   ]);
   const suppressedCount = recipients.reduce((n, r) => (suppressed.has(r.customerId) ? n + 1 : n), 0);

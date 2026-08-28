@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { isPermitted, grantFor } from "@/lib/auth/roles";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSegmentById } from "@/lib/crm/segment-store";
-import { previewCampaign, sendCampaign } from "@/lib/crm/send-campaign";
+import { previewCampaign, sendCampaign, emailListToRecipients } from "@/lib/crm/send-campaign";
 import { describeCountDrift, planDailySpread, type CountDrift, type DailySpread } from "@/lib/crm/send-plan";
 import { DEFAULT_SEND_CONFIG, requiresLargeSendConfirmation, type SendSummary } from "@/lib/crm/send-run";
 import {
@@ -101,7 +101,7 @@ export async function previewCampaignAction(segmentId: string, templateKey: stri
   if (!(await templateHasUnsubscribe(templateKey))) return { ok: false, error: "no_unsubscribe" };
 
   const p = await previewCampaign(
-    { criteria: seg.stored.criteria, masterFilterExpr: seg.stored.masterFilterExpr },
+    { criteria: seg.stored.criteria, masterFilterExpr: seg.stored.masterFilterExpr, emailList: seg.stored.emailList },
     nowIso(),
   );
   return {
@@ -209,7 +209,7 @@ export async function sendCampaignAction(args: {
   const stamp = nowIso();
   // RECOUNT at confirm — the shown number may be stale. Disclose any drift BEFORE the send counts.
   const fresh = await previewCampaign(
-    { criteria: seg.stored.criteria, masterFilterExpr: seg.stored.masterFilterExpr },
+    { criteria: seg.stored.criteria, masterFilterExpr: seg.stored.masterFilterExpr, emailList: seg.stored.emailList },
     stamp,
   );
   const drift = describeCountDrift(args.shownSendable, fresh.sendable);
@@ -281,6 +281,9 @@ export async function sendCampaignAction(args: {
         actorId,
         actorEmail,
         confirmedLargeSend: args.confirmedLargeSend,
+        ...(seg.stored.emailList && seg.stored.emailList.length > 0
+          ? { overrideRecipients: emailListToRecipients(seg.stored.emailList) }
+          : {}),
       },
       stamp,
     );

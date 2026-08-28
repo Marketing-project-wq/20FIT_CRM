@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { SegmentBuilder } from "@/components/segments/segment-builder";
+import { EmailListSegment } from "@/components/segments/email-list-segment";
 import { deleteSegmentAction } from "@/app/(app)/segments/actions";
 import { useI18n } from "@/components/i18n/lang-provider";
 import { formatDateTime } from "@/lib/i18n";
@@ -30,9 +31,11 @@ export function SegmentsTab({
 }) {
   const { lang, t } = useI18n();
   const s = t.campaignsPage.segmentsTab;
+  const el = t.campaignsPage.emailListSegment;
   const [segments, setSegments] = useState(initial);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [deleteMsg, setDeleteMsg] = useState<string | null>(null);
+  const [mode, setMode] = useState<"filter" | "manual">("filter");
 
   async function onDelete(id: string, name: string) {
     if (!confirm(`${s.deleteConfirm} "${name}"?`)) return;
@@ -97,13 +100,40 @@ export function SegmentsTab({
       {canBuild && (
         <section className="flex flex-col gap-3">
           <h2 className="font-display text-[15px] font-bold uppercase tracking-wide text-ink">{s.buildTitle}</h2>
-          <p className="font-body text-[13px] text-ink-soft">{s.buildHint}</p>
-          <SegmentBuilder
-            cityFillPct={cityFillPct}
-            cityFilled={cityFilled}
-            total={total}
-            canViewHealth={canViewHealth}
-          />
+
+          {/* Toggle: filter otomatis vs daftar email manual */}
+          <div className="flex gap-1 border-b border-glass-border">
+            <button
+              type="button"
+              onClick={() => setMode("filter")}
+              className={`px-4 py-2 font-display text-[12px] font-bold uppercase tracking-wide transition-colors ${mode === "filter" ? "border-b-2 border-red text-ink" : "text-ink-soft hover:text-ink"}`}
+            >
+              {el.tabFilter}
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("manual")}
+              className={`px-4 py-2 font-display text-[12px] font-bold uppercase tracking-wide transition-colors ${mode === "manual" ? "border-b-2 border-red text-ink" : "text-ink-soft hover:text-ink"}`}
+            >
+              {el.tabManual}
+            </button>
+          </div>
+
+          {mode === "filter" ? (
+            <>
+              <p className="font-body text-[13px] text-ink-soft">{s.buildHint}</p>
+              <SegmentBuilder
+                cityFillPct={cityFillPct}
+                cityFilled={cityFilled}
+                total={total}
+                canViewHealth={canViewHealth}
+              />
+            </>
+          ) : (
+            <div className="glass rounded-card p-5">
+              <EmailListSegment onSaved={() => window.location.reload()} />
+            </div>
+          )}
         </section>
       )}
     </div>

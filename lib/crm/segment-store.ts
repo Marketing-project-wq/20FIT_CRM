@@ -11,10 +11,16 @@ import { hasClinicalCriteria, EMPTY_CRITERIA, type SegmentCriteria } from "./seg
  */
 
 /** The full definition we persist in crm_segment.criteria (jsonb): flat criteria + the validated
- *  master AND/OR expression (produced by the tree validator; null when the builder used no tree). */
+ *  master AND/OR expression (produced by the tree validator; null when the builder used no tree).
+ *  A STATIC email-list segment carries `emailList` instead — a fixed set of normalised emails
+ *  (e.g. admin addresses for testing). When emailList is present it takes precedence: the segment
+ *  targets exactly those addresses via overrideRecipients, never touching master_customer. It still
+ *  passes through suppression + pre-launch withhold at send time. */
 export interface StoredSegment {
   criteria: SegmentCriteria;
   masterFilterExpr: string | null;
+  /** Static email list (manual segment). When set + non-empty, this is an email_list segment. */
+  emailList?: string[];
 }
 
 export interface SavedSegmentMeta {
@@ -104,9 +110,13 @@ export async function getSegmentById(id: string): Promise<LoadedSegment | null> 
     if (error || !data) return null;
     const row = data as { id: string; name: string; requires_clinical: boolean; criteria: unknown };
     const raw = (row.criteria ?? {}) as Partial<StoredSegment>;
+    const emailList = Array.isArray(raw.emailList)
+      ? raw.emailList.filter((e): e is string => typeof e === "string" && e.length > 0)
+      : undefined;
     const stored: StoredSegment = {
       criteria: { ...EMPTY_CRITERIA, ...(raw.criteria ?? {}) },
       masterFilterExpr: typeof raw.masterFilterExpr === "string" ? raw.masterFilterExpr : null,
+      ...(emailList && emailList.length > 0 ? { emailList } : {}),
     };
     return { id: row.id, name: row.name, requiresClinical: row.requires_clinical, stored };
   } catch {
