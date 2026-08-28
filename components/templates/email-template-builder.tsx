@@ -1,8 +1,15 @@
 "use client";
 
-import { useState } from "react";
-import { X, Save, Eye } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { X, Save, Eye, Image as ImageIcon, LayoutTemplate, Upload, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { STARTER_TEMPLATES } from "./starter-templates";
+import {
+  listBrandAssetsAction,
+  uploadBrandAssetAction,
+  deleteBrandAssetAction,
+  type BrandAsset,
+} from "@/app/(app)/templates/brand-asset-actions";
 
 interface Template {
   template_key?: string;
@@ -16,29 +23,78 @@ interface EmailTemplateBuilderProps {
   onClose: () => void;
 }
 
+const DEFAULT_HTML = STARTER_TEMPLATES[0].html;
+
 export function EmailTemplateBuilder({ template, onClose }: EmailTemplateBuilderProps) {
+  const isEditing = !!template;
+  // A brand-new template starts on the starter gallery; editing jumps straight to the editor.
+  const [step, setStep] = useState<"gallery" | "editor">(isEditing ? "editor" : "gallery");
   const [mode, setMode] = useState<"html" | "preview">("html");
   const [senderName, setSenderName] = useState(template?.sender_name || "20FIT");
   const [subject, setSubject] = useState(template?.subject || "");
-  const [htmlContent, setHtmlContent] = useState(
-    template?.body || `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <h1 style="color: #2563eb;">Judul Email</h1>
-  <p>Halo {{first_name}},</p>
-  <p>Isi email Anda di sini.</p>
-  <p>Salam,<br>Tim 20FIT</p>
-</body>
-</html>`
-  );
+  const [htmlContent, setHtmlContent] = useState(template?.body || DEFAULT_HTML);
+
+  // Brand assets (logos)
+  const [assets, setAssets] = useState<BrandAsset[]>([]);
+  const [showAssets, setShowAssets] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [assetMsg, setAssetMsg] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    listBrandAssetsAction().then((r) => { if (r.ok) setAssets(r.assets); });
+  }, []);
+
+  function pickStarter(id: string) {
+    const s = STARTER_TEMPLATES.find((x) => x.id === id) ?? STARTER_TEMPLATES[0];
+    setHtmlContent(s.html);
+    if (s.subject) setSubject(s.subject);
+    setStep("editor");
+  }
+
+  async function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true); setAssetMsg(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await uploadBrandAssetAction(fd);
+      if (!res.ok || !res.asset) {
+        setAssetMsg(res.error === "too_large" ? "File terlalu besar (maks 2 MB)." : res.error === "bad_type" ? "Tipe file harus gambar." : "Gagal mengunggah.");
+        return;
+      }
+      setAssets((prev) => [res.asset!, ...prev]);
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  async function onDeleteAsset(id: string) {
+    const res = await deleteBrandAssetAction(id);
+    if (res.ok) setAssets((prev) => prev.filter((a) => a.id !== id));
+  }
+
+  /** Insert an <img> tag for a logo at the cursor (or before </body>). */
+  function insertLogo(asset: BrandAsset) {
+    const tag = `<img src="${asset.publicUrl}" alt="${asset.name}" style="max-width:180px;height:auto;display:block;margin:0 auto 16px;" />`;
+    const ta = textareaRef.current;
+    if (ta && mode === "html") {
+      const start = ta.selectionStart ?? htmlContent.length;
+      setHtmlContent(htmlContent.slice(0, start) + tag + htmlContent.slice(start));
+    } else if (htmlContent.includes("</body>")) {
+      setHtmlContent(htmlContent.replace("</body>", `${tag}\n</body>`));
+    } else {
+      setHtmlContent(htmlContent + tag);
+    }
+    setShowAssets(false);
+  }
 
   const injectUnsubscribeLink = (html: string): string => {
-    const unsubLink = `<p style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; font-size: 12px; color: #666;">
-  <a href="{{unsubscribe_url}}" style="color: #666;">Berhenti berlangganan</a>
+    const unsubLink = `<p style="margin-top:40px;padding-top:20px;border-top:1px solid #ddd;font-size:12px;color:#666;text-align:center;">
+  <a href="{{unsubscribe_url}}" style="color:#666;">Berhenti berlangganan</a>
 </p>`;
     if (html.includes("{{unsubscribe_url}}")) return html;
     if (html.includes("</body>")) return html.replace("</body>", `${unsubLink}\n</body>`);
@@ -49,33 +105,21 @@ export function EmailTemplateBuilder({ template, onClose }: EmailTemplateBuilder
     .replace(/\{\{first_name\}\}/g, "Andi")
     .replace(/\{\{last_name\}\}/g, "Wijaya")
     .replace(/\{\{email\}\}/g, "andi@example.com")
-    .replace(/\{\{unsubscribe_url\}\}/g, "/unsubscribe?email=andi%40example.com&template=preview");
+    .replace(/\{\{unsubscribe_url\}\}/g, "/unsubscribe?token=preview");
 
   const handleSave = async () => {
     const finalHtml = injectUnsubscribeLink(htmlContent);
     const templateKey = template?.template_key || `email_${Date.now()}`;
-
     try {
       const res = await fetch("/api/templates", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          template_key: templateKey,
-          channel: "email",
-          language: "id",
-          name: subject || "Untitled Email",
-          subject,
-          body: finalHtml,
-          sender_name: senderName,
+          template_key: templateKey, channel: "email", language: "id",
+          name: subject || "Untitled Email", subject, body: finalHtml, sender_name: senderName,
         }),
       });
-
-      if (!res.ok) {
-        const err = await res.json();
-        alert(`Failed to save: ${err.error}`);
-        return;
-      }
-
+      if (!res.ok) { const err = await res.json(); alert(`Failed to save: ${err.error}`); return; }
       window.location.reload();
     } catch (err) {
       console.error("Save error:", err);
@@ -89,92 +133,144 @@ export function EmailTemplateBuilder({ template, onClose }: EmailTemplateBuilder
         <div className="flex items-center justify-between border-b border-glass-border px-6 py-4">
           <div>
             <h2 className="font-display text-[18px] font-bold text-ink">
-              {template ? "Edit Email Template" : "Buat Email Template"}
+              {isEditing ? "Edit Email Template" : step === "gallery" ? "Pilih Template Awal" : "Buat Email Template"}
             </h2>
-            <p className="mt-1 font-body text-[12px] text-ink-soft">
-              Link unsubscribe ditambahkan otomatis di footer
-            </p>
+            <p className="mt-1 font-body text-[12px] text-ink-soft">Link unsubscribe ditambahkan otomatis di footer</p>
           </div>
-          <button onClick={onClose} className="rounded p-2 hover:bg-glass">
-            <X className="h-5 w-5 text-ink-soft" />
-          </button>
+          <button onClick={onClose} className="rounded p-2 hover:bg-glass"><X className="h-5 w-5 text-ink-soft" /></button>
         </div>
 
-        <div className="flex flex-1 flex-col gap-4 overflow-auto p-6">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="mb-2 block font-display text-[13px] font-bold text-ink">Sender Name</label>
-              <input
-                type="text"
-                value={senderName}
-                onChange={(e) => setSenderName(e.target.value)}
-                className="w-full rounded-md border border-glass-border bg-glass px-3 py-2 font-body text-[14px] text-ink focus:border-ink focus:outline-none"
-                placeholder="20FIT"
-              />
-            </div>
-            <div>
-              <label className="mb-2 block font-display text-[13px] font-bold text-ink">
-                Subject <span className="text-red">*</span>
-              </label>
-              <input
-                type="text"
-                value={subject}
-                onChange={(e) => setSubject(e.target.value)}
-                className="w-full rounded-md border border-glass-border bg-glass px-3 py-2 font-body text-[14px] text-ink focus:border-ink focus:outline-none"
-                placeholder="Subject email Anda"
-              />
-            </div>
-          </div>
-          <p className="font-mono text-[11px] text-ink-faint">
-            Variabel: {"{{first_name}}"}, {"{{last_name}}"}, {"{{email}}"}
-          </p>
-
-          <div className="flex items-center gap-2">
-            <Button size="sm" variant={mode === "html" ? "primary" : "outline"} onClick={() => setMode("html")}>
-              HTML
-            </Button>
-            <Button size="sm" variant={mode === "preview" ? "primary" : "outline"} onClick={() => setMode("preview")}>
-              <Eye className="mr-1 h-4 w-4" />
-              Preview
-            </Button>
-          </div>
-
-          {mode === "html" ? (
-            <textarea
-              value={htmlContent}
-              onChange={(e) => setHtmlContent(e.target.value)}
-              className="h-[440px] w-full rounded-md border border-glass-border bg-glass p-3 font-mono text-[12px] text-ink focus:border-ink focus:outline-none"
-              placeholder="<!DOCTYPE html>..."
-            />
-          ) : (
-            <div className="flex flex-col gap-2 rounded-md border border-glass-border bg-white p-4">
-              <div className="font-mono text-[11px] text-ink-faint">
-                <strong>From:</strong> {senderName} &lt;noreply@20fit.id&gt;
-                {" · "}
-                <strong>Subject:</strong> {subject || "(no subject)"}
-              </div>
-              <iframe
-                key={previewHtml}
-                srcDoc={previewHtml}
-                sandbox="allow-same-origin"
-                className="h-[400px] w-full rounded border border-glass-border bg-white"
-                title="Email Preview"
-              />
-            </div>
-          )}
-        </div>
+        {step === "gallery" ? (
+          <StarterGallery onPick={pickStarter} />
+        ) : (
+          <EditorBody
+            mode={mode} setMode={setMode}
+            senderName={senderName} setSenderName={setSenderName}
+            subject={subject} setSubject={setSubject}
+            htmlContent={htmlContent} setHtmlContent={setHtmlContent}
+            textareaRef={textareaRef}
+            previewHtml={previewHtml}
+            assets={assets} showAssets={showAssets} setShowAssets={setShowAssets}
+            fileRef={fileRef} onUpload={onUpload} uploading={uploading}
+            assetMsg={assetMsg} onDeleteAsset={onDeleteAsset} insertLogo={insertLogo}
+          />
+        )}
 
         <div className="flex items-center justify-between border-t border-glass-border px-6 py-4">
-          <p className="font-mono text-[11px] text-ink-faint">Link unsubscribe akan ditambahkan otomatis di footer</p>
+          {step === "editor" && !isEditing ? (
+            <Button variant="ghost" onClick={() => setStep("gallery")}>← Ganti template awal</Button>
+          ) : (
+            <p className="font-mono text-[11px] text-ink-faint">Link unsubscribe ditambahkan otomatis</p>
+          )}
           <div className="flex gap-2">
             <Button variant="outline" onClick={onClose}>Batal</Button>
-            <Button onClick={handleSave} disabled={!subject.trim()}>
-              <Save className="mr-1 h-4 w-4" />
-              Simpan Template
-            </Button>
+            {step === "editor" && (
+              <Button onClick={handleSave} disabled={!subject.trim()}>
+                <Save className="mr-1 h-4 w-4" />Simpan Template
+              </Button>
+            )}
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function StarterGallery({ onPick }: { onPick: (id: string) => void }) {
+  return (
+    <div className="flex-1 overflow-auto p-6">
+      <p className="mb-4 font-body text-[13px] text-ink-soft">Pilih titik awal — Anda bisa menyesuaikan semuanya setelah memilih.</p>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {STARTER_TEMPLATES.map((s) => (
+          <button
+            key={s.id}
+            onClick={() => onPick(s.id)}
+            className="card group flex flex-col gap-2 p-3 text-left transition-colors hover:border-red"
+          >
+            <div className="flex h-40 items-center justify-center overflow-hidden rounded border border-glass-border bg-white">
+              <iframe
+                srcDoc={s.html.replace(/\{\{first_name\}\}/g, "Andi")}
+                sandbox=""
+                title={s.name}
+                className="pointer-events-none h-[320px] w-[480px] origin-top-left scale-[0.33] border-0"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <LayoutTemplate className="h-4 w-4 text-ink-soft" aria-hidden />
+              <span className="font-display text-[13px] font-bold text-ink">{s.name}</span>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function EditorBody(p: any) {
+  return (
+    <div className="flex flex-1 flex-col gap-4 overflow-auto p-6">
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="mb-2 block font-display text-[13px] font-bold text-ink">Nama Pengirim</label>
+          <input type="text" value={p.senderName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => p.setSenderName(e.target.value)}
+            className="w-full rounded-md border border-glass-border bg-glass px-3 py-2 font-body text-[14px] text-ink focus:border-ink focus:outline-none" placeholder="20FIT" />
+        </div>
+        <div>
+          <label className="mb-2 block font-display text-[13px] font-bold text-ink">Subject <span className="text-red">*</span></label>
+          <input type="text" value={p.subject} onChange={(e: React.ChangeEvent<HTMLInputElement>) => p.setSubject(e.target.value)}
+            className="w-full rounded-md border border-glass-border bg-glass px-3 py-2 font-body text-[14px] text-ink focus:border-ink focus:outline-none" placeholder="Subject email Anda" />
+        </div>
+      </div>
+      <p className="font-mono text-[11px] text-ink-faint">Variabel: {"{{first_name}}"}, {"{{last_name}}"}, {"{{email}}"}</p>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button size="sm" variant={p.mode === "html" ? "primary" : "outline"} onClick={() => p.setMode("html")}>HTML</Button>
+        <Button size="sm" variant={p.mode === "preview" ? "primary" : "outline"} onClick={() => p.setMode("preview")}><Eye className="mr-1 h-4 w-4" />Preview</Button>
+        <Button size="sm" variant="outline" onClick={() => p.setShowAssets((v: boolean) => !v)}><ImageIcon className="mr-1 h-4 w-4" />Logo &amp; Gambar</Button>
+      </div>
+
+      {p.showAssets && (
+        <div className="rounded-md border border-glass-border bg-glass p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <p className="font-display text-[13px] font-bold text-ink">Pustaka Logo</p>
+            <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-sm border border-glass-border bg-surface px-3 py-1.5 font-body text-[12px] text-ink hover:opacity-80">
+              <Upload className="h-3.5 w-3.5" />{p.uploading ? "Mengunggah…" : "Unggah logo"}
+              <input ref={p.fileRef} type="file" accept="image/*" className="hidden" onChange={p.onUpload} disabled={p.uploading} />
+            </label>
+          </div>
+          {p.assetMsg && <p className="mb-2 font-body text-[12px] text-red">{p.assetMsg}</p>}
+          {p.assets.length === 0 ? (
+            <p className="font-body text-[12px] text-ink-soft">Belum ada logo. Unggah untuk dipakai di email.</p>
+          ) : (
+            <div className="grid grid-cols-3 gap-3 sm:grid-cols-5">
+              {p.assets.map((a: BrandAsset) => (
+                <div key={a.id} className="group relative flex flex-col items-center gap-1 rounded border border-glass-border bg-white p-2">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={a.publicUrl} alt={a.name} className="h-12 w-full object-contain" />
+                  <button type="button" onClick={() => p.insertLogo(a)} className="w-full rounded-sm bg-red px-2 py-1 font-body text-[11px] font-bold text-white hover:opacity-90">Sisipkan</button>
+                  <button type="button" onClick={() => p.onDeleteAsset(a.id)} aria-label="Hapus" className="absolute right-1 top-1 rounded bg-black/40 p-0.5 text-white opacity-0 transition-opacity group-hover:opacity-100"><Trash2 className="h-3 w-3" /></button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {p.mode === "html" ? (
+        <textarea
+          ref={p.textareaRef}
+          value={p.htmlContent}
+          onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => p.setHtmlContent(e.target.value)}
+          className="h-[420px] w-full rounded-md border border-glass-border bg-glass p-3 font-mono text-[12px] text-ink focus:border-ink focus:outline-none"
+          placeholder="<!DOCTYPE html>..."
+        />
+      ) : (
+        <div className="flex flex-col gap-2 rounded-md border border-glass-border bg-white p-4">
+          <div className="font-mono text-[11px] text-ink-faint"><strong>From:</strong> {p.senderName} &lt;crm@20fit.id&gt; · <strong>Subject:</strong> {p.subject || "(no subject)"}</div>
+          <iframe key={p.previewHtml} srcDoc={p.previewHtml} sandbox="allow-same-origin" className="h-[400px] w-full rounded border border-glass-border bg-white" title="Email Preview" />
+        </div>
+      )}
     </div>
   );
 }
