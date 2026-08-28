@@ -40,12 +40,10 @@ grant select, insert, update on public.crm_scheduled_send to service_role;
 -- /api/campaigns/run-scheduled yang menjalankan sendCampaign biasa. Endpoint dilindungi header
 -- x-cron-secret == SCHEDULED_SEND_CRON_SECRET di Railway.
 --
--- PENTING: setiap apply migrasi ini, sekret BARU dibuat dan ditampilkan lewat NOTICE. Set nilai
--- yang muncul sebagai SCHEDULED_SEND_CRON_SECRET di Railway Variables. (Apply ulang = sekret baru,
--- Railway harus diupdate lagi.)
+-- SECRET (tetap, diketahui kedua sisi — juga set di Railway sebagai SCHEDULED_SEND_CRON_SECRET):
 do $$
 declare
-  cron_secret text := encode(gen_random_bytes(16), 'hex');
+  cron_secret text := '8441f7f99587ef7506553a6eb5a7059b68f78cc181dd290f5b9c7bef7699aee9';
   app_url text := 'https://crm.20fit.id';
 begin
   if exists (select 1 from cron.job where jobname = 'crm-run-scheduled-sends') then
@@ -60,6 +58,5 @@ begin
       cron_secret
     )
   );
-  raise notice 'SET SCHEDULED_SEND_CRON_SECRET=% IN RAILWAY', cron_secret;
 end $$;
 
