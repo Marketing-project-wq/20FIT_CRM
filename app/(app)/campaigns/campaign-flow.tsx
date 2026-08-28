@@ -15,6 +15,7 @@ import {
   previewCampaignAction,
   listRunsAction,
   sendCampaignAction,
+  scheduleCampaignAction,
   type PreviewResult,
   type SendResult,
   type RunOption,
@@ -73,6 +74,11 @@ export function CampaignFlow({
   const [result, setResult] = useState<SendResult | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [open, setOpen] = useState<0 | 1 | 2 | 3 | 4>(0);
+  // Schedule mode: "now" sends immediately; "schedule" stores a pending row for the WIB date+time.
+  const [when, setWhen] = useState<"now" | "schedule">("now");
+  const [dateWib, setDateWib] = useState("");
+  const [timeWib, setTimeWib] = useState("09:00");
+  const [scheduledMsg, setScheduledMsg] = useState<string | null>(null);
 
   const segment = segments.find((s) => s.id === segmentId) ?? null;
   const template = templates.find((tp) => tp.key === templateKey) ?? null;
@@ -144,6 +150,30 @@ export function CampaignFlow({
       const refreshed = await listRunsAction(segmentId, templateKey);
       setRuns(refreshed.ok ? refreshed.runs ?? [] : []);
       setRunSel(null);
+    } catch { setNotice(cc.errSendThrew); }
+    finally { setSending(false); }
+  }
+
+  async function onSchedule() {
+    if (!preview || !segmentId || !templateKey) return;
+    if (!dateWib || !timeWib) { setNotice(cc.scheduleBadTime); return; }
+    const runLabel = runSel?.kind === "new" ? (newLabel.trim() || null) : null;
+    setSending(true); setNotice(null); setScheduledMsg(null);
+    try {
+      const r = await scheduleCampaignAction({
+        segmentId, templateKey, confirmedLargeSend: confirmLarge, shownSendable, runLabel, dateWib, timeWib,
+      });
+      if (!r.ok) {
+        if (r.error === "count_changed" && typeof r.freshSendable === "number") {
+          setShownSendable(r.freshSendable);
+          setPreview({ ...preview, sendable: r.freshSendable });
+          setNotice(`${cc.driftWarnA}${fmt(r.freshSendable)}${cc.driftWarnB}`);
+        } else if (r.error === "time_in_past") { setNotice(cc.schedulePast); }
+        else if (r.error === "bad_time") { setNotice(cc.scheduleBadTime); }
+        else { setNotice(errText(r.error as SendResult["error"])); }
+        return;
+      }
+      setScheduledMsg(`${cc.scheduledOk} ${dateWib} ${timeWib} WIB`);
     } catch { setNotice(cc.errSendThrew); }
     finally { setSending(false); }
   }
@@ -421,13 +451,46 @@ export function CampaignFlow({
             </label>
           )}
 
-          <div className="flex items-center gap-3">
-            <Button size="lg" onClick={onSend} disabled={sendDisabled}>
-              {sending ? cc.sending : !realSend ? cc.blockedBtn : cc.sendBtn}
-            </Button>
-            {!runSel && realSend && <span className="font-body text-[12px] text-ink-soft">{cc.runChooseFirst}</span>}
+          {/* Kirim sekarang atau jadwalkan (WIB) */}
+          <div className="flex flex-col gap-3 rounded-card border border-glass-border p-3">
+            <div className="flex flex-wrap gap-2">
+              <label className={`flex cursor-pointer items-center gap-2 rounded-sm border px-3 py-2 font-body text-[13px] ${when === "now" ? "border-red ring-1 ring-red text-ink" : "border-glass-border text-ink-soft"}`}>
+                <input type="radio" name="when" checked={when === "now"} onChange={() => setWhen("now")} />
+                {cc.sendNow}
+              </label>
+              <label className={`flex cursor-pointer items-center gap-2 rounded-sm border px-3 py-2 font-body text-[13px] ${when === "schedule" ? "border-red ring-1 ring-red text-ink" : "border-glass-border text-ink-soft"}`}>
+                <input type="radio" name="when" checked={when === "schedule"} onChange={() => setWhen("schedule")} />
+                {cc.scheduleLabel}
+              </label>
+            </div>
+            {when === "schedule" && (
+              <div className="flex flex-wrap items-end gap-3">
+                <label className="flex flex-col gap-1">
+                  <span className="font-body text-[12px] text-ink-soft">{cc.scheduleDate}</span>
+                  <input type="date" className={selectCls + " w-44"} value={dateWib} onChange={(e) => setDateWib(e.target.value)} />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="font-body text-[12px] text-ink-soft">{cc.scheduleTime}</span>
+                  <input type="time" className={selectCls + " w-32"} value={timeWib} onChange={(e) => setTimeWib(e.target.value)} />
+                </label>
+              </div>
+            )}
           </div>
 
+          <div className="flex items-center gap-3">
+            {when === "now" ? (
+              <Button size="lg" onClick={onSend} disabled={sendDisabled}>
+                {sending ? cc.sending : !realSend ? cc.blockedBtn : cc.sendBtn}
+              </Button>
+            ) : (
+              <Button size="lg" onClick={onSchedule} disabled={!realSend || !preview || sending || !dateWib}>
+                {sending ? cc.scheduling : !realSend ? cc.blockedBtn : cc.scheduleBtn}
+              </Button>
+            )}
+            {when === "now" && !runSel && realSend && <span className="font-body text-[12px] text-ink-soft">{cc.runChooseFirst}</span>}
+          </div>
+
+          {scheduledMsg && <p className="font-body text-[13px] font-semibold text-green">{scheduledMsg}</p>}
           {notice && <p role="alert" className="font-body text-[13px] leading-relaxed text-red">{notice}</p>}
 
           {result?.ok && result.summary && (

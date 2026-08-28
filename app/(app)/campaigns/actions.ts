@@ -22,6 +22,13 @@ import { classifySendThrow, unsubscribeHostServable } from "@/lib/crm/send-env";
 import { headers } from "next/headers";
 import { runInternalSendTest, cleanupInternalSendTest, type SendTestResult, type SendTestCleanupResult } from "@/lib/crm/send-test-harness";
 import { extractVariables } from "@/lib/crm/template";
+import {
+  wibToUtcIso,
+  insertScheduledSend,
+  listScheduledSends,
+  cancelScheduledSend,
+  type ScheduledSend,
+} from "@/lib/crm/scheduled-send";
 
 export type InternalTestResult = SendTestResult | { ok: false; error: "denied" };
 
@@ -311,10 +318,82 @@ export async function sendCampaignAction(args: {
   };
 }
 
-/**
- * Internal send-test harness actions (pre-launch only). Same send.* gate as the composer, then the
- * harness enforces safe-mode + internal-target guards. See lib/crm/send-test-harness.ts.
- */
+// ── Scheduled send: same gates as sendCampaignAction, but stores a pending row instead of sending.
+export interface ScheduleResult {
+  ok: boolean;
+  error?: SendResult["error"] | "bad_time" | "time_in_past" | "schedule_failed";
+  drift?: CountDrift;
+  freshSendable?: number;
+  scheduledAtUtc?: string;
+  linkHost?: string | null;
+  servingHost?: string | null;
+}
+
+export async function scheduleCampaignAction(args: {
+  segmentId: string;
+  templateKey: string;
+  confirmedLargeSend: boolean;
+  shownSendable: number;
+  runLabel: string | null;
+  dateWib: string; // "YYYY-MM-DD"
+  timeWib: string; // "HH:MM"
+}): Promise<ScheduleResult> {
+  const role = await getCurrentUserRole();
+  if (grantFor(role, "send.at_or_below_threshold") === "deny") return { ok: false, error: "denied" };
+
+  const seg = await getSegmentById(args.segmentId);
+  if (!seg) return { ok: false, error: "not_found" };
+  if (seg.requiresClinical && !isPermitted(role, "profile.view_health")) return { ok: false, error: "clinical_gate" };
+  if (!(await templateHasUnsubscribe(args.templateKey))) return { ok: false, error: "no_unsubscribe" };
+
+  const hostBlock = unsubscribeHostBlocked();
+  if (hostBlock) return { ok: false, error: "unsubscribe_host_mismatch", linkHost: hostBlock.linkHost, servingHost: hostBlock.servingHost };
+
+  const scheduledAtUtc = wibToUtcIso(args.dateWib, args.timeWib);
+  if (!scheduledAtUtc) return { ok: false, error: "bad_time" };
+  if (new Date(scheduledAtUtc).getTime() <= Date.now()) return { ok: false, error: "time_in_past" };
+
+  // Recount + drift disclosure, same as the immediate send — so the scheduled count is honest now.
+  const fresh = await previewCampaign(
+    { criteria: seg.stored.criteria, masterFilterExpr: seg.stored.masterFilterExpr, emailList: seg.stored.emailList },
+    nowIso(),
+  );
+  const drift = describeCountDrift(args.shownSendable, fresh.sendable);
+  if (drift.changed) return { ok: false, error: "count_changed", drift, freshSendable: fresh.sendable };
+  if (requiresLargeSendConfirmation(fresh.sendable) && !args.confirmedLargeSend) {
+    return { ok: false, error: "needs_confirm", drift };
+  }
+
+  let createdBy: string | null = null;
+  try {
+    createdBy = (await createClient().auth.getUser()).data.user?.email ?? null;
+  } catch { /* fail-open on identity */ }
+
+  const res = await insertScheduledSend(createAdminClient(), {
+    segmentId: args.segmentId,
+    templateKey: args.templateKey,
+    runLabel: args.runLabel,
+    scheduledAtUtc,
+    confirmedLargeSend: args.confirmedLargeSend,
+    shownSendable: fresh.sendable,
+    createdBy,
+  });
+  if (!res.ok) return { ok: false, error: "schedule_failed" };
+  return { ok: true, scheduledAtUtc };
+}
+
+export async function listScheduledSendsAction(): Promise<{ ok: boolean; sends: ScheduledSend[] }> {
+  const role = await getCurrentUserRole();
+  if (grantFor(role, "send.at_or_below_threshold") === "deny") return { ok: false, sends: [] };
+  return { ok: true, sends: await listScheduledSends(createAdminClient()) };
+}
+
+export async function cancelScheduledSendAction(id: string): Promise<{ ok: boolean }> {
+  const role = await getCurrentUserRole();
+  if (grantFor(role, "send.at_or_below_threshold") === "deny") return { ok: false };
+  return cancelScheduledSend(createAdminClient(), id);
+}
+
 export interface PreviewEmailResult {
   ok: boolean;
   error?: "denied" | "missing_env" | "no_template" | "send_failed";
