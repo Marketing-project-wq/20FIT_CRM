@@ -98,6 +98,7 @@ export function CampaignFlow({
       case "run_create_failed": return cc.errRunCreate;
       case "send_threw": return cc.errSendThrew;
       case "unsubscribe_host_mismatch": return cc.errHostMismatch;
+      case "missing_env": return cc.errMissingEnv;
       default: return cc.errNotFound;
     }
   };
@@ -124,7 +125,11 @@ export function CampaignFlow({
       setPreview(p); setShownSendable(p.sendable ?? 0);
       setRunsLoading(true);
       const r = await listRunsAction(segmentId, templateKey);
-      setRuns(r.ok ? r.runs ?? [] : []);
+      const loaded = r.ok ? r.runs ?? [] : [];
+      setRuns(loaded);
+      // No resumable run → sending creates a fresh one automatically. Don't force the operator to
+      // click "New run" when there is nothing to resume.
+      if (loaded.length === 0) setRunSel({ kind: "new" });
     } finally { setPreviewing(false); setRunsLoading(false); }
   }
 
@@ -143,6 +148,8 @@ export function CampaignFlow({
           setNotice(`${cc.driftWarnA}${fmt(r.freshSendable)}${cc.driftWarnB}`);
         } else if (r.error === "send_threw") {
           setNotice(`${cc.errSendThrew}${r.detail ? ` (${r.detail})` : ""}`);
+        } else if (r.error === "missing_env") {
+          setNotice(`${cc.errMissingEnv}${r.detail ?? ""}`);
         } else { setNotice(errText(r.error)); }
         return;
       }
@@ -392,22 +399,22 @@ export function CampaignFlow({
             </p>
           )}
 
-          <div className="flex flex-col gap-3">
-            <div>
-              <p className="font-body text-[13px] font-semibold text-ink">{cc.runTitle}</p>
-              <p className="mt-1 font-body text-[12px] leading-relaxed text-ink-soft">{cc.runHint}</p>
-            </div>
-
-            <div className="tint-blue flex flex-col gap-2 rounded-card p-3">
-              <div className="flex items-center gap-2">
-                <Badge tone="blue">{cc.runResumeBadge}</Badge>
-                <span className="font-body text-[13px] font-semibold text-ink">{cc.runResumeHeading}</span>
+          {/* Run choice is ONLY shown when there are resumable runs (draft/sending). With none, a
+              fresh run is created automatically — nothing to choose. */}
+          {runsLoading ? (
+            <p className="font-body text-[12px] text-ink-soft">{cc.runsLoading}</p>
+          ) : runs.length > 0 ? (
+            <div className="flex flex-col gap-3">
+              <div>
+                <p className="font-body text-[13px] font-semibold text-ink">{cc.runTitle}</p>
+                <p className="mt-1 font-body text-[12px] leading-relaxed text-ink-soft">{cc.runHint}</p>
               </div>
-              {runsLoading ? (
-                <p className="font-body text-[12px] text-ink-soft">{cc.runsLoading}</p>
-              ) : runs.length === 0 ? (
-                <p className="font-body text-[12px] text-ink-soft">{cc.runNoRuns}</p>
-              ) : (
+
+              <div className="tint-blue flex flex-col gap-2 rounded-card p-3">
+                <div className="flex items-center gap-2">
+                  <Badge tone="blue">{cc.runResumeBadge}</Badge>
+                  <span className="font-body text-[13px] font-semibold text-ink">{cc.runResumeHeading}</span>
+                </div>
                 <div className="flex flex-col gap-2">
                   {runs.map((r) => {
                     const selected = runSel?.kind === "resume" && runSel.runId === r.id;
@@ -423,26 +430,30 @@ export function CampaignFlow({
                     );
                   })}
                 </div>
-              )}
-            </div>
-
-            <div className="tint-neutral flex flex-col gap-2 rounded-card p-3">
-              <div className="flex items-center gap-2">
-                <Badge tone="neutral">{cc.runNewBadge}</Badge>
-                <span className="font-body text-[13px] font-semibold text-ink">{cc.runNewHeading}</span>
               </div>
-              <label className={`flex cursor-pointer items-center gap-3 rounded-sm border bg-glass px-3 py-2 ${runSel?.kind === "new" ? "border-red ring-1 ring-red" : "border-glass-border"}`}>
-                <input type="radio" name="run-choice" checked={runSel?.kind === "new"} onChange={() => setRunSel({ kind: "new" })} />
-                <span className="font-body text-[13px] text-ink">{cc.runNewHeading}</span>
-              </label>
-              {runSel?.kind === "new" && (
-                <label className="flex flex-col gap-1.5">
-                  <span className="font-body text-[12px] text-ink-soft">{cc.runLabelField}</span>
-                  <input type="text" className={selectCls} value={newLabel} placeholder={cc.runLabelPlaceholder} onChange={(e) => setNewLabel(e.target.value)} />
+
+              <div className="tint-neutral flex flex-col gap-2 rounded-card p-3">
+                <div className="flex items-center gap-2">
+                  <Badge tone="neutral">{cc.runNewBadge}</Badge>
+                  <span className="font-body text-[13px] font-semibold text-ink">{cc.runNewHeading}</span>
+                </div>
+                <label className={`flex cursor-pointer items-center gap-3 rounded-sm border bg-glass px-3 py-2 ${runSel?.kind === "new" ? "border-red ring-1 ring-red" : "border-glass-border"}`}>
+                  <input type="radio" name="run-choice" checked={runSel?.kind === "new"} onChange={() => setRunSel({ kind: "new" })} />
+                  <span className="font-body text-[13px] text-ink">{cc.runNewHeading}</span>
                 </label>
-              )}
+              </div>
             </div>
-          </div>
+          ) : (
+            <p className="font-body text-[12px] leading-relaxed text-ink-soft">{cc.runAutoNew}</p>
+          )}
+
+          {/* Run label — relevant whenever a NEW run will be created (auto or chosen). */}
+          {(runs.length === 0 || runSel?.kind === "new") && (
+            <label className="flex flex-col gap-1.5">
+              <span className="font-body text-[12px] text-ink-soft">{cc.runLabelField}</span>
+              <input type="text" className={selectCls} value={newLabel} placeholder={cc.runLabelPlaceholder} onChange={(e) => setNewLabel(e.target.value)} />
+            </label>
+          )}
 
           {needsConfirm && (
             <label className="flex items-center gap-2 font-body text-[13px] text-ink">

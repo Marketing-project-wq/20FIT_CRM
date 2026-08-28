@@ -18,7 +18,7 @@ import {
   type ResumableRun,
   type RunStatus,
 } from "@/lib/crm/campaign-run";
-import { classifySendThrow, unsubscribeHostServable } from "@/lib/crm/send-env";
+import { classifySendThrow, unsubscribeHostServable, missingSendEnv } from "@/lib/crm/send-env";
 import { headers } from "next/headers";
 import { runInternalSendTest, cleanupInternalSendTest, type SendTestResult, type SendTestCleanupResult } from "@/lib/crm/send-test-harness";
 import { extractVariables } from "@/lib/crm/template";
@@ -179,6 +179,7 @@ export interface SendResult {
     | "run_not_found"
     | "run_create_failed"
     | "send_threw" // sendCampaign threw; the run is marked stopped + last_error (see detail)
+    | "missing_env" // required send env vars unset — reported ALL at once (see detail)
     | "unsubscribe_host_mismatch"; // unsubscribe link host ≠ serving host → dead link, refuse
   detail?: string; // on 'send_threw': PII-free classified cause (also written to run.last_error)
   linkHost?: string | null; // on 'unsubscribe_host_mismatch': the host the unsubscribe link points to
@@ -212,6 +213,13 @@ export async function sendCampaignAction(args: {
   // Refuse before any run is created if the unsubscribe link would be dead (host ≠ serving host).
   const hostBlock = unsubscribeHostBlocked();
   if (hostBlock) return { ok: false, error: "unsubscribe_host_mismatch", linkHost: hostBlock.linkHost, servingHost: hostBlock.servingHost };
+
+  // Pre-check required send env vars BEFORE creating a run — a doomed send should not leave an
+  // orphan draft run behind. Reports ALL missing at once (T-30 lesson).
+  const missing = missingSendEnv();
+  if (missing.length > 0) {
+    return { ok: false, error: "missing_env", detail: missing.map((m) => m.name).join(", ") };
+  }
 
   const stamp = nowIso();
   // RECOUNT at confirm — the shown number may be stale. Disclose any drift BEFORE the send counts.

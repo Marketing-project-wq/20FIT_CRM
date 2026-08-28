@@ -51,7 +51,10 @@ export function missingSendEnv(env: NodeJS.ProcessEnv = process.env): RequiredSe
 export function classifySendThrow(e: unknown): string {
   const msg = e instanceof Error ? e.message : String(e ?? "");
   if (msg.includes("UNSUBSCRIBE_TOKEN_SECRET")) return "missing_env:UNSUBSCRIBE_TOKEN_SECRET";
+  if (msg.includes("MAILTRAP_API_TOKEN") || msg.includes("Mailtrap is not configured")) return "missing_env:MAILTRAP";
   if (msg.includes("No active email template")) return "no_active_template";
+  if (msg.includes("Mailtrap send failed")) return "mailtrap_send_failed";
+  if (msg.includes("unsubscribe URL")) return "missing_unsubscribe_url";
   return "unexpected_error";
 }
 
