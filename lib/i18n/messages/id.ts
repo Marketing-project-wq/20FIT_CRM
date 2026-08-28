@@ -475,7 +475,7 @@ export const id = {
     kontakHasEmail: "Hanya yang punya email",
     kontakHasPhone: "Hanya yang punya telepon",
     cityCaveatTitle: "Kota tak bisa diandalkan untuk memfilter",
-    aiDescA: "Jelaskan segmennya dengan kata-kata (mis. “pelanggan yang ikut RUNFEST dan punya email”). AI mengusulkan kriteria — Anda tetap meninjau, mengubah, lalu menekan Hitung sendiri. Kriteria waktu tidak bisa (kolom waktu = cap muat); permintaan klinis butuh ",
+    aiDescA: "Jelaskan segmennya dengan kata-kata (mis. “member di Jakarta yang bergabung 30 hari terakhir”). AI mengusulkan kriteria — Anda tetap meninjau, mengubah, lalu menekan Hitung sendiri. Kriteria waktu memakai aktivitas nyata; permintaan klinis butuh izin data kesehatan.",
     aiDescB: ".",
     aiPlaceholder: "Jelaskan segmen dengan kata-kata…",
     aiProposing: "Mengusulkan…",

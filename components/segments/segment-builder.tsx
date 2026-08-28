@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Filter, Clock, Users, Send } from "lucide-react";
+import { Filter, Clock, Users, Send, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EMPTY_CRITERIA, type SegmentCriteria } from "@/lib/crm/segment";
 import { rowsToTree, type Row } from "@/components/segments/filter-tree-builder";
 import { UnifiedFilterBuilder } from "@/components/segments/unified-filter-builder";
+import { describeProposal, proposalIsEmpty, type AssistProposal } from "@/lib/crm/segment-ai-shared";
 import { saveSegmentAction } from "@/app/(app)/segments/actions";
 import { Why } from "@/components/ui/why";
 import { useI18n } from "@/components/i18n/lang-provider";
@@ -91,6 +92,11 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
   const [segName, setSegName] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  // AI assistant
+  const [aiText, setAiText] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiProposal, setAiProposal] = useState<AssistProposal | null>(null);
 
   // Save the DEFINITION (criteria + validated tree), never a member list (K-40). Enabled only after
   // a compute, so a saved segment is one whose size the operator has just seen.
@@ -139,6 +145,39 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
       joinedWithinDays: c.joinedWithinDays,
       inactiveForDays: c.inactiveForDays,
     };
+  }
+
+  // AI assistant: describe the segment in words → server LLM → proposal. NEVER auto-runs; it fills
+  // the manual controls only when the user clicks "Terapkan", then they compute themselves.
+  async function aiPropose() {
+    setAiError(null);
+    setAiProposal(null);
+    setAiLoading(true);
+    try {
+      const res = await fetch("/api/segments/assist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: aiText }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setAiError(data?.message ?? `${t.segments.proposeFailed} (HTTP ${res.status}).`);
+        return;
+      }
+      setAiProposal(data as AssistProposal);
+    } catch {
+      setAiError(t.segments.connFailed);
+    } finally {
+      setAiLoading(false);
+    }
+  }
+
+  /** Apply a proposal into the manual controls (rows + criteria). Nothing is computed yet. */
+  function applyProposal(p: AssistProposal) {
+    setRows(p.conditions.map((cnd) => ({ t: "cond", field: cnd.field, value: cnd.value })));
+    setC((prev) => ({ ...prev, ...p.criteria }));
+    setCounts(null);
+    setAiProposal(null);
   }
 
   async function compute() {
@@ -197,6 +236,65 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
           onComputed?.(null);
         }}
       />
+
+      {/* AI assistant — describe the segment in words; the server proposes criteria (re-validated). */}
+      <details className="glass rounded-card p-4">
+        <summary className="flex cursor-pointer select-none items-center gap-2">
+          <Sparkles className="h-4 w-4 text-ink-soft" aria-hidden />
+          <span className="font-display text-[13px] font-bold uppercase tracking-wide text-ink">{t.segments.aiTitle}</span>
+          <span className="font-body text-[12px] text-ink-faint">· {t.segments.aiOptional}</span>
+        </summary>
+        <div className="mt-3">
+          <p className="max-w-3xl font-body text-[12px] leading-relaxed text-ink-soft">{t.segments.aiDescA}</p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <input
+              className="h-10 min-w-[16rem] flex-1 rounded-sm border border-glass-border bg-glass px-3 font-body text-[14px] text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-red"
+              value={aiText}
+              onChange={(e) => setAiText(e.target.value)}
+              placeholder={t.segments.aiPlaceholder}
+              maxLength={500}
+              onKeyDown={(e) => e.key === "Enter" && aiText.trim() && !aiLoading && aiPropose()}
+            />
+            <Button variant="outline" onClick={aiPropose} disabled={aiLoading || aiText.trim() === ""}>
+              {aiLoading ? t.segments.aiProposing : t.segments.aiPropose}
+            </Button>
+          </div>
+          {aiError && <p className="mt-2 font-body text-[13px] text-red">{aiError}</p>}
+          {aiProposal && (
+            <div className="tint-neutral mt-3 rounded-sm px-3 py-3">
+              <p className="font-body text-[13px] text-ink">
+                <span className="font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">{t.segments.aiProposalLabel}</span>
+                {describeProposal(aiProposal, lang)}
+              </p>
+              {aiProposal.notes && (
+                <p className="mt-1.5 font-body text-[12px] italic text-ink-soft">{t.segments.aiNotesLabel}{aiProposal.notes}</p>
+              )}
+              {aiProposal.clinicalBlocked && (
+                <p className="mt-1.5 font-body text-[12px] text-amber">
+                  {t.segments.aiClinicalBlockedA}<span className="font-mono">profile.view_health</span>{t.segments.aiClinicalBlockedB}
+                </p>
+              )}
+              {aiProposal.unexpressible.length > 0 && (
+                <div className="mt-1.5">
+                  <p className="font-body text-[12px] font-semibold text-ink">{t.segments.aiUnexpressibleTitle}</p>
+                  <ul className="ml-4 list-disc font-body text-[12px] text-ink-soft">
+                    {aiProposal.unexpressible.map((u, i) => <li key={i}>{u}</li>)}
+                  </ul>
+                </div>
+              )}
+              <div className="mt-3 flex items-center gap-2">
+                <Button size="sm" onClick={() => applyProposal(aiProposal)} disabled={proposalIsEmpty(aiProposal)}>
+                  {t.segments.aiApply}
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setAiProposal(null)}>{t.segments.aiIgnore}</Button>
+                {proposalIsEmpty(aiProposal) && (
+                  <span className="font-body text-[12px] italic text-ink-faint">{t.segments.aiNothingToApply}</span>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </details>
 
         {/* Time criteria (Fase 2) — now available, resolved against real activity timestamps. */}
         <TimeCriteria

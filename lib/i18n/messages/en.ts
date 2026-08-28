@@ -417,7 +417,7 @@ export const en: Messages = {
     kontakHasEmail: "Only those with an email",
     kontakHasPhone: "Only those with a phone",
     cityCaveatTitle: "City is unreliable for filtering",
-    aiDescA: "Describe the segment in words (e.g. “customers who joined RUNFEST and have an email”). The AI proposes criteria — you still review, adjust, then press Compute yourself. Time criteria aren't possible (the time columns are load stamps); a clinical request needs ",
+    aiDescA: "Describe the segment in words (e.g. “members in Jakarta who joined in the last 30 days”). The AI proposes criteria — you review, adjust, then press Compute yourself. Time criteria use real activity; a clinical request needs health-data permission.",
     aiDescB: ".",
     aiPlaceholder: "Describe the segment in words…",
     aiProposing: "Proposing…",
