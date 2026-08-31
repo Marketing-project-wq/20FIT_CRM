@@ -1308,6 +1308,8 @@ export const en: Messages = {
       errNameTooShort: "Campaign name must be at least 3 characters.",
       errNameTooLong: "Campaign name must be at most 100 characters.",
       errNameRequiredHint: "Enter a campaign name to continue.",
+      dupWarnA: "This name was already used on ",
+      dupWarnB: ". You can still continue.",
       segmentCreatedA: "Segment “",
       segmentCreatedB: "” created and selected.",
       runsLoading: "Loading sends…",

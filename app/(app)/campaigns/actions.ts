@@ -130,6 +130,38 @@ export async function previewCampaignAction(segmentId: string, templateKey: stri
   };
 }
 
+/**
+ * Soft duplicate-name check: has any run in the last 30 days used this exact name (case-insensitive,
+ * trimmed)? Returns the most recent match's date, or null. This is a WARNING signal only — the name is
+ * required but NOT unique (no DB constraint, no block). Called on blur (not per keystroke), so it is
+ * one small query per name entry. Fail-open: any error returns "no duplicate" so a check failure can
+ * never stop a send.
+ */
+export async function checkDuplicateCampaignNameAction(name: string): Promise<{ ok: boolean; usedOn?: string | null }> {
+  const role = await getCurrentUserRole();
+  if (grantFor(role, "send.at_or_below_threshold") === "deny") return { ok: false };
+  const trimmed = name.trim();
+  if (trimmed.length === 0) return { ok: true, usedOn: null };
+  try {
+    const admin = createAdminClient();
+    const sinceIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    // Fetch the (small) 30-day window and match case-insensitively in JS — PostgREST eq is
+    // case-sensitive and ilike would treat % / _ in a campaign name as wildcards.
+    const { data } = await admin
+      .from("crm_campaign_run")
+      .select("created_at, label")
+      .gte("created_at", sinceIso)
+      .not("label", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(500);
+    const needle = trimmed.toLowerCase();
+    const match = (data ?? []).find((r: { label: string | null }) => (r.label ?? "").trim().toLowerCase() === needle);
+    return { ok: true, usedOn: match ? (match as { created_at: string }).created_at : null };
+  } catch {
+    return { ok: true, usedOn: null };
+  }
+}
+
 /** A campaign run (instance) the operator may continue for the picked (segment, template). Surfaced
  *  so "resume" is an explicit, informed choice next to "start a new run" — never implied. */
 export interface RunOption {
