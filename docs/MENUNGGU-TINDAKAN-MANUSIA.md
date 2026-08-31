@@ -3,7 +3,18 @@
 Hal-hal yang **tidak bisa diselesaikan dari kode**. Tiap baris menaut ke dokumen sumbernya —
 **jangan salin isinya ke sini** (dua salinan akan menyimpang). Perbarui/hapus baris saat tuntas.
 
-Diperbarui: 24 Agustus 2026 (model deploy dikoreksi — lihat "BACA DULU" + T-27).
+Diperbarui: 31 Agustus 2026 (disisir: B1 token dirotasi & A2/PR #11 sudah merge — keduanya diturunkan;
+lihat "Ringkasan status" di bawah).
+
+> ## Ringkasan status (31 Agu 2026)
+> **Yang benar-benar memblokir sekarang:**
+> - **Kirim kampanye PERTAMA ke pelanggan:** B2 (verifikasi domain) → **B3 (SPF/DKIM/DMARC)**. B1
+>   (token bocor) **sudah beres** — tinggal deliverability.
+> - **Uji kirim internal:** tinggal **satu** — merge PR #17 supaya perbaikan uuid (T-36) tayang.
+>   Env kirim ada di produksi (reset kata sandi + uji internal 25 Agu jalan); token sudah dirotasi.
+>
+> **Sudah selesai, bukan lagi penghalang:** B1 (token), A2/PR #11 (sudah merge), B4, B5, B10b, B10c.
+> Sisanya opsional atau operasional (tak memblokir apa pun).
 
 ---
 
@@ -33,11 +44,11 @@ merge, bukan sesudah.
   kelima pagar hijau · `NODE_ENV=production npm run build` lulus. Lihat laporan sprint terakhir.
 - **Kalau dilewati:** `main` bisa berisi kode yang tak kompilasi/tak lulus test — cermin yang rusak.
 
-### A2. Tinjauan PR #11 + izin merge eksplisit
-- **Siapa:** pemilik repo (agen **tidak** merge sendiri).
-- **Langkah:** tinjau per kelompok lewat `docs/PR-11-PANDUAN-TINJAU.md` (kelompok 1–2 = risiko tinggi,
-  wajib mata; 3–6 punya bukti terlampir). Beri izin merge eksplisit.
-- **Kalau dilewati:** perubahan skema + jalur tulis mendarat tanpa mata manusia di bagian berisiko.
+### A2. ~~Tinjauan PR #11 + izin merge~~ — ✅ SELESAI (PR #11 sudah merge; PR #16 juga)
+PR #11 dan #13/#16 sudah lama merge ke `main`; butir ini usang. **Aturan yang tetap berlaku** (bukan
+penghalang khusus, tapi kebijakan): **agen tidak merge sendiri — pemilik memberi izin merge eksplisit
+per-PR.** Target tinjauan berjalan sekarang: **PR #17** (perbaikan uuid jalur kirim, T-36) — siap
+ditinjau, bukan draft.
 
 ### A3. Ledger ↔ repo terekonsiliasi
 - **Siapa:** agen (sudah dikerjakan 19 Agu) + pemilik untuk verifikasi.
@@ -52,19 +63,18 @@ merge, bukan sesudah.
 
 Tak satu pun menahan merge. Diurut dari paling mendesak (keamanan) ke opsional.
 
-> ### 🚫 MEMBLOKIR PENGIRIMAN KAMPANYE PERTAMA (dinaikkan 24 Agu 2026, contacting-half TUGAS 1)
-> **B1 (rotasi token) + B3 (SPF/DKIM/DMARC), dengan B2 (verifikasi domain) sebagai prasyaratnya,
-> MEMBLOKIR pengiriman email kampanye pertama** — meski tak memblokir merge. Nol email kampanye
-> boleh dikirim sebelum ketiganya beres: volume besar dari domain tanpa riwayat + token bocor
-> merusak reputasi `20fit.id` untuk seterusnya, **termasuk email reset kata sandi yang sudah
-> jalan**. Rincian + rencana ramp: `docs/RENCANA-batas-kirim.md`.
+> ### 🚫 MEMBLOKIR PENGIRIMAN KAMPANYE PERTAMA (diperbarui 31 Agu 2026)
+> **B3 (SPF/DKIM/DMARC), dengan B2 (verifikasi domain) sebagai prasyaratnya, MEMBLOKIR pengiriman
+> email kampanye pertama** — meski tak memblokir merge. **B1 (token bocor) sudah beres** (dirotasi,
+> lihat di bawah), jadi tinggal deliverability domain. Volume besar dari domain tanpa riwayat merusak
+> reputasi `20fit.id` untuk seterusnya, **termasuk email reset kata sandi yang sudah jalan**. Rincian +
+> rencana ramp: `docs/RENCANA-batas-kirim.md`.
 
-### B1. Rotasi `MAILTRAP_API_TOKEN` (BOCOR) — 🚫 MEMBLOKIR KIRIM PERTAMA + paling mendesak (KEAMANAN)
-- **Siapa:** pemegang akun Mailtrap + pemegang Variables Railway.
-- **Langkah:** cabut token bocor → terbitkan baru → perbarui `MAILTRAP_API_TOKEN` di Railway (redeploy
-  otomatis) → uji token lama ditolak. Rincian: `docs/SETUP-reset-password.md` §0.
-- **Kalau dilewati:** siapa pun yang melihat screenshot bisa mengirim email atas nama `20fit.id` — dan
-  email reset kata sandi paling dipercaya. **Paparan aktif** — kejar terpisah dari, dan lebih cepat dari, merge.
+### B1. ~~Rotasi `MAILTRAP_API_TOKEN` (BOCOR)~~ — ✅ SELESAI (31 Agu 2026, dikonfirmasi dari dashboard Mailtrap)
+Token bocor **`****8e0c`** (yang tersebar lewat screenshot) kini **Expired**; token aktif **`****2a44`**
+berlaku sampai **2027-08-28**. Reset kata sandi + uji kirim internal 25 Agu berhasil dengan token itu.
+Paparan ditutup — bukan lagi penghalang. (Tak perlu dipecah jadi "pencabutan menyusul": pencabutan
+sudah terjadi.)
 
 ### B2. Verifikasi domain `20fit.id` di Mailtrap
 - **Siapa:** pemegang akun Mailtrap + pemegang DNS `20fit.id`.
@@ -133,15 +143,14 @@ lengkap + audit grant 13 tabel `crm_*` di **`docs/riwayat/TEMUAN.md` T-35**. Tig
   baca kini memeriksa `*_source` (`demographicProvenance`), tak lagi menganggap semua `staff` — 246 DOB
   yang salah label kini "isian mandiri". Tak ada tindakan manusia tersisa di butir ini.
 
-### B11. (T-36) Kirim uji kampanye NYATA lewat `crm_test_recipient` — setelah deploy
+### B11. (T-36) Kirim uji kampanye NYATA lewat `crm_test_recipient` — penghalang tinggal MERGE PR #17
 Bug id-penerima-bukan-uuid sudah **diperbaiki di kode** (T-36): kampanye kini menolak lebih awal
-alamat di luar pool, dan jalur uji internal (`crm_test_recipient` → harness) memakai uuid valid.
-Tapi **membuktikan email benar-benar terkirim** (baris `crm_message_log`, `provider_message_id`,
-satu audit `campaign.sent`, email sampai) **tak bisa dari sesi agen**: env kirim
-(`UNSUBSCRIBE_TOKEN_SECRET`/`MAILTRAP_API_TOKEN`/`MAILTRAP_FROM`/`SEND_TEST_INTERNAL_ADDRESS`) kosong
-di kontainer, dan uji berjalan di produksi.
+alamat di luar pool, dan jalur uji internal (`crm_test_recipient` → harness) memakai uuid valid. Env
+kirim **ada di produksi** (reset kata sandi + uji internal 25 Agu jalan) dan **token sudah dirotasi**
+(B1). Jadi **satu-satunya penghalang tersisa = merge PR #17** supaya perbaikan tayang.
 - **Siapa:** pemilik produk / operator dengan akses UI produksi.
-- **Langkah:** setelah PR ini di-merge & tayang, buka Campaigns → Kirim uji (memakai `crm_test_recipient`,
-  kini `tifany@20fit.id`), jalankan sekali, lalu laporkan artefaknya. **Catatan:** rotasi token bocor
-  (B1) mestinya lebih dulu — jangan kirim lewat token bocor.
+- **Langkah:** merge PR #17 → tunggu deploy Railway → Campaigns → Kirim uji (memakai `crm_test_recipient`,
+  kini `tifany@20fit.id`) → jalankan sekali → laporkan artefaknya (`crm_message_log` bertambah,
+  `provider_message_id` terisi, satu audit `campaign.sent`, email sampai).
+- **Tak bisa dari sesi agen:** env kirim kosong di kontainer & uji berjalan di produksi (deploy dari `main`).
 - **Kalau dilewati:** rantai kirim tetap belum terbukti ujung-ke-ujung di produksi (walau kode benar).

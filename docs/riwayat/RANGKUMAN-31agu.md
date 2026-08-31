@@ -80,8 +80,9 @@ Migrasi baru **26–28 Agu** (proacl/ledger belum tentu tercatat di README — *
 
 ## 5. Yang menunggu tindakan manusia (cek `docs/MENUNGGU-TINDAKAN-MANUSIA.md`)
 
-DNS `crm.20fit.id` (tautan unsubscribe mati) · rotasi `MAILTRAP_API_TOKEN` + SPF/DKIM/DMARC
-(**memblokir kirim kampanye pertama ke pelanggan**) · konfirmasi penulis 248 baris (T-35/B10a) ·
+DNS `crm.20fit.id` (tautan unsubscribe mati) · ~~rotasi `MAILTRAP_API_TOKEN`~~ **(SELESAI 31 Agu —
+token bocor `****8e0c` Expired, aktif `****2a44`)** + SPF/DKIM/DMARC (**masih memblokir kirim kampanye
+pertama ke pelanggan**) · konfirmasi penulis 248 baris (T-35/B10a) ·
 terapkan migrasi pencabutan grant bila belum di produksi (cek: ke-13 tabel sudah `{postgres,
 service_role}` — **sudah** per ukur ulang) · remediasi T-17 · persetujuan Jeff (K-32/43/44) ·
 sumber fitpoint.
