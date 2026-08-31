@@ -1023,6 +1023,14 @@ dimulai dari nol karena pesannya tak menunjuk keadaan mana yang terjadi. Kejadia
 7. **Kelima kode galat workflow (sprint ini).** `denied` / `not_found` / `resolve_failed` /
    `run_create_failed` / `send_threw` + `workflow_inactive` kini masing-masing punya pesan sendiri di
    `runWorkflowAction` + `runErrText` di UI; tak ada lagi satu "Gagal menjalankan." yang menelan semua.
+8. **Penjadwalan gagal senyap (31 Agu).** Cron `crm-run-scheduled-sends` (jobid 18) mencatat 807 run
+   **semua "succeeded"**, tapi pg_net (`net._http_response`) menyimpan **HTTP 200 = HALAMAN LOGIN**:
+   middleware auth mengalihkan POST cron ke `/login` sebelum route jalan, jadi `x-cron-secret` tak
+   pernah dicek dan `last_error` tak pernah terisi. Baris `pending` 85 menit tanpa sebab. Tiga lapis
+   menyembunyikannya: cron sukses (POST ter-antre), pg_net 200 (tapi login HTML), baris diam. Perbaikan:
+   allowlist `/api/campaigns/run-scheduled` di `isPublicPath` + penanda TERLEWAT di UI untuk executor
+   yang diam-diam berhenti. **Pelajaran tambahan pola ini: "200 OK" dari pg_net BUKAN bukti sukses —
+   badan responsnya bisa halaman login. Verifikasi status DAN isi, bukan hanya kode cron.**
 
 **Aturan yang diambil dari pola ini.** Ketika sebuah aksi bisa gagal karena >1 sebab yang menuntut
 tindakan berbeda, kembalikan **kode bernama per sebab** dari sisi server, dan petakan tiap kode ke
