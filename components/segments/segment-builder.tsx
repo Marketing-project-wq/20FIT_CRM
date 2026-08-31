@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Filter, Clock, Users, Send, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EMPTY_CRITERIA, type SegmentCriteria } from "@/lib/crm/segment";
+import { describePresence } from "@/lib/crm/segment-describe";
 import { rowsToTree, type Row } from "@/components/segments/filter-tree-builder";
 import { UnifiedFilterBuilder } from "@/components/segments/unified-filter-builder";
 import { describeProposal, proposalIsEmpty, type AssistProposal } from "@/lib/crm/segment-ai-shared";
@@ -120,6 +121,11 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
     setCounts(null); // criteria changed -> stale result, recompute explicitly
   }
 
+  function setEx<K extends keyof SegmentCriteria["exclude"]>(k: K, v: SegmentCriteria["exclude"][K]) {
+    setC((prev) => ({ ...prev, exclude: { ...prev.exclude, [k]: v } }));
+    setCounts(null);
+  }
+
   function setRowsAndClear(r: Row[]) {
     setRows(r);
     setCounts(null); // filter changed -> stale result
@@ -144,6 +150,7 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
       srcProgram: c.srcProgram,
       joinedWithinDays: c.joinedWithinDays,
       inactiveForDays: c.inactiveForDays,
+      exclude: c.exclude,
     };
   }
 
@@ -318,6 +325,35 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
             setCriterion={set}
             canViewHealth={canViewHealth}
           />
+
+        {/* Exclusion (Track A) — "X but NOT Y". Each toggle REMOVES profiles that have that trait. */}
+        <div className="tint-neutral mt-4 rounded-card p-4">
+          <h4 className="font-display text-[13px] font-bold uppercase tracking-wide text-ink">{t.segments.exclude.title}</h4>
+          <p className="mt-1 font-body text-[12px] leading-relaxed text-ink-soft">{t.segments.exclude.intro}</p>
+          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {([
+              ["notMember", c.exclude.ecoUnit === "membership", (v: boolean) => setEx("ecoUnit", v ? "membership" : null)],
+              ["neverArena", c.exclude.srcArena, (v: boolean) => setEx("srcArena", v)],
+              ["neverGym", c.exclude.srcGym, (v: boolean) => setEx("srcGym", v)],
+              ["neverHyrox", c.exclude.srcHyrox, (v: boolean) => setEx("srcHyrox", v)],
+              ["noApp", c.exclude.srcMy20fit, (v: boolean) => setEx("srcMy20fit", v)],
+              ["noRecency", c.exclude.srcRecency, (v: boolean) => setEx("srcRecency", v)],
+            ] as const).map(([key, checked, onChange]) => (
+              <label key={key} className="flex items-center gap-2 font-body text-[13px] text-ink">
+                <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="h-4 w-4 accent-red" />
+                {t.segments.exclude[key]}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        {/* Filter terbaca — the readable presence sentence, exclusions stated in plain words. */}
+        {describePresence(c, lang) && (
+          <p className="mt-3 font-body text-[13px] text-ink">
+            <span className="font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">{t.segments.filterReadable}</span>
+            {describePresence(c, lang)}
+          </p>
+        )}
 
         {/* City-fill caveat — a "why city filtering is unreliable" note, no longer filling the space
             between controls: title on the line, the numbers + reason collapsed (nav rebuild). */}

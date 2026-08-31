@@ -86,6 +86,29 @@ export interface SegmentCriteria {
    */
   joinedWithinDays: number | null;
   inactiveForDays: number | null;
+  /**
+   * EXCLUSION (Track A). The builder is otherwise AND-of-positive-presence; these NEGATE a presence
+   * dimension — "has event engagement but is NOT a member and has NEVER been to arena". Each set
+   * exclusion resolves to a customer_id set and is SUBTRACTED from the result (removing the UNION of
+   * all active exclusions, so "not member OR not arena" reads as "remove members, then remove arena").
+   * Only non-clinical, id/email-matched dimensions are negatable — inferring health from an EXCLUSION
+   * ("not a clinic patient") would still infer health, so clinical sources are deliberately absent.
+   * `ecoUnit` here means "has NO engagement in this ecosystem unit" (e.g. exclude 'membership').
+   */
+  exclude: {
+    ecoUnit: string | null;
+    srcArena: boolean;
+    srcGym: boolean;
+    srcHyrox: boolean;
+    srcMy20fit: boolean;
+    srcRecency: boolean;
+  };
+}
+
+/** Whether any exclusion is active — used to decide if the resolver must subtract sets. */
+export function hasExclusion(c: SegmentCriteria): boolean {
+  const e = c.exclude;
+  return !!e && (e.ecoUnit != null || e.srcArena || e.srcGym || e.srcHyrox || e.srcMy20fit || e.srcRecency);
 }
 
 /** Whether any CLINICAL (health-inferring) source criterion is set — the route gates these on
@@ -116,6 +139,14 @@ export const EMPTY_CRITERIA: SegmentCriteria = {
   srcProgram: null,
   joinedWithinDays: null,
   inactiveForDays: null,
+  exclude: {
+    ecoUnit: null,
+    srcArena: false,
+    srcGym: false,
+    srcHyrox: false,
+    srcMy20fit: false,
+    srcRecency: false,
+  },
 };
 
 /** How many criteria are actively narrowing the pool (0 = whole pool). */
@@ -140,6 +171,16 @@ export function activeCriteriaCount(c: SegmentCriteria): number {
   if (c.srcProgram) n++;
   if (c.joinedWithinDays != null) n++;
   if (c.inactiveForDays != null) n++;
+  // Exclusions narrow the pool too — an exclusion-only segment is NOT "the whole pool".
+  const e = c.exclude;
+  if (e) {
+    if (e.ecoUnit) n++;
+    if (e.srcArena) n++;
+    if (e.srcGym) n++;
+    if (e.srcHyrox) n++;
+    if (e.srcMy20fit) n++;
+    if (e.srcRecency) n++;
+  }
   return n;
 }
 
@@ -170,6 +211,17 @@ export function parseCriteria(raw: unknown): SegmentCriteria {
   // a day-count, resolved against real activity timestamps server-side.
   const joinedWithinDays = clampDays(o.joinedWithinDays);
   const inactiveForDays = clampDays(o.inactiveForDays);
+  // EXCLUSION: same closed validation as the positive twins. ecoUnit must be a known eco unit;
+  // the source flags are booleans. Clinical dimensions are intentionally NOT negatable here.
+  const ex = (o.exclude ?? {}) as Record<string, unknown>;
+  const exclude = {
+    ecoUnit: isEcosystemUnit(ex.ecoUnit) ? ex.ecoUnit : null,
+    srcArena: ex.srcArena === true,
+    srcGym: ex.srcGym === true,
+    srcHyrox: ex.srcHyrox === true,
+    srcMy20fit: ex.srcMy20fit === true,
+    srcRecency: ex.srcRecency === true,
+  };
   return {
     unit,
     segment,
@@ -190,6 +242,7 @@ export function parseCriteria(raw: unknown): SegmentCriteria {
     srcProgram,
     joinedWithinDays,
     inactiveForDays,
+    exclude,
   };
 }
 
