@@ -6,6 +6,7 @@ import { isPermitted, grantFor } from "@/lib/auth/roles";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSegmentById } from "@/lib/crm/segment-store";
 import { previewCampaign, sendCampaign, resolveEmailListRecipients } from "@/lib/crm/send-campaign";
+import { getSendConfig } from "@/lib/crm/send-config";
 import { renderEmailDocument } from "@/lib/crm/email-document";
 import { describeCountDrift, planDailySpread, type CountDrift, type DailySpread } from "@/lib/crm/send-plan";
 import { DEFAULT_SEND_CONFIG, requiresLargeSendConfirmation, type SendSummary } from "@/lib/crm/send-run";
@@ -109,8 +110,9 @@ export async function previewCampaignAction(segmentId: string, templateKey: stri
   if (seg.requiresClinical && !isPermitted(role, "profile.view_health")) return { ok: false, error: "clinical_gate" };
   if (!(await templateHasUnsubscribe(templateKey))) return { ok: false, error: "no_unsubscribe" };
 
+  const { dailyLimit } = await getSendConfig(createAdminClient());
   const p = await previewCampaign(
-    { criteria: seg.stored.criteria, masterFilterExpr: seg.stored.masterFilterExpr, emailList: seg.stored.emailList },
+    { criteria: seg.stored.criteria, masterFilterExpr: seg.stored.masterFilterExpr, emailList: seg.stored.emailList, dailyLimit },
     nowIso(),
   );
   return {
@@ -122,7 +124,7 @@ export async function previewCampaignAction(segmentId: string, templateKey: stri
     suppressed: p.suppressed,
     sendable: p.sendable,
     needsLargeConfirm: requiresLargeSendConfirmation(p.sendable),
-    spread: planDailySpread(p.sendable, p.remainingDailyBudget, DEFAULT_SEND_CONFIG.dailyLimit),
+    spread: planDailySpread(p.sendable, p.remainingDailyBudget, dailyLimit),
     unresolved: p.unresolved,
   };
 }
@@ -303,6 +305,9 @@ export async function sendCampaignAction(args: {
 
   // If the send throws (e.g. a required secret is unset), the run records WHY — status stopped +
   // last_error — and the operator gets a structured error, instead of a silent draft (T-30).
+  // Configurable daily ceiling (crm_send_config). The bounce auto-stop config (threshold/minSample)
+  // stays at the built-in default — it is NEVER coupled to the daily limit (owner rule e).
+  const { dailyLimit } = await getSendConfig(createAdminClient());
   let result: Awaited<ReturnType<typeof sendCampaign>>;
   try {
     result = await sendCampaign(
@@ -314,6 +319,7 @@ export async function sendCampaignAction(args: {
         actorId,
         actorEmail,
         confirmedLargeSend: args.confirmedLargeSend,
+        config: { ...DEFAULT_SEND_CONFIG, dailyLimit },
         ...(emailRecipients ? { overrideRecipients: emailRecipients } : {}),
       },
       stamp,

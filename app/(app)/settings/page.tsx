@@ -9,6 +9,9 @@ import { RolesPanel } from "@/components/settings/roles-panel";
 import { RoleGrantForm } from "@/components/settings/role-grant-form";
 import { AuditLogPanel } from "@/components/settings/audit-log-panel";
 import { WhatsappPanel } from "@/components/settings/whatsapp-panel";
+import { SendLimitsPanel } from "@/components/settings/send-limits-panel";
+import { getSendConfig } from "@/lib/crm/send-config";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { ConsentArchivePanel } from "@/components/consent/consent-archive-panel";
 import { CoverageNotice } from "@/components/i18n/coverage-notice";
 import { getServerDict } from "@/lib/i18n/server";
@@ -18,7 +21,7 @@ export const metadata: Metadata = { title: "Settings" };
 // Role-dependent — never statically cached.
 export const dynamic = "force-dynamic";
 
-const TAB_KEYS = ["log", "manager", "consent", "whatsapp"] as const;
+const TAB_KEYS = ["log", "manager", "consent", "whatsapp", "limits"] as const;
 type SettingsTab = (typeof TAB_KEYS)[number];
 
 function resolveTab(raw: string | string[] | undefined): SettingsTab {
@@ -71,7 +74,11 @@ export default async function SettingsPage({
     { key: "manager", label: t.tabs.settingsManager, href: "/settings?tab=manager" },
     { key: "consent", label: t.tabs.settingsConsent, href: "/settings?tab=consent" },
     { key: "whatsapp", label: t.tabs.settingsWhatsapp, href: "/settings?tab=whatsapp" },
+    // Send limits are SUPER-ADMIN EXCLUSIVE — the tab appears only for them; the action re-checks.
+    ...(canManageRoles(role) ? [{ key: "limits", label: t.tabs.settingsLimits, href: "/settings?tab=limits" }] : []),
   ];
+
+  const sendLimits = tab === "limits" && canManageRoles(role) ? await getSendConfig(createAdminClient()) : null;
 
   return (
     <div className="space-y-6">
@@ -127,6 +134,17 @@ export default async function SettingsPage({
       )}
 
       {tab === "whatsapp" && <WhatsappPanel />}
+
+      {tab === "limits" && (
+        canManageRoles(role) && sendLimits ? (
+          <SendLimitsPanel initial={sendLimits} />
+        ) : (
+          <div className="flex flex-col items-center justify-center gap-3 rounded-card border border-dashed border-glass-border px-6 py-16 text-center">
+            <Badge tone="red">{t.access.deniedBadge}</Badge>
+            <p className="max-w-md font-body text-[13px] leading-relaxed text-ink-soft">{t.audit.pageDeniedRole}</p>
+          </div>
+        )
+      )}
     </div>
   );
 }

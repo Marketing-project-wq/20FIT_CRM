@@ -15,6 +15,8 @@ import {
 } from "@/lib/crm/workflow-store";
 import { resolveActivityTimeIds, resolvePoolNewIds } from "@/lib/crm/activity";
 import { sendCampaign } from "@/lib/crm/send-campaign";
+import { getSendConfig } from "@/lib/crm/send-config";
+import { DEFAULT_SEND_CONFIG } from "@/lib/crm/send-run";
 import { createRun } from "@/lib/crm/campaign-run";
 
 /**
@@ -155,6 +157,11 @@ export async function runWorkflowAction(workflowId: string): Promise<WorkflowRun
   });
   if (!run) return { ok: false, error: "run_create_failed" };
 
+  // Workflow sends are capped SEPARATELY (workflow_daily_cap, default 300) so automated volume can't
+  // consume the whole daily ceiling and starve manual campaigns. Over the cap → recipients defer to a
+  // later run, same "defer, don't fail" posture as the daily limit. The bounce auto-stop config is
+  // untouched (stays active regardless of the cap — owner rule e).
+  const { workflowDailyCap } = await getSendConfig(admin);
   let result;
   try {
     result = await sendCampaign(
@@ -166,6 +173,7 @@ export async function runWorkflowAction(workflowId: string): Promise<WorkflowRun
         actorId: email ?? "system:workflow",
         actorEmail: email,
         confirmedLargeSend: true, // workflow menyasar kelompok kecil beraktivitas; ambang besar tak relevan
+        config: { ...DEFAULT_SEND_CONFIG, dailyLimit: workflowDailyCap },
         overrideRecipients: recipients,
       },
       new Date().toISOString(),

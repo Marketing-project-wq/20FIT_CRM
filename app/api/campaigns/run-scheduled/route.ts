@@ -5,6 +5,8 @@ import { sendCampaign, resolveEmailListRecipients } from "@/lib/crm/send-campaig
 import { createRun, markRunSending, finalizeRunStatus, recordRunError } from "@/lib/crm/campaign-run";
 import { classifySendThrow } from "@/lib/crm/send-env";
 import { claimDueScheduledSends, markScheduledSent, markScheduledFailed } from "@/lib/crm/scheduled-send";
+import { getSendConfig } from "@/lib/crm/send-config";
+import { DEFAULT_SEND_CONFIG } from "@/lib/crm/send-run";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +25,7 @@ export async function POST(req: NextRequest) {
 
   const admin = createAdminClient();
   const nowIso = new Date().toISOString();
+  const { dailyLimit } = await getSendConfig(admin); // configurable daily ceiling (crm_send_config)
   const due = await claimDueScheduledSends(admin, nowIso);
 
   let sent = 0, failed = 0;
@@ -63,6 +66,7 @@ export async function POST(req: NextRequest) {
             actorId: "system:scheduled-send",
             actorEmail: "system:scheduled-send",
             confirmedLargeSend: true, // confirmed at schedule time
+            config: { ...DEFAULT_SEND_CONFIG, dailyLimit },
             ...(emailRecipients ? { overrideRecipients: emailRecipients } : {}),
           },
           new Date().toISOString(),
