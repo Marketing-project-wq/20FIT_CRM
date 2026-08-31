@@ -1,6 +1,8 @@
 import { AppShell } from "@/components/shell/app-shell";
 import { LangProvider } from "@/components/i18n/lang-provider";
 import { CampaignFlow } from "@/app/(app)/campaigns/campaign-flow";
+import { DeliveriesTab } from "@/app/(app)/campaigns/deliveries-tab";
+import type { DeliveryRow } from "@/lib/crm/deliveries";
 import { SegmentBuilder } from "@/components/segments/segment-builder";
 import { Badge } from "@/components/ui/badge";
 import { DevBanner } from "@/components/dev/dev-banner";
@@ -26,6 +28,16 @@ const TEMPLATES = [
     subject: "Terima kasih sudah ikut {{event_name}}!",
     body: "Halo {{first_name}},\n\nTerima kasih sudah berlari bersama kami.\n\nBerhenti berlangganan: {{unsubscribe_url}}",
   },
+];
+
+// Delivery History fixtures — one of every state + both origins, to show the renamed markers and the
+// segment+date default name ("gmail test · 31 Agu 2026" instead of "Unnamed"/an ISO timestamp).
+const DELIVERIES: DeliveryRow[] = [
+  { kind: "scheduled", id: "d1", runId: null, label: "gmail test · 31 Agu 2026", ownerName: "gmail test", source: "manual", templateKey: "welcome", recipientCount: 36, state: "upcoming", time: "2026-09-02T02:00:00Z", cancellable: true, lastError: null },
+  { kind: "scheduled", id: "d2", runId: null, label: "Peserta RUNFEST · 30 Agu 2026", ownerName: "Peserta RUNFEST punya email", source: "manual", templateKey: "welcome", recipientCount: 11546, state: "overdue", time: "2026-08-30T06:00:00Z", cancellable: true, lastError: null },
+  { kind: "run", id: "d3", runId: "r3", label: "Member gym aktif · 29 Agu 2026", ownerName: "Member gym aktif", source: "manual", templateKey: "welcome", recipientCount: 812, state: "running", time: "2026-08-31T01:00:00Z", cancellable: false, lastError: null },
+  { kind: "run", id: "d4", runId: "r4", label: "Reaktivasi app · 28 Agu 2026", ownerName: "Alur reaktivasi", source: "auto", templateKey: "reactivate", recipientCount: 1500, state: "done", time: "2026-08-28T03:00:00Z", cancellable: false, lastError: null },
+  { kind: "run", id: "d5", runId: "r5", label: "Broadcast Sept #1", ownerName: "Semua member", source: "manual", templateKey: "welcome", recipientCount: 240, state: "stopped", time: "2026-08-27T04:00:00Z", cancellable: false, lastError: "bounce keras > 5% (auto-stop reputasi domain)" },
 ];
 
 export default function PreviewCampaign() {
@@ -60,6 +72,11 @@ export default function PreviewCampaign() {
             <span className="font-body text-[12px] text-ink-soft">SegmentBuilder tanpa judul kedua (embedded), grup menurut pertanyaan.</span>
           </div>
           <SegmentBuilder embedded cityFillPct={7.03} cityFilled={5782} total={82253} canViewHealth />
+
+          <div className="rounded-sm bg-glass px-3 py-2" id="deliveries-anchor">
+            <p className="font-display text-[13px] font-bold text-ink">Bagian 3 — Riwayat Pengiriman: penanda status &amp; asal yang dibaca orang awam, nama kampanye bawaan dari segmen + tanggal</p>
+          </div>
+          <DeliveriesTab deliveries={DELIVERIES} detail={null} detailRequested={false} />
         </div>
       </AppShell>
     </LangProvider>

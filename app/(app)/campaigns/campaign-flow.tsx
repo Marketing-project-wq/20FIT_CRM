@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useI18n } from "@/components/i18n/lang-provider";
 import { formatCount } from "@/lib/i18n";
+import { defaultCampaignLabel } from "@/lib/crm/campaign-label";
 import { PreviewEmailPanel } from "./preview-email-panel";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -82,6 +83,10 @@ export function CampaignFlow({
 
   const segment = segments.find((s) => s.id === segmentId) ?? null;
   const template = templates.find((tp) => tp.key === templateKey) ?? null;
+  // The name is OPTIONAL (see report) — but never blank in the record: once a segment is picked, we
+  // preview the exact default that will be stored if the field is left empty ("{segment} · 31 Agu
+  // 2026"), and pass that same string on send. Never a machine timestamp.
+  const defaultLabelPreview = segment ? defaultCampaignLabel(segment.name, new Date().toISOString(), lang) : "";
   const step0Done = channel === "email";
   const step1Done = !!segment;
   const step2Done = !!(template);
@@ -137,9 +142,11 @@ export function CampaignFlow({
 
   async function onSend() {
     if (!preview || !segmentId || !templateKey || !runSel) return;
+    // A new run is named from the field, or — if blank — the segment+date default (never null).
+    const newRunLabel = newLabel.trim() || defaultCampaignLabel(segment?.name ?? "", new Date().toISOString(), lang);
     const run: RunChoice = runSel.kind === "resume"
       ? { kind: "resume", runId: runSel.runId }
-      : { kind: "new", label: newLabel.trim() || null };
+      : { kind: "new", label: newRunLabel };
     setSending(true); setNotice(null);
     try {
       const r = await sendCampaignAction({ segmentId, templateKey, confirmedLargeSend: confirmLarge, shownSendable, run });
@@ -168,7 +175,12 @@ export function CampaignFlow({
   async function onSchedule() {
     if (!preview || !segmentId || !templateKey) return;
     if (!dateWib || !timeWib) { setNotice(cc.scheduleBadTime); return; }
-    const runLabel = runSel?.kind === "new" ? (newLabel.trim() || null) : null;
+    // Resuming keeps the existing run's name; otherwise the field, or the segment + the SCHEDULED
+    // date as the default (so the stored name reads e.g. "gmail test · 31 Agu 2026").
+    const schedIso = new Date(`${dateWib}T${timeWib}:00+07:00`).toISOString();
+    const runLabel = runSel?.kind === "resume"
+      ? null
+      : (newLabel.trim() || defaultCampaignLabel(segment?.name ?? "", schedIso, lang));
     setSending(true); setNotice(null); setScheduledMsg(null);
     try {
       const r = await scheduleCampaignAction({
@@ -267,6 +279,22 @@ export function CampaignFlow({
         summary={segment ? segment.name : undefined}
       >
         <div className="flex flex-col gap-4">
+          {/* Campaign name FIRST — name it before building it, so Delivery History is traceable. It
+              stays optional; the placeholder previews the default that will be stored if left blank. */}
+          <label className="flex flex-col gap-1.5">
+            <span className="font-body text-[13px] font-semibold text-ink">{cc.campaignNameField}</span>
+            <input
+              type="text"
+              className={selectCls}
+              value={newLabel}
+              placeholder={defaultLabelPreview || cc.campaignNamePlaceholder}
+              onChange={(e) => setNewLabel(e.target.value)}
+            />
+            <span className="font-body text-[12px] text-ink-faint">
+              {defaultLabelPreview ? `${cc.campaignNameDefaultPre}${defaultLabelPreview}` : cc.campaignNameHint}
+            </span>
+          </label>
+
           <div className="flex items-center gap-2 text-ink-soft">
             <Users className="h-4 w-4" aria-hidden />
             <p className="font-body text-[13px]">{c.step1Hint}</p>
@@ -450,14 +478,6 @@ export function CampaignFlow({
             </div>
           ) : (
             <p className="font-body text-[12px] leading-relaxed text-ink-soft">{cc.runAutoNew}</p>
-          )}
-
-          {/* Run label — relevant whenever a NEW run will be created (auto or chosen). */}
-          {(runs.length === 0 || runSel?.kind === "new") && (
-            <label className="flex flex-col gap-1.5">
-              <span className="font-body text-[12px] text-ink-soft">{cc.runLabelField}</span>
-              <input type="text" className={selectCls} value={newLabel} placeholder={cc.runLabelPlaceholder} onChange={(e) => setNewLabel(e.target.value)} />
-            </label>
           )}
 
           {needsConfirm && (

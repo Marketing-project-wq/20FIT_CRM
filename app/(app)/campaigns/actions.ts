@@ -7,6 +7,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getSegmentById } from "@/lib/crm/segment-store";
 import { previewCampaign, sendCampaign, resolveEmailListRecipients } from "@/lib/crm/send-campaign";
 import { getSendConfig } from "@/lib/crm/send-config";
+import { defaultCampaignLabel } from "@/lib/crm/campaign-label";
 import { renderEmailDocument } from "@/lib/crm/email-document";
 import { describeCountDrift, planDailySpread, type CountDrift, type DailySpread } from "@/lib/crm/send-plan";
 import { DEFAULT_SEND_CONFIG, requiresLargeSendConfirmation, type SendSummary } from "@/lib/crm/send-run";
@@ -282,7 +283,9 @@ export async function sendCampaignAction(args: {
     const created = await createRun({
       segmentId: args.segmentId,
       templateKey: args.templateKey,
-      label: args.run.label,
+      // Never a null/blank name: the composer sends the segment+date default when the field is left
+      // empty, and this fills it too for any direct caller (defence in depth). Never an ISO stamp.
+      label: args.run.label?.trim() ? args.run.label : defaultCampaignLabel(seg.name, stamp, "id"),
       createdBy: actorForRun,
     });
     if (!created) return { ok: false, error: "run_create_failed" };
