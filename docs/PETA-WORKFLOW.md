@@ -1,160 +1,219 @@
 # Peta Workflow — apa yang mungkin, apa yang bernilai (pemetaan, 31 Agu 2026)
 
-> **Pemetaan, bukan pembangunan.** Nol tabel baru, nol workflow dibuat, nol kirim.
-> Semua angka **diukur ulang langsung ke produksi** hari ini (bukan disalin dari prompt) —
-> beberapa berbeda dari yang diperkirakan; lihat §1.
+> **Pemetaan, bukan pembangunan.** Nol tabel dibuat, nol workflow dibuat, nol kirim.
+> Semua angka **diukur ulang langsung ke produksi**. Keputusan pemilik produk (31 Agu) tercatat di §0.
 
 ---
 
-## 1. Angka kunci — DIUKUR ULANG 31 Agu (dan koreksinya)
+## 0. Keputusan pemilik produk (31 Agu 2026) — terkunci
 
-| Hal | Diukur | Catatan / koreksi |
+1. **Arsitektur pemicu: POLLING.** Sudah setengah terbangun (cron aktivitas 03:30), nol izin, dan
+   tak satu pun workflow bernilai butuh reaksi sub-detik. **Trigger Postgres menyusul bila terbukti
+   perlu — rancang engine agar sumbernya bisa ditukar** (baca dari fungsi resolver, bukan hard-code).
+2. **Jatah harian: 300 workflow / 700 kampanye manual** (dari 1.000).
+3. **Reframe penting:** dua item paling bernilai — **perkenalan lintas-unit (67.737)** dan **adopsi
+   aplikasi (82.481)** — **BUKAN workflow.** Keduanya menyasar himpunan tetap, sekali kirim selesai:
+   cukup **segmen + kampanye**, yang sudah bekerja & terbukti. **Workflow sesungguhnya hanya LIMA:**
+   sambutan, event, arena, klinik, reaktivasi.
+
+**Urutan kerja yang mengikuti keputusan itu:** **Jalur A (segmen+kampanye)** dulu — bisa jalan minggu
+ini tanpa kode workflow apa pun; **Jalur B (workflow)** menyusul, mulai dari sambutan.
+
+---
+
+## 1. Angka kunci — DIUKUR ULANG 31 Agu
+
+| Hal | Diukur | Catatan |
 |---|---|---|
-| `master_customer` | **82.830** | 99,3% punya email (**82.214** emailable) → kontaktabilitas hampir tak membatasi jangkauan |
-| `crm_customer_activity` (lapisan recency) | **732** = **0,88%** pool | Batas penentu: workflow berbasis WAKTU hanya menyentuh <1% audiens |
-| `crm_activity_event` | **1.460** | clinic_txn 364 · clinic_visit 345 · hyrox_registration 321 · arena_booking 233 · app_activity 197 |
-| `crm_workflow` / `_enrollment` / `crm_scheduled_send` | **0 / 0 / 0** | Skema ada, belum ada satu pun baris |
-| `crm_suppression` | **1** | Ada 1 orang sudah berhenti berlangganan (uji unsubscribe berhasil) |
-| Profil baru Agustus | **577** | `source='activity_ingest'`, `created_at ≥ 1 Agu` — cocok |
-| **Pengguna aplikasi** | **197**, BUKAN 349 | ⚠️ **Koreksi.** `my20fit_user_activity` = 197 orang. Angka 349 **tak dapat direproduksi** dari sumber mana pun (customer_engagement tak punya sumber app; app_activity distinct = 197). Pakai 197. |
-| Penetrasi unit (distinct orang, `customer_engagement`) | membership **67.828** (81,9%) · event **18.247** (22,0%) · arena **2.075** (2,5%) · klinik **1.014** (1,2%) · shop 18 · gym 2 | Cocok persis dengan prompt |
+| `master_customer` | **82.830** | 99,3% emailable (**82.214**) → kontaktabilitas hampir tak membatasi |
+| `crm_customer_activity` (recency) | **732** = **0,88%** | Batas penentu workflow BERBASIS WAKTU |
+| `crm_activity_event` | **1.460** | clinic_txn 364 · clinic_visit 345 · hyrox 321 · arena 233 · app 197 |
+| `crm_workflow`/`_enrollment`/`crm_scheduled_send` | **0/0/0** | Skema ada, belum satu baris |
+| `crm_suppression` | **1** | Satu orang sudah berhenti berlangganan |
+| Profil baru Agustus | **577** | `source='activity_ingest'` |
+| Penetrasi unit (orang, `customer_engagement`) | membership **67.828** (81,9%) · event **18.247** (22%) · arena **2.075** (2,5%) · klinik **1.014** (1,2%) · shop 18 · gym 2 | cocok persis |
 
-**Jangkauan ORANG vs KEJADIAN — bedanya besar, dan ini yang harus terlihat di layar:**
+### Populasi aplikasi — TIGA, bukan satu (koreksi 31 Agu)
+349 dan 197 **keduanya benar**, beda arti. Diverifikasi:
+
+| Populasi | Sumber | Orang | Pesan yang tepat |
+|---|---|---|---|
+| Punya profil **dan pernah pakai** app | `my20fit_user_activity` (`app_activity`) | **197** | sudah aktif → **kecualikan** dari ajakan adopsi |
+| Punya profil **tapi tak pernah pakai** | `has_my20fit` − dipakai | **152** | "kamu punya akun — mulai pakai" (aktivasi) |
+| **Tak punya profil app sama sekali** | 82.830 − 349 | **82.481** | "pasang aplikasinya" (adopsi) |
+| (total punya profil app) | `crm_customer_mirror.has_my20fit` | 349 | — |
+
+**Ini tiga segmen berbeda dengan tiga pesan berbeda.** "Adopsi" = 82.481 (tanpa akun); "aktivasi" =
+152 (punya, menganggur). Menggabung keduanya salah sasaran.
+
+### Jangkauan ORANG vs KEJADIAN — bedanya besar
 
 | Sumber | Kejadian | **Orang berbeda** |
 |---|---|---|
 | hyrox | 321 | **289** |
-| clinic_txn | 364 | 206 |
-| my20fit (app) | 197 | **197** |
-| clinic_visit | 345 | 148 |
-| **arena** | **233** | **51** ⚠️ |
 | clinic (visit ∪ txn) | 709 | **217** |
-
-⚠️ **Arena: 233 kejadian = hanya 51 orang.** Workflow "tindak lanjut booking arena" menjangkau **51 orang**, bukan 233. Menyebut 233 akan menyesatkan penyusunnya.
-
----
-
-## 2. Skema `crm_workflow` yang SUDAH ADA — apa yang sudah diputuskan
-
-Migrasi 29 (`20260827110000_crm_workflow.sql`) + engine `runWorkflowAction` (`app/(app)/workflows/actions.ts`) sudah menetapkan banyak hal — **jangan rancang ulang tanpa membacanya:**
-
-- **Hanya DUA jenis** (`type CHECK IN ('welcome','reengagement')`). Keduanya **berbasis waktu di lapisan aktivitas 732**:
-  `welcome = joined_at ≤ trigger_days`, `reengagement = last_active_at ≥ trigger_days` (`resolveActivityTimeIds`).
-- **Frekuensi sudah diputuskan oleh skema:** `unique (workflow_id, customer_id)` → **satu orang tak pernah masuk workflow yang sama dua kali**. Bagus untuk welcome; untuk re-engagement berulang berarti sekali seumur hidup.
-- **Suppression diperiksa saat KIRIM**, bukan enrollment — `sendCampaign` menghormati `crm_suppression` + gate pra-luncur + audit `campaign.sent`. ✅ (sesuai syarat prompt)
-- **Cara berhenti:** enrollment terminal (`queued→sent`), tak pernah di-enroll ulang → "berhenti" dengan tak masuk lagi. **Bukan drip berlapis** — satu kirim per workflow, bukan urutan langkah.
-- **Pemicu saat ini: MANUAL.** `runWorkflowAction` dipicu **tombol** di `/workflows`. **Tak ada pemicu otomatis** (cron/trigger/webhook). Inilah keputusan arsitektur yang terbuka (§4).
-- **Batas harian:** workflow kirim lewat `sendCampaign` yang menghitung `crm_message_log` hari ini → **workflow SUDAH memakan jatah harian 1.000 bersama kampanye manual**. Belum ada pembagian (§6).
-
-**Konsekuensi penting:** skema saat ini **hanya** melayani #7 (reaktivasi = reengagement) dan bentuk sempit #1 (welcome bila di-key ke lapisan aktivitas). Workflow paling bernilai — **#1 welcome POOL baru (577), #2 lintas-unit (puluhan ribu), #3 adopsi app** — **tidak muat** di model `type`+`trigger_days` sekarang: pemicunya bukan waktu di lapisan 732, melainkan keanggotaan himpunan di `master_customer`/`customer_engagement`. Membangunnya berarti **memperluas skema** (jenis pemicu baru), bukan mengisi yang ada.
+| app (my20fit) | 197 | 197 |
+| **arena** | **233** | **51** ⚠️ jangan tulis 233 |
 
 ---
 
-## 3. `crm_activity_event` diisi apa — mekanismenya sudah ada
+## JALUR A — SEGMEN + KAMPANYE (bukan workflow; bisa minggu ini)
 
-`crm_rebuild_activity_events()` + `crm_refresh_customer_activity()` (migrasi 27, `crm_activity_layer.sql`):
-membangun ulang event dari **tabel sumber hidup** (arena/klinik/hyrox/my20fit) lalu agregasi ke `crm_customer_activity`. Dijadwalkan **pg_cron harian 03:30 WIB (20:30 UTC)**, setelah refresh mirror 20:00 UTC. **Rebuild penuh harian, bukan real-time, bukan inkremental.**
+Himpunan tetap, sekali kirim. Tak butuh pemicu/enrollment/mesin workflow — hanya segmen (builder sudah
+ada) + template + kampanye (sudah terbukti). Suppression tetap diperiksa saat kirim (jalur kampanye).
 
-Artinya: **"scheduled polling harian" sudah menjadi mekanisme de-facto** lapisan aktivitas. Workflow yang bereaksi "baru saja booking" paling cepat **tertinggal ~1 hari** dengan mekanisme sekarang.
-
----
-
-## 4. Arsitektur pemicu — TIGA pilihan, konsekuensinya, TANPA memutuskan
-
-Pertanyaan: bagaimana workflow tahu sebuah kejadian baru terjadi? (Snapshot harian tak bisa jawab "orang ini baru saja booking".)
-
-| Pilihan | Latensi | Izin | Beban org | Catatan |
+| # | Segmen | Jangkauan (diverifikasi) | Template | Kriteria (yang sudah ada) |
 |---|---|---|---|---|
-| **Polling terjadwal** (cron periksa `crm_activity_event`/sumber tiap N menit) | Tertinggal sebesar interval | **Tak butuh izin** — semua di kendali CRM | Nol | **Sudah setengah terbangun**: aktivitas di-rebuild harian. Tinggal perpendek interval + panggil engine workflow. Termurah untuk mulai. |
-| **Trigger Postgres** di tabel sumber → antrean CRM | Hampir seketika | **Butuh izin pemilik data** (trigger di tabel tim lain) | Rendah (satu DB, tim lain tak ubah app) | Cepat, tapi menaruh kode CRM di tabel milik orang lain — keputusan lintas-tim |
-| **Webhook** dari sistem sumber | Seketika | Butuh tiap tim menulis kode | **Tertinggi** | Paling bersih arsitektural, paling mahal organisasi |
+| A1 | Anggota **belum pernah ke arena** | **67.737** | ❌ perlu baru (ajakan arena, non-klinis) | unit=membership AND NOT arena |
+| A2 | Anggota **belum pernah ke klinik** | **67.600** | ❌ perlu baru (**netral**, non-klinis) | unit=membership AND NOT clinic |
+| A3 | **Belum punya akun app** (adopsi) | **82.481** | ❌ perlu baru ("pasang app") | NOT has_my20fit |
+| A4 | Punya akun **tapi menganggur** (aktivasi) | **152** | ❌ perlu baru ("mulai pakai") | has_my20fit AND NOT app_activity |
 
-**Rekomendasi untuk DISKUSI (bukan keputusan):** karena polling harian sudah ada dan sebagian besar workflow bernilai (#1/#2/#3) **tidak butuh reaksi seketika** (welcome/lintas-unit/adopsi bukan soal detik), **polling terjadwal cukup untuk memulai** tanpa izin siapa pun. Trigger/webhook baru relevan bila muncul workflow yang benar-benar butuh reaksi seketika (mis. konfirmasi transaksi). **Keputusan ini milik pemilik produk + pemilik data** — ia menentukan bentuk seluruh bagian ini.
+### Membagi 67 ribu dengan jatah 700/hari — usulan (keputusan pemilik)
+67.737 ÷ 700/hari ≈ **97 hari** kalau satu segmen memakan SELURUH jatah manual — dan itu berarti tak
+ada ruang untuk kampanye manual lain selama tiga bulan. Pilihan, dari yang paling saya sarankan:
+
+1. **Persempit dulu berdasarkan kedekatan fisik.** Arena & klinik adalah tempat FISIK — mengajak
+   anggota di kota tanpa arena tak berguna. Segmen "anggota di kota ber-arena, belum pernah arena"
+   jauh lebih kecil, lebih tinggi niat, dan bisa tuntas dalam hari, bukan bulan. *(Perlu cek cakupan
+   kolom kota dulu — lihat §10.)* Sisa kota lain menyusul bila terbukti.
+2. **Batch bertahap ber-pace.** Alokasikan mis. **300/hari** untuk kampanye lintas-unit (sisakan 400
+   untuk kampanye manual lain) → ~226 hari untuk 67 ribu; atau 500/hari → ~135 hari. Kirim "700
+   berikut yang belum dikontak" tiap hari lewat scheduled-send yang sudah ada.
+3. **Prioritas nilai.** Anggota bernilai tinggi / baru bergabung / paling aktif lebih dulu — tuai
+   konversi termudah sebelum menyapu ekor panjang.
+
+Rekomendasi: **#1 (persempit fisik) lalu #3 (prioritas nilai)**, dengan #2 (pace) untuk sisanya. Angka
+harian & irisan adalah keputusan pemilik; di sini saya sajikan matematikanya.
 
 ---
 
-## 5. Peta tujuh workflow — pemicu · jangkauan · template · frekuensi · berhenti
+## JALUR B — LIMA WORKFLOW SESUNGGUHNYA
 
-Jangkauan = **orang berbeda yang benar-benar bisa dijangkau** (≈ emailable 99,3%, dikurangi suppression). Angka diverifikasi §1.
+Perlu pemicu + enrollment + mesin (yang sebagian sudah ada, §4). Diurut nilai ÷ kelayakan.
 
-### 1. Sambutan pengguna baru — jarak terpendek ke "bekerja"
-- **Pemicu:** profil baru di `master_customer` (`created_at`/`source`). *(Catatan skema: jenis "welcome" saat ini di-key ke `crm_customer_activity.joined_at`, BUKAN pool baru — butuh jenis pemicu "pool baru" yang belum ada.)*
-- **Jangkauan:** **577** (Agustus) dan tumbuh tiap hari via ingestion.
-- **Template:** ✅ **ADA** — "Welcome to 20FIT / Everything 20FIT" (`email_1787897773605`), sudah terbukti terkirim. (Catatan: latar gelap — lihat T-37 untuk keputusan terang/gelap.)
+### B1. Sambutan pengguna baru — mulai dari sini
+- **Pemicu:** profil baru di `master_customer` (`created_at ≤ N hari`). **Sumber = pool, BUKAN lapisan
+  aktivitas** → butuh perluasan skema kecil (§9). Batas 0,88% **tak berlaku**.
+- **Jangkauan:** **577** (Agustus) dan tumbuh; ~**19/hari** rata-rata (jauh di bawah sub-jatah 300).
+- **Template:** ✅ **ADA** — "Welcome to 20FIT / Everything 20FIT" (`email_1787897773605`), terbukti kirim.
 - **Frekuensi:** sekali per orang (unique constraint). **Berhenti:** enrollment terminal.
 
-### 2. Perkenalan silang antar-unit — peluang bisnis TERBESAR
-- **Pemicu:** anggota satu unit yang belum pernah menyentuh unit lain (himpunan di `customer_engagement`). **Tak butuh lapisan aktivitas — batas 0,88% TAK berlaku.**
-- **Jangkauan (diverifikasi):** anggota **belum pernah ke arena = 67.737** · **belum pernah ke klinik = 67.600** · **belum pernah ke event = 61.155**.
-- **Template:** ❌ belum ada — perlu template ajakan lintas-unit (netral, non-klinis).
-- **Frekuensi:** sekali per (orang, pasangan-unit); beri jeda agar tak beruntun. **Berhenti:** begitu ia menyentuh unit tujuan, keluar.
-
-### 3. Adopsi aplikasi my20fit — celah paling lebar, pengungkit seluruh sistem
-- **Pemicu:** punya profil, belum jadi pengguna app.
-- **Jangkauan:** **82.633** (82.830 − 197 pengguna app). Menaikkan app = memperbesar SEMUA pemicu berbasis aktivitas ke depan.
-- **Template:** ❌ belum ada.
-- **Frekuensi:** sekali, mungkin diulang tiap kuartal. **Berhenti:** begitu jadi pengguna app (muncul di `app_activity`), keluar.
-
-### 4. Siklus event (hyrox) — audiens paling terlibat
-- **Pemicu:** `hyrox_registration`, lalu hitung mundur relatif tanggal lomba (daftar→siap→hari-H→foto→event berikut).
+### B2. Siklus event (hyrox) — audiens paling terlibat
+- **Pemicu:** `hyrox_registration`, lalu hitung mundur relatif tanggal lomba.
 - **Jangkauan:** **289 orang** (321 kejadian). Menyambung Ticket 20FIT + 20FIT Photo.
-- **Template:** ❌ belum ada (butuh beberapa, per tahap).
-- **Frekuensi:** per pendaftaran (boleh berulang tiap event). **Berhenti:** setelah hari-H + tindak lanjut foto, urutan selesai.
+- **Template:** ❌ beberapa (per tahap). **Frekuensi:** per pendaftaran. **Berhenti:** setelah foto/tindak-lanjut.
 
-### 5. Tindak lanjut booking arena — kecil tapi rawan
-- **Pemicu:** `arena_booking`. **Jangkauan: 51 orang** (233 kejadian — ⚠️ jangan tulis 233).
-- **Template:** ❌ belum ada. **Frekuensi:** per booking, beri jeda. **Berhenti:** setelah 1–2 ajakan.
+### B3. Tindak lanjut booking arena
+- **Pemicu:** `arena_booking`. **Jangkauan: 51 orang** (233 kejadian). **Template:** ❌.
+  **Frekuensi:** per booking, beri jeda. **Berhenti:** setelah 1–2 ajakan.
 
-### 6. Tindak lanjut klinik — HATI-HATI (data kesehatan)
+### B4. Tindak lanjut klinik — HATI-HATI (data kesehatan)
 - **Pemicu:** `clinic_visit`/`clinic_txn`. **Jangkauan: 217 orang.**
-- **LARANGAN:** isi email **tak boleh** menyebut kunjungan/keluhan/layanan klinik — itu menuliskan status kesehatan ke inbox yang mungkin dibaca orang lain. Isi harus **netral** (pengingat jadwal umum). Penyusunan **digerbangi `profile.view_health`** seperti seluruh jalur klinis.
-- **Template:** ❌ belum ada (harus netral). **Frekuensi/berhenti:** per kunjungan, sekali.
+- **LARANGAN:** isi email **tak boleh** menyebut kunjungan/keluhan/layanan klinik. Isi **netral**
+  (pengingat umum). Penyusunan **digerbangi `profile.view_health`**. **Template:** ❌ (netral).
+  **Berhenti:** per kunjungan, sekali.
 
-### 7. Reaktivasi — hanya untuk 732 orang
-- **Pemicu:** `last_active_at ≥ N hari` (`crm_customer_activity`). **Ini yang paling cocok dengan skema `reengagement` yang ADA.**
-- **Jangkauan:** **≤ 732** (0,88% pool). **Layar wajib menyebut ini jujur** — jangan tampil seolah menyasar seluruh audiens.
-- **Template:** ❌ belum ada. **Frekuensi:** skema = sekali seumur hidup (unique) — untuk reaktivasi berulang perlu keputusan (longgarkan unique atau siklus ulang). **Berhenti:** begitu aktif lagi, keluar.
+### B5. Reaktivasi — hanya 732 orang
+- **Pemicu:** `last_active_at ≥ N hari` (`crm_customer_activity`). **Cocok skema `reengagement` yang ADA.**
+- **Jangkauan:** **≤ 732** (0,88%). **Layar wajib menyebut ini jujur.** **Template:** ❌.
+  **Frekuensi:** skema = sekali seumur hidup (unique) — reaktivasi berulang butuh keputusan (longgarkan
+  unique atau siklus). **Berhenti:** begitu aktif lagi.
 
-### Yang BELUM bisa dibangun
-- **Fitpoint mendekati kedaluwarsa** — tak ada tabelnya di mana pun. Tak dipetakan.
-- **Notifikasi pop-up app** — ditunda pemilik produk. Tak dipetakan.
-- **WhatsApp** — kredensial belum diisi → semua workflow **email saja** untuk sekarang.
-
----
-
-## 6. Pembagian jatah harian 1.000 — usulan (bukan keputusan)
-
-Masalah: `sendCampaign` menghitung `crm_message_log` hari ini lintas SEMUA sumber. Kalau workflow otomatis menghabiskan 1.000, **kampanye yang disusun orang gagal tanpa sebab jelas** (dan sebaliknya).
-
-Usulan, dari paling sederhana:
-1. **Sub-jatah tetap untuk workflow** (mis. workflow ≤ 300/hari, sisakan ≥ 700 untuk kampanye manual). Engine workflow memeriksa "terkirim-oleh-workflow hari ini" (audit `campaign.sent` bermetadata workflow, atau label run `Workflow:`) sebelum enroll/kirim; berhenti di sub-jatah. Kampanye manual tetap pakai batas total.
-2. **Jendela waktu terpisah:** workflow jalan pagi (mis. cron 06:00 WIB) dengan sisa jatah SETELAH menyisihkan cadangan kampanye; kampanye manual jalan siang.
-3. **Konfig `WORKFLOW_DAILY_CAP`** (env), default konservatif, dinaikkan pemilik saat percaya.
-
-Rekomendasi mulai: **#1 (sub-jatah tetap)** — paling mudah dipahami, mencegah kelaparan dua arah, dan bisa dibaca dari data yang sudah dicatat. **Keputusan angkanya milik pemilik produk.**
+### Tak bisa dibangun
+Fitpoint (tak ada tabel) · pop-up app (ditunda) · WhatsApp (kredensial kosong → semua **email saja**).
 
 ---
 
-## 7. Urutan pembangunan yang diusulkan — dan alasannya
-
-Prasyarat mutlak: **keputusan arsitektur pemicu (§4) lebih dulu** — membangun sebelum itu berarti membangun ulang.
-
-1. **#1 Sambutan pengguna baru.** Template sudah ada + terbukti; jangkauan tumbuh tiap hari; jarak terpendek "belum ada → bekerja". (Perlu jenis pemicu "pool baru" — perluasan skema kecil.)
-2. **#2 Lintas-unit.** Nilai bisnis tertinggi (puluhan ribu), tak bergantung lapisan 0,88%, tak sensitif. Butuh template baru + jenis pemicu himpunan.
-3. **#3 Adopsi app.** Pengungkit seluruh sistem (memperbesar semua pemicu aktivitas ke depan).
-4. **#4 Siklus event** (audiens terlibat, tapi butuh banyak template + logika hitung-mundur).
-5. **#5 Arena** (kecil — 51 — kerjakan bila kapasitas ada).
-6. **#7 Reaktivasi** (cocok skema yang ada, tapi jangkauan 0,88% — nilai terbatas sampai lapisan aktivitas tumbuh).
-7. **#6 Klinik** (paling akhir; sensitif, butuh template netral + gerbang `profile.view_health` + tinjauan legal).
-
-Alasan urutan: nilai-bisnis ÷ kelayakan, dengan yang **template-nya sudah ada** dan **tak bergantung batas 0,88%** didahulukan, dan yang **sensitif** ditaruh terakhir agar dibangun dengan hati-hati, bukan buru-buru.
+## 4. Skema `crm_workflow` yang ADA — yang sudah diputuskan
+Migrasi 29 + `runWorkflowAction`:
+- **Dua jenis** `type CHECK IN ('welcome','reengagement')`, keduanya berbasis waktu di lapisan 732.
+- **Frekuensi:** `unique (workflow_id, customer_id)` → sekali per orang.
+- **Suppression saat KIRIM** (via `sendCampaign`), bukan enrollment. ✅
+- **Pemicu saat ini MANUAL** (tombol). **Berhenti:** enrollment terminal (bukan drip berlapis).
+- **Jatah:** workflow kirim lewat `sendCampaign` yang menghitung `crm_message_log` hari ini → sudah ikut
+  memakan jatah harian (perlu sub-jatah, §7).
 
 ---
 
-## 8. Yang TIDAK bisa saya verifikasi
-- **Angka "349 pengguna app"** — tak dapat direproduksi; sumber terukur memberi **197**. Kalau ada definisi lain (mis. tabel my20fit mentah di luar CRM), itu di luar jangkauan sesi ini.
-- **Apakah trigger/webhook layak** — bergantung izin pemilik data & kesediaan tim sumber; keputusan organisasi, bukan terukur dari DB.
-- **Rupa email tiap workflow di klien nyata** — perlu Send test (lihat CEKLIS-email-lintas-klien.md).
-- Semua angka jangkauan adalah **foto 31 Agu**; tabel hidup — ukur ulang saat membangun.
+## 5. `crm_activity_event` diisi apa + INTERVAL POLL (usulan)
+`crm_rebuild_activity_events()` + `crm_refresh_customer_activity()` — **pg_cron harian 03:30 WIB**,
+rebuild penuh dari tabel sumber (arena/klinik/hyrox/my20fit). **Bukan real-time.**
 
-*Disusun 31 Agu 2026 dari `origin/main` (`587f8f4`) + ukur ulang produksi (`count(*)`/`count(distinct)`). Pemetaan saja: nol tabel, nol workflow, nol kirim.*
+**Interval poll workflow (usulan, keputusan pemilik):**
+- **Sambutan (B1)** membaca `master_customer.created_at` **langsung** → **poll tiap jam** menangkap
+  pendaftar baru dalam ≤1 jam. Sesuai keinginan pemilik ("sejam masih wajar"). **Usul: hourly.**
+- **Workflow berbasis aktivitas (B2–B5)** membaca `crm_customer_activity`, yang **hanya segar sekali
+  sehari (03:30)**. Poll mereka tiap jam **mubazir** — data tak berubah antar-rebuild. **Usul: sekali
+  sehari, tepat setelah rebuild (mis. 04:00 WIB).**
+
+**Cara paling sederhana:** satu cron poll **per jam** yang memanggil engine; workflow aktivitas secara
+alami hanya menemukan match baru sekali sehari (setelah 03:30), jadi hourly aman & satu mekanisme. Bila
+kelak butuh reaksi aktivitas lebih cepat, naikkan cadence rebuild **atau** pasang trigger Postgres
+(jalur yang bisa ditukar — §0). **Rekomendasi: hourly, satu mekanisme.**
+
+---
+
+## 6. Arsitektur pemicu — POLLING (dipilih), rancang agar bisa ditukar
+Engine membaca kandidat dari **fungsi resolver** (mis. `resolvePoolNewIds`, `resolveActivityTimeIds`),
+dipanggil oleh cron. Kalau kelak sebuah workflow butuh seketika, ganti pemanggilnya dengan trigger
+Postgres yang menulis antrean → engine yang sama mengonsumsi. Tak ada logika terikat ke cron.
+(Trigger/webhook = keputusan lintas-tim bila & saat terbukti perlu.)
+
+---
+
+## 7. Jatah harian — 300 workflow / 700 manual (diputuskan)
+Terapkan sebagai **sub-jatah workflow**: engine memeriksa "terkirim-oleh-workflow hari ini" (audit
+`campaign.sent` bermetadata workflow / label run `Workflow:`) sebelum enroll+kirim; berhenti di **300**.
+Kampanye manual memakai sisa hingga **700**. Sambutan ~19/hari → 300 sangat longgar; ruang untuk
+event/arena/klinik/reaktivasi tetap ada.
+
+---
+
+## 8. Urutan pembangunan (mengikuti §0)
+**A dulu (tanpa kode workflow):** A1 lintas-unit arena (67.737, persempit fisik dulu) · A2 klinik
+(67.600, netral) · A3 adopsi app (82.481) · A4 aktivasi app (152). Semua = segmen + template + kampanye.
+**B sesudahnya:** B1 sambutan (template ada, ~19/hari) → B2 event → B3 arena → B5 reaktivasi → B4 klinik
+(terakhir; sensitif, butuh gerbang `profile.view_health` + tinjauan legal).
+
+---
+
+## 9. Perluasan skema `crm_workflow` untuk sambutan — SQL (ditunjukkan, TIDAK diterapkan)
+
+Jenis `welcome` yang ada di-key ke `crm_customer_activity.joined_at` (lapisan 0,88%). Sambutan pool baru
+harus memicu dari `master_customer.created_at` (cakupan penuh, 577/bln). **Perluasan minimal & backward-
+compatible: kolom `trigger_source`.** Baris lama otomatis `'activity'` → perilaku lama tak berubah.
+
+```sql
+-- USULAN — BELUM diterapkan. Perluas crm_workflow: pemicu waktu boleh dari pool, bukan hanya aktivitas.
+alter table public.crm_workflow
+  add column if not exists trigger_source text not null default 'activity'
+    check (trigger_source in ('activity', 'pool'));
+
+comment on column public.crm_workflow.trigger_source is
+  'Sumber pemicu waktu: activity = crm_customer_activity (joined_at/last_active_at, cakupan 0,88%); '
+  'pool = master_customer.created_at (profil baru di pool, cakupan penuh). welcome+pool = sambutan '
+  'pendaftar baru (~577/bln). Default activity menjaga perilaku baris lama.';
+```
+
+**Kenapa kolom, bukan jenis baru:** `type` tetap `welcome`/`reengagement` (arti pesan); `trigger_source`
+memisahkan DARI MANA waktunya dibaca. Satu welcome bisa pool (sambutan pendaftar) atau activity (sambutan
+aktivitas-pertama) tanpa menambah nilai enum atau menyentuh baris lama.
+
+**Sisi kode (BUKAN bagian SQL ini, disebut untuk kelengkapan, belum ditulis):** engine perlu
+`resolvePoolNewIds(admin, days)` (`master_customer.created_at ≥ now()-days`, `email_normalized not null`)
+dan bercabang `trigger_source==='pool'` di `runWorkflowAction`. **Berhenti di sini** — SQL ditunjukkan,
+tidak dijalankan; migrasi & kode menunggu persetujuan.
+
+---
+
+## 10. Yang TIDAK bisa diverifikasi
+- **Cakupan kolom kota** di `master_customer`/mirror untuk penyempitan fisik (§Jalur A) — belum diukur;
+  perlu dicek sebelum mengandalkan segmen "kota ber-arena".
+- **Kelayakan trigger/webhook** — keputusan izin lintas-tim, bukan terukur dari DB (dan tak dibutuhkan
+  selama polling, per §0).
+- **Rupa email tiap segmen/workflow di klien nyata** — perlu Send test (`CEKLIS-email-lintas-klien.md`).
+- Semua angka = foto 31 Agu pada tabel hidup; ukur ulang saat membangun.
+
+*Disusun 31 Agu 2026 dari `origin/main` (`587f8f4`) + ukur ulang produksi. Pemetaan saja; SQL §9
+ditunjukkan, tidak diterapkan.*
