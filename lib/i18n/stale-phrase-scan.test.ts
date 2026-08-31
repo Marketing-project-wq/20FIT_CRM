@@ -39,6 +39,13 @@ describe("stale-phrase guard bites", () => {
     expect(scanStalePhrases({ a: { footer: "saving criteria & exporting are role-gated" } }, new Set()))
       .toHaveLength(1);
   });
+
+  it("flags a MET config precondition left behind (Class 3 — the send-block copy that lingered 3 sprints)", () => {
+    // "sending blocked until the Mailtrap token is rotated / SPF/DKIM/DMARC set" — both done, sentence stale.
+    expect(scanStalePhrases({ c: { blockBody: "diblokir sampai rotasi token Mailtrap" } }, new Set())).toHaveLength(1);
+    expect(scanStalePhrases({ c: { btn: "token belum dirotasi" } }, new Set())).toHaveLength(1);
+    expect(scanStalePhrases({ c: { body: "set SPF/DKIM/DMARC for 20fit.id" } }, new Set())).toHaveLength(1);
+  });
 });
 
 describe("no unreviewed stale 'coming soon / deferred' phrases in rendered strings", () => {

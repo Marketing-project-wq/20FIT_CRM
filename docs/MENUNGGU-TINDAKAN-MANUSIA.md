@@ -7,14 +7,16 @@ Diperbarui: 31 Agustus 2026 (disisir: B1 token dirotasi & A2/PR #11 sudah merge 
 lihat "Ringkasan status" di bawah).
 
 > ## Ringkasan status (31 Agu 2026)
-> **Yang benar-benar memblokir sekarang:**
-> - **Kirim kampanye PERTAMA ke pelanggan:** B2 (verifikasi domain) → **B3 (SPF/DKIM/DMARC)**. B1
->   (token bocor) **sudah beres** — tinggal deliverability.
-> - **Uji kirim internal:** tinggal **satu** — merge PR #17 supaya perbaikan uuid (T-36) tayang.
->   Env kirim ada di produksi (reset kata sandi + uji internal 25 Agu jalan); token sudah dirotasi.
+> **Tak ada lagi penghalang KONFIGURASI untuk kampanye ke pelanggan.** B1 (token), B2 (verifikasi
+> domain), B3 (SPF/DKIM/DMARC) **semuanya SELESAI** — SPF/DKIM/DMARC PASS diverifikasi dari header
+> email nyata di Gmail. Uji kirim internal (T-36) juga sudah tayang (PR #17/#18 merged).
 >
-> **Sudah selesai, bukan lagi penghalang:** B1 (token), A2/PR #11 (sudah merge), B4, B5, B10b, B10c.
-> Sisanya opsional atau operasional (tak memblokir apa pun).
+> **Yang tersisa = KEHATI-HATIAN OPERASIONAL** (bukan penghalang teknis, tapi wajib sebelum kampanye
+> besar pertama): ramp bertahap, auto-stop bounce 5% aktif lebih dulu, segmen pertama = paling mungkin
+> merespons. Lihat kotak "KEHATI-HATIAN OPERASIONAL" di bawah + `docs/PETA-WORKFLOW.md` §Jalur A.
+>
+> **Sudah selesai, bukan lagi penghalang:** B1/B2/B3 (deliverability), A2/PR #11, B4, B5, B10b, B10c.
+> Sisanya opsional atau operasional.
 
 ---
 
@@ -63,30 +65,31 @@ ditinjau, bukan draft.
 
 Tak satu pun menahan merge. Diurut dari paling mendesak (keamanan) ke opsional.
 
-> ### 🚫 MEMBLOKIR PENGIRIMAN KAMPANYE PERTAMA (diperbarui 31 Agu 2026)
-> **B3 (SPF/DKIM/DMARC), dengan B2 (verifikasi domain) sebagai prasyaratnya, MEMBLOKIR pengiriman
-> email kampanye pertama** — meski tak memblokir merge. **B1 (token bocor) sudah beres** (dirotasi,
-> lihat di bawah), jadi tinggal deliverability domain. Volume besar dari domain tanpa riwayat merusak
-> reputasi `20fit.id` untuk seterusnya, **termasuk email reset kata sandi yang sudah jalan**. Rincian +
-> rencana ramp: `docs/RENCANA-batas-kirim.md`.
+> ### ✅ DELIVERABILITY KAMPANYE PERTAMA — TAK ADA LAGI PENGHALANG KONFIGURASI (31 Agu 2026)
+> **B1 (token), B2 (verifikasi domain), B3 (SPF/DKIM/DMARC) semuanya SELESAI.** SPF/DKIM/DMARC
+> **PASS** diverifikasi dari **header email nyata yang sampai di Gmail** (bukan alat pemeriksa DNS):
+> SPF PASS (IP 45.158.83.27), DKIM PASS (domain 20fit.id), DMARC PASS. **Yang tersisa bukan konfigurasi,
+> melainkan KEHATI-HATIAN OPERASIONAL** (tetap berlaku penuh — lihat kotak berikut).
+
+> ### ⚠️ KEHATI-HATIAN OPERASIONAL sebelum kampanye besar pertama (bukan penghalang teknis, tapi wajib)
+> Domain ini **belum pernah mengirim volume besar**; reputasi dibangun bertahap. Tiga hal:
+> 1. **Ramp bertahap** (`docs/RENCANA-batas-kirim.md`) — mulai kecil, naikkan **setelah** melihat
+>    tingkat bounce, **bukan** langsung 700/hari.
+> 2. **Auto-stop bounce 5% aktif SEBELUM kampanye besar pertama** (bukan sesudah). Sudah di engine
+>    (`send-run.ts` rule 6, `shouldStopForBounces`); webhook kini mengisi `bounced_at` → data nyata.
+> 3. **Segmen pertama = yang paling mungkin merespons, bukan yang terbesar** — bounce/keluhan di
+>    kirim pertama merusak reputasi paling dalam. Kandidat terukur: `docs/PETA-WORKFLOW.md` §Jalur A.
 
 ### B1. ~~Rotasi `MAILTRAP_API_TOKEN` (BOCOR)~~ — ✅ SELESAI (31 Agu 2026, dikonfirmasi dari dashboard Mailtrap)
-Token bocor **`****8e0c`** (yang tersebar lewat screenshot) kini **Expired**; token aktif **`****2a44`**
-berlaku sampai **2027-08-28**. Reset kata sandi + uji kirim internal 25 Agu berhasil dengan token itu.
-Paparan ditutup — bukan lagi penghalang. (Tak perlu dipecah jadi "pencabutan menyusul": pencabutan
-sudah terjadi.)
+Token bocor **`****8e0c`** kini **Expired**; token aktif **`****2a44`** berlaku sampai **2027-08-28**.
+Paparan ditutup — bukan lagi penghalang.
 
-### B2. Verifikasi domain `20fit.id` di Mailtrap
-- **Siapa:** pemegang akun Mailtrap + pemegang DNS `20fit.id`.
-- **Langkah:** Mailtrap → Sending Domains → `20fit.id` → salin record verifikasi ke DNS → tunggu Verified.
-  Rincian: `docs/SETUP-reset-password.md` §2–§3.
-- **Kalau dilewati:** pengiriman dari `crm@20fit.id` ditolak — pengguna dapat halaman kode tapi email tak datang.
+### B2. ~~Verifikasi domain `20fit.id` di Mailtrap~~ — ✅ SELESAI (31 Agu 2026)
+Terverifikasi lewat DKIM PASS pada header email nyata yang sampai di Gmail (domain 20fit.id). Bukan lagi penghalang.
 
-### B3. SPF, DKIM, DMARC di DNS `20fit.id` — 🚫 MEMBLOKIR KIRIM PERTAMA
-- **Siapa:** pemegang DNS `20fit.id`.
-- **Langkah:** tambah record dari Mailtrap; mulai DMARC `p=none`; verifikasi via `dig` + Gmail "Show
-  original" (PASS). Rincian: `docs/SETUP-reset-password.md` §3.
-- **Kalau dilewati:** email masuk Spam + spanduk "dangerous" betapapun rapi isinya. Propagasi DNS lambat — mulai awal.
+### B3. ~~SPF, DKIM, DMARC di DNS `20fit.id`~~ — ✅ SELESAI (31 Agu 2026, PASS dari header email nyata)
+SPF PASS (IP 45.158.83.27) · DKIM PASS (20fit.id) · DMARC PASS — dibaca dari **header email nyata yang
+sampai di Gmail**, bukan alat pemeriksa DNS. Deliverability siap; sisanya kehati-hatian operasional (kotak di atas).
 
 ### B4. ~~Konfirmasi sumber deploy Railway~~ — **SELESAI (24 Agu 2026)**
 - Dikonfirmasi: Railway → service produksi → Settings → Source → **`main`**, auto-deploy saat

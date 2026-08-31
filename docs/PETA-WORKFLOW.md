@@ -69,22 +69,33 @@ ada) + template + kampanye (sudah terbukti). Suppression tetap diperiksa saat ki
 | A3 | **Belum punya akun app** (adopsi) | **82.481** | ❌ perlu baru ("pasang app") | NOT has_my20fit |
 | A4 | Punya akun **tapi menganggur** (aktivasi) | **152** | ❌ perlu baru ("mulai pakai") | has_my20fit AND NOT app_activity |
 
-### Membagi 67 ribu dengan jatah 700/hari — usulan (keputusan pemilik)
-67.737 ÷ 700/hari ≈ **97 hari** kalau satu segmen memakan SELURUH jatah manual — dan itu berarti tak
-ada ruang untuk kampanye manual lain selama tiga bulan. Pilihan, dari yang paling saya sarankan:
+### Membagi 67 ribu — cara menyempitkan, DIUKUR (bukan kedekatan fisik)
 
-1. **Persempit dulu berdasarkan kedekatan fisik.** Arena & klinik adalah tempat FISIK — mengajak
-   anggota di kota tanpa arena tak berguna. Segmen "anggota di kota ber-arena, belum pernah arena"
-   jauh lebih kecil, lebih tinggi niat, dan bisa tuntas dalam hari, bukan bulan. *(Perlu cek cakupan
-   kolom kota dulu — lihat §10.)* Sisa kota lain menyusul bila terbukti.
-2. **Batch bertahap ber-pace.** Alokasikan mis. **300/hari** untuk kampanye lintas-unit (sisakan 400
-   untuk kampanye manual lain) → ~226 hari untuk 67 ribu; atau 500/hari → ~135 hari. Kirim "700
-   berikut yang belum dikontak" tiap hari lewat scheduled-send yang sudah ada.
-3. **Prioritas nilai.** Anggota bernilai tinggi / baru bergabung / paling aktif lebih dulu — tuai
-   konversi termudah sebelum menyapu ekor panjang.
+**❌ Penyempitan kedekatan fisik DIBATALKAN — terbukti tak bisa dipakai.** Kolom kota hanya terisi
+**6,99% (5.786 dari 82.830; 114 kota unik)**. Menyaring "kota ber-arena" berarti menyaring *orang yang
+kotanya kebetulan tercatat*, bukan orang yang dekat arena — 93% audiens hilang karena sebab yang tak ada
+hubungannya dengan lokasi. Menandainya "belum terverifikasi" (bukan menyajikannya sebagai rencana jadi)
+adalah yang membuat cacat ini ketahuan sebelum dipakai.
 
-Rekomendasi: **#1 (persempit fisik) lalu #3 (prioritas nilai)**, dengan #2 (pace) untuk sisanya. Angka
-harian & irisan adalah keputusan pemilik; di sini saya sajikan matematikanya.
+**Konteks pengiriman (harus disebut):** kampanye 67 ribu adalah **pengiriman TERBESAR yang pernah
+dilakukan sistem ini, ke alamat yang belum pernah dikirimi apa pun.** Ramp bertahap
+`RENCANA-batas-kirim.md` **berlaku penuh** — **mulai kecil, naikkan SETELAH melihat tingkat bounce**,
+bukan langsung 700/hari. Bounce/keluhan tinggi di kirim pertama merusak reputasi domain sejak awal.
+
+**Cara menyempitkan yang DIUKUR** (semua ∩ "anggota belum pernah arena" = 67.737). Yang dicari bukan
+segmen terbesar, tapi **alasan terkuat untuk merespons** (agar bounce/keluhan rendah):
+
+| Penyempit | Ukuran | Kekuatan sinyal |
+|---|---|---|
+| **Pernah ikut event** (∩ unit event) | **6.645** | ⭐ **Terkuat** — minat terbukti; lebih mungkin merespons ajakan arena daripada anggota pasif. Ukuran pas untuk ramp aman. |
+| Punya email **DAN** telepon | 67.414 (99,5%) | Bukan penyempit niat — **penyaring keterkiriman** (kanal cadangan bila email memantul). Terapkan DI ATAS segmen, bukan sebagai segmen utama. |
+| Punya aktivitas terekam (`crm_customer_activity`) | **74** | Terlalu kecil sebagai segmen mandiri (aktivitas hanya 0,88%). |
+| Pernah membayar (LTV>0) | ⚠️ tak terukur andal | `customer_identity.is_paying` = 2.006 mentah, **tapi tak ber-key bersih ke `master_customer`** → tak bisa diiris ke "anggota belum-arena" dengan yakin. Butuh peta identitas dulu (§10). |
+
+**Rekomendasi:** mulai dorongan lintas-unit dengan **"anggota yang pernah ikut event tapi belum pernah
+arena" (6.645)** — sinyal terkuat, audiens hangat, ukuran yang cocok dengan ramp. Naikkan ke sisa 67
+ribu **setelah** bounce kirim pertama terlihat rendah. Terapkan email+telepon sebagai penyaring kanal.
+Angka harian & irisan tetap keputusan pemilik; di sini matematikanya + sinyalnya, terukur.
 
 ---
 
@@ -178,14 +189,17 @@ event/arena/klinik/reaktivasi tetap ada.
 
 ---
 
-## 9. Perluasan skema `crm_workflow` untuk sambutan — SQL (ditunjukkan, TIDAK diterapkan)
+## 9. Perluasan skema `crm_workflow` untuk sambutan — ✅ DITERAPKAN 31 Agu 2026
 
 Jenis `welcome` yang ada di-key ke `crm_customer_activity.joined_at` (lapisan 0,88%). Sambutan pool baru
 harus memicu dari `master_customer.created_at` (cakupan penuh, 577/bln). **Perluasan minimal & backward-
 compatible: kolom `trigger_source`.** Baris lama otomatis `'activity'` → perilaku lama tak berubah.
 
+**Diterapkan** (disetujui pemilik, `apply_migration` → `crm_workflow_trigger_source`). Verifikasi pasca-
+apply: kolom `text NOT NULL DEFAULT 'activity'`, check `('activity','pool')`, `crm_workflow` 0 baris
+(tak ada backfill). SQL yang dijalankan:
+
 ```sql
--- USULAN — BELUM diterapkan. Perluas crm_workflow: pemicu waktu boleh dari pool, bukan hanya aktivitas.
 alter table public.crm_workflow
   add column if not exists trigger_source text not null default 'activity'
     check (trigger_source in ('activity', 'pool'));
@@ -207,9 +221,12 @@ tidak dijalankan; migrasi & kode menunggu persetujuan.
 
 ---
 
-## 10. Yang TIDAK bisa diverifikasi
-- **Cakupan kolom kota** di `master_customer`/mirror untuk penyempitan fisik (§Jalur A) — belum diukur;
-  perlu dicek sebelum mengandalkan segmen "kota ber-arena".
+## 10. Yang TIDAK bisa diverifikasi / butuh langkah dulu
+- **Kota: DIUKUR — hanya 6,99% terisi** (5.786/82.830, 114 kota). Penyempitan fisik **dibatalkan**
+  (§Jalur A). Bukan lagi "belum diukur" — terbukti tak bisa dipakai.
+- **LTV/paying sebagai penyempit:** `customer_identity.is_paying`=2.006 mentah, **tak ber-key bersih ke
+  `master_customer`**. Butuh peta identitas (identity map) dulu sebelum "anggota membayar belum-arena"
+  bisa diiris andal. Belum ada.
 - **Kelayakan trigger/webhook** — keputusan izin lintas-tim, bukan terukur dari DB (dan tak dibutuhkan
   selama polling, per §0).
 - **Rupa email tiap segmen/workflow di klien nyata** — perlu Send test (`CEKLIS-email-lintas-klien.md`).
