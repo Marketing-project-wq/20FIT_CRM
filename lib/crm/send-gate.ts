@@ -1,14 +1,15 @@
 /**
- * Pre-launch send gate (pure, testable). The two BLOCKING prerequisites in RENCANA-batas-kirim.md —
- * rotate the leaked MAILTRAP_API_TOKEN, and set SPF/DKIM/DMARC — are not yet met, so the LARANGAN is
- * absolute: ZERO campaign email to a customer address until then. Rather than trust a convention,
- * this gate makes it code:
+ * Send gate (pure, testable). The earlier deliverability prerequisites are now MET — SPF/DKIM/DMARC
+ * all PASS (verified from a real Gmail header, 31 Aug 2026) and B2/B3 were retired. What remains is
+ * not configuration but operational caution: ramp gradually, smallest-strongest segment first, with
+ * the 5% bounce auto-stop active (K-49). So real sending stays behind ONE explicit switch rather than
+ * flipping on by default:
  *
- *   - Real customer sending is OFF unless CAMPAIGN_SEND_ENABLED === 'true' (an explicit human flip,
- *     set only after the token is rotated and DNS is in place).
+ *   - Real customer sending is OFF unless CAMPAIGN_SEND_ENABLED === 'true' (a deliberate operator
+ *     flip on the host, made when they are ready to start the graduated ramp).
  *   - While OFF, the only addresses that may be sent to are INTERNAL 20fit.id addresses — for the
  *     internal test the product owner asked for. Everyone else is WITHHELD (not sent, not logged;
- *     they simply wait for launch — the same "defer, don't fail" posture as the daily limit).
+ *     they simply wait for the flip — the same "defer, don't fail" posture as the daily limit).
  *
  * The adapter consults this before every send; a test proves the gate actually withholds customers.
  */
