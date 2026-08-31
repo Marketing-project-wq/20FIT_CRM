@@ -12,7 +12,8 @@ import {
   runWorkflowAction,
   type WorkflowRunResult,
 } from "./actions";
-import type { WorkflowWithCounts, WorkflowType } from "@/lib/crm/workflow-store";
+import type { WorkflowWithCounts, WorkflowType, WorkflowTriggerSource } from "@/lib/crm/workflow-store";
+import { workflowStatusBadge } from "@/lib/crm/workflow-badge";
 
 export interface TemplateOpt {
   key: string;
@@ -40,10 +41,25 @@ export function WorkflowsClient({
   const [name, setName] = useState("");
   const [type, setType] = useState<WorkflowType>("welcome");
   const [days, setDays] = useState("7");
+  const [triggerSource, setTriggerSource] = useState<WorkflowTriggerSource>("pool");
   const [templateKey, setTemplateKey] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [runResult, setRunResult] = useState<{ id: string; r: WorkflowRunResult } | null>(null);
+
+  // One run-failure code → one message. The engine returns a NAMED reason for each distinct state
+  // (T-38 pattern: "one message hides many states"). Never collapse them back to one line.
+  function runErrText(error: string | undefined): string {
+    switch (error) {
+      case "workflow_inactive": return w.errInactive;
+      case "not_found": return w.errNotFound;
+      case "resolve_failed": return w.errResolve;
+      case "run_create_failed": return w.errRunCreate;
+      case "send_threw": return w.errSendThrew;
+      case "denied": return w.errDenied;
+      default: return w.runFailed;
+    }
+  }
 
   async function reload() {
     // Server action list is cheap; re-fetch via a full action call.
@@ -57,7 +73,10 @@ export function WorkflowsClient({
     if (!name.trim() || !templateKey || !Number.isFinite(d) || d < 1) return;
     setBusy(true); setNotice(null);
     try {
-      const res = await createWorkflowAction({ name: name.trim(), type, triggerDays: Math.floor(d), templateKey });
+      // Reengagement has no "new profile" pool concept — it keys on last-active recency, so it is
+      // always the activity layer. Only welcome offers the source choice.
+      const source: WorkflowTriggerSource = type === "welcome" ? triggerSource : "activity";
+      const res = await createWorkflowAction({ name: name.trim(), type, triggerDays: Math.floor(d), triggerSource: source, templateKey });
       if (!res.ok) { setNotice(res.error === "empty_name" ? w.errName : w.errCreate); return; }
       setName(""); setTemplateKey(""); setDays("7"); setShowForm(false);
       await reload();
@@ -135,6 +154,22 @@ export function WorkflowsClient({
               <input type="number" min={1} className={inputCls} value={days} onChange={(e) => setDays(e.target.value)} />
             </label>
           </div>
+          {type === "welcome" && (
+            <div className="flex flex-col gap-1.5">
+              <span className="font-body text-[12px] text-ink-soft">{w.fieldSource}</span>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setTriggerSource("pool")}
+                  className={`flex flex-1 items-center gap-2 rounded-sm border p-3 text-left ${triggerSource === "pool" ? "tint-red border-red" : "border-glass-border"}`}>
+                  <span className="font-body text-[13px]">{w.sourcePool}</span>
+                </button>
+                <button type="button" onClick={() => setTriggerSource("activity")}
+                  className={`flex flex-1 items-center gap-2 rounded-sm border p-3 text-left ${triggerSource === "activity" ? "tint-red border-red" : "border-glass-border"}`}>
+                  <span className="font-body text-[13px]">{w.sourceActivity}</span>
+                </button>
+              </div>
+              <p className="font-body text-[12px] leading-relaxed text-ink-faint">{w.sourceNote}</p>
+            </div>
+          )}
           <p className="font-body text-[12px] leading-relaxed text-ink-faint">{w.coverageNote}</p>
           {notice && <p role="alert" className="font-body text-[13px] text-red">{notice}</p>}
           <div className="flex gap-2">
@@ -153,7 +188,7 @@ export function WorkflowsClient({
               <div className="flex flex-wrap items-center gap-2">
                 {wf.type === "welcome" ? <Zap className="h-4 w-4 text-ink-soft" aria-hidden /> : <Clock className="h-4 w-4 text-ink-soft" aria-hidden />}
                 <span className="font-body text-[15px] font-semibold text-ink">{wf.name}</span>
-                <Badge tone={wf.isActive ? "green" : "neutral"}>{wf.isActive ? w.statusActive : w.statusPaused}</Badge>
+                {(() => { const b = workflowStatusBadge(wf.isActive); return <Badge tone={b.tone}>{w[b.key]}</Badge>; })()}
                 <span className="font-body text-[12px] text-ink-soft">
                   {wf.type === "welcome" ? w.summaryWelcome.replace("{n}", String(wf.triggerDays)) : w.summaryReeng.replace("{n}", String(wf.triggerDays))}
                 </span>
@@ -170,10 +205,10 @@ export function WorkflowsClient({
                 </div>
               )}
               {runResult?.id === wf.id && !runResult.r.ok && (
-                <p role="alert" className="font-body text-[12px] text-red">{w.runFailed}</p>
+                <p role="alert" className="font-body text-[12px] text-red">{runErrText(runResult.r.error)}</p>
               )}
               <div className="flex gap-2">
-                <Button size="sm" onClick={() => onRun(wf.id)} disabled={busy}>
+                <Button size="sm" onClick={() => onRun(wf.id)} disabled={busy || !wf.isActive} title={!wf.isActive ? w.errInactive : undefined}>
                   <Play className="mr-1.5 h-3.5 w-3.5" aria-hidden />{w.runNow}
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => onToggle(wf.id, !wf.isActive)} disabled={busy}>

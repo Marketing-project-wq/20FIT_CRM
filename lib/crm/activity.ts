@@ -76,5 +76,32 @@ export async function resolveActivityTimeIds(
   return out;
 }
 
+/**
+ * Resolve the set of customer_ids that are NEW IN THE POOL within the last N days — from
+ * master_customer.created_at directly, NOT the activity layer. This is the `trigger_source='pool'`
+ * path for a welcome workflow: it reaches EVERY new profile (full coverage), not only the 0.88% with
+ * an activity row. Only profiles with a usable email are returned (a welcome that can't be delivered
+ * is not a candidate). Paginated — a wide `days` window can exceed Supabase's 1000-row default.
+ */
+export async function resolvePoolNewIds(admin: SupabaseClient, days: number): Promise<Set<string>> {
+  const since = new Date(Date.now() - days * 86_400_000).toISOString();
+  const out = new Set<string>();
+  const PAGE = 1000;
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await admin
+      .from("master_customer")
+      .select("customer_id")
+      .gte("created_at", since)
+      .not("email_normalized", "is", null)
+      .order("customer_id", { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    const rows = (data ?? []) as { customer_id: string }[];
+    for (const r of rows) out.add(String(r.customer_id));
+    if (rows.length < PAGE) break;
+  }
+  return out;
+}
+
 export { IN_CHUNK as ACTIVITY_IN_CHUNK };
 
