@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
-import { Check, Lock, Users, Mail, Send, MessageCircle, ExternalLink, Eye } from "lucide-react";
+import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Check, Lock, Users, Mail, Send, MessageCircle, Plus, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useI18n } from "@/components/i18n/lang-provider";
 import { formatCount } from "@/lib/i18n";
-import { defaultCampaignLabel } from "@/lib/crm/campaign-label";
+import { validateCampaignName } from "@/lib/crm/campaign-name";
+import { saveCampaignDraft, loadCampaignDraft, clearCampaignDraft } from "@/lib/crm/campaign-draft";
+import { segmentBuilderUrlFromCompose } from "@/lib/crm/campaign-nav";
 import { PreviewEmailPanel } from "./preview-email-panel";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -56,6 +58,8 @@ export function CampaignFlow({
   builder: { cityFillPct: number; cityFilled: number; total: number; canViewHealth: boolean; canBuild: boolean };
 }) {
   const { lang, t } = useI18n();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const c = t.campaignsPage.steps;
   const cc = t.campaignsPage.composer;
   const fmt = (n: number) => formatCount(n, lang);
@@ -70,6 +74,7 @@ export function CampaignFlow({
   const [runsLoading, setRunsLoading] = useState(false);
   const [runSel, setRunSel] = useState<RunSelection>(null);
   const [newLabel, setNewLabel] = useState("");
+  const [nameTouched, setNameTouched] = useState(false);
   const [confirmLarge, setConfirmLarge] = useState(false);
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<SendResult | null>(null);
@@ -80,17 +85,72 @@ export function CampaignFlow({
   const [dateWib, setDateWib] = useState("");
   const [timeWib, setTimeWib] = useState("09:00");
   const [scheduledMsg, setScheduledMsg] = useState<string | null>(null);
+  // A short-lived "segment created & selected" confirmation shown after the bounce-back.
+  const [toast, setToast] = useState<string | null>(null);
+
+  // Restore a draft saved before jumping to the Segmen tab, and auto-select a just-created segment.
+  // In an effect (not render) so it never causes a hydration mismatch, and runs once on mount.
+  useEffect(() => {
+    const draft = loadCampaignDraft();
+    if (draft) {
+      setChannel(draft.channel);
+      setSegmentId(draft.segmentId);
+      setTemplateKey(draft.templateKey);
+      setNewLabel(draft.newLabel);
+      setOpen(draft.open);
+      setWhen(draft.when);
+      setDateWib(draft.dateWib);
+      setTimeWib(draft.timeWib);
+    }
+    const newSeg = searchParams.get("newSegment");
+    if (newSeg) {
+      const found = segments.find((s) => s.id === newSeg);
+      if (found) {
+        setSegmentId(newSeg);
+        setOpen(1);
+        setToast(`${cc.segmentCreatedA}${found.name}${cc.segmentCreatedB}`);
+      }
+      // If the id isn't in the (fresh) list we simply don't auto-select — no silent error, no crash.
+    }
+    // Restored once, then cleared so it never leaks into the next compose session.
+    clearCampaignDraft();
+    // Mount-only: segments/searchParams are the initial server props for this render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Auto-dismiss the confirmation after a few seconds (still dismissible by acting on the form).
+  useEffect(() => {
+    if (!toast) return;
+    const id = setTimeout(() => setToast(null), 6000);
+    return () => clearTimeout(id);
+  }, [toast]);
 
   const segment = segments.find((s) => s.id === segmentId) ?? null;
   const template = templates.find((tp) => tp.key === templateKey) ?? null;
-  // The name is OPTIONAL (see report) — but never blank in the record: once a segment is picked, we
-  // preview the exact default that will be stored if the field is left empty ("{segment} · 31 Agu
-  // 2026"), and pass that same string on send. Never a machine timestamp.
-  const defaultLabelPreview = segment ? defaultCampaignLabel(segment.name, new Date().toISOString(), lang) : "";
+  // The campaign name is REQUIRED (owner request). Validate with the shared validator so the client
+  // and the server agree. The error only shows once the field is touched (blur) or a submit is tried.
+  const nameCheck = validateCampaignName(newLabel);
+  const nameValid = nameCheck.ok;
+  const showNameError = nameTouched && !nameValid;
   const step0Done = channel === "email";
-  const step1Done = !!segment;
+  const step1Done = !!segment && nameValid;
   const step2Done = !!(template);
   const step3Done = !!(preview?.ok);
+
+  function nameErrText(): string {
+    switch (nameCheck.error) {
+      case "too_short": return cc.errNameTooShort;
+      case "too_long": return cc.errNameTooLong;
+      default: return cc.errNameRequired;
+    }
+  }
+
+  /** Save the current form state and jump to the Segmen tab, so a new segment can be built and the
+   *  draft restored on return (bounce-back). Internal navigation — same tab, not an external link. */
+  function goBuildSegment() {
+    saveCampaignDraft({ channel, segmentId, templateKey, newLabel, open, when, dateWib, timeWib });
+    router.push(segmentBuilderUrlFromCompose());
+  }
 
   const errText = (e: PreviewResult["error"] | SendResult["error"]): string => {
     switch (e) {
@@ -99,6 +159,7 @@ export function CampaignFlow({
       case "denied": return cc.errDenied;
       case "not_found": return cc.errNotFound;
       case "needs_confirm": return cc.errNeedConfirm;
+      case "label_required": return cc.errNameRequired;
       case "run_not_found": return cc.errRunNotFound;
       case "run_create_failed": return cc.errRunCreate;
       case "send_threw": return cc.errSendThrew;
@@ -142,11 +203,11 @@ export function CampaignFlow({
 
   async function onSend() {
     if (!preview || !segmentId || !templateKey || !runSel) return;
-    // A new run is named from the field, or — if blank — the segment+date default (never null).
-    const newRunLabel = newLabel.trim() || defaultCampaignLabel(segment?.name ?? "", new Date().toISOString(), lang);
+    // A NEW run must be named — no auto-generated fallback. A resume keeps the existing run's name.
+    if (runSel.kind === "new" && !nameValid) { setNameTouched(true); setOpen(1); return; }
     const run: RunChoice = runSel.kind === "resume"
       ? { kind: "resume", runId: runSel.runId }
-      : { kind: "new", label: newRunLabel };
+      : { kind: "new", label: newLabel.trim() };
     setSending(true); setNotice(null);
     try {
       const r = await sendCampaignAction({ segmentId, templateKey, confirmedLargeSend: confirmLarge, shownSendable, run });
@@ -175,12 +236,10 @@ export function CampaignFlow({
   async function onSchedule() {
     if (!preview || !segmentId || !templateKey) return;
     if (!dateWib || !timeWib) { setNotice(cc.scheduleBadTime); return; }
-    // Resuming keeps the existing run's name; otherwise the field, or the segment + the SCHEDULED
-    // date as the default (so the stored name reads e.g. "gmail test · 31 Agu 2026").
-    const schedIso = new Date(`${dateWib}T${timeWib}:00+07:00`).toISOString();
-    const runLabel = runSel?.kind === "resume"
-      ? null
-      : (newLabel.trim() || defaultCampaignLabel(segment?.name ?? "", schedIso, lang));
+    // A NEW scheduled run must be named — no fallback. Resuming keeps the existing run's name (null).
+    const isResume = runSel?.kind === "resume";
+    if (!isResume && !nameValid) { setNameTouched(true); setOpen(1); return; }
+    const runLabel = isResume ? null : newLabel.trim();
     setSending(true); setNotice(null); setScheduledMsg(null);
     try {
       const r = await scheduleCampaignAction({
@@ -203,7 +262,9 @@ export function CampaignFlow({
   }
 
   const needsConfirm = preview?.needsLargeConfirm ?? false;
-  const sendDisabled = !realSend || !preview || previewing || sending || !runSel || (needsConfirm && !confirmLarge);
+  // A NEW run also needs a valid name (a resume reuses the existing run's name).
+  const sendDisabled = !realSend || !preview || previewing || sending || !runSel
+    || (needsConfirm && !confirmLarge) || (runSel?.kind === "new" && !nameValid);
   const statusBadge = (r: RunOption) =>
     r.status === "sending"
       ? <Badge tone="blue">{cc.runStatusSending}</Badge>
@@ -236,6 +297,14 @@ export function CampaignFlow({
 
   return (
     <div className="flex flex-col gap-3">
+
+      {/* Bounce-back confirmation: a segment was just created and auto-selected. */}
+      {toast && (
+        <div role="status" className="tint-green flex items-center gap-2 rounded-card px-4 py-3">
+          <Check className="h-4 w-4 shrink-0 text-green" aria-hidden />
+          <span className="font-body text-[13px] text-ink">{toast}</span>
+        </div>
+      )}
 
       {/* STEP 0 · KANAL */}
       <Step n={0} title={c.step0Title} done={step0Done} locked={false}
@@ -279,20 +348,30 @@ export function CampaignFlow({
         summary={segment ? segment.name : undefined}
       >
         <div className="flex flex-col gap-4">
-          {/* Campaign name FIRST — name it before building it, so Delivery History is traceable. It
-              stays optional; the placeholder previews the default that will be stored if left blank. */}
+          {/* Campaign name FIRST and REQUIRED — name it before building it. The error only appears on
+              blur or a submit attempt, never on first render. */}
           <label className="flex flex-col gap-1.5">
-            <span className="font-body text-[13px] font-semibold text-ink">{cc.campaignNameField}</span>
+            <span className="font-body text-[13px] font-semibold text-ink">
+              {cc.campaignNameField} <span className="text-red" aria-hidden>*</span>
+            </span>
             <input
               type="text"
-              className={selectCls}
+              className={`${selectCls}${showNameError ? " border-red focus:ring-red" : ""}`}
               value={newLabel}
-              placeholder={defaultLabelPreview || cc.campaignNamePlaceholder}
+              placeholder={cc.campaignNamePlaceholder}
               onChange={(e) => setNewLabel(e.target.value)}
+              onBlur={() => setNameTouched(true)}
+              aria-required="true"
+              aria-invalid={showNameError}
+              aria-describedby={showNameError ? "campaign-name-error" : "campaign-name-hint"}
             />
-            <span className="font-body text-[12px] text-ink-faint">
-              {defaultLabelPreview ? `${cc.campaignNameDefaultPre}${defaultLabelPreview}` : cc.campaignNameHint}
-            </span>
+            {showNameError ? (
+              <span id="campaign-name-error" role="alert" className="font-body text-[12px] text-red">
+                {nameErrText()}
+              </span>
+            ) : (
+              <span id="campaign-name-hint" className="font-body text-[12px] text-ink-faint">{cc.campaignNameHint}</span>
+            )}
           </label>
 
           <div className="flex items-center gap-2 text-ink-soft">
@@ -302,10 +381,10 @@ export function CampaignFlow({
           {segments.length === 0 ? (
             <div className="flex flex-col gap-3">
               <p className="font-body text-[13px] text-ink-soft">{cc.noSegments}</p>
-              <Link href="/segments" className="inline-flex items-center gap-1.5 font-body text-[13px] text-red hover:underline">
-                <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+              <button type="button" onClick={goBuildSegment} className="inline-flex items-center gap-1.5 self-start font-body text-[13px] text-red hover:underline">
+                <Plus className="h-3.5 w-3.5" aria-hidden />
                 {c.step1GoToSegments}
-              </Link>
+              </button>
             </div>
           ) : (
             <div className="flex flex-col gap-2">
@@ -322,15 +401,18 @@ export function CampaignFlow({
                   </SelectContent>
                 </Select>
               </label>
-              <Link href="/segments" className="inline-flex items-center gap-1.5 font-body text-[12px] text-ink-faint hover:text-ink">
-                <ExternalLink className="h-3 w-3" aria-hidden />
+              <button type="button" onClick={goBuildSegment} className="inline-flex items-center gap-1.5 self-start font-body text-[12px] text-ink-faint hover:text-ink">
+                <Plus className="h-3 w-3" aria-hidden />
                 {c.step1GoToSegments}
-              </Link>
+              </button>
             </div>
           )}
           {segment && (
-            <div className="flex justify-end">
-              <Button size="sm" onClick={() => setOpen(2)}>{c.toStep2}</Button>
+            <div className="flex flex-col items-end gap-1.5">
+              <Button size="sm" onClick={() => { if (!nameValid) { setNameTouched(true); return; } setOpen(2); }} disabled={!nameValid}>
+                {c.toStep2}
+              </Button>
+              {!nameValid && <span className="font-body text-[12px] text-ink-faint">{cc.errNameRequiredHint}</span>}
             </div>
           )}
         </div>
@@ -519,7 +601,7 @@ export function CampaignFlow({
                 {sending ? cc.sending : !realSend ? cc.blockedBtn : cc.sendBtn}
               </Button>
             ) : (
-              <Button size="lg" onClick={onSchedule} disabled={!realSend || !preview || sending || !dateWib}>
+              <Button size="lg" onClick={onSchedule} disabled={!realSend || !preview || sending || !dateWib || (runSel?.kind !== "resume" && !nameValid)}>
                 {sending ? cc.scheduling : !realSend ? cc.blockedBtn : cc.scheduleBtn}
               </Button>
             )}

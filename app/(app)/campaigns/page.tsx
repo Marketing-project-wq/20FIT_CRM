@@ -13,6 +13,7 @@ import { extractVariables } from "@/lib/crm/template";
 import { isInternalTestTemplateKey } from "@/lib/crm/send-test-constants";
 import { loadCityFill } from "@/lib/crm/city-fill";
 import { listDeliveries, deliveryDetail } from "@/lib/crm/deliveries";
+import { CAMPAIGN_COMPOSE_TAB } from "@/lib/crm/campaign-nav";
 import { CampaignFlow, type TemplateOption } from "./campaign-flow";
 import { SegmentsTab } from "./segments-tab";
 import { DeliveriesTab } from "./deliveries-tab";
@@ -49,13 +50,15 @@ async function loadEligibleTemplates(): Promise<TemplateOption[]> {
 export default async function CampaignsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string; run?: string }>;
+  searchParams: Promise<{ tab?: string; run?: string; returnTo?: string }>;
 }) {
   const role = await getCurrentUserRole();
   const { t } = getServerDict();
   const c = t.campaignsPage;
-  const { tab: rawTab, run: runParam } = await searchParams;
+  const { tab: rawTab, run: runParam, returnTo: returnToParam } = await searchParams;
   const tab = rawTab === "segmen" ? "segmen" : rawTab === "kiriman" ? "kiriman" : "kirim";
+  // Only the composer sets this; it drives the "back to campaign" affordance in the Segmen tab.
+  const returnTo = returnToParam === CAMPAIGN_COMPOSE_TAB ? CAMPAIGN_COMPOSE_TAB : null;
 
   if (grantFor(role, "send.at_or_below_threshold") === "deny") {
     return (
@@ -167,6 +170,7 @@ export default async function CampaignsPage({
           total={cityFill.total}
           canViewHealth={canViewHealth}
           canBuild={canBuild}
+          returnTo={returnTo}
         />
       )}
 

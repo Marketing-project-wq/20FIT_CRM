@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Trash2, ArrowLeft } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { SegmentBuilder } from "@/components/segments/segment-builder";
 import { EmailListSegment } from "@/components/segments/email-list-segment";
 import { deleteSegmentAction } from "@/app/(app)/segments/actions";
+import { CAMPAIGN_COMPOSE_TAB, composeUrl, composeUrlWithNewSegment } from "@/lib/crm/campaign-nav";
 import { useI18n } from "@/components/i18n/lang-provider";
 import { formatDateTime } from "@/lib/i18n";
 import type { SavedSegmentMeta } from "@/lib/crm/segment-store";
@@ -21,6 +23,7 @@ export function SegmentsTab({
   total,
   canViewHealth,
   canBuild,
+  returnTo,
 }: {
   segments: SavedSegmentMeta[];
   cityFillPct: number;
@@ -28,8 +31,10 @@ export function SegmentsTab({
   total: number;
   canViewHealth: boolean;
   canBuild: boolean;
+  returnTo?: string | null;
 }) {
   const { lang, t } = useI18n();
+  const router = useRouter();
   const s = t.campaignsPage.segmentsTab;
   const el = t.campaignsPage.emailListSegment;
   const [segments, setSegments] = useState(initial);
@@ -58,6 +63,19 @@ export function SegmentsTab({
 
   return (
     <div className="flex flex-col gap-8">
+
+      {/* Arrived here from the composer ("Buat segmen baru"): offer a way back without building one.
+          The draft is still in sessionStorage, so the composer restores it on return. */}
+      {returnTo === CAMPAIGN_COMPOSE_TAB && (
+        <button
+          type="button"
+          onClick={() => router.push(composeUrl())}
+          className="inline-flex items-center gap-1.5 self-start font-body text-[13px] text-red hover:underline"
+        >
+          <ArrowLeft className="h-4 w-4" aria-hidden />
+          {t.campaignsPage.segmentsTab.backToCampaign}
+        </button>
+      )}
 
       {/* ── LIST: segmen tersimpan ── */}
       <section className="flex flex-col gap-3">
@@ -127,11 +145,18 @@ export function SegmentsTab({
                 cityFilled={cityFilled}
                 total={total}
                 canViewHealth={canViewHealth}
+                returnTo={returnTo}
               />
             </>
           ) : (
             <div className="glass rounded-card p-5">
-              <EmailListSegment onSaved={() => window.location.reload()} />
+              <EmailListSegment
+                onSaved={(segmentId) => {
+                  // Bounce back to the composer with the new segment when we came from it.
+                  if (returnTo === CAMPAIGN_COMPOSE_TAB && segmentId) router.push(composeUrlWithNewSegment(segmentId));
+                  else window.location.reload();
+                }}
+              />
             </div>
           )}
         </section>
