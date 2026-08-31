@@ -33,6 +33,14 @@ export const SUSPECT_PATTERNS: readonly RegExp[] = [
   // "export/exporting/exported" and "ekspor/mengekspor/diekspor" all match.
   /ekspor/i,
   /export/i,
+  // Class 3 — a config PRECONDITION that has since been MET, left behind in a rendered string. The
+  // Campaigns "sending blocked" copy named "rotasi token Mailtrap" and "SPF/DKIM/DMARC" as live
+  // prerequisites; both were completed (token rotated 31 Aug; SPF/DKIM/DMARC PASS), yet the sentence
+  // lingered three sprints. These are concrete, now-satisfied send-config mentions that must not
+  // appear in any RENDERED string — deliverability plumbing is never a user-facing live blocker.
+  /rotasi token/i,
+  /dirotasi/i,
+  /\b(SPF|DKIM|DMARC)\b/i,
 ] as const;
 
 export interface PhraseHit {

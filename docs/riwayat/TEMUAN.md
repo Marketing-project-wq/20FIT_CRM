@@ -959,3 +959,74 @@ unsubscribe dijamin & tak ganda; teks alt simpan URL).
 **TIDAK bisa diverifikasi dari sesi ini:** rupa akhir di Gmail/Outlook/Apple Mail (perlu Send test di
 produksi; env kirim ada di produksi, tidak di kontainer ini). Kode + pratinjau terbukti; rupa klien
 nyata menunggu Send test.
+
+---
+
+## T-38 — Workflow "cek konfigurasi kirim" = FK violation, bukan konfigurasi kirim — 31 Agu 2026
+
+Workflow pertama "Welcoming Message": 36 enrolled (queued), **0 terkirim**, galat "cek konfigurasi
+kirim". Diselidiki langsung ke produksi (bukan tebak):
+
+**Sebab (terverifikasi).** `crm_campaign_run.segment_id` **NOT NULL** dengan **FK →
+`crm_segment(id)`**. `runWorkflowAction` memanggil `createRun({ segmentId: workflowId })` — tapi id
+workflow (`afac3264…`) **bukan** id crm_segment (`count=0` di crm_segment). INSERT run → **pelanggaran
+FK** → `createRun` menangkap error & mengembalikan `null` → aksi mengembalikan `run_create_failed` →
+UI meruntuhkannya jadi satu pesan kasar "cek konfigurasi kirim". **Run tak pernah bisa dibuat; SETIAP
+kirim workflow mati di sini.** Bukti: 0 baris `crm_campaign_run` dengan `segment_id`=workflow, 0
+`crm_message_log`. Enrollment (36 queued) berhasil karena tak punya FK itu.
+
+**Bukan soal konfigurasi kirim sama sekali** (env, token, gerbang) — murni ketidakcocokan struktural:
+crm_campaign_run dipakai ulang untuk workflow, tapi `segment_id` mengharap segmen, diberi workflow.
+
+**Kelas galat yang sama dengan `unexpected_error` (T-36).** Pesan tunggal menutupi 5 kode berbeda
+(`denied`/`not_found`/`resolve_failed`/`run_create_failed`/`send_threw`). Perbaikan menunggu keputusan:
+(i) `crm_campaign_run.segment_id` jadikan nullable + kolom `workflow_id` nullable (minimal, jaga
+pelacakan run) — **butuh migrasi (gated)**; (ii) buat crm_segment nyata per workflow (mengotori
+segmen); (iii) jangan pakai crm_campaign_run untuk workflow. Rekomendasi (i). Ditahan untuk konfirmasi.
+
+**Terkait:** UI pembuat workflow tak menawarkan `trigger_source` → semua workflow lahir 'activity'
+(cakupan 0,88%), tak pernah 'pool'. Dan engine tak memeriksa `is_active` — workflow ter-jeda pun bisa
+dijalankan.
+
+## T-39 — POLA: tabel tim lain memakai kunci berbeda dari `master_customer.customer_id` — 31 Agu 2026
+
+Bukan tiga kejadian terpisah, satu **pola** yang akan terus muncul:
+- `customer_identity.is_paying`/`total_nett` — tak ber-key `customer_id` (tak bisa diiris ke master).
+- `my20fit_message_log` — ber-key `user_id`, bukan customer_id (K-37 #1, alasan crm_message_log dibuat).
+- `my20fit_campaign_enrollments` — ber-key `user_id` juga.
+
+**Implikasi:** setiap kali CRM ingin memakai data tim lain (nilai bayar, riwayat pesan, enrollment),
+kunci HARUS dipetakan dulu ke customer_id lewat lapisan identitas (mirror/identity map). Anggap ini
+biaya tetap tiap integrasi lintas-tim, bukan kejutan per kasus. Lebih murah diantisipasi: sebelum
+menjanjikan segmen/fitur berbasis tabel tim lain, cek dulu apakah kuncinya sudah dipetakan ke
+customer_id. Yang belum: `customer_identity` (butuh peta sebelum "pelanggan membayar" bisa disegmen).
+
+## T-40 — POLA: "satu pesan menyembunyikan banyak keadaan" — 31 Agu 2026
+
+Bukan satu bug, satu **pola** yang sudah muncul tujuh kali. Setiap kali, satu jalur kode meruntuhkan
+beberapa keadaan yang berbeda-beda jadi **satu string keluaran**, lalu penyelidikan berikutnya harus
+dimulai dari nol karena pesannya tak menunjuk keadaan mana yang terjadi. Kejadian yang tercatat:
+
+1. **`unexpected_error` (T-36).** Kirim gagal setelah run dibuat, sebelum baris log — satu label
+   menutupi invalid-address, provider-reject, throw, dan token/env, sehingga "9 kampanye gagal, 0
+   terkirim" tak bisa dibaca tanpa masuk ke produksi.
+2. **Ekspor CSV terpotong (baris ~694 TEMUAN).** Satu pesan menutupi empat sebab kegagalan resolver,
+   dan potongan tak diberi penanda akhir → tak terlihat bahwa hasilnya tak lengkap.
+3. **Reset dua-fase (RESET-FIX).** Satu status "gagal" menyatukan verify-gagal, token-kedaluwarsa, dan
+   kirim-gagal; dibedakan jadi kode terpisah + logging 3K.
+4. **Kirim: deferred vs failed (KEPUTUSAN ~725).** Menyatukan "ditunda" (bukan gagal, boleh diulang)
+   dengan "gagal" menyembunyikan apakah auto-stop bounce 5% seharusnya menyala.
+5. **`send_threw` di composer campaign (i18n ~1354).** Run ditandai berhenti **dengan sebabnya**
+   alih-alih satu "gagal".
+6. **Workflow "cek konfigurasi kirim" (T-38).** Pelanggaran FK (`run_create_failed`) tampil sebagai
+   nasihat "cek konfigurasi kirim" — menuduh env/token padahal murni struktural.
+7. **Kelima kode galat workflow (sprint ini).** `denied` / `not_found` / `resolve_failed` /
+   `run_create_failed` / `send_threw` + `workflow_inactive` kini masing-masing punya pesan sendiri di
+   `runWorkflowAction` + `runErrText` di UI; tak ada lagi satu "Gagal menjalankan." yang menelan semua.
+
+**Aturan yang diambil dari pola ini.** Ketika sebuah aksi bisa gagal karena >1 sebab yang menuntut
+tindakan berbeda, kembalikan **kode bernama per sebab** dari sisi server, dan petakan tiap kode ke
+pesan/UI sendiri — jangan pernah meruntuhkannya jadi satu string. Biaya diam-diamnya bukan estetika:
+tiap peruntuhan memaksa penyelidikan produksi berikutnya mulai dari nol. Cek cepat sebelum menulis
+handler `catch` tunggal: "apakah dua pemanggil akan bertindak beda tergantung sebabnya?" — jika ya,
+pisahkan sekarang.

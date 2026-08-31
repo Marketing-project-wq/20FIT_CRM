@@ -11,8 +11,9 @@ import {
   getWorkflowById,
   type WorkflowWithCounts,
   type WorkflowType,
+  type WorkflowTriggerSource,
 } from "@/lib/crm/workflow-store";
-import { resolveActivityTimeIds } from "@/lib/crm/activity";
+import { resolveActivityTimeIds, resolvePoolNewIds } from "@/lib/crm/activity";
 import { sendCampaign } from "@/lib/crm/send-campaign";
 import { createRun } from "@/lib/crm/campaign-run";
 
@@ -45,6 +46,7 @@ export async function createWorkflowAction(input: {
   name: string;
   type: WorkflowType;
   triggerDays: number;
+  triggerSource: WorkflowTriggerSource;
   templateKey: string;
 }): Promise<{ ok: boolean; error?: string }> {
   const role = await getCurrentUserRole();
@@ -80,15 +82,24 @@ export async function runWorkflowAction(workflowId: string): Promise<WorkflowRun
   const wf = await getWorkflowById(admin, workflowId);
   if (!wf) return { ok: false, error: "not_found" };
 
-  // 1. Resolusi kandidat dari kriteria waktu nyata.
-  //    welcome        → joined_at ≤ triggerDays hari lalu (baru bergabung)
-  //    reengagement   → last_active_at ≥ triggerDays hari lalu (sudah lama diam)
+  // Refuse to run a PAUSED workflow — the engine, not just the UI, honours is_active. A run on an
+  // inactive workflow returns a NAMED reason (not a coarse failure), so the badge and behaviour agree.
+  if (!wf.isActive) return { ok: false, error: "workflow_inactive" };
+
+  // 1. Resolusi kandidat dari sumber pemicu.
+  //    welcome + pool     → master_customer.created_at ≤ triggerDays (profil BARU di pool, cakupan penuh)
+  //    welcome + activity → crm_customer_activity.joined_at ≤ triggerDays (aktivitas-pertama, 0,88%)
+  //    reengagement       → crm_customer_activity.last_active_at ≥ triggerDays (sudah lama diam)
   let candidateIds: Set<string> | null;
   try {
-    candidateIds =
-      wf.type === "welcome"
-        ? await resolveActivityTimeIds(admin, wf.triggerDays, null)
-        : await resolveActivityTimeIds(admin, null, wf.triggerDays);
+    if (wf.type === "welcome") {
+      candidateIds =
+        wf.triggerSource === "pool"
+          ? await resolvePoolNewIds(admin, wf.triggerDays)
+          : await resolveActivityTimeIds(admin, wf.triggerDays, null);
+    } else {
+      candidateIds = await resolveActivityTimeIds(admin, null, wf.triggerDays);
+    }
   } catch {
     return { ok: false, error: "resolve_failed" };
   }
@@ -137,7 +148,7 @@ export async function runWorkflowAction(workflowId: string): Promise<WorkflowRun
   // Satu run per eksekusi workflow — pakai template & jalur kirim yang sama seperti campaign.
   const email = await actorEmail();
   const run = await createRun({
-    segmentId: workflowId, // workflow id sebagai segment ref (run milik workflow ini)
+    workflowId, // run ini milik workflow (bukan segment) — XOR di crm_campaign_run menegakkannya (T-38)
     templateKey: wf.templateKey,
     label: `Workflow: ${wf.name}`,
     createdBy: email,

@@ -959,3 +959,53 @@ berbeda — tak ada yang disembunyikan.
 
 **Pembalikan:** ubah `DOB_PRIORITY`/`GENDER_PRIORITY` di `lib/crm/demographic-pick.ts` (satu tempat,
 tertutup test) bila pemilik memutuskan self-report harus diperingkat lain.
+
+## K-49 · Auto-stop bounce 5% DIAKTIFKAN (pasca-kirim), digerbangi dataSufficient
+
+**Keputusan pemilik (31 Agu 2026, sebelum kampanye lebih besar pertama — disetujui + diterapkan):**
+monitor pantulan pasca-kirim (`lib/crm/bounce-monitor.ts`) yang selama ini `active:false` (dibangun,
+tak diaktifkan) kini AKTIF via `BOUNCE_AUTOSTOP_ACTIVE = true`. `sendCampaign` memanggil
+`campaignBounceStatus` SEBELUM tiap run dan menolak MEMULAI run bila `active && wouldStop` → run
+ditandai `stopped` (via `nextRunStatus`, sebab `stoppedHighBounce`).
+
+**Kenapa aman diaktifkan sekarang:** pantulan keras kebanyakan tiba BELAKANGAN lewat webhook Mailtrap
+(`bounced_at`), jadi stop dalam-run (`runSend` rule 6) tak melihatnya. `dataSufficient` (`attempted ≥
+minBounceSample=20`) menjadikan aktivasi tak berbahaya: di bawah sampel minimum `wouldStop` selalu
+false berapa pun rasionya — sebuah run baru (0 attempt sebelumnya) TAK PERNAH bisa dipra-hentikan;
+gerbang hanya menggigit saat RESUME run yang webhook-nya sudah mengisi ≥20 attempt dengan rasio
+pantul-keras melewati 5%. Ambang 5% = keputusan 24 Agu; ini mengaktifkan penegakannya, bukan
+mengubah angkanya.
+
+**Terukur & terbukti:** `bounce-monitor.test.ts` mengunci — aktif secara default, `stop = active &&
+wouldStop`, fresh-run tak pernah stop, dan mode measure-only (`active=false`) tetap menghitung tapi
+tak menghentikan. `stop` adalah satu-satunya flag yang ditindaklanjuti pemanggil.
+
+**Pembalikan:** setel `BOUNCE_AUTOSTOP_ACTIVE = false` (satu konstanta) → kembali ke measure-only;
+aritmetikanya tetap jalan, tak ada yang dihentikan.
+
+## K-50 · Riwayat kirim jadi tab "Kiriman" di Campaigns, BUKAN menu Schedule tersendiri
+
+**Keputusan pemilik (31 Agu 2026 — diterapkan):** terjadwal, berjalan, selesai, berhenti adalah
+SATU hal pada tahap berbeda, bukan tiga menu. Riwayat kirim dipindah dari Templates ke tab ketiga
+di Campaigns (Kirim / Segmen / **Kiriman**). Templates jadi satu layar untuk menulis & mengelola
+template saja.
+
+**Kenapa bukan menu Schedule sendiri:** navigasi baru diringkas 11→6 (K-nav). Menu ketujuh untuk
+"terjadwal" mengembalikan masalah yang baru diselesaikan, dan memaksa orang berpindah tempat hanya
+karena waktu kiriman berubah. Satu daftar kronologis menggabungkan `crm_scheduled_send` (akan datang)
+dan `crm_campaign_run` (sudah) dalam satu urutan waktu.
+
+**Dua perbaikan yang dibawa saat pindah (pola T-40, "id mentah bukan identitas"):**
+1. Kolom pelanggan dulu menampilkan potongan uuid ("023c467a…") — sama tak bergunanya dengan UUID di
+   layar peran. Sekarang menampilkan NAMA dari `master_customer.full_name`; kontak tetap tersamar
+   (alamat tak pernah ditampilkan, hanya tersimpan sebagai hash). Id tak-cocok → "Tak dikenal",
+   bukan potongan id.
+2. Riwayat dulu tak menunjukkan kiriman milik run/kampanye mana. Kini tiap baris ADALAH run-nya, dan
+   rincian per-penerima dibuka dari baris itu (`?tab=kiriman&run=<id>`) — dapat ditelusuri.
+
+**Dan membedakan otomatis vs manual:** run milik workflow (`workflow_id`) ditandai "Otomatis
+(workflow)", run milik segmen ditandai "Disusun orang". Setelah perbaikan FK, workflow menghasilkan
+run juga — keduanya muncul di sini, dibedakan, karena artinya beda saat menelusuri masalah.
+
+**Pembatalan:** kiriman terjadwal pending bisa dibatalkan langsung dari barisnya (kiriman terjadwal
+yang tak bisa dibatalkan adalah jebakan) — `cancelScheduledSendAction`, digerbangi send.*.

@@ -11,6 +11,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
  */
 
 export type WorkflowType = "welcome" | "reengagement";
+export type WorkflowTriggerSource = "activity" | "pool";
 export type EnrollmentStatus = "queued" | "sent" | "failed" | "skipped";
 
 export interface Workflow {
@@ -18,6 +19,7 @@ export interface Workflow {
   name: string;
   type: WorkflowType;
   triggerDays: number;
+  triggerSource: WorkflowTriggerSource;
   templateKey: string;
   isActive: boolean;
   createdBy: string | null;
@@ -34,6 +36,7 @@ interface WorkflowRow {
   name: string;
   type: WorkflowType;
   trigger_days: number;
+  trigger_source: WorkflowTriggerSource;
   template_key: string;
   is_active: boolean;
   created_by: string | null;
@@ -46,6 +49,7 @@ function toWorkflow(r: WorkflowRow): Workflow {
     name: r.name,
     type: r.type,
     triggerDays: r.trigger_days,
+    triggerSource: r.trigger_source ?? "activity",
     templateKey: r.template_key,
     isActive: r.is_active,
     createdBy: r.created_by,
@@ -57,7 +61,7 @@ export async function listWorkflows(): Promise<WorkflowWithCounts[]> {
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("crm_workflow")
-    .select("id, name, type, trigger_days, template_key, is_active, created_by, created_at")
+    .select("id, name, type, trigger_days, trigger_source, template_key, is_active, created_by, created_at")
     .order("created_at", { ascending: false });
   if (error) return [];
   const workflows = (data ?? []).map((r) => toWorkflow(r as WorkflowRow));
@@ -79,6 +83,7 @@ export async function createWorkflow(input: {
   name: string;
   type: WorkflowType;
   triggerDays: number;
+  triggerSource: WorkflowTriggerSource;
   templateKey: string;
   createdBy: string | null;
 }): Promise<{ ok: boolean; id?: string; error?: string }> {
@@ -93,6 +98,7 @@ export async function createWorkflow(input: {
         name,
         type: input.type,
         trigger_days: input.triggerDays,
+        trigger_source: input.triggerSource,
         template_key: input.templateKey,
         is_active: false, // dibuat non-aktif; operator mengaktifkan setelah uji
         created_by: input.createdBy,
@@ -119,7 +125,7 @@ export async function setWorkflowActive(id: string, active: boolean): Promise<{ 
 export async function getWorkflowById(admin: SupabaseClient, id: string): Promise<Workflow | null> {
   const { data, error } = await admin
     .from("crm_workflow")
-    .select("id, name, type, trigger_days, template_key, is_active, created_by, created_at")
+    .select("id, name, type, trigger_days, trigger_source, template_key, is_active, created_by, created_at")
     .eq("id", id)
     .maybeSingle();
   if (error || !data) return null;
