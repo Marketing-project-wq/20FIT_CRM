@@ -5,7 +5,7 @@ import {
   fetchSuppressedCustomerIds,
   type ApplyMaster,
 } from "./contactability-read";
-import { SEGMENT_NULL, type SegmentCriteria } from "./segment";
+import { SEGMENT_NULL, EMPTY_CRITERIA, hasExclusion, type SegmentCriteria } from "./segment";
 import { resolveEcosystemCustomerIds } from "./engagement";
 import { resolveEnrichmentCustomerIds } from "./enrichment";
 import { resolveClinicTxnCustomerIds } from "./clinic-source";
@@ -162,7 +162,58 @@ export async function resolveRestrictIds(
   // only to profiles with an activity signal — intersected with the rest AND-only.
   const timeIds = await resolveActivityTimeIds(admin, criteria.joinedWithinDays, criteria.inactiveForDays);
   if (timeIds) idSets.push(timeIds);
-  return intersectSets(idSets);
+
+  const positive = intersectSets(idSets);
+
+  // EXCLUSION (Track A): subtract each active exclusion's id-set. The base is the positive
+  // intersection if one exists, else the WHOLE pool (all master_customer ids) — "not a member,
+  // never arena" over everyone. Subtracting each set in turn removes their UNION.
+  if (!hasExclusion(criteria)) return positive;
+  const excludeSets = await resolveExcludeSets(admin, criteria.exclude);
+  if (excludeSets.length === 0) return positive; // nothing resolvable to exclude
+  const base = positive ?? (await allMasterIds(admin));
+  for (const ex of excludeSets) for (const id of Array.from(ex)) base.delete(id);
+  return base;
+}
+
+/** Every customer_id in master_customer (paginated). Used only as the base for an exclusion-ONLY
+ *  segment ("everyone EXCEPT app users"), where there is no positive id-set to subtract from. */
+async function allMasterIds(admin: SupabaseClient): Promise<Set<string>> {
+  const out = new Set<string>();
+  const PAGE = 1000;
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await admin
+      .from("master_customer")
+      .select("customer_id")
+      .range(from, from + PAGE - 1);
+    if (error || !data || data.length === 0) break;
+    for (const r of data as { customer_id: string }[]) out.add(r.customer_id);
+    if (data.length < PAGE) break;
+  }
+  return out;
+}
+
+/** One id-set per ACTIVE exclusion dimension, each resolved by the SAME live resolver its positive
+ *  twin uses (so "exclude member" removes exactly the profiles "is member" would have matched). */
+async function resolveExcludeSets(
+  admin: SupabaseClient,
+  ex: SegmentCriteria["exclude"],
+): Promise<Set<string>[]> {
+  const sets: Set<string>[] = [];
+  if (ex.ecoUnit) sets.push(await resolveEcosystemCustomerIds(admin, ex.ecoUnit as EcosystemUnit, null));
+  if (ex.srcRecency) sets.push(await resolveEnrichmentCustomerIds(admin, "recency"));
+  // Mirror-served flags: resolve each singly by handing the mirror resolver a criteria with only
+  // that flag positive.
+  const mirrorFlags: (keyof SegmentCriteria)[] = [];
+  if (ex.srcArena) mirrorFlags.push("srcArena");
+  if (ex.srcGym) mirrorFlags.push("srcGym");
+  if (ex.srcHyrox) mirrorFlags.push("srcHyrox");
+  if (ex.srcMy20fit) mirrorFlags.push("srcMy20fit");
+  for (const flag of mirrorFlags) {
+    const single = await resolveMirrorSourceIds(admin, { ...EMPTY_CRITERIA, [flag]: true });
+    if (single) sets.push(single);
+  }
+  return sets;
 }
 
 /** Apply criteria (or a validated master filter tree) to a master_customer query — exported so

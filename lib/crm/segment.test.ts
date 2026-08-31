@@ -117,6 +117,7 @@ describe("activeCriteriaCount", () => {
         srcArena: false, srcGym: false, srcClinicPatient: false, srcClinicTxn: false,
         srcRfm: null, srcProgram: null,
         joinedWithinDays: null, inactiveForDays: null,
+        exclude: { ecoUnit: null, srcArena: false, srcGym: false, srcHyrox: false, srcMy20fit: false, srcRecency: false },
       }),
     ).toBe(11);
   });

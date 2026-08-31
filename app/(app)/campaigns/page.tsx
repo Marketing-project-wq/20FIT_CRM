@@ -12,7 +12,7 @@ import { listSegments } from "@/lib/crm/segment-store";
 import { extractVariables } from "@/lib/crm/template";
 import { isInternalTestTemplateKey } from "@/lib/crm/send-test-constants";
 import { loadCityFill } from "@/lib/crm/city-fill";
-import { listDeliveries, deliveryRecipients } from "@/lib/crm/deliveries";
+import { listDeliveries, deliveryDetail } from "@/lib/crm/deliveries";
 import { CampaignFlow, type TemplateOption } from "./campaign-flow";
 import { SegmentsTab } from "./segments-tab";
 import { DeliveriesTab } from "./deliveries-tab";
@@ -91,11 +91,9 @@ export default async function CampaignsPage({
 
   // Deliveries tab data — the merged scheduled+run timeline, and (when a run is picked) its recipients.
   const admin = createAdminClient();
-  const deliveries = tab === "kiriman" ? await listDeliveries(admin) : [];
-  const deliveryDetail =
-    tab === "kiriman" && runParam
-      ? { runId: runParam, recipients: await deliveryRecipients(admin, runParam) }
-      : null;
+  const detailRequested = tab === "kiriman" && !!runParam;
+  const deliveries = tab === "kiriman" && !detailRequested ? await listDeliveries(admin) : [];
+  const detail = detailRequested ? await deliveryDetail(admin, runParam!) : null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -173,7 +171,7 @@ export default async function CampaignsPage({
       )}
 
       {/* ── TAB: KIRIMAN (deliveries — scheduled + runs, one timeline) ── */}
-      {tab === "kiriman" && <DeliveriesTab deliveries={deliveries} detail={deliveryDetail} />}
+      {tab === "kiriman" && <DeliveriesTab deliveries={deliveries} detail={detail} detailRequested={detailRequested} />}
     </div>
   );
 }

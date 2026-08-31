@@ -12,6 +12,10 @@ describe("isPublicPath — the no-session allowlist (Sprint 3T)", () => {
     expect(isPublicPath("/api/unsubscribe")).toBe(true);
     expect(isPublicPath("/api/mailtrap/webhook")).toBe(true);
   });
+  it("allows the scheduled-send cron executor (pg_cron POST, x-cron-secret header is the auth)", () => {
+    // Before this, the gate redirected the cron POST to /login and scheduled sends never ran (T-40 #8).
+    expect(isPublicPath("/api/campaigns/run-scheduled")).toBe(true);
+  });
   it("does NOT make protected pages public", () => {
     for (const p of ["/", "/audience", "/quality", "/settings", "/segments", "/consent"]) {
       expect(isPublicPath(p)).toBe(false);

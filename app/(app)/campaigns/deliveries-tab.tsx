@@ -1,8 +1,9 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { getServerDict } from "@/lib/i18n/server";
 import type { Dict } from "@/lib/i18n";
-import type { DeliveryRow, DeliveryState, DeliveryRecipient } from "@/lib/crm/deliveries";
+import type { DeliveryRow, DeliveryState, DeliveryDetail } from "@/lib/crm/deliveries";
 import { CancelDeliveryButton } from "./cancel-delivery-button";
 
 /**
@@ -14,6 +15,7 @@ import { CancelDeliveryButton } from "./cancel-delivery-button";
 
 const STATE_META: Record<DeliveryState, { key: keyof Dict["campaignsPage"]["deliveries"]; tone: "blue" | "amber" | "green" | "red" | "neutral" }> = {
   upcoming: { key: "stateUpcoming", tone: "blue" },
+  overdue: { key: "stateOverdue", tone: "red" }, // past its time but never ran — the T-40 #8 symptom, made loud
   running: { key: "stateRunning", tone: "amber" },
   done: { key: "stateDone", tone: "green" },
   stopped: { key: "stateStopped", tone: "red" },
@@ -48,62 +50,165 @@ function wibDisplay(utcIso: string): string {
   return `${wib.toISOString().slice(0, 16).replace("T", " ")} WIB`;
 }
 
+function Stat({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="rounded-sm border border-glass-border px-3 py-2">
+      <div className="font-body text-[11px] uppercase tracking-wide text-ink-faint">{label}</div>
+      <div className="mt-0.5 font-body text-[15px] font-semibold text-ink">{value}</div>
+    </div>
+  );
+}
+
 export function DeliveriesTab({
   deliveries,
   detail,
+  detailRequested,
 }: {
   deliveries: DeliveryRow[];
-  detail: { runId: string; recipients: DeliveryRecipient[] } | null;
+  detail: DeliveryDetail | null;
+  detailRequested: boolean;
 }) {
   const { t } = getServerDict();
   const d = t.campaignsPage.deliveries;
   const m = t.messagesPage;
 
-  // ── DETAIL: per-recipient rows for one run ──
-  if (detail) {
+  // ── DETAIL: the full picture of one delivery ──
+  if (detailRequested) {
+    const backLink = (
+      <Link href="/campaigns?tab=kiriman" className="font-body text-[13px] text-red hover:underline">
+        {d.backToList}
+      </Link>
+    );
+    if (!detail) {
+      return (
+        <div className="flex flex-col gap-5">
+          {backLink}
+          <p className="font-body text-[13px] text-ink-soft">{d.notFound}</p>
+        </div>
+      );
+    }
     return (
-      <div className="flex flex-col gap-5">
-        <Link href="/campaigns?tab=kiriman" className="font-body text-[13px] text-red hover:underline">
-          {d.backToList}
-        </Link>
-        <h2 className="font-body text-[15px] font-semibold text-ink">{d.detailTitle}</h2>
-        <p className="font-body text-[12px] leading-relaxed text-ink-faint">{d.maskNote}</p>
+      <div className="flex flex-col gap-6">
+        {backLink}
 
-        {detail.recipients.length === 0 ? (
-          <div className="rounded-card border border-dashed border-glass-border px-6 py-12 text-center">
-            <p className="font-body text-[13px] text-ink-soft">{d.detailEmpty}</p>
+        {/* Summary */}
+        <section className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone={detail.source === "auto" ? "blue" : "neutral"}>
+              {detail.source === "auto" ? d.sourceAuto : d.sourceManual}
+            </Badge>
+            <h2 className="font-body text-[16px] font-semibold text-ink">{detail.label ?? d.unnamedRun}</h2>
           </div>
-        ) : (
-          <div className="glass-strong overflow-x-auto rounded-card">
-            <table className="w-full border-collapse text-left">
-              <thead>
-                <tr className="border-b border-glass-border font-body text-[11px] uppercase tracking-wide text-ink-faint">
-                  <th className="px-4 py-2.5 font-medium">{d.recipientName}</th>
-                  <th className="px-4 py-2.5 font-medium">{d.recipientChannel}</th>
-                  <th className="px-4 py-2.5 font-medium">{d.recipientStatus}</th>
-                  <th className="px-4 py-2.5 font-medium">{d.recipientCause}</th>
-                  <th className="px-4 py-2.5 font-medium">{d.recipientWhen}</th>
-                </tr>
-              </thead>
-              <tbody className="font-body text-[13px] text-ink-soft">
-                {detail.recipients.map((r, i) => {
-                  const st = REC_STATUS[r.status] ?? REC_STATUS.queued;
-                  return (
-                    <tr key={i} className="border-b border-glass-border/50 last:border-0">
-                      <td className="px-4 py-2.5">
-                        {r.name ? r.name : <span className="italic text-ink-faint">{d.recipientUnresolved}</span>}
-                      </td>
-                      <td className="px-4 py-2.5">{r.channel}</td>
-                      <td className="px-4 py-2.5"><Badge tone={st.tone}>{m[st.key]}</Badge></td>
-                      <td className="px-4 py-2.5">{r.failureCause ? m[REC_CAUSE[r.failureCause] ?? "causeUnknown"] : "—"}</td>
-                      <td className="px-4 py-2.5 font-mono text-[12px]">{wibDisplay(r.createdAt)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <Stat label={d.sumOwner} value={detail.ownerName ?? <span className="italic text-ink-faint">{d.ownerUnresolved}</span>} />
+            <Stat label={d.sumTemplate} value={<span className="font-mono text-[13px]">{detail.templateKey}</span>} />
+            <Stat label={d.sumVersion} value={detail.templateVersion ?? "—"} />
+            <Stat label={d.sumTime} value={<span className="font-mono text-[13px]">{wibDisplay(detail.createdAt)}</span>} />
+            <Stat label={d.sumSentBy} value={<span className="font-mono text-[13px]">{detail.createdBy ?? "—"}</span>} />
+            <Stat label={d.sumStatus} value={detail.status} />
           </div>
-        )}
+          {detail.lastError && <p className="font-body text-[12px] text-red">{d.lastError}: {detail.lastError}</p>}
+        </section>
+
+        {/* Audience — the four numbers computed at send time */}
+        <section className="flex flex-col gap-2">
+          <h3 className="font-body text-[13px] font-semibold text-ink">{d.audienceTitle}</h3>
+          {detail.audience ? (
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <Stat label={d.audMatched} value={detail.audience.matched} />
+              <Stat label={d.audHasEmail} value={detail.audience.hasEmail} />
+              <Stat label={d.audSkipped} value={detail.audience.skippedSuppression} />
+              <Stat label={d.audSent} value={detail.audience.sent} />
+            </div>
+          ) : (
+            <p className="font-body text-[12px] text-ink-faint">{d.audienceMissing}</p>
+          )}
+        </section>
+
+        {/* Result report — from crm_message_log (webhook-filled). Opens/clicks NOT measured. */}
+        <section className="flex flex-col gap-2">
+          <h3 className="font-body text-[13px] font-semibold text-ink">{d.resultTitle}</h3>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+            <Stat label={d.resSent} value={detail.result.sent} />
+            <Stat label={d.resDelivered} value={detail.result.delivered} />
+            <Stat label={d.resBounced} value={detail.result.bounced} />
+            <Stat label={d.resComplained} value={detail.result.complained} />
+            <Stat label={d.resUnsub} value={detail.result.unsubscribed} />
+            <Stat label={d.resFailed} value={detail.result.failed} />
+          </div>
+          {/* Opens & clicks are deliberately NOT shown as a 0 stat — the webhook doesn't measure them. */}
+          {!detail.engagementMeasured && (
+            <p className="rounded-sm border border-dashed border-glass-border px-3 py-2 font-body text-[12px] leading-relaxed text-ink-faint">
+              {d.engagementNote}
+            </p>
+          )}
+        </section>
+
+        {/* Email preview — the EXACT version sent, skeleton-wrapped, isolated in a sandboxed iframe */}
+        <section className="flex flex-col gap-2">
+          <h3 className="font-body text-[13px] font-semibold text-ink">{d.previewTitle}</h3>
+          {detail.preview ? (
+            <>
+              <p className="font-body text-[12px] leading-relaxed text-ink-faint">
+                {detail.templateVersion != null
+                  ? d.previewVersionNote.replace("{v}", String(detail.templateVersion))
+                  : d.previewNoVersion}
+              </p>
+              {detail.preview.subject && (
+                <p className="font-body text-[13px] text-ink"><span className="text-ink-faint">Subjek:</span> {detail.preview.subject}</p>
+              )}
+              <iframe
+                title={d.previewTitle}
+                sandbox=""
+                srcDoc={detail.preview.html}
+                className="h-[520px] w-full rounded-card border border-glass-border bg-white"
+              />
+            </>
+          ) : (
+            <p className="font-body text-[12px] text-ink-faint">{d.previewMissing}</p>
+          )}
+        </section>
+
+        {/* Recipient list */}
+        <section className="flex flex-col gap-2">
+          <h3 className="font-body text-[13px] font-semibold text-ink">{d.recipientsTitle}</h3>
+          <p className="font-body text-[12px] leading-relaxed text-ink-faint">{d.maskNote}</p>
+          {detail.recipients.length === 0 ? (
+            <div className="rounded-card border border-dashed border-glass-border px-6 py-12 text-center">
+              <p className="font-body text-[13px] text-ink-soft">{d.detailEmpty}</p>
+            </div>
+          ) : (
+            <div className="glass-strong overflow-x-auto rounded-card">
+              <table className="w-full border-collapse text-left">
+                <thead>
+                  <tr className="border-b border-glass-border font-body text-[11px] uppercase tracking-wide text-ink-faint">
+                    <th className="px-4 py-2.5 font-medium">{d.recipientName}</th>
+                    <th className="px-4 py-2.5 font-medium">{d.recipientChannel}</th>
+                    <th className="px-4 py-2.5 font-medium">{d.recipientStatus}</th>
+                    <th className="px-4 py-2.5 font-medium">{d.recipientCause}</th>
+                    <th className="px-4 py-2.5 font-medium">{d.recipientWhen}</th>
+                  </tr>
+                </thead>
+                <tbody className="font-body text-[13px] text-ink-soft">
+                  {detail.recipients.map((r, i) => {
+                    const rst = REC_STATUS[r.status] ?? REC_STATUS.queued;
+                    return (
+                      <tr key={i} className="border-b border-glass-border/50 last:border-0">
+                        <td className="px-4 py-2.5">
+                          {r.name ? r.name : <span className="italic text-ink-faint">{d.recipientUnresolved}</span>}
+                        </td>
+                        <td className="px-4 py-2.5">{r.channel}</td>
+                        <td className="px-4 py-2.5"><Badge tone={rst.tone}>{m[rst.key]}</Badge></td>
+                        <td className="px-4 py-2.5">{r.failureCause ? m[REC_CAUSE[r.failureCause] ?? "causeUnknown"] : "—"}</td>
+                        <td className="px-4 py-2.5 font-mono text-[12px]">{wibDisplay(r.createdAt)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
       </div>
     );
   }
