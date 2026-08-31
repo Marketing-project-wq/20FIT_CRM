@@ -959,3 +959,44 @@ unsubscribe dijamin & tak ganda; teks alt simpan URL).
 **TIDAK bisa diverifikasi dari sesi ini:** rupa akhir di Gmail/Outlook/Apple Mail (perlu Send test di
 produksi; env kirim ada di produksi, tidak di kontainer ini). Kode + pratinjau terbukti; rupa klien
 nyata menunggu Send test.
+
+---
+
+## T-38 — Workflow "cek konfigurasi kirim" = FK violation, bukan konfigurasi kirim — 31 Agu 2026
+
+Workflow pertama "Welcoming Message": 36 enrolled (queued), **0 terkirim**, galat "cek konfigurasi
+kirim". Diselidiki langsung ke produksi (bukan tebak):
+
+**Sebab (terverifikasi).** `crm_campaign_run.segment_id` **NOT NULL** dengan **FK →
+`crm_segment(id)`**. `runWorkflowAction` memanggil `createRun({ segmentId: workflowId })` — tapi id
+workflow (`afac3264…`) **bukan** id crm_segment (`count=0` di crm_segment). INSERT run → **pelanggaran
+FK** → `createRun` menangkap error & mengembalikan `null` → aksi mengembalikan `run_create_failed` →
+UI meruntuhkannya jadi satu pesan kasar "cek konfigurasi kirim". **Run tak pernah bisa dibuat; SETIAP
+kirim workflow mati di sini.** Bukti: 0 baris `crm_campaign_run` dengan `segment_id`=workflow, 0
+`crm_message_log`. Enrollment (36 queued) berhasil karena tak punya FK itu.
+
+**Bukan soal konfigurasi kirim sama sekali** (env, token, gerbang) — murni ketidakcocokan struktural:
+crm_campaign_run dipakai ulang untuk workflow, tapi `segment_id` mengharap segmen, diberi workflow.
+
+**Kelas galat yang sama dengan `unexpected_error` (T-36).** Pesan tunggal menutupi 5 kode berbeda
+(`denied`/`not_found`/`resolve_failed`/`run_create_failed`/`send_threw`). Perbaikan menunggu keputusan:
+(i) `crm_campaign_run.segment_id` jadikan nullable + kolom `workflow_id` nullable (minimal, jaga
+pelacakan run) — **butuh migrasi (gated)**; (ii) buat crm_segment nyata per workflow (mengotori
+segmen); (iii) jangan pakai crm_campaign_run untuk workflow. Rekomendasi (i). Ditahan untuk konfirmasi.
+
+**Terkait:** UI pembuat workflow tak menawarkan `trigger_source` → semua workflow lahir 'activity'
+(cakupan 0,88%), tak pernah 'pool'. Dan engine tak memeriksa `is_active` — workflow ter-jeda pun bisa
+dijalankan.
+
+## T-39 — POLA: tabel tim lain memakai kunci berbeda dari `master_customer.customer_id` — 31 Agu 2026
+
+Bukan tiga kejadian terpisah, satu **pola** yang akan terus muncul:
+- `customer_identity.is_paying`/`total_nett` — tak ber-key `customer_id` (tak bisa diiris ke master).
+- `my20fit_message_log` — ber-key `user_id`, bukan customer_id (K-37 #1, alasan crm_message_log dibuat).
+- `my20fit_campaign_enrollments` — ber-key `user_id` juga.
+
+**Implikasi:** setiap kali CRM ingin memakai data tim lain (nilai bayar, riwayat pesan, enrollment),
+kunci HARUS dipetakan dulu ke customer_id lewat lapisan identitas (mirror/identity map). Anggap ini
+biaya tetap tiap integrasi lintas-tim, bukan kejutan per kasus. Lebih murah diantisipasi: sebelum
+menjanjikan segmen/fitur berbasis tabel tim lain, cek dulu apakah kuncinya sudah dipetakan ke
+customer_id. Yang belum: `customer_identity` (butuh peta sebelum "pelanggan membayar" bisa disegmen).
