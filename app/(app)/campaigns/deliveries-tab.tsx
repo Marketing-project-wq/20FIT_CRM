@@ -14,6 +14,7 @@ import { CancelDeliveryButton } from "./cancel-delivery-button";
 
 const STATE_META: Record<DeliveryState, { key: keyof Dict["campaignsPage"]["deliveries"]; tone: "blue" | "amber" | "green" | "red" | "neutral" }> = {
   upcoming: { key: "stateUpcoming", tone: "blue" },
+  overdue: { key: "stateOverdue", tone: "red" }, // past its time but never ran — the T-40 #8 symptom, made loud
   running: { key: "stateRunning", tone: "amber" },
   done: { key: "stateDone", tone: "green" },
   stopped: { key: "stateStopped", tone: "red" },

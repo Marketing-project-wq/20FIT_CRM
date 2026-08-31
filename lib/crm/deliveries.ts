@@ -19,7 +19,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * tracing a problem).
  */
 
-export type DeliveryState = "upcoming" | "running" | "done" | "stopped" | "cancelled";
+export type DeliveryState = "upcoming" | "overdue" | "running" | "done" | "stopped" | "cancelled";
 export type DeliverySource = "manual" | "auto";
 
 export interface DeliveryRow {
@@ -102,7 +102,7 @@ async function countRecipients(admin: SupabaseClient, runIds: string[]): Promise
   return counts;
 }
 
-export async function listDeliveries(admin: SupabaseClient, limit = 100): Promise<DeliveryRow[]> {
+export async function listDeliveries(admin: SupabaseClient, limit = 100, nowIso = new Date().toISOString()): Promise<DeliveryRow[]> {
   const [schedRes, runRes] = await Promise.all([
     admin
       .from("crm_scheduled_send")
@@ -135,8 +135,17 @@ export async function listDeliveries(admin: SupabaseClient, limit = 100): Promis
   const rows: DeliveryRow[] = [];
 
   for (const s of scheduled) {
+    // A pending row whose time has passed but which never ran is OVERDUE — shown distinctly from
+    // upcoming, so an executor that silently stopped firing (the T-40 #8 failure) is visible on the
+    // screen rather than hiding as a normal "AKAN DATANG".
     const state: DeliveryState =
-      s.status === "pending" ? "upcoming" : s.status === "cancelled" ? "cancelled" : "stopped";
+      s.status === "pending"
+        ? s.scheduled_at < nowIso
+          ? "overdue"
+          : "upcoming"
+        : s.status === "cancelled"
+          ? "cancelled"
+          : "stopped";
     rows.push({
       kind: "scheduled",
       id: s.id,

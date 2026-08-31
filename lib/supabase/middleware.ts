@@ -21,7 +21,13 @@ export function isPublicPath(pathname: string): boolean {
     pathname === "/api/unsubscribe" ||
     // Mailtrap delivery webhook: an external POST with no CRM session — its authorization is the
     // request SIGNATURE (verified in the route), the same shape as the unsubscribe token.
-    pathname === "/api/mailtrap/webhook"
+    pathname === "/api/mailtrap/webhook" ||
+    // Scheduled-send executor: pg_cron POSTs here every 5 min via pg_net — no CRM session. Its
+    // authorization is the x-cron-secret HEADER (verified in the route against
+    // SCHEDULED_SEND_CRON_SECRET), same shape as the webhook. Before this was allowlisted the gate
+    // redirected the POST to /login (200 login HTML), so the route never ran and scheduled sends sat
+    // `pending` forever with no last_error — the 8th silent failure (T-40).
+    pathname === "/api/campaigns/run-scheduled"
   );
 }
 
