@@ -1315,6 +1315,7 @@ export const id = {
       errSendThrew: "Kirim gagal sebelum selesai; run ditandai berhenti dengan sebabnya. Periksa run untuk detail.",
       errHostMismatch: "Host tautan unsubscribe berbeda dari host yang melayani aplikasi — tautannya akan mati. Setel NEXT_PUBLIC_APP_URL ke host yang benar sebelum kirim.",
       errMissingEnv: "Konfigurasi kirim belum lengkap: variabel environment wajib belum diset — ",
+      errUnresolvable: "Sebagian alamat di daftar ini tidak ada di data audiens 20FIT, jadi tak bisa jadi penerima kampanye — tanpa mereka, tautan berhenti berlangganan tak punya identitas untuk disimpan. Untuk penerima uji internal, pakai Kirim uji. Alamat yang belum cocok: ",
       resultTitle: "Hasil kirim",
       resRunLabelNew: "Run baru",
       resRunLabelResume: "Lanjutan run",

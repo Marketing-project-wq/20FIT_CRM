@@ -11,7 +11,7 @@ import {
   INTERNAL_TEST_ENV_VAR,
   INTERNAL_TEST_TEMPLATE_KEY,
   INTERNAL_TEST_SEGMENT_NAME,
-  INTERNAL_TEST_CUSTOMER_ID,
+  internalTestCustomerId,
 } from "./send-test-constants";
 
 /**
@@ -205,7 +205,7 @@ export async function runInternalSendTest(actor: { actorId: string; actorEmail: 
         actorEmail: actor.actorEmail,
         confirmedLargeSend: false,
         overrideRecipients: targets.map((email, i) => ({
-          customerId: `${INTERNAL_TEST_CUSTOMER_ID}-${i}`,
+          customerId: internalTestCustomerId(i), // MUST be a valid uuid (crm_message_log.customer_id)
           email,
           language: "id" as const,
         })),

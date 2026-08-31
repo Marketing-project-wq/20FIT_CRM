@@ -55,6 +55,11 @@ export function classifySendThrow(e: unknown): string {
   if (msg.includes("No active email template")) return "no_active_template";
   if (msg.includes("Mailtrap send failed")) return "mailtrap_send_failed";
   if (msg.includes("unsubscribe URL")) return "missing_unsubscribe_url";
+  // A recipient id that is not a valid uuid (crm_message_log.customer_id / crm_suppression.customer_id
+  // are `uuid`). This is what a raw/synthetic id — an address not resolved to a real master_customer —
+  // throws at insert. Named on its own so identity-resolution failures are never "unexpected" again
+  // (the 28 Aug email-list runs — resolution now happens BEFORE the run, see resolveEmailListRecipients).
+  if (msg.includes("invalid input syntax for type uuid")) return "invalid_recipient_id";
   return "unexpected_error";
 }
 

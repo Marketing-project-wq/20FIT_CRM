@@ -78,6 +78,13 @@ describe("classifySendThrow — PII-free cause", () => {
     expect(classifySendThrow(new Error('No active email template for key "x".'))).toBe("no_active_template");
   });
 
+  it("names an invalid recipient id (uuid) cause — the 28 Aug email-list failures were 'unexpected_error'", () => {
+    // A raw/synthetic recipient id (an address not resolved to a real master_customer uuid) throws this
+    // at the crm_message_log insert. It must have its own cause, not be swallowed as 'unexpected_error'.
+    expect(classifySendThrow(new Error('invalid input syntax for type uuid: "manual:tifany@20fit.id"')))
+      .toBe("invalid_recipient_id");
+  });
+
   it("collapses anything unknown to a generic marker (never leaks a raw message that could carry PII)", () => {
     expect(classifySendThrow(new Error("SMTP 550 rejected recipient john@example.com"))).toBe("unexpected_error");
     expect(classifySendThrow("weird")).toBe("unexpected_error");

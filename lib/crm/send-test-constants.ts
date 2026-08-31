@@ -27,8 +27,23 @@ export const INTERNAL_TEST_SEGMENT_NAME = "UJI — kirim internal (data uji)";
 
 /** Sentinel pseudo-customer id for the test log row. crm_message_log.customer_id is uuid NOT NULL
  *  with NO FK to master_customer, so a synthetic id is valid AND writes nothing to the frozen pool.
- *  Fixed (not random) so a re-run WITHIN one run resumes via the deterministic idempotency key. */
+ *  Fixed (not random) so a re-run WITHIN one run resumes via the deterministic idempotency key.
+ *  Equals internalTestCustomerId(0). */
 export const INTERNAL_TEST_CUSTOMER_ID = "00000000-0000-0000-0000-0000000f1770";
+
+/**
+ * A VALID sentinel uuid for the i-th internal test recipient. crm_message_log.customer_id and
+ * crm_suppression.customer_id are both `uuid`, so the recipient id MUST parse as a uuid — a suffixed
+ * string like `${INTERNAL_TEST_CUSTOMER_ID}-${i}` is NOT a valid uuid and throws
+ * `invalid input syntax for type uuid` at the log insert (the regression that broke the
+ * crm_test_recipient path since 26 Aug). This keeps the recognizable sentinel prefix and varies only
+ * the final 12-hex node (base 0x…f1770 + i): index 0 is the original sentinel (stable idempotency on
+ * re-run), and every index yields a distinct, valid uuid.
+ */
+export function internalTestCustomerId(i: number): string {
+  const node = (0xf1770 + i).toString(16).padStart(12, "0");
+  return `00000000-0000-0000-0000-${node}`;
+}
 
 /** True for the seeded test template key — used by the composer to keep it out of the real dropdown. */
 export function isInternalTestTemplateKey(key: string): boolean {

@@ -867,3 +867,47 @@ butuh log Postgres 21 Agu 15:44 atau tanya tim), (b) keputusan remediasi grant l
   self-reported". Label i18n `srcProgressive` ditambah (id+en). Test rantai diperbarui.
 - **(a) MASIH menunggu manusia (B10a).** Setelah grant dicabut, jalur BYPASSRLS jadi satu-satunya cara
   masuk — jauh lebih sempit dan lebih mudah ditanyakan ke tim pemegang `service_role`.
+
+---
+
+## T-36 — Kampanye gagal 9× (0 terkirim): id penerima bukan uuid — 31 Agu 2026
+
+**Gejala.** `crm_campaign_run` = 1 berhasil (uji internal 25 Agu), **9 stopped**. Tujuh stopped
+28 Agu (bukan enam — prompt melewatkan run 06:55) memakai segmen daftar email manual "Testing Team"
+(`0fe871ff`, `emailList: [tifany@20fit.id, marketing@20fit.id]`), `last_error='unexpected_error'`,
+**0** baris `crm_message_log`. Sejak sistem ada, **belum satu pun kampanye nyata terkirim**.
+
+**Sebab (dibuktikan, bukan hipotesis).** `emailListToRecipients` membangun `customer_id =
+"manual:<email>"`. Tapi `crm_message_log.customer_id` **dan** `crm_suppression.customer_id` keduanya
+`uuid`. Di penerima pertama, insert `crm_message_log` menjalankan `'manual:...'::uuid` →
+`22P02 invalid input syntax for type uuid` (direproduksi langsung ke produksi). Lemparan itu di LUAR
+try per-penerima (`send-run.ts:273`) → naik ke `sendCampaignAction` → `classifySendThrow` →
+`unexpected_error`. Gagal SETELAH run dibuat, SEBELUM baris log — persis buktinya. Uji 25 Agu berhasil
+karena harness menyuntik sentinel **uuid valid**.
+
+**Temuan kedua (lebih parah).** Karena `crm_suppression.customer_id` juga `uuid`, andai insert log
+lolos, tautan unsubscribe (membawa `manual:<email>`) tak pernah bisa menulis suppression → orang tak
+bisa berhenti berlangganan. Id sintetis **ganda** invalid.
+
+**Temuan ketiga.** Harness `crm_test_recipient` juga rusak sejak 26 Agu: ia membangun
+`${SENTINEL}-${i}` = `...f1770-0`, yang **juga bukan uuid valid** (diverifikasi). "Mekanisme yang
+dirancang untuk ini" pun tak berfungsi.
+
+**Keputusan (sesuai LARANGAN yang ada + skema).** Penerima kampanye WAJIB id `master_customer` nyata
+(uuid). Daftar email manual berarti "orang yang SUDAH ada di data audiens 20FIT": tiap alamat
+diresolusi ke `customer_id`; alamat di luar pool **ditolak sebelum run dibuat, disebut namanya**, dan
+diarahkan ke Kirim uji. Kirim ke luar pool: TIDAK untuk pelanggan (tanpa uuid, unsubscribe tak punya
+identitas), hanya penerima uji internal lewat jalur harness (sentinel uuid, gerbang aman).
+
+**Perbaikan.** `resolveEmailListRecipients` (resolve ke uuid nyata + daftar `unresolved`);
+`sendCampaignAction`/`scheduleCampaignAction`/executor terjadwal menolak lebih awal dengan
+`unresolvable_recipients` (nama alamat); harness memakai `internalTestCustomerId(i)` (uuid valid,
+indeks 0 = sentinel lama); `classifySendThrow` menambah `invalid_recipient_id` supaya kegagalan
+resolusi identitas tak pernah lagi "unexpected". 9 run stopped kini beranotasi retroaktif. Mekanisme
+ganda dihapus: `emailListToRecipients` (sintetis) dibuang. Test: resolver, `internalTestCustomerId`,
+`classifySendThrow`.
+
+**Belum tuntas — TIDAK bisa diverifikasi dari sesi ini.** "Kirim satu kampanye uji sungguhan lewat
+`crm_test_recipient`" butuh env kirim (UNSUBSCRIBE_TOKEN_SECRET / MAILTRAP_API_TOKEN / MAILTRAP_FROM /
+SEND_TEST_INTERNAL_ADDRESS) — **semua kosong di kontainer ini** — dan berjalan di produksi (deploy dari
+`main`, yang butuh izin manusia). Jadi uji nyata menunggu deploy + operator. Lihat MENUNGGU.
