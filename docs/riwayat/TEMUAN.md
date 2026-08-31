@@ -911,3 +911,51 @@ ganda dihapus: `emailListToRecipients` (sintetis) dibuang. Test: resolver, `inte
 `crm_test_recipient`" butuh env kirim (UNSUBSCRIBE_TOKEN_SECRET / MAILTRAP_API_TOKEN / MAILTRAP_FROM /
 SEND_TEST_INTERNAL_ADDRESS) — **semua kosong di kontainer ini** — dan berjalan di produksi (deploy dari
 `main`, yang butuh izin manusia). Jadi uji nyata menunggu deploy + operator. Lihat MENUNGGU.
+
+---
+
+## T-37 — Email "berantakan" = jalur kirim merusak template yang benar — 31 Agu 2026
+
+**Klaim awal:** kampanye pertama sampai, tapi tampilannya berantakan di Gmail (ponsel DAN desktop):
+kolom sempit di tengah, jarak antar-kartu sangat besar, latar gelap. Diduga template tak tahan ponsel.
+
+**Diagnosis dari HTML sebenarnya (bukan screenshot).** Badan `email_1787897773605` (v1) diperiksa
+langsung ke produksi:
+- **19,3 KB** (19.734 byte) — jauh di bawah batas potong Gmail ~102 KB → **risiko terpotong rendah**
+  (melawan dugaan "8 kartu ~102 KB").
+- **Berbasis tabel:** 16 `<table>`, lebar `width=600` + `max-width:600` ×2; 3 `<div>`, **0** dipakai
+  untuk lebar → bukan masalah "lebar di div".
+- **Jarak:** padding ×30; 20 `margin` inline yang sebagian besar `margin:0` (reset), bukan jarak tata letak.
+- **flex/grid/position:** tak ada.
+- **Gambar:** 1, punya `alt="20FIT"`, `width="140"`, `height:auto` → benar.
+- **Kepala dokumen:** DOCTYPE, xmlns VML/office, viewport, MSO PixelsPerInch → email **buatan alat
+  yang kompatibel Outlook**, bukan buatan asal.
+- **Cacat NYATA:** (a) **latar gelap** `#0b0b0d`/`#141416` → risiko inversi mode gelap; (b) sebagian
+  `@media`/reset ada di `<style>` (dibuang sebagian klien) — tapi tata letak dasar inline, jadi bertahan.
+
+**Sebab sebenarnya (bukan template).** Jalur kirim menyusun HTML sebagai
+`<div>${body.replace(/\n/g,"<br/>")}</div>` (`send-campaign.ts`). Pada dokumen HTML 19 KB berformat,
+ini menyuntik `<br/>` di **setiap** baris baru (ratusan) → **jarak vertikal raksasa**, dan
+membungkus `<!DOCTYPE html><html>…</html>` di dalam `<div>` → sanitizer Gmail membuang `<html>/<head>`
+(hilang `<style>`/aturan MSO) → **struktur ambruk / kolom sempit**. **Jalur kirim merusak template
+yang benar.**
+
+**Perbaikan.** `lib/crm/email-document.ts` — `renderEmailDocument` (murni, dipakai kirim DAN pratinjau,
+"satu aturan"): dokumen HTML dikirim **apa adanya** (tak lagi di-`<br/>`); fragmen/teks dibungkus
+**kerangka tabel 600px, inline, LATAR TERANG** (`wrapEmailSkeleton`), dengan footer unsubscribe di
+kerangka. Pratinjau composer kini merender HTML final sebenarnya + **toggle Desktop/Ponsel** + catatan
+"pratinjau ≠ klien email → Send test". Send-test (`sendPreviewEmailAction`) memakai kerangka yang sama.
+Test: `email-document.test.ts` (dokumen apa adanya; tanpa mangling `<br/>`; kerangka terang 600;
+unsubscribe dijamin & tak ganda; teks alt simpan URL).
+
+**Keputusan yang DISERAHKAN ke pemilik (bukan diputus sendiri):**
+1. **Latar terang vs gelap.** Rekomendasi: **terang** sebagai bawaan (inversi lebih dapat diduga).
+   `email_1787897773605` **gelap** — perlu di-author ulang jadi terang **atau** diuji di keenam
+   kombinasi mode-gelap sebelum dipakai lagi. **Isi lama TIDAK diubah diam-diam** (berversi).
+2. **Panjang (8 kartu).** 19,3 KB — aman dari potong; tapi banyak gulir. Pertahankan atau ringkas ke
+   beberapa bagian teratas + tautan? **Keputusan isi**, bukan teknis.
+3. **Uji lintas klien** sebelum kirim massal: `docs/CEKLIS-email-lintas-klien.md`.
+
+**TIDAK bisa diverifikasi dari sesi ini:** rupa akhir di Gmail/Outlook/Apple Mail (perlu Send test di
+produksi; env kirim ada di produksi, tidak di kontainer ini). Kode + pratinjau terbukti; rupa klien
+nyata menunggu Send test.

@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { X, Save, Eye, Image as ImageIcon, LayoutTemplate, Upload, Trash2, Blocks, Code } from "lucide-react";
+import { X, Save, Eye, Image as ImageIcon, LayoutTemplate, Upload, Trash2, Blocks, Code, Monitor, Smartphone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { STARTER_TEMPLATES } from "./starter-templates";
 import { BlockEditor, blocksToHtml, newBlock, type Block } from "./block-editor";
+import { renderEmailDocument } from "@/lib/crm/email-document";
 import {
   listBrandAssetsAction,
   uploadBrandAssetAction,
@@ -41,6 +42,7 @@ export function EmailTemplateBuilder({ template, onClose }: EmailTemplateBuilder
   // to htmlContent; we never parse HTML back to blocks (one-way, honest).
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [htmlEdited, setHtmlEdited] = useState(false); // once raw HTML is touched, block mode is locked
+  const [previewWidth, setPreviewWidth] = useState<"desktop" | "mobile">("desktop");
 
   // Brand assets (logos)
   const [assets, setAssets] = useState<BrandAsset[]>([]);
@@ -135,11 +137,16 @@ export function EmailTemplateBuilder({ template, onClose }: EmailTemplateBuilder
   // The HTML source of truth: from blocks while in blocks mode, else the raw htmlContent.
   const currentHtml = () => (mode === "blocks" ? blocksToHtml(blocks) : htmlContent);
 
-  const previewHtml = injectUnsubscribeLink(currentHtml())
-    .replace(/\{\{first_name\}\}/g, "Andi")
-    .replace(/\{\{last_name\}\}/g, "Wijaya")
-    .replace(/\{\{email\}\}/g, "andi@example.com")
-    .replace(/\{\{unsubscribe_url\}\}/g, "/unsubscribe?token=preview");
+  // Preview the REAL email: substitute SAMPLE data (never a real customer) then compose through the
+  // same skeleton the send uses — so what the author sees is the exact frame that ships, not a
+  // frameless fragment that would lie about the result.
+  const previewUnsub = "/unsubscribe?token=contoh";
+  const previewSubstituted = injectUnsubscribeLink(currentHtml())
+    .replace(/\{\{full_name\}\}/g, "Budi Santoso")
+    .replace(/\{\{first_name\}\}/g, "Budi")
+    .replace(/\{\{city\}\}/g, "Jakarta")
+    .replace(/\{\{unsubscribe_url\}\}/g, previewUnsub);
+  const previewHtml = renderEmailDocument(previewSubstituted, previewUnsub).html;
 
   const handleSave = async () => {
     const finalHtml = injectUnsubscribeLink(currentHtml());
@@ -186,6 +193,7 @@ export function EmailTemplateBuilder({ template, onClose }: EmailTemplateBuilder
             htmlEdited={htmlEdited}
             textareaRef={textareaRef}
             previewHtml={previewHtml}
+            previewWidth={previewWidth} setPreviewWidth={setPreviewWidth}
             assets={assets} showAssets={showAssets} setShowAssets={setShowAssets}
             fileRef={fileRef} onUpload={onUpload} uploading={uploading}
             assetMsg={assetMsg} onDeleteAsset={onDeleteAsset} insertLogo={insertLogo}
@@ -258,7 +266,7 @@ function EditorBody(p: any) {
             className="w-full rounded-md border border-glass-border bg-glass px-3 py-2 font-body text-[14px] text-ink focus:border-ink focus:outline-none" placeholder="Subject email Anda" />
         </div>
       </div>
-      <p className="font-mono text-[11px] text-ink-faint">Variabel: {"{{first_name}}"}, {"{{last_name}}"}, {"{{email}}"}</p>
+      <p className="font-mono text-[11px] text-ink-faint">Variabel: {"{{first_name}}"}, {"{{full_name}}"}, {"{{city}}"} · link unsubscribe otomatis</p>
 
       <div className="flex flex-wrap items-center gap-2">
         <Button size="sm" variant={p.mode === "blocks" ? "primary" : "outline"} onClick={() => p.switchMode("blocks")} disabled={p.htmlEdited} title={p.htmlEdited ? "Sudah diedit sebagai HTML" : undefined}>
@@ -311,8 +319,32 @@ function EditorBody(p: any) {
         />
       ) : (
         <div className="flex flex-col gap-2 rounded-md border border-glass-border bg-white p-4">
-          <div className="font-mono text-[11px] text-ink-faint"><strong>From:</strong> {p.senderName} &lt;crm@20fit.id&gt; · <strong>Subject:</strong> {p.subject || "(no subject)"}</div>
-          <iframe key={p.previewHtml} srcDoc={p.previewHtml} sandbox="allow-same-origin" className="h-[400px] w-full rounded border border-glass-border bg-white" title="Email Preview" />
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="font-mono text-[11px] text-ink-faint"><strong>From:</strong> {p.senderName} &lt;crm@20fit.id&gt; · <strong>Subject:</strong> {p.subject || "(no subject)"}</div>
+            <div className="flex items-center gap-1" role="group" aria-label="Lebar pratinjau">
+              <Button size="sm" variant={p.previewWidth === "desktop" ? "primary" : "outline"} onClick={() => p.setPreviewWidth("desktop")}>
+                <Monitor className="mr-1 h-4 w-4" />Desktop
+              </Button>
+              <Button size="sm" variant={p.previewWidth === "mobile" ? "primary" : "outline"} onClick={() => p.setPreviewWidth("mobile")}>
+                <Smartphone className="mr-1 h-4 w-4" />Ponsel
+              </Button>
+            </div>
+          </div>
+          <div className="flex justify-center overflow-auto rounded border border-glass-border bg-[#f4f4f5] p-3">
+            <iframe
+              key={`${p.previewWidth}:${p.previewHtml.length}`}
+              srcDoc={p.previewHtml}
+              sandbox="allow-same-origin"
+              style={{ width: p.previewWidth === "mobile" ? 390 : 680, height: 520 }}
+              className="rounded border border-glass-border bg-white"
+              title={`Pratinjau email (${p.previewWidth === "mobile" ? "ponsel 390px" : "desktop 680px"})`}
+            />
+          </div>
+          <p className="font-body text-[11px] leading-relaxed text-ink-soft">
+            Data contoh (Budi Santoso), bukan pelanggan nyata. <strong>Pratinjau peramban ≠ klien email</strong> —
+            Gmail, Outlook, dan Apple Mail merender berbeda (termasuk mode gelap). Satu-satunya uji yang meyakinkan
+            adalah <strong>Send test</strong> ke alamat nyata (Campaigns → Kirim uji), yang sudah terbukti bekerja.
+          </p>
         </div>
       )}
     </div>

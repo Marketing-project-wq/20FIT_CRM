@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveRestrictIds, applyMasterCriteria } from "./segment-read";
 import { normalizeEmail } from "./normalize";
+import { renderEmailDocument } from "./email-document";
 import { fetchSuppressedCustomerIds } from "./contactability-read";
 import type { SegmentCriteria } from "./segment";
 import { renderTemplate } from "./template";
@@ -335,8 +336,11 @@ export async function sendCampaign(input: CampaignSendInput, nowIso: string): Pr
       const token = signUnsubscribeToken({ customerId: r.customerId, kind: "email" }, unsubSecret);
       const unsubscribeUrl = `${baseUrl}/unsubscribe?token=${encodeURIComponent(token)}`;
       const values = { unsubscribe_url: unsubscribeUrl };
-      const text = renderTemplate(tpl.body, values);
-      const html = `<div>${renderTemplate(tpl.body, values).replace(/\n/g, "<br/>")}</div>`;
+      // Compose the email through the shared skeleton: an HTML template is sent VERBATIM (never
+      // <br/>-mangled — that was T-37, the desktop-Gmail mess), a fragment/plain body is wrapped in
+      // the bulletproof 600px table frame. Same function the composer preview uses (one rule).
+      const renderedBody = renderTemplate(tpl.body, values);
+      const { html, text } = renderEmailDocument(renderedBody, unsubscribeUrl);
       const message: RenderedMessage = {
         subject: tpl.subject,
         text,
