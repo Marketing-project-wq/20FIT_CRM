@@ -12,8 +12,10 @@ import { listSegments } from "@/lib/crm/segment-store";
 import { extractVariables } from "@/lib/crm/template";
 import { isInternalTestTemplateKey } from "@/lib/crm/send-test-constants";
 import { loadCityFill } from "@/lib/crm/city-fill";
+import { listDeliveries, deliveryRecipients } from "@/lib/crm/deliveries";
 import { CampaignFlow, type TemplateOption } from "./campaign-flow";
 import { SegmentsTab } from "./segments-tab";
+import { DeliveriesTab } from "./deliveries-tab";
 
 export const metadata: Metadata = { title: "Campaigns" };
 export const dynamic = "force-dynamic";
@@ -47,13 +49,13 @@ async function loadEligibleTemplates(): Promise<TemplateOption[]> {
 export default async function CampaignsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string; run?: string }>;
 }) {
   const role = await getCurrentUserRole();
   const { t } = getServerDict();
   const c = t.campaignsPage;
-  const { tab: rawTab } = await searchParams;
-  const tab = rawTab === "segmen" ? "segmen" : "kirim";
+  const { tab: rawTab, run: runParam } = await searchParams;
+  const tab = rawTab === "segmen" ? "segmen" : rawTab === "kiriman" ? "kiriman" : "kirim";
 
   if (grantFor(role, "send.at_or_below_threshold") === "deny") {
     return (
@@ -84,7 +86,16 @@ export default async function CampaignsPage({
   const tabs = [
     { key: "kirim", label: c.tabKirim, href: "/campaigns?tab=kirim" },
     { key: "segmen", label: c.tabSegmen, href: "/campaigns?tab=segmen" },
+    { key: "kiriman", label: c.tabKiriman, href: "/campaigns?tab=kiriman" },
   ];
+
+  // Deliveries tab data — the merged scheduled+run timeline, and (when a run is picked) its recipients.
+  const admin = createAdminClient();
+  const deliveries = tab === "kiriman" ? await listDeliveries(admin) : [];
+  const deliveryDetail =
+    tab === "kiriman" && runParam
+      ? { runId: runParam, recipients: await deliveryRecipients(admin, runParam) }
+      : null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -160,6 +171,9 @@ export default async function CampaignsPage({
           canBuild={canBuild}
         />
       )}
+
+      {/* ── TAB: KIRIMAN (deliveries — scheduled + runs, one timeline) ── */}
+      {tab === "kiriman" && <DeliveriesTab deliveries={deliveries} detail={deliveryDetail} />}
     </div>
   );
 }
