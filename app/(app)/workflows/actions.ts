@@ -148,7 +148,7 @@ export async function runWorkflowAction(workflowId: string): Promise<WorkflowRun
   // Satu run per eksekusi workflow — pakai template & jalur kirim yang sama seperti campaign.
   const email = await actorEmail();
   const run = await createRun({
-    segmentId: workflowId, // workflow id sebagai segment ref (run milik workflow ini)
+    workflowId, // run ini milik workflow (bukan segment) — XOR di crm_campaign_run menegakkannya (T-38)
     templateKey: wf.templateKey,
     label: `Workflow: ${wf.name}`,
     createdBy: email,

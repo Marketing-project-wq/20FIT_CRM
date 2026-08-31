@@ -19,7 +19,8 @@ export { nextRunStatus, type RunStatus };
 
 export interface CampaignRun {
   id: string;
-  segmentId: string;
+  segmentId: string | null; // set for a campaign run; null for a workflow run (XOR with workflowId)
+  workflowId: string | null; // set for a workflow run; null for a campaign run (XOR with segmentId)
   templateKey: string;
   label: string | null;
   status: RunStatus;
@@ -36,7 +37,8 @@ export interface ResumableRun extends CampaignRun {
 
 interface RunRow {
   id: string;
-  segment_id: string;
+  segment_id: string | null;
+  workflow_id: string | null;
   template_key: string;
   label: string | null;
   status: RunStatus;
@@ -44,10 +46,13 @@ interface RunRow {
   created_at: string;
 }
 
+const RUN_COLS = "id, segment_id, workflow_id, template_key, label, status, created_by, created_at";
+
 function toRun(r: RunRow): CampaignRun {
   return {
     id: r.id,
     segmentId: r.segment_id,
+    workflowId: r.workflow_id,
     templateKey: r.template_key,
     label: r.label,
     status: r.status,
@@ -56,10 +61,14 @@ function toRun(r: RunRow): CampaignRun {
   };
 }
 
-/** Create a new campaign instance for (segment, template). Returns the run whose id will be used as
- *  crm_message_log.campaign_id. Status starts 'draft' until the first send flips it to 'sending'. */
+/** Create a new run instance, owned by EITHER a segment (campaign) OR a workflow — never both, never
+ *  neither (crm_campaign_run_owner_xor enforces it in the DB, T-38 fix). Returns the run whose id will
+ *  be used as crm_message_log.campaign_id. Status starts 'draft' until the first send flips it to
+ *  'sending'. Passing the wrong owner id (e.g. a workflow id as segmentId, the original T-38 bug) now
+ *  fails the FK/XOR loudly instead of silently, and the caller sees null → run_create_failed. */
 export async function createRun(input: {
-  segmentId: string;
+  segmentId?: string | null;
+  workflowId?: string | null;
   templateKey: string;
   label: string | null;
   createdBy: string | null;
@@ -70,13 +79,14 @@ export async function createRun(input: {
     const { data, error } = await admin
       .from("crm_campaign_run")
       .insert({
-        segment_id: input.segmentId,
+        segment_id: input.segmentId ?? null,
+        workflow_id: input.workflowId ?? null,
         template_key: input.templateKey,
         label,
         created_by: input.createdBy,
         status: "draft",
       })
-      .select("id, segment_id, template_key, label, status, created_by, created_at")
+      .select(RUN_COLS)
       .single();
     if (error || !data) return null;
     return toRun(data as RunRow);
@@ -96,7 +106,7 @@ export async function getRunForPair(
     const admin = createAdminClient();
     const { data, error } = await admin
       .from("crm_campaign_run")
-      .select("id, segment_id, template_key, label, status, created_by, created_at")
+      .select(RUN_COLS)
       .eq("id", runId)
       .single();
     if (error || !data) return null;
@@ -117,7 +127,7 @@ export async function listResumableRuns(segmentId: string, templateKey: string):
     const admin = createAdminClient();
     const { data, error } = await admin
       .from("crm_campaign_run")
-      .select("id, segment_id, template_key, label, status, created_by, created_at")
+      .select(RUN_COLS)
       .eq("segment_id", segmentId)
       .eq("template_key", templateKey)
       .in("status", ["draft", "sending"])
