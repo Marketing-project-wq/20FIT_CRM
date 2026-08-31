@@ -23,6 +23,7 @@ import {
   type SendSummary,
   type SendConfig,
 } from "./send-run";
+import { campaignBounceStatus } from "./bounce-monitor";
 
 /**
  * Server adapter that wires the pure send engine (lib/crm/send-run.ts) to Supabase + Mailtrap. It
@@ -385,7 +386,23 @@ export async function sendCampaign(input: CampaignSendInput, nowIso: string): Pr
     },
   };
 
-  const summary = await runSend(engineRecipients, ports, input.campaignId, hashIdentityFor, config);
+  // PRE-RUN bounce guard (5% auto-stop, activated 31 Aug 2026). Hard bounces mostly land LATER via
+  // the Mailtrap webhook, so the in-run stop (runSend rule 6) can't see them; this reads the
+  // accumulated, webhook-filled bounces for THIS run and refuses to START the next pass if the ratio
+  // has crossed 5% over a sufficient sample. A fresh run has 0 prior attempts → dataSufficient false
+  // → never pre-halted; the guard only bites on a resume of a run that is already bouncing badly.
+  const preRunBounce = await campaignBounceStatus(admin, input.campaignId);
+  const summary: SendSummary = preRunBounce.stop
+    ? {
+        attempted: 0,
+        sent: 0,
+        skippedSuppressed: 0,
+        skippedAlreadySent: 0,
+        failed: { invalid_address: 0, hard_bounce: 0, provider_rejected: 0, unknown: 0 },
+        deferredDailyLimit: 0,
+        stoppedHighBounce: true,
+      }
+    : await runSend(engineRecipients, ports, input.campaignId, hashIdentityFor, config);
 
   // ONE audit row per run — PII-free counts only (SEND_ACTION → compliance / permanent).
   let auditOk = true;

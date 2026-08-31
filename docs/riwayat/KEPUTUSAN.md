@@ -959,3 +959,26 @@ berbeda — tak ada yang disembunyikan.
 
 **Pembalikan:** ubah `DOB_PRIORITY`/`GENDER_PRIORITY` di `lib/crm/demographic-pick.ts` (satu tempat,
 tertutup test) bila pemilik memutuskan self-report harus diperingkat lain.
+
+## K-49 · Auto-stop bounce 5% DIAKTIFKAN (pasca-kirim), digerbangi dataSufficient
+
+**Keputusan pemilik (31 Agu 2026, sebelum kampanye lebih besar pertama — disetujui + diterapkan):**
+monitor pantulan pasca-kirim (`lib/crm/bounce-monitor.ts`) yang selama ini `active:false` (dibangun,
+tak diaktifkan) kini AKTIF via `BOUNCE_AUTOSTOP_ACTIVE = true`. `sendCampaign` memanggil
+`campaignBounceStatus` SEBELUM tiap run dan menolak MEMULAI run bila `active && wouldStop` → run
+ditandai `stopped` (via `nextRunStatus`, sebab `stoppedHighBounce`).
+
+**Kenapa aman diaktifkan sekarang:** pantulan keras kebanyakan tiba BELAKANGAN lewat webhook Mailtrap
+(`bounced_at`), jadi stop dalam-run (`runSend` rule 6) tak melihatnya. `dataSufficient` (`attempted ≥
+minBounceSample=20`) menjadikan aktivasi tak berbahaya: di bawah sampel minimum `wouldStop` selalu
+false berapa pun rasionya — sebuah run baru (0 attempt sebelumnya) TAK PERNAH bisa dipra-hentikan;
+gerbang hanya menggigit saat RESUME run yang webhook-nya sudah mengisi ≥20 attempt dengan rasio
+pantul-keras melewati 5%. Ambang 5% = keputusan 24 Agu; ini mengaktifkan penegakannya, bukan
+mengubah angkanya.
+
+**Terukur & terbukti:** `bounce-monitor.test.ts` mengunci — aktif secara default, `stop = active &&
+wouldStop`, fresh-run tak pernah stop, dan mode measure-only (`active=false`) tetap menghitung tapi
+tak menghentikan. `stop` adalah satu-satunya flag yang ditindaklanjuti pemanggil.
+
+**Pembalikan:** setel `BOUNCE_AUTOSTOP_ACTIVE = false` (satu konstanta) → kembali ke measure-only;
+aritmetikanya tetap jalan, tak ada yang dihentikan.
