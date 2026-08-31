@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveRestrictIds, applyMasterCriteria } from "./segment-read";
+import { normalizeEmail } from "./normalize";
 import { fetchSuppressedCustomerIds } from "./contactability-read";
 import type { SegmentCriteria } from "./segment";
 import { renderTemplate } from "./template";
@@ -96,20 +97,61 @@ interface RawRecipient {
   language: "id" | "en";
 }
 
-/** Turn a static email list into recipients (manual/email_list segment). customer_id is a stable
- *  synthetic key (`manual:<email>`) so the idempotency key is deterministic per email without any
- *  master_customer row. Deduped by normalised email. Suppression + pre-launch withhold still apply
- *  downstream exactly as for a resolved segment. */
-export function emailListToRecipients(emails: string[]): RawRecipient[] {
+export interface EmailListResolution {
+  recipients: RawRecipient[]; // addresses matched to a real master_customer uuid
+  unresolved: string[];       // addresses NOT in the pool → cannot be a campaign recipient
+}
+
+/**
+ * Resolve a manual email-list segment to REAL recipients — every campaign recipient MUST carry a
+ * real master_customer.customer_id (a uuid), because crm_message_log.customer_id AND
+ * crm_suppression.customer_id are both `uuid`. A synthetic id (e.g. "manual:<email>") cannot be
+ * inserted (the send throws `invalid input syntax for type uuid`) and, even if it could, its
+ * unsubscribe link would have no uuid to write to crm_suppression — the recipient could never opt
+ * out. So a manual email list means "these specific people who are already in the audience pool":
+ * each address is looked up by email_normalized; matches become recipients, and addresses NOT in the
+ * pool are returned as `unresolved` so the caller can REJECT the send before a run is created,
+ * naming them (internal test addresses belong in the crm_test_recipient / Send-test path, not here).
+ * Deduped by normalised email.
+ */
+export async function resolveEmailListRecipients(
+  admin: SupabaseClient,
+  emails: string[],
+): Promise<EmailListResolution> {
+  const normalized: string[] = [];
   const seen = new Set<string>();
-  const out: RawRecipient[] = [];
   for (const raw of emails) {
-    const email = (raw ?? "").trim().toLowerCase();
-    if (!email || !email.includes("@") || seen.has(email)) continue;
+    const email = normalizeEmail(raw);
+    if (!email || seen.has(email)) continue;
     seen.add(email);
-    out.push({ customerId: `manual:${email}`, email, language: "id" });
+    normalized.push(email);
   }
-  return out;
+  if (normalized.length === 0) return { recipients: [], unresolved: [] };
+
+  const byEmail = new Map<string, string>(); // email_normalized → customer_id
+  for (let i = 0; i < normalized.length; i += PAGE) {
+    const chunk = normalized.slice(i, i + PAGE);
+    const { data, error } = await admin
+      .from("master_customer")
+      .select("customer_id, email_normalized")
+      .in("email_normalized", chunk);
+    if (error) throw error;
+    for (const row of (data ?? []) as { customer_id: string; email_normalized: string | null }[]) {
+      if (row.email_normalized && !byEmail.has(row.email_normalized)) {
+        byEmail.set(row.email_normalized, String(row.customer_id));
+      }
+    }
+  }
+
+  const recipients: RawRecipient[] = [];
+  const unresolved: string[] = [];
+  for (const email of normalized) {
+    const customerId = byEmail.get(email);
+    // Language default 'id' — master_customer carries no per-person comm language yet (hanging item).
+    if (customerId) recipients.push({ customerId, email, language: "id" });
+    else unresolved.push(email);
+  }
+  return { recipients, unresolved };
 }
 
 /** Page master_customer for the segment, collecting recipients that have a usable canonical email.
@@ -165,6 +207,7 @@ export interface CampaignPreview {
   suppressed: number; // of the with-email set, how many are currently suppressed (skipped at send)
   sendable: number; // withEmail − suppressed → the number that would actually be emailed
   remainingDailyBudget: number; // dailyLimit − already sent today (from the log)
+  unresolved: string[]; // manual email-list addresses NOT in the pool → cannot be a recipient
 }
 
 /**
@@ -177,10 +220,18 @@ export async function previewCampaign(
   nowIso: string,
 ): Promise<CampaignPreview> {
   const admin = createAdminClient();
-  const [{ recipients, noContact }, suppressed] = await Promise.all([
-    input.emailList && input.emailList.length > 0
-      ? Promise.resolve({ recipients: emailListToRecipients(input.emailList), noContact: 0 })
-      : resolveRecipients(admin, input.criteria, input.masterFilterExpr),
+  const isEmailList = !!(input.emailList && input.emailList.length > 0);
+  const [{ recipients, noContact, unresolved }, suppressed] = await Promise.all([
+    isEmailList
+      ? resolveEmailListRecipients(admin, input.emailList as string[]).then((r) => ({
+          recipients: r.recipients,
+          noContact: 0,
+          unresolved: r.unresolved,
+        }))
+      : resolveRecipients(admin, input.criteria, input.masterFilterExpr).then((r) => ({
+          ...r,
+          unresolved: [] as string[],
+        })),
     fetchSuppressedCustomerIds(admin),
   ]);
   const suppressedCount = recipients.reduce((n, r) => (suppressed.has(r.customerId) ? n + 1 : n), 0);
@@ -198,6 +249,7 @@ export async function previewCampaign(
     suppressed: suppressedCount,
     sendable: withEmail - suppressedCount,
     remainingDailyBudget: Math.max(0, dailyLimit - (count ?? 0)),
+    unresolved,
   };
 }
 

@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { isPermitted, grantFor } from "@/lib/auth/roles";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSegmentById } from "@/lib/crm/segment-store";
-import { previewCampaign, sendCampaign, emailListToRecipients } from "@/lib/crm/send-campaign";
+import { previewCampaign, sendCampaign, resolveEmailListRecipients } from "@/lib/crm/send-campaign";
 import { describeCountDrift, planDailySpread, type CountDrift, type DailySpread } from "@/lib/crm/send-plan";
 import { DEFAULT_SEND_CONFIG, requiresLargeSendConfirmation, type SendSummary } from "@/lib/crm/send-run";
 import {
@@ -95,6 +95,7 @@ export interface PreviewResult {
   sendable?: number;
   needsLargeConfirm?: boolean;
   spread?: DailySpread;
+  unresolved?: string[]; // manual email-list addresses not in the pool → cannot be a recipient
 }
 
 export async function previewCampaignAction(segmentId: string, templateKey: string): Promise<PreviewResult> {
@@ -121,6 +122,7 @@ export async function previewCampaignAction(segmentId: string, templateKey: stri
     sendable: p.sendable,
     needsLargeConfirm: requiresLargeSendConfirmation(p.sendable),
     spread: planDailySpread(p.sendable, p.remainingDailyBudget, DEFAULT_SEND_CONFIG.dailyLimit),
+    unresolved: p.unresolved,
   };
 }
 
@@ -180,8 +182,9 @@ export interface SendResult {
     | "run_create_failed"
     | "send_threw" // sendCampaign threw; the run is marked stopped + last_error (see detail)
     | "missing_env" // required send env vars unset — reported ALL at once (see detail)
+    | "unresolvable_recipients" // manual email-list addresses not in the pool — refuse BEFORE a run (see detail)
     | "unsubscribe_host_mismatch"; // unsubscribe link host ≠ serving host → dead link, refuse
-  detail?: string; // on 'send_threw': PII-free classified cause (also written to run.last_error)
+  detail?: string; // on 'send_threw'/'unresolvable_recipients': PII-free cause / named addresses
   linkHost?: string | null; // on 'unsubscribe_host_mismatch': the host the unsubscribe link points to
   servingHost?: string | null; // on 'unsubscribe_host_mismatch': the host actually serving the app
   drift?: CountDrift; // recount at confirm vs what the operator saw
@@ -219,6 +222,20 @@ export async function sendCampaignAction(args: {
   const missing = missingSendEnv();
   if (missing.length > 0) {
     return { ok: false, error: "missing_env", detail: missing.map((m) => m.name).join(", ") };
+  }
+
+  // Manual email-list segment: RESOLVE every address to a real master_customer uuid BEFORE creating
+  // a run. Any address not in the pool cannot be a recipient (no customer_id → the send would throw
+  // on the uuid insert, and its unsubscribe link would have no identity to suppress). Refuse the whole
+  // send here, NAMING the addresses, so the operator learns immediately instead of a silent stopped
+  // run — internal test addresses belong in the Send-test / crm_test_recipient path, not here.
+  let emailRecipients: Awaited<ReturnType<typeof resolveEmailListRecipients>>["recipients"] | undefined;
+  if (seg.stored.emailList && seg.stored.emailList.length > 0) {
+    const resolved = await resolveEmailListRecipients(createAdminClient(), seg.stored.emailList);
+    if (resolved.unresolved.length > 0) {
+      return { ok: false, error: "unresolvable_recipients", detail: resolved.unresolved.join(", ") };
+    }
+    emailRecipients = resolved.recipients;
   }
 
   const stamp = nowIso();
@@ -296,9 +313,7 @@ export async function sendCampaignAction(args: {
         actorId,
         actorEmail,
         confirmedLargeSend: args.confirmedLargeSend,
-        ...(seg.stored.emailList && seg.stored.emailList.length > 0
-          ? { overrideRecipients: emailListToRecipients(seg.stored.emailList) }
-          : {}),
+        ...(emailRecipients ? { overrideRecipients: emailRecipients } : {}),
       },
       stamp,
     );
@@ -330,6 +345,7 @@ export async function sendCampaignAction(args: {
 export interface ScheduleResult {
   ok: boolean;
   error?: SendResult["error"] | "bad_time" | "time_in_past" | "schedule_failed";
+  detail?: string; // on 'unresolvable_recipients': the named addresses not in the pool
   drift?: CountDrift;
   freshSendable?: number;
   scheduledAtUtc?: string;
@@ -366,6 +382,11 @@ export async function scheduleCampaignAction(args: {
     { criteria: seg.stored.criteria, masterFilterExpr: seg.stored.masterFilterExpr, emailList: seg.stored.emailList },
     nowIso(),
   );
+  // Refuse a scheduled send to a manual list with addresses not in the pool (same rule as immediate
+  // send) — a doomed schedule should never be stored. Named, before any row is written.
+  if (fresh.unresolved.length > 0) {
+    return { ok: false, error: "unresolvable_recipients", detail: fresh.unresolved.join(", ") };
+  }
   const drift = describeCountDrift(args.shownSendable, fresh.sendable);
   if (drift.changed) return { ok: false, error: "count_changed", drift, freshSendable: fresh.sendable };
   if (requiresLargeSendConfirmation(fresh.sendable) && !args.confirmedLargeSend) {

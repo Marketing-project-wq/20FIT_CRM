@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSegmentById } from "@/lib/crm/segment-store";
-import { sendCampaign, emailListToRecipients } from "@/lib/crm/send-campaign";
+import { sendCampaign, resolveEmailListRecipients } from "@/lib/crm/send-campaign";
 import { createRun, markRunSending, finalizeRunStatus, recordRunError } from "@/lib/crm/campaign-run";
 import { classifySendThrow } from "@/lib/crm/send-env";
 import { claimDueScheduledSends, markScheduledSent, markScheduledFailed } from "@/lib/crm/scheduled-send";
@@ -31,6 +31,19 @@ export async function POST(req: NextRequest) {
       const seg = await getSegmentById(s.segmentId);
       if (!seg) { await markScheduledFailed(admin, s.id, "segment_not_found"); failed++; continue; }
 
+      // Manual email-list segment: resolve to real pool uuids; refuse (with a named cause) if any
+      // address is not in the pool — never create a run doomed to throw on the uuid insert.
+      let emailRecipients: Awaited<ReturnType<typeof resolveEmailListRecipients>>["recipients"] | undefined;
+      if (seg.stored.emailList && seg.stored.emailList.length > 0) {
+        const resolved = await resolveEmailListRecipients(admin, seg.stored.emailList);
+        if (resolved.unresolved.length > 0) {
+          await markScheduledFailed(admin, s.id, "unresolvable_recipients");
+          failed++;
+          continue;
+        }
+        emailRecipients = resolved.recipients;
+      }
+
       const run = await createRun({
         segmentId: s.segmentId,
         templateKey: s.templateKey,
@@ -50,9 +63,7 @@ export async function POST(req: NextRequest) {
             actorId: "system:scheduled-send",
             actorEmail: "system:scheduled-send",
             confirmedLargeSend: true, // confirmed at schedule time
-            ...(seg.stored.emailList && seg.stored.emailList.length > 0
-              ? { overrideRecipients: emailListToRecipients(seg.stored.emailList) }
-              : {}),
+            ...(emailRecipients ? { overrideRecipients: emailRecipients } : {}),
           },
           new Date().toISOString(),
         );

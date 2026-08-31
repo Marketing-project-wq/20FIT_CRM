@@ -1221,6 +1221,7 @@ export const en: Messages = {
       errSendThrew: "The send failed before finishing; the run is marked stopped with its reason. Check the run for details.",
       errHostMismatch: "The unsubscribe link host differs from the host serving the app — the link would be dead. Set NEXT_PUBLIC_APP_URL to the correct host before sending.",
       errMissingEnv: "The send is not configured: required environment variables are missing — ",
+      errUnresolvable: "Some addresses in this list aren't in the 20FIT audience data, so they can't be campaign recipients — without them, the unsubscribe link has no identity to record. For internal test recipients, use Send test. Addresses not matched: ",
       resultTitle: "Send result",
       resRunLabelNew: "New run",
       resRunLabelResume: "Resumed run",

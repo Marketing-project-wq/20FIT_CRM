@@ -132,3 +132,16 @@ lengkap + audit grant 13 tabel `crm_*` di **`docs/riwayat/TEMUAN.md` T-35**. Tig
   Pemilik produk menyetujui `[nik, staging, clinic, hyrox, progressive, staff]`; DITERAPKAN. Lapisan
   baca kini memeriksa `*_source` (`demographicProvenance`), tak lagi menganggap semua `staff` — 246 DOB
   yang salah label kini "isian mandiri". Tak ada tindakan manusia tersisa di butir ini.
+
+### B11. (T-36) Kirim uji kampanye NYATA lewat `crm_test_recipient` — setelah deploy
+Bug id-penerima-bukan-uuid sudah **diperbaiki di kode** (T-36): kampanye kini menolak lebih awal
+alamat di luar pool, dan jalur uji internal (`crm_test_recipient` → harness) memakai uuid valid.
+Tapi **membuktikan email benar-benar terkirim** (baris `crm_message_log`, `provider_message_id`,
+satu audit `campaign.sent`, email sampai) **tak bisa dari sesi agen**: env kirim
+(`UNSUBSCRIBE_TOKEN_SECRET`/`MAILTRAP_API_TOKEN`/`MAILTRAP_FROM`/`SEND_TEST_INTERNAL_ADDRESS`) kosong
+di kontainer, dan uji berjalan di produksi.
+- **Siapa:** pemilik produk / operator dengan akses UI produksi.
+- **Langkah:** setelah PR ini di-merge & tayang, buka Campaigns → Kirim uji (memakai `crm_test_recipient`,
+  kini `tifany@20fit.id`), jalankan sekali, lalu laporkan artefaknya. **Catatan:** rotasi token bocor
+  (B1) mestinya lebih dulu — jangan kirim lewat token bocor.
+- **Kalau dilewati:** rantai kirim tetap belum terbukti ujung-ke-ujung di produksi (walau kode benar).

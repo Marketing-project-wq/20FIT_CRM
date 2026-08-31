@@ -123,6 +123,8 @@ export function CampaignFlow({
       const p = await previewCampaignAction(segmentId, templateKey);
       if (!p.ok) { setPreview(null); setRuns([]); setNotice(errText(p.error)); return; }
       setPreview(p); setShownSendable(p.sendable ?? 0);
+      // Manual list with addresses not in the pool: warn NOW (named), before the operator presses send.
+      if (p.unresolved && p.unresolved.length > 0) setNotice(`${cc.errUnresolvable}${p.unresolved.join(", ")}`);
       setRunsLoading(true);
       const r = await listRunsAction(segmentId, templateKey);
       const loaded = r.ok ? r.runs ?? [] : [];
@@ -150,6 +152,8 @@ export function CampaignFlow({
           setNotice(`${cc.errSendThrew}${r.detail ? ` (${r.detail})` : ""}`);
         } else if (r.error === "missing_env") {
           setNotice(`${cc.errMissingEnv}${r.detail ?? ""}`);
+        } else if (r.error === "unresolvable_recipients") {
+          setNotice(`${cc.errUnresolvable}${r.detail ?? ""}`);
         } else { setNotice(errText(r.error)); }
         return;
       }
@@ -177,6 +181,7 @@ export function CampaignFlow({
           setNotice(`${cc.driftWarnA}${fmt(r.freshSendable)}${cc.driftWarnB}`);
         } else if (r.error === "time_in_past") { setNotice(cc.schedulePast); }
         else if (r.error === "bad_time") { setNotice(cc.scheduleBadTime); }
+        else if (r.error === "unresolvable_recipients") { setNotice(`${cc.errUnresolvable}${r.detail ?? ""}`); }
         else { setNotice(errText(r.error as SendResult["error"])); }
         return;
       }
