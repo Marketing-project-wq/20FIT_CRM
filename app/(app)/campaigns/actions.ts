@@ -6,6 +6,7 @@ import { isPermitted, grantFor } from "@/lib/auth/roles";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSegmentById } from "@/lib/crm/segment-store";
 import { previewCampaign, sendCampaign, resolveEmailListRecipients } from "@/lib/crm/send-campaign";
+import { renderEmailDocument } from "@/lib/crm/email-document";
 import { describeCountDrift, planDailySpread, type CountDrift, type DailySpread } from "@/lib/crm/send-plan";
 import { DEFAULT_SEND_CONFIG, requiresLargeSendConfirmation, type SendSummary } from "@/lib/crm/send-run";
 import {
@@ -455,11 +456,13 @@ export async function sendPreviewEmailAction(
   if (!tplData) return { ok: false, error: "no_template" };
   const tpl = tplData as { name: string; subject: string | null; body: string };
 
-  // Replace template variables with placeholder values for preview
+  // Replace template variables with placeholder values for preview, then compose through the SAME
+  // email skeleton the real send uses (so a Send-test reflects the exact frame that ships).
   const previewUnsubUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? "https://crm.20fit.id"}/unsubscribe?token=PREVIEW`;
-  const body = tpl.body
+  const substituted = tpl.body
     .replace(/\{\{unsubscribe_url\}\}/g, previewUnsubUrl)
     .replace(/\{\{([^}]+)\}\}/g, (_, key) => `[${key}]`);
+  const { html, text } = renderEmailDocument(substituted, previewUnsubUrl);
   const subject = `[PREVIEW] ${tpl.subject ?? tpl.name}`;
 
   const { sendTransactionalEmail } = await import("@/lib/email/mailtrap");
@@ -468,7 +471,7 @@ export async function sendPreviewEmailAction(
 
   for (const to of toEmails) {
     try {
-      await sendTransactionalEmail({ to, subject, text: body.replace(/<[^>]+>/g, ""), html: body }, "campaign-preview");
+      await sendTransactionalEmail({ to, subject, text, html }, "campaign-preview");
       sentTo.push(to);
     } catch {
       errors.push(to);
