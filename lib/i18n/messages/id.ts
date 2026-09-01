@@ -1402,6 +1402,8 @@ export const id = {
       errNameTooShort: "Nama kampanye minimal 3 karakter.",
       errNameTooLong: "Nama kampanye maksimal 100 karakter.",
       errNameRequiredHint: "Isi nama kampanye untuk melanjutkan.",
+      dupWarnA: "Nama ini sudah dipakai pada ",
+      dupWarnB: ". Kirim tetap bisa dilanjutkan.",
       segmentCreatedA: "Segmen “",
       segmentCreatedB: "” dibuat dan dipilih.",
       runsLoading: "Memuat pengiriman…",

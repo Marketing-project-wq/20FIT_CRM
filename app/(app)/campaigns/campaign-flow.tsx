@@ -6,7 +6,7 @@ import { Check, Lock, Users, Mail, Send, MessageCircle, Plus, Eye } from "lucide
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useI18n } from "@/components/i18n/lang-provider";
-import { formatCount } from "@/lib/i18n";
+import { formatCount, formatDateTime } from "@/lib/i18n";
 import { validateCampaignName } from "@/lib/crm/campaign-name";
 import { saveCampaignDraft, loadCampaignDraft, clearCampaignDraft } from "@/lib/crm/campaign-draft";
 import { segmentBuilderUrlFromCompose } from "@/lib/crm/campaign-nav";
@@ -19,6 +19,7 @@ import {
   listRunsAction,
   sendCampaignAction,
   scheduleCampaignAction,
+  checkDuplicateCampaignNameAction,
   type PreviewResult,
   type SendResult,
   type RunOption,
@@ -75,6 +76,9 @@ export function CampaignFlow({
   const [runSel, setRunSel] = useState<RunSelection>(null);
   const [newLabel, setNewLabel] = useState("");
   const [nameTouched, setNameTouched] = useState(false);
+  // Soft duplicate-name signal: the ISO date this name was last used within 30 days (null = none).
+  // Checked on blur only (never per keystroke); a WARNING, never a block.
+  const [dupUsedOn, setDupUsedOn] = useState<string | null>(null);
   const [confirmLarge, setConfirmLarge] = useState(false);
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<SendResult | null>(null);
@@ -90,6 +94,14 @@ export function CampaignFlow({
 
   // Restore a draft saved before jumping to the Segmen tab, and auto-select a just-created segment.
   // In an effect (not render) so it never causes a hydration mismatch, and runs once on mount.
+  //
+  // ⚠️ LOAD-BEARING ASSUMPTION (scenario C — browser Back): this restore only works because the
+  // Campaigns tabs are a URL searchParam (`?tab=`) on ONE server-rendered route. Changing tab (or
+  // pressing Back) re-renders the server page, so `{tab==='kirim' && <CampaignFlow/>}` flips and this
+  // component UNMOUNTS on the way out and REMOUNTS on the way back — which re-runs this mount effect.
+  // If `tab` ever becomes CLIENT state (useState) instead of a searchParam, CampaignFlow no longer
+  // unmounts on a tab switch, this effect never re-runs on Back, and the draft is silently lost (and,
+  // because we clear it below, gone for good). Guarded by campaign-tab-is-searchparam.test.ts.
   useEffect(() => {
     const draft = loadCampaignDraft();
     if (draft) {
@@ -180,6 +192,20 @@ export function CampaignFlow({
     setSegmentId(id);
     setTemplateKey(""); setPreview(null); setRuns([]); setRunSel(null);
     setConfirmLarge(false); setResult(null); setNotice(null);
+  }
+
+  // On blur only (never per keystroke): mark touched, then soft-check for a same-name run in the last
+  // 30 days. Never blocks — it only sets a warning line.
+  async function onNameBlur() {
+    setNameTouched(true);
+    const v = validateCampaignName(newLabel);
+    if (!v.ok) { setDupUsedOn(null); return; }
+    try {
+      const r = await checkDuplicateCampaignNameAction(v.value!);
+      setDupUsedOn(r.ok ? r.usedOn ?? null : null);
+    } catch {
+      setDupUsedOn(null);
+    }
   }
 
   async function onPreview() {
@@ -359,8 +385,8 @@ export function CampaignFlow({
               className={`${selectCls}${showNameError ? " border-red focus:ring-red" : ""}`}
               value={newLabel}
               placeholder={cc.campaignNamePlaceholder}
-              onChange={(e) => setNewLabel(e.target.value)}
-              onBlur={() => setNameTouched(true)}
+              onChange={(e) => { setNewLabel(e.target.value); setDupUsedOn(null); }}
+              onBlur={onNameBlur}
               aria-required="true"
               aria-invalid={showNameError}
               aria-describedby={showNameError ? "campaign-name-error" : "campaign-name-hint"}
@@ -371,6 +397,12 @@ export function CampaignFlow({
               </span>
             ) : (
               <span id="campaign-name-hint" className="font-body text-[12px] text-ink-faint">{cc.campaignNameHint}</span>
+            )}
+            {/* Soft duplicate-name warning — informational, never blocks the send. */}
+            {dupUsedOn && nameValid && (
+              <span className="font-body text-[12px] text-amber">
+                {cc.dupWarnA}{formatDateTime(dupUsedOn, lang)}{cc.dupWarnB}
+              </span>
             )}
           </label>
 
