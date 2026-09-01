@@ -3,10 +3,13 @@
  * timestamp.
  *
  * NOTE (naming policy): the composer now REQUIRES a campaign name — this helper is no longer wired
- * into the compose form or the create-run server action. It is kept ONLY as defence-in-depth for the
- * scheduled-send cron (app/api/campaigns/run-scheduled): a pre-existing pending row whose run_label is
- * NULL (created before the name became mandatory) still gets a readable label at fire time instead of
- * a raw timestamp. Pure + deterministic; safe to reuse elsewhere that legacy data lacks a name.
+ * into the compose form or the create-run server action. But it is NOT a leftover: it is the SOLE
+ * guarantee of a valid name on the scheduled-send cron path (app/api/campaigns/run-scheduled → via
+ * cronRunLabel below). The cron calls createRun DIRECTLY, bypassing the composer's mandatory-name
+ * validation entirely — so nothing but this fallback stands between a name-less pending row and the
+ * label/run_label NOT NULL constraint (a NULL there = run_create_failed, a real cron failure, not just
+ * an ugly name). Keep it alive. It gives a pre-existing pending row whose run_label is NULL/blank a
+ * readable label at fire time instead of a raw timestamp. Pure + deterministic.
  */
 
 const MONTHS_ID = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
@@ -33,4 +36,22 @@ export function defaultCampaignLabel(segmentName: string, dateIso: string, lang:
   const name = (segmentName ?? "").trim() || (lang === "en" ? "Campaign" : "Kampanye");
   const date = formatShortDateWib(dateIso, lang);
   return date ? `${name} · ${date}` : name;
+}
+
+/**
+ * Resolve the label the scheduled-send cron must write for a run. Returns the stored run_label when it
+ * carries real text, otherwise the human default. Uses `?.trim() ||` — NOT `??` — on purpose: `??`
+ * only catches null/undefined, so a whitespace-only run_label (" ") would slip through and then be
+ * collapsed to NULL by createRun's own trim. Once run_label/label are NOT NULL that NULL would make the
+ * cron fail (run_create_failed) rather than merely produce an ugly name. defaultCampaignLabel never
+ * returns empty, so this is guaranteed non-blank — the sole guarantee of a valid label on the cron path
+ * (the composer's mandatory-name validation does not run here; the cron calls createRun directly).
+ */
+export function cronRunLabel(
+  runLabel: string | null | undefined,
+  segmentName: string,
+  dateIso: string,
+  lang: "id" | "en" = "id",
+): string {
+  return runLabel?.trim() || defaultCampaignLabel(segmentName, dateIso, lang);
 }

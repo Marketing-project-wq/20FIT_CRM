@@ -4,7 +4,7 @@ import { getSegmentById } from "@/lib/crm/segment-store";
 import { sendCampaign, resolveEmailListRecipients } from "@/lib/crm/send-campaign";
 import { createRun, markRunSending, finalizeRunStatus, recordRunError } from "@/lib/crm/campaign-run";
 import { classifySendThrow } from "@/lib/crm/send-env";
-import { defaultCampaignLabel } from "@/lib/crm/campaign-label";
+import { cronRunLabel } from "@/lib/crm/campaign-label";
 import { claimDueScheduledSends, markScheduledSent, markScheduledFailed } from "@/lib/crm/scheduled-send";
 import { getSendConfig } from "@/lib/crm/send-config";
 import { DEFAULT_SEND_CONFIG } from "@/lib/crm/send-run";
@@ -48,12 +48,13 @@ export async function POST(req: NextRequest) {
         emailRecipients = resolved.recipients;
       }
 
+      // Defence in depth: the composer already stores a segment+date name, but if an older pending row
+      // has none — NULL *or* whitespace-only — cronRunLabel falls back to the same human default (never
+      // a raw ISO timestamp, never empty). See its docblock for why this must not be a bare `??`.
       const run = await createRun({
         segmentId: s.segmentId,
         templateKey: s.templateKey,
-        // Defence in depth: the composer already stores a segment+date name, but if an older pending
-        // row has none, fall back to the SAME human default — never a raw ISO timestamp.
-        label: s.runLabel ?? defaultCampaignLabel(seg.name, s.scheduledAt, "id"),
+        label: cronRunLabel(s.runLabel, seg.name, s.scheduledAt, "id"),
         createdBy: "system:scheduled-send",
       });
       if (!run) { await markScheduledFailed(admin, s.id, "run_create_failed"); failed++; continue; }
