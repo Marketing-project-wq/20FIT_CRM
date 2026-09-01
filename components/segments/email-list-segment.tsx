@@ -11,7 +11,7 @@ import { saveEmailListSegmentAction } from "@/app/(app)/segments/actions";
  * addresses at send via overrideRecipients — never touches master_customer. For admin testing lists
  * or any fixed send list. Suppression still applies at send.
  */
-export function EmailListSegment({ onSaved }: { onSaved: () => void }) {
+export function EmailListSegment({ onSaved }: { onSaved: (segmentId?: string) => void }) {
   const { t } = useI18n();
   const m = t.campaignsPage.emailListSegment;
   const [name, setName] = useState("");
@@ -33,7 +33,7 @@ export function EmailListSegment({ onSaved }: { onSaved: () => void }) {
         return;
       }
       setName(""); setEmails(""); setMsg(m.saved);
-      onSaved();
+      onSaved(res.segmentId);
     } finally {
       setSaving(false);
     }

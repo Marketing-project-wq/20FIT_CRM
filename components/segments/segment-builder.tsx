@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Filter, Clock, Users, Send, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EMPTY_CRITERIA, type SegmentCriteria } from "@/lib/crm/segment";
@@ -10,6 +11,7 @@ import { rowsToTree, type Row } from "@/components/segments/filter-tree-builder"
 import { UnifiedFilterBuilder } from "@/components/segments/unified-filter-builder";
 import { describeProposal, proposalIsEmpty, type AssistProposal } from "@/lib/crm/segment-ai-shared";
 import { saveSegmentAction } from "@/app/(app)/segments/actions";
+import { CAMPAIGN_COMPOSE_TAB, composeUrlWithNewSegment } from "@/lib/crm/campaign-nav";
 import { Why } from "@/components/ui/why";
 import { useI18n } from "@/components/i18n/lang-provider";
 import { formatCount, formatPct, formatDateTime } from "@/lib/i18n";
@@ -83,8 +85,9 @@ function TimeCriteria({
   );
 }
 
-export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, embedded = false, onComputed }: { cityFillPct: number; cityFilled: number; total: number; canViewHealth: boolean; embedded?: boolean; onComputed?: (counts: { matched: number; contactableMarketing: number; contactableService: number } | null) => void }) {
+export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, embedded = false, onComputed, returnTo }: { cityFillPct: number; cityFilled: number; total: number; canViewHealth: boolean; embedded?: boolean; onComputed?: (counts: { matched: number; contactableMarketing: number; contactableService: number } | null) => void; returnTo?: string | null }) {
   const { lang, t } = useI18n();
+  const router = useRouter();
   const [c, setC] = useState<SegmentCriteria>(EMPTY_CRITERIA);
   const [rows, setRows] = useState<Row[]>([]);
   const [counts, setCounts] = useState<Counts | null>(null);
@@ -107,6 +110,12 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
     setSaveMsg(null);
     try {
       const res = await saveSegmentAction({ name: segName, criteria: c, tree: rowsToTree(rows) });
+      // Bounce-back: if we arrived here from the composer, return to it with the new segment id so
+      // it can auto-select the segment the operator just built.
+      if (res.ok && returnTo === CAMPAIGN_COMPOSE_TAB && res.segmentId) {
+        router.push(composeUrlWithNewSegment(res.segmentId));
+        return;
+      }
       setSaveMsg(res.ok ? t.segments.saveOk : t.segments.saveFailed);
       if (res.ok) setSegName("");
     } catch {

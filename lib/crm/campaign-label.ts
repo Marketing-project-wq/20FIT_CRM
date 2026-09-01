@@ -1,12 +1,12 @@
 /**
- * Default campaign name when the operator leaves the name field blank.
+ * Human default campaign name — "{segment} · {date}" (e.g. "gmail test · 31 Agu 2026"), never an ISO
+ * timestamp.
  *
- * The name used to be asked at the LAST step, optional, and — when a scheduled send fired with no
- * name — filled with a raw machine timestamp ("Terjadwal 2026-08-31T06:00:00+00:00"). In Delivery
- * History those all read "Unnamed" and could not be used to trace anything. This builds a default
- * that NAMES THE SEGMENT AND THE DATE instead, e.g. "gmail test · 31 Agu 2026" — recognisable, never
- * an ISO timestamp. Pure + deterministic so both the composer (placeholder preview) and the send
- * paths (stored value) derive the exact same string.
+ * NOTE (naming policy): the composer now REQUIRES a campaign name — this helper is no longer wired
+ * into the compose form or the create-run server action. It is kept ONLY as defence-in-depth for the
+ * scheduled-send cron (app/api/campaigns/run-scheduled): a pre-existing pending row whose run_label is
+ * NULL (created before the name became mandatory) still gets a readable label at fire time instead of
+ * a raw timestamp. Pure + deterministic; safe to reuse elsewhere that legacy data lacks a name.
  */
 
 const MONTHS_ID = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];

@@ -7,7 +7,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getSegmentById } from "@/lib/crm/segment-store";
 import { previewCampaign, sendCampaign, resolveEmailListRecipients } from "@/lib/crm/send-campaign";
 import { getSendConfig } from "@/lib/crm/send-config";
-import { defaultCampaignLabel } from "@/lib/crm/campaign-label";
+import { validateCampaignName, decideRunLabel } from "@/lib/crm/campaign-name";
 import { renderEmailDocument } from "@/lib/crm/email-document";
 import { describeCountDrift, planDailySpread, type CountDrift, type DailySpread } from "@/lib/crm/send-plan";
 import { DEFAULT_SEND_CONFIG, requiresLargeSendConfirmation, type SendSummary } from "@/lib/crm/send-run";
@@ -182,6 +182,7 @@ export interface SendResult {
     | "no_unsubscribe"
     | "needs_confirm"
     | "count_changed"
+    | "label_required" // new run with a missing/too-short/too-long name — refused before any work
     | "run_not_found"
     | "run_create_failed"
     | "send_threw" // sendCampaign threw; the run is marked stopped + last_error (see detail)
@@ -216,6 +217,13 @@ export async function sendCampaignAction(args: {
   if (!seg) return { ok: false, error: "not_found" };
   if (seg.requiresClinical && !isPermitted(role, "profile.view_health")) return { ok: false, error: "clinical_gate" };
   if (!(await templateHasUnsubscribe(args.templateKey))) return { ok: false, error: "no_unsubscribe" };
+
+  // Campaign name is REQUIRED for a NEW run (server-side, never trusting the client). A resume reuses
+  // the existing run's name, so it isn't re-validated. Refuse up front — no preview/run work on a
+  // nameless campaign. The auto-generate default was removed from this compose path (owner request).
+  const labelDecision = decideRunLabel(args.run);
+  if (!labelDecision.ok) return { ok: false, error: "label_required" };
+  const validatedNewName = labelDecision.label; // the validated new name, or null for a resume
 
   // Refuse before any run is created if the unsubscribe link would be dead (host ≠ serving host).
   const hostBlock = unsubscribeHostBlocked();
@@ -283,9 +291,8 @@ export async function sendCampaignAction(args: {
     const created = await createRun({
       segmentId: args.segmentId,
       templateKey: args.templateKey,
-      // Never a null/blank name: the composer sends the segment+date default when the field is left
-      // empty, and this fills it too for any direct caller (defence in depth). Never an ISO stamp.
-      label: args.run.label?.trim() ? args.run.label : defaultCampaignLabel(seg.name, stamp, "id"),
+      // The name is required and already validated above (validatedNewName).
+      label: validatedNewName,
       createdBy: actorForRun,
     });
     if (!created) return { ok: false, error: "run_create_failed" };
@@ -380,6 +387,15 @@ export async function scheduleCampaignAction(args: {
   if (seg.requiresClinical && !isPermitted(role, "profile.view_health")) return { ok: false, error: "clinical_gate" };
   if (!(await templateHasUnsubscribe(args.templateKey))) return { ok: false, error: "no_unsubscribe" };
 
+  // Name required for a NEW scheduled send (runLabel present). A null runLabel means "resume an
+  // existing run", which keeps that run's own name, so it isn't re-validated here.
+  let validatedRunLabel: string | null = null;
+  if (args.runLabel !== null) {
+    const nameCheck = validateCampaignName(args.runLabel);
+    if (!nameCheck.ok) return { ok: false, error: "label_required" };
+    validatedRunLabel = nameCheck.value!;
+  }
+
   const hostBlock = unsubscribeHostBlocked();
   if (hostBlock) return { ok: false, error: "unsubscribe_host_mismatch", linkHost: hostBlock.linkHost, servingHost: hostBlock.servingHost };
 
@@ -411,7 +427,7 @@ export async function scheduleCampaignAction(args: {
   const res = await insertScheduledSend(createAdminClient(), {
     segmentId: args.segmentId,
     templateKey: args.templateKey,
-    runLabel: args.runLabel,
+    runLabel: validatedRunLabel,
     scheduledAtUtc,
     confirmedLargeSend: args.confirmedLargeSend,
     shownSendable: fresh.sendable,

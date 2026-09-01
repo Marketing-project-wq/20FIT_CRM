@@ -20,7 +20,7 @@ export async function saveSegmentAction(input: {
   name: string;
   criteria: SegmentCriteria;
   tree: FilterNode | null;
-}): Promise<{ ok: boolean; error?: string }> {
+}): Promise<{ ok: boolean; error?: string; segmentId?: string }> {
   const role = await getCurrentUserRole();
   if (!isPermitted(role, "segment.build")) return { ok: false, error: "denied" };
   if (!input.name.trim()) return { ok: false, error: "empty_name" };
@@ -45,7 +45,8 @@ export async function saveSegmentAction(input: {
     stored: { criteria: input.criteria, masterFilterExpr },
     createdBy: email,
   });
-  return { ok: res.ok, error: res.error };
+  // Surface the new id so the composer can auto-select it after the bounce-back.
+  return { ok: res.ok, error: res.error, segmentId: res.id };
 }
 
 /** Save a STATIC email-list segment (manual). Gate: segment.build. Emails normalised (trim+lower),
@@ -54,7 +55,7 @@ export async function saveSegmentAction(input: {
 export async function saveEmailListSegmentAction(input: {
   name: string;
   emailsRaw: string;
-}): Promise<{ ok: boolean; error?: string }> {
+}): Promise<{ ok: boolean; error?: string; segmentId?: string }> {
   const role = await getCurrentUserRole();
   if (!isPermitted(role, "segment.build")) return { ok: false, error: "denied" };
   if (!input.name.trim()) return { ok: false, error: "empty_name" };
@@ -81,7 +82,7 @@ export async function saveEmailListSegmentAction(input: {
     stored: { criteria: EMPTY_CRITERIA, masterFilterExpr: null, emailList: emails },
     createdBy: email,
   });
-  return { ok: res.ok, error: res.error };
+  return { ok: res.ok, error: res.error, segmentId: res.id };
 }
 
 /** Soft-delete a saved segment (sets is_active = false). Gate: segment.build. */

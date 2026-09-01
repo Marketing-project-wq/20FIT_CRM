@@ -83,7 +83,8 @@ Composer kini **memakai run sebagai `campaignId`**, jadi dimensi instans hidup u
   pentalan drift tak meninggalkan baris draft yatim. `campaignId = run.id`.
 - **Composer** menampilkan **dua jalur yang jelas berbeda di layar** (bukan tersirat): jalur biru
   "Lanjutkan run yang ada" (daftar radio tiap run + "N terkirim di run ini" + pil status) dan jalur
-  netral "Mulai run baru" (dengan kolom nama opsional). Tombol Kirim **nonaktif sampai satu dipilih**.
+  netral "Mulai run baru" (dengan kolom nama; _koreksi 31 Agu 2026: nama kampanye kini **wajib** —
+  tak lagi opsional, tak ada nama-otomatis_). Tombol Kirim **nonaktif sampai satu dipilih**.
   Hasil kirim menampilkan label run + apakah baru/lanjutan + "sudah terkirim di run ini (dilewati)".
 - **Larangan tetap dijaga:** recount+drift sebelum kirim, konfirmasi kedua di atas 500, template tanpa
   tautan unsubscribe tak bisa dipilih, jatah harian dari log, kirim nyata tetap diblokir (token belum
