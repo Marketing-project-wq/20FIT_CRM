@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 export default function Page() {
   return (
     <div className="min-h-screen bg-surface">
-      <DevBanner />
+      <DevBanner mode="fixture" note="Galeri starter template — HTML contoh dari starter-templates.ts, bukan produksi." />
       <TemplateGalleryPreview />
     </div>
   );

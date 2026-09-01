@@ -9,9 +9,21 @@ export interface StarterTemplate {
    *  "Newsletter" and "Undangan Event" read as different choices even at thumbnail size. Written from
    *  the actual HTML below; never claims a feature the markup doesn't have. */
   description: string;
+  /** The full rendered height (px, at the authored 600px width) of THIS email, so the desktop thumbnail
+   *  can crop to real content instead of a fixed tall box that leaves half the card as dead #f4f4f5.
+   *  MEASURED once with a headless browser (each email is short + fixed, so the value is stable); we
+   *  cannot read it live because the preview iframe is sandbox="" (no cross-frame access) and we will
+   *  not loosen the sandbox just to measure. Absent for "blank" (it renders a placeholder, not an
+   *  iframe). If an email's HTML changes materially, re-measure. */
+  previewCropPx?: number;
   subject: string;
   html: string;
 }
+
+/** Mobile thumbnail crop (px, authored-600 space): header + first lines only — the part that
+ *  distinguishes the templates — so several cards fit on one phone screen instead of one card filling
+ *  it. Sits above every starter's header height, so no header is cut. */
+export const MOBILE_PREVIEW_CROP_PX = 210;
 
 const wrap = (inner: string) =>
   `<!DOCTYPE html>
@@ -45,6 +57,7 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
     id: "newsletter",
     name: "Newsletter",
     description: "Header merah + bagian sorotan, untuk kabar rutin.",
+    previewCropPx: 380,
     subject: "Kabar terbaru dari 20FIT",
     html: wrap(`        <tr><td style="background:#E4002B;padding:24px 32px;">
           <h1 style="margin:0;color:#ffffff;font-size:20px;">20FIT NEWSLETTER</h1>
@@ -61,6 +74,7 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
     id: "promo",
     name: "Promo / Penawaran",
     description: "Header besar + tombol ajakan, untuk penawaran.",
+    previewCropPx: 342,
     subject: "Penawaran spesial untuk Anda",
     html: wrap(`        <tr><td align="center" style="background:#E4002B;padding:40px 32px;">
           <h1 style="margin:0 0 8px;color:#ffffff;font-size:26px;">PENAWARAN SPESIAL</h1>
@@ -75,6 +89,7 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
     id: "event",
     name: "Undangan Event",
     description: "Header gelap + detail tanggal/lokasi + tombol daftar.",
+    previewCropPx: 432,
     subject: "Anda diundang: [Nama Event]",
     html: wrap(`        <tr><td align="center" style="padding:40px 32px;background:#1d1d1f;">
           <h1 style="margin:0;color:#ffffff;font-size:24px;">NAMA EVENT</h1>

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { X, Save, Eye, Image as ImageIcon, LayoutTemplate, Upload, Trash2, Blocks, Code, Monitor, Smartphone, FilePlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { STARTER_TEMPLATES } from "./starter-templates";
+import { STARTER_TEMPLATES, MOBILE_PREVIEW_CROP_PX } from "./starter-templates";
 import { BlockEditor, blocksToHtml, newBlock, type Block } from "./block-editor";
 import { renderEmailDocument } from "@/lib/crm/email-document";
 import {
@@ -232,9 +232,24 @@ export function EmailTemplateBuilder({ template, onClose }: EmailTemplateBuilder
 // squeezed into 480px so proportions lied. Fix: render the iframe at the REAL 600px width, park it at
 // the container's top-left, and scale by (container width ÷ 600) measured live — so the top of the
 // email fills the card at true proportions, deterministically, at any card width.
-function StarterThumb({ html, title }: { html: string; title: string }) {
+//
+// The visible height is a CROP in authored-600 space, not a fixed box: on desktop, `cropPx` is THIS
+// email's real content height (measured — see starter-templates.ts) so the card ends where the email
+// ends, with no dead #f4f4f5 tail; on mobile, a shorter crop (MOBILE_PREVIEW_CROP_PX = header + first
+// lines) so several cards fit one screen. The container height = cropPx × scale, so the crop scales
+// with the card. A bottom fade is shown ONLY when the crop is shorter than the email (mobile), so the
+// cut reads as "more below" rather than a chopped line.
+function StarterThumb({ html, title, cropPx }: { html: string; title: string; cropPx: number }) {
   const ref = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0); // 0 until measured, so no full-size flash on first paint
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 639px)"); // Tailwind's `sm` breakpoint
+    const apply = () => setIsMobile(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -245,10 +260,14 @@ function StarterThumb({ html, title }: { html: string; title: string }) {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+  const crop = isMobile ? Math.min(MOBILE_PREVIEW_CROP_PX, cropPx) : cropPx;
+  const cropped = crop < cropPx; // email continues below the crop → show a fade
   return (
-    // aspect-[3/4] (portrait) shows the top of the email; the 600×800 iframe scaled by width/600 fills
-    // it exactly (800 × width/600 = width × 4/3 = the box height).
-    <div ref={ref} className="relative aspect-[3/4] w-full overflow-hidden rounded border border-glass-border bg-white">
+    <div
+      ref={ref}
+      className="relative w-full overflow-hidden rounded border border-glass-border bg-white"
+      style={{ height: scale ? crop * scale : undefined, aspectRatio: scale ? undefined : String(600 / crop) }}
+    >
       <iframe
         srcDoc={html.replace(/\{\{first_name\}\}/g, "Andi")}
         sandbox=""
@@ -256,8 +275,11 @@ function StarterThumb({ html, title }: { html: string; title: string }) {
         tabIndex={-1}
         title={title}
         className="pointer-events-none absolute left-0 top-0 origin-top-left border-0"
-        style={{ width: 600, height: 800, transform: `scale(${scale})`, visibility: scale ? "visible" : "hidden" }}
+        style={{ width: 600, height: crop, transform: `scale(${scale})`, visibility: scale ? "visible" : "hidden" }}
       />
+      {cropped && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-white to-transparent" aria-hidden />
+      )}
     </div>
   );
 }
@@ -266,22 +288,23 @@ function StarterGallery({ onPick }: { onPick: (id: string) => void }) {
   return (
     <div className="flex-1 overflow-auto p-6">
       <p className="mb-4 font-body text-[13px] text-ink-soft">Pilih titik awal — Anda bisa menyesuaikan semuanya setelah memilih.</p>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid items-start gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {STARTER_TEMPLATES.map((s) => (
           <button
             key={s.id}
             onClick={() => onPick(s.id)}
             className="card group flex flex-col gap-2 p-3 text-left transition-colors hover:border-red"
           >
-            {s.id === "blank" ? (
-              // "Blank" has almost no content — a preview of it would look like a failed load, not an
-              // empty page. Show an explicit placeholder so the user knows it's meant to be empty.
-              <div className="flex aspect-[3/4] w-full flex-col items-center justify-center gap-2 rounded border border-dashed border-glass-border bg-glass text-center" aria-hidden>
+            {s.id === "blank" || s.previewCropPx === undefined ? (
+              // "Blank" has almost no content — a preview would look like a failed load, not an empty
+              // page. Show an explicit placeholder, and keep it SHORT (it's just an icon — it must not
+              // inherit the tall content-crop of the real previews).
+              <div className="flex h-28 w-full flex-col items-center justify-center gap-2 rounded border border-dashed border-glass-border bg-glass text-center" aria-hidden>
                 <FilePlus className="h-8 w-8 text-ink-faint" />
                 <span className="px-3 font-body text-[12px] text-ink-soft">Mulai dari halaman kosong</span>
               </div>
             ) : (
-              <StarterThumb html={s.html} title={s.name} />
+              <StarterThumb html={s.html} title={s.name} cropPx={s.previewCropPx} />
             )}
             <div>
               <div className="flex items-center gap-2">
