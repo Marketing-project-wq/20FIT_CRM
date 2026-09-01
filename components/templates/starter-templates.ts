@@ -5,6 +5,10 @@
 export interface StarterTemplate {
   id: string;
   name: string;
+  /** One-line, human summary of what this starter looks like — shown under the name in the picker so
+   *  "Newsletter" and "Undangan Event" read as different choices even at thumbnail size. Written from
+   *  the actual HTML below; never claims a feature the markup doesn't have. */
+  description: string;
   subject: string;
   html: string;
 }
@@ -28,6 +32,7 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
   {
     id: "blank",
     name: "Kosong (blank)",
+    description: "Mulai dari halaman kosong, susun sendiri dengan blok.",
     subject: "",
     html: wrap(`        <tr><td style="padding:32px;">
           <h1 style="margin:0 0 16px;font-size:22px;color:#1d1d1f;">Judul Email</h1>
@@ -39,6 +44,7 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
   {
     id: "newsletter",
     name: "Newsletter",
+    description: "Header merah + bagian sorotan, untuk kabar rutin.",
     subject: "Kabar terbaru dari 20FIT",
     html: wrap(`        <tr><td style="background:#E4002B;padding:24px 32px;">
           <h1 style="margin:0;color:#ffffff;font-size:20px;">20FIT NEWSLETTER</h1>
@@ -54,6 +60,7 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
   {
     id: "promo",
     name: "Promo / Penawaran",
+    description: "Header besar + tombol ajakan, untuk penawaran.",
     subject: "Penawaran spesial untuk Anda",
     html: wrap(`        <tr><td align="center" style="background:#E4002B;padding:40px 32px;">
           <h1 style="margin:0 0 8px;color:#ffffff;font-size:26px;">PENAWARAN SPESIAL</h1>
@@ -67,6 +74,7 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
   {
     id: "event",
     name: "Undangan Event",
+    description: "Header gelap + detail tanggal/lokasi + tombol daftar.",
     subject: "Anda diundang: [Nama Event]",
     html: wrap(`        <tr><td align="center" style="padding:40px 32px;background:#1d1d1f;">
           <h1 style="margin:0;color:#ffffff;font-size:24px;">NAMA EVENT</h1>

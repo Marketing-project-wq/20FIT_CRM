@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { X, Save, Eye, Image as ImageIcon, LayoutTemplate, Upload, Trash2, Blocks, Code, Monitor, Smartphone } from "lucide-react";
+import { X, Save, Eye, Image as ImageIcon, LayoutTemplate, Upload, Trash2, Blocks, Code, Monitor, Smartphone, FilePlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { STARTER_TEMPLATES } from "./starter-templates";
 import { BlockEditor, blocksToHtml, newBlock, type Block } from "./block-editor";
@@ -170,7 +170,10 @@ export function EmailTemplateBuilder({ template, onClose }: EmailTemplateBuilder
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="flex h-full max-h-[90vh] w-full max-w-5xl flex-col rounded-lg bg-surface shadow-xl">
+      {/* max-h + flex-col, but NOT h-full: the modal sizes to its content (the gallery is short) up to
+          90vh, then the inner flex-1 region scrolls — instead of always stretching to 90vh and leaving
+          a big empty gap below a short gallery with the footer stranded at the bottom. */}
+      <div className="flex max-h-[90vh] w-full max-w-5xl flex-col rounded-lg bg-surface shadow-xl">
         <div className="flex items-center justify-between border-b border-glass-border px-6 py-4">
           <div>
             <h2 className="font-display text-[18px] font-bold text-ink">
@@ -204,7 +207,9 @@ export function EmailTemplateBuilder({ template, onClose }: EmailTemplateBuilder
           {step === "editor" && !isEditing ? (
             <Button variant="ghost" onClick={() => setStep("gallery")}>← Ganti template awal</Button>
           ) : (
-            <p className="font-mono text-[11px] text-ink-faint">Link unsubscribe ditambahkan otomatis</p>
+            // Empty spacer keeps "Batal" right-aligned. The unsubscribe note lives once in the header
+            // subtitle above — it used to be repeated here, which read as two separate claims.
+            <span />
           )}
           <div className="flex gap-2">
             <Button variant="outline" onClick={onClose}>Batal</Button>
@@ -220,6 +225,43 @@ export function EmailTemplateBuilder({ template, onClose }: EmailTemplateBuilder
   );
 }
 
+// Email starters are authored at 600px wide (see wrap() in starter-templates.ts). A CSS `transform:
+// scale()` does NOT change layout size, so the OLD thumbnail — a 480px iframe scaled 0.33 inside a
+// flex-centered box — centred the full 480×320 box (which overflowed), then shrank the result into the
+// top-left corner: content read as a tiny blob with dead space around it, AND the 600px email was
+// squeezed into 480px so proportions lied. Fix: render the iframe at the REAL 600px width, park it at
+// the container's top-left, and scale by (container width ÷ 600) measured live — so the top of the
+// email fills the card at true proportions, deterministically, at any card width.
+function StarterThumb({ html, title }: { html: string; title: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(0); // 0 until measured, so no full-size flash on first paint
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width ?? 0;
+      setScale(w / 600); // 600 = the email's authored width
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return (
+    // aspect-[3/4] (portrait) shows the top of the email; the 600×800 iframe scaled by width/600 fills
+    // it exactly (800 × width/600 = width × 4/3 = the box height).
+    <div ref={ref} className="relative aspect-[3/4] w-full overflow-hidden rounded border border-glass-border bg-white">
+      <iframe
+        srcDoc={html.replace(/\{\{first_name\}\}/g, "Andi")}
+        sandbox=""
+        aria-hidden
+        tabIndex={-1}
+        title={title}
+        className="pointer-events-none absolute left-0 top-0 origin-top-left border-0"
+        style={{ width: 600, height: 800, transform: `scale(${scale})`, visibility: scale ? "visible" : "hidden" }}
+      />
+    </div>
+  );
+}
+
 function StarterGallery({ onPick }: { onPick: (id: string) => void }) {
   return (
     <div className="flex-1 overflow-auto p-6">
@@ -231,17 +273,22 @@ function StarterGallery({ onPick }: { onPick: (id: string) => void }) {
             onClick={() => onPick(s.id)}
             className="card group flex flex-col gap-2 p-3 text-left transition-colors hover:border-red"
           >
-            <div className="flex h-40 items-center justify-center overflow-hidden rounded border border-glass-border bg-white">
-              <iframe
-                srcDoc={s.html.replace(/\{\{first_name\}\}/g, "Andi")}
-                sandbox=""
-                title={s.name}
-                className="pointer-events-none h-[320px] w-[480px] origin-top-left scale-[0.33] border-0"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <LayoutTemplate className="h-4 w-4 text-ink-soft" aria-hidden />
-              <span className="font-display text-[13px] font-bold text-ink">{s.name}</span>
+            {s.id === "blank" ? (
+              // "Blank" has almost no content — a preview of it would look like a failed load, not an
+              // empty page. Show an explicit placeholder so the user knows it's meant to be empty.
+              <div className="flex aspect-[3/4] w-full flex-col items-center justify-center gap-2 rounded border border-dashed border-glass-border bg-glass text-center" aria-hidden>
+                <FilePlus className="h-8 w-8 text-ink-faint" />
+                <span className="px-3 font-body text-[12px] text-ink-soft">Mulai dari halaman kosong</span>
+              </div>
+            ) : (
+              <StarterThumb html={s.html} title={s.name} />
+            )}
+            <div>
+              <div className="flex items-center gap-2">
+                <LayoutTemplate className="h-4 w-4 shrink-0 text-ink-soft" aria-hidden />
+                <span className="font-display text-[13px] font-bold text-ink">{s.name}</span>
+              </div>
+              <p className="mt-1 font-body text-[12px] leading-snug text-ink-soft">{s.description}</p>
             </div>
           </button>
         ))}
