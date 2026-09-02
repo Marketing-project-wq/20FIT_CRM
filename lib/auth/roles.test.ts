@@ -7,6 +7,7 @@ import {
   canSeeContactPII,
   canSeeMedical,
   canManageRoles,
+  canImportAudience,
   canSeeNav,
   effectiveRole,
   isActiveRole,
@@ -112,10 +113,22 @@ describe("extensions beyond PRD 17.2 (kept explicitly separate, K-32)", () => {
     expect([...ACTIONS].sort()).toEqual([...PRD_ACTIONS, ...EXTENSION_ACTIONS].sort());
   });
 
-  it("the current extensions are edit_demographic + role.granted, and NEITHER is in the PRD copy", () => {
-    expect([...EXTENSION_ACTIONS]).toEqual(["profile.edit_demographic", "role.granted"]);
+  it("the current extensions are edit_demographic + role.granted + audience.import, and NONE is in the PRD copy", () => {
+    expect([...EXTENSION_ACTIONS]).toEqual(["profile.edit_demographic", "role.granted", "audience.import"]);
     expect(Object.prototype.hasOwnProperty.call(PRD_17_2, "profile.edit_demographic")).toBe(false);
     expect(Object.prototype.hasOwnProperty.call(PRD_17_2, "role.granted")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(PRD_17_2, "audience.import")).toBe(false);
+  });
+
+  it("audience.import is SUPER-ADMIN ONLY (Fase 1) — every other role denied, and canImportAudience bites", () => {
+    expect(grantFor("super_admin", "audience.import")).toBe("allow");
+    for (const role of ["crm_manager", "crm_operator", "unit_manager", "analyst", "data_steward", "viewer"] as const) {
+      expect(grantFor(role, "audience.import")).toBe("deny");
+    }
+    expect(canImportAudience("super_admin")).toBe(true);
+    expect(canImportAudience("crm_manager")).toBe(false); // may widen later, denied in Fase 1
+    expect(canImportAudience("viewer")).toBe(false);
+    expect(canImportAudience(null)).toBe(false); // fail-closed
   });
 
   it("profile.edit_demographic grants: managers + operator + steward may edit; analyst may not; unit_manager fail-closed", () => {

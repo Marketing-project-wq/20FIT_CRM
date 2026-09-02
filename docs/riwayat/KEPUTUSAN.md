@@ -1010,6 +1010,8 @@ run juga — keduanya muncul di sini, dibedakan, karena artinya beda saat menelu
 **Pembatalan:** kiriman terjadwal pending bisa dibatalkan langsung dari barisnya (kiriman terjadwal
 yang tak bisa dibatalkan adalah jebakan) — `cancelScheduledSendAction`, digerbangi send.*.
 
+---
+
 ## K-51 · Asisten AI segmen — model reasoning (deepseek-v4-flash) diganti ke deepseek-chat; nol keberhasilan sejak dipasang
 
 **2026-09-02.** Operator melaporkan asisten AI segmen gagal ("HTTP 524"). Investigasi bertahap
@@ -1062,3 +1064,29 @@ Single) — diverifikasi di STAGING_PROGRAMS DAN kolom `staging_20fit_data`. Tak
 Catatan AI yang mengaku tidak yakin JUSTRU BENAR. Multi-select memperbaiki "Half + Double" (nyata);
 "Sportfest 2/3" tetap tak eksis — itu kekurangan kosakata (menunggu klarifikasi operator), bukan bug
 yang multi-select selesaikan. Tak ada kosakata program ditambah berdasarkan tebakan.
+
+## K-53 — Impor CSV audiens: langsung contactable, consent sebagai bukti (Fase 1, 2026-09-02) — PENDING JEFF
+
+Fitur impor CSV audiens ke `master_customer` (Fase 1). Keputusan pemilik produk 2026-09-02, **menunggu
+persetujuan Jeff** (seperti extension `profile.edit_demographic` / K-32 dan `role.granted` / K-43).
+
+**Consent.** Baris impor **LANGSUNG bisa dihubungi** — K-36 berlaku (consent bukan gerbang; unsubscribe
++ suppression satu-satunya pengunci). Alasannya: data ini bukan daftar asing — consent sudah diberikan
+di titik pengumpulan (mis. formulir pendaftaran), impor hanya memindahkan data yang seharusnya sudah ada
+di Supabase. Yang **wajib** (bukan gerbang): field "sumber pengumpulan" saat unggah, disimpan sebagai
+`crm_consent` `basis='opt_in'` + `evidence` jsonb — **bukti**, supaya "kenapa orang ini dikirimi email"
+terjawab dari data, bukan ingatan. **Apa yang membalik:** kalau ternyata sebuah daftar tidak benar-benar
+punya titik-consent (daftar asing), jalurnya BUKAN `csv_import` melainkan `legacy_import_unverified`
+(masuk pool, tak dipasarkan) — lihat koreksi bertanggal di `docs/RENCANA-ingest-ticket.md`. Pembeda
+bukan "lewat CSV atau tidak", tapi "consent benar-benar diperoleh di titik pengumpulan atau tidak".
+
+**RBAC.** Extension action baru `audience.import` — SUPER-ADMIN ONLY (Fase 1). Ini tulisan berwewenang
+tertinggi (membuat orang baru DAN menandainya contactable, menumbuhkan audiens yang bisa dikirimi),
+lebih tinggi dari `profile.edit_demographic` (yang fill-empty-only, tak bisa membuat orang). `canImportAudience()`
+menggerbanginya; route re-check. **Apa yang membalik:** boleh dibuka ke `crm_manager` setelah terbukti.
+
+**Lingkup Fase 1 (sengaja sempit):** CSV saja (Excel butuh SheetJS — ditunda); dedup **lewati-saja**
+tanpa fill-blanks; cap **20.000 baris** (`MAX_IMPORT_ROWS`); dry-run **terbukti tak menulis** (test),
+bukan sekadar review; rollback SQL siap pakai per batch (`source='csv_import'` + `tags`); migrasi fungsi
+`crm_ingest_csv_people` **BERGATE** (belum diterapkan). Suppression tak disentuh — identitas ter-suppress
+yang diimpor ulang tetap tersaring saat kirim. Rincian: `docs/RENCANA-impor-audiens.md`.
