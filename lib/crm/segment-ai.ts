@@ -22,10 +22,21 @@ import type { Lang } from "@/lib/i18n";
  */
 
 export class AiUnavailableError extends Error {}
+/** The model did not respond within AI_TIMEOUT_MS. A subclass of AiUnavailableError so every existing
+ *  `instanceof AiUnavailableError` fallback still catches it — but the route can single it out to show
+ *  a "try again / build manually" message instead of the generic "unavailable" one. */
+export class AiTimeoutError extends AiUnavailableError {}
 
 const MAX_INPUT = 500; // free text is capped before it ever reaches the model (cost + abuse)
 const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
 const DEFAULT_MODEL = "deepseek/deepseek-v4-flash-0731";
+/**
+ * Hard cap on the model round-trip. MUST stay comfortably under the edge proxy's limit (Cloudflare/
+ * Railway cut an idle request at ~100s and return a 524 the origin never sees). Without this, a slow
+ * model hung the request until that cut, so the user got a raw "HTTP 524" instead of our handled 503 —
+ * the route's own error paths were never reached. 25s lets us respond first, every time.
+ */
+const AI_TIMEOUT_MS = 25_000;
 
 function buildSystemPrompt(lang: Lang): string {
   const programs = STAGING_PROGRAMS.map((p) => `${p.key}${p.clinical ? " (KLINIS)" : ""} = "${p.label}"`).join(", ");
@@ -84,6 +95,9 @@ export async function proposeSegment(
   const baseUrl = (process.env.SEGMENT_AI_BASE_URL || DEFAULT_BASE_URL).replace(/\/$/, "");
   const model = process.env.SEGMENT_AI_MODEL || DEFAULT_MODEL;
 
+  // Bound the round-trip with an AbortController so we respond before the edge proxy times out.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
   let res: Response;
   try {
     res = await fetch(`${baseUrl}/chat/completions`, {
@@ -102,9 +116,14 @@ export async function proposeSegment(
           { role: "user", content: text },
         ],
       }),
+      signal: controller.signal,
     });
-  } catch {
+  } catch (e) {
+    // AbortError (our timeout) → the model was too slow; distinguish it so the UI can say "try again".
+    if (e instanceof Error && e.name === "AbortError") throw new AiTimeoutError("model timed out");
     throw new AiUnavailableError("could not reach the model");
+  } finally {
+    clearTimeout(timer);
   }
   if (!res.ok) throw new AiUnavailableError(`model returned HTTP ${res.status}`);
 
