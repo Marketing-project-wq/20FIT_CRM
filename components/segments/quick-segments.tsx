@@ -38,7 +38,7 @@ const QUICK_SEGMENTS: QuickSegmentDef[] = [
   { id: "event", labelKey: "quickEvent", count: 18247, icon: <Calendar className="h-4 w-4" />, criteria: { ecoUnit: "event" } },
   { id: "arena", labelKey: "quickArena", count: 2075, icon: <Dumbbell className="h-4 w-4" />, criteria: { ecoUnit: "arena" } },
   { id: "my20fit", labelKey: "quickMy20fit", count: 175, icon: <Star className="h-4 w-4" />, criteria: { srcMy20fit: true } },
-  { id: "loyal", labelKey: "quickLoyal", count: 63, icon: <Trophy className="h-4 w-4" />, criteria: { srcRfm: "loyal" } },
+  { id: "loyal", labelKey: "quickLoyal", count: 63, icon: <Trophy className="h-4 w-4" />, criteria: { srcRfm: ["loyal"] } },
   { id: "clinic", labelKey: "quickClinic", count: 148, icon: <Heart className="h-4 w-4" />, criteria: { srcClinicPatient: true }, clinical: true },
 ];
 

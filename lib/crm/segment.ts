@@ -66,15 +66,19 @@ export interface SegmentCriteria {
   srcClinicPatient: boolean;
   srcClinicTxn: boolean;
   /**
-   * staging_20fit_data presence (Sprint 3Y), matched by normalised email. `srcRfm` = the RFM
-   * bucket from "RFM per paid order" (closed list, misspelling `Campion user` kept verbatim).
-   * `srcProgram` = a program key from STAGING_PROGRAMS (participation = value present and not
-   * "-"). A program that is CLINICAL (the two "Pasien 20FIT Clinic" columns) is health-inferring
-   * and GATED on profile.view_health at the route (rejected, not silently dropped). Both AND-only,
-   * resolved to customer_id sets and intersected — no cross-table OR (the UI says so).
+   * staging_20fit_data presence (Sprint 3Y), matched by normalised email. `srcRfm` = RFM buckets
+   * from "RFM per paid order" (closed list, misspelling `Campion user` kept verbatim). `srcProgram`
+   * = program keys from STAGING_PROGRAMS (participation = value present and not "-"). Both are ARRAYS
+   * (multi-select): several values are OR'd WITHIN the criterion — resolved to per-value id-sets and
+   * UNIONed into one set — while the criterion as a whole is still AND'd with the others (union
+   * inside, intersect across). Empty array = not applied. A program that is CLINICAL (the two
+   * "Pasien 20FIT Clinic" columns) is health-inferring and GATED on profile.view_health: the manual
+   * route rejects the whole request, the AI assistant strips only the clinical keys (see
+   * clinicalProgramKeys — the single classifier both paths share). Legacy stored criteria hold a
+   * bare string here; parseCriteria accepts it and wraps it to a one-element array.
    */
-  srcRfm: string | null;
-  srcProgram: string | null;
+  srcRfm: string[];
+  srcProgram: string[];
   /**
    * TIME criteria (Fase 2) — resolved against crm_customer_activity, which carries REAL activity
    * timestamps (joined_at = earliest real event, last_active_at = latest) built from live source
@@ -111,12 +115,22 @@ export function hasExclusion(c: SegmentCriteria): boolean {
   return !!e && (e.ecoUnit != null || e.srcArena || e.srcGym || e.srcHyrox || e.srcMy20fit || e.srcRecency);
 }
 
+/** The clinical (health-inferring) program keys within a selection — the two "Pasien 20FIT Clinic"
+ *  columns. SINGLE source of truth for "which programs are clinical", so the /segments route gate,
+ *  the AI clinical strip, and hasClinicalCriteria can never disagree about it. `nonClinicalProgramKeys`
+ *  is its complement (what survives a strip for a role without view_health). */
+export function clinicalProgramKeys(programs: string[]): string[] {
+  return programs.filter((k) => programByKey(k)?.clinical === true);
+}
+export function nonClinicalProgramKeys(programs: string[]): string[] {
+  return programs.filter((k) => programByKey(k)?.clinical !== true);
+}
+
 /** Whether any CLINICAL (health-inferring) source criterion is set — the route gates these on
- *  profile.view_health. Kept as one function so the gate and the UI can't disagree. Includes a
- *  staging program that is a clinic-patient column (being in it infers health status). */
+ *  profile.view_health. Kept as one function so the gate and the UI can't disagree. True when ANY
+ *  selected program is a clinic-patient column (being in it infers health status). */
 export function hasClinicalCriteria(c: SegmentCriteria): boolean {
-  const programClinical = c.srcProgram ? programByKey(c.srcProgram)?.clinical === true : false;
-  return c.srcClinicPatient || c.srcClinicTxn || programClinical;
+  return c.srcClinicPatient || c.srcClinicTxn || clinicalProgramKeys(c.srcProgram).length > 0;
 }
 
 export const EMPTY_CRITERIA: SegmentCriteria = {
@@ -135,8 +149,8 @@ export const EMPTY_CRITERIA: SegmentCriteria = {
   srcGym: false,
   srcClinicPatient: false,
   srcClinicTxn: false,
-  srcRfm: null,
-  srcProgram: null,
+  srcRfm: [],
+  srcProgram: [],
   joinedWithinDays: null,
   inactiveForDays: null,
   exclude: {
@@ -167,8 +181,8 @@ export function activeCriteriaCount(c: SegmentCriteria): number {
   if (c.srcGym) n++;
   if (c.srcClinicPatient) n++;
   if (c.srcClinicTxn) n++;
-  if (c.srcRfm) n++;
-  if (c.srcProgram) n++;
+  if (c.srcRfm.length) n++;
+  if (c.srcProgram.length) n++;
   if (c.joinedWithinDays != null) n++;
   if (c.inactiveForDays != null) n++;
   // Exclusions narrow the pool too — an exclusion-only segment is NOT "the whole pool".
@@ -202,10 +216,12 @@ export function parseCriteria(raw: unknown): SegmentCriteria {
   // vocabulary; anything unknown falls back to "any". No free text, no time field.
   const ecoUnit = isEcosystemUnit(o.ecoUnit) ? o.ecoUnit : null;
   const ecoProduct = isEcosystemProduct(o.ecoProduct) ? (o.ecoProduct as string) : null;
-  // staging_20fit_data criteria: RFM is a closed value list; program is a known program key.
-  // Both fall back to null (any) when unknown — no free text, no time field.
-  const srcRfm = isRfmValue(o.srcRfm) ? (o.srcRfm as string) : null;
-  const srcProgram = typeof o.srcProgram === "string" && programByKey(o.srcProgram) ? o.srcProgram : null;
+  // staging_20fit_data criteria: RFM is a closed value list; program is a known program key. Both
+  // are multi-value (arrays) — unknown entries dropped, duplicates removed, order preserved. A
+  // LEGACY bare string (older stored criteria) is accepted and wrapped to a one-element array, so
+  // segments saved before multi-select stay readable without a data migration. Empty → not applied.
+  const srcRfm = parseClosedList(o.srcRfm, isRfmValue);
+  const srcProgram = parseClosedList(o.srcProgram, (v): v is string => typeof v === "string" && !!programByKey(v));
   // TIME criteria: positive integer days, capped at 3650 (10y) to bound the value. Anything
   // else (0, negative, non-number, absurd) → null (not applied). No date passes through — only
   // a day-count, resolved against real activity timestamps server-side.
@@ -244,6 +260,19 @@ export function parseCriteria(raw: unknown): SegmentCriteria {
     inactiveForDays,
     exclude,
   };
+}
+
+/** Parse an untrusted multi-value closed-list criterion (RFM buckets / program keys) into a clean,
+ *  de-duplicated array of valid values. Accepts either an array OR a legacy bare string (wrapped to
+ *  one element) — the sole backward-compat path for criteria stored before multi-select. Unknown
+ *  values are dropped (never guessed); order is preserved; duplicates are removed. */
+function parseClosedList(v: unknown, valid: (x: unknown) => boolean): string[] {
+  const arr = Array.isArray(v) ? v : typeof v === "string" ? [v] : [];
+  const out: string[] = [];
+  for (const item of arr) {
+    if (typeof item === "string" && valid(item) && !out.includes(item)) out.push(item);
+  }
+  return out;
 }
 
 /** A time criterion is a positive whole number of days, capped at 3650 (10y). Anything else → null. */

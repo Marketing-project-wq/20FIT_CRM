@@ -13,18 +13,7 @@ import { resolveStagingRfmCustomerIds, resolveStagingProgramCustomerIds } from "
 import { resolveMirrorSourceIds } from "./mirror";
 import { resolveActivityTimeIds } from "./activity";
 import type { EcosystemUnit } from "./engagement-constants";
-
-/** Intersect a list of id sets (AND). Iterates the smallest for speed. Empty input → null. */
-function intersectSets(sets: Set<string>[]): Set<string> | null {
-  if (sets.length === 0) return null;
-  const sorted = [...sets].sort((a, b) => a.size - b.size);
-  const [smallest, ...rest] = sorted;
-  const out = new Set<string>();
-  for (const id of Array.from(smallest)) {
-    if (rest.every((s) => s.has(id))) out.add(id);
-  }
-  return out;
-}
+import { unionSets, intersectSets } from "./id-sets";
 
 /**
  * Segment computation — READ-ONLY over master_customer + crm_consent + crm_suppression.
@@ -156,8 +145,16 @@ export async function resolveRestrictIds(
   }
   if (criteria.srcRecency) idSets.push(await resolveEnrichmentCustomerIds(admin, "recency"));
   if (criteria.srcClinicTxn) idSets.push(await resolveClinicTxnCustomerIds(admin));
-  if (criteria.srcRfm) idSets.push(await resolveStagingRfmCustomerIds(admin, criteria.srcRfm));
-  if (criteria.srcProgram) idSets.push(await resolveStagingProgramCustomerIds(admin, criteria.srcProgram));
+  // Multi-value staging criteria: resolve each value to its id-set, UNION them (OR within the
+  // criterion), then push the single union — which AND-intersects with everything else below.
+  if (criteria.srcRfm.length) {
+    const sets = await Promise.all(criteria.srcRfm.map((v) => resolveStagingRfmCustomerIds(admin, v)));
+    idSets.push(unionSets(sets));
+  }
+  if (criteria.srcProgram.length) {
+    const sets = await Promise.all(criteria.srcProgram.map((k) => resolveStagingProgramCustomerIds(admin, k)));
+    idSets.push(unionSets(sets));
+  }
   // TIME criteria (Fase 2): resolved against crm_customer_activity (real timestamps). Applies
   // only to profiles with an activity signal — intersected with the rest AND-only.
   const timeIds = await resolveActivityTimeIds(admin, criteria.joinedWithinDays, criteria.inactiveForDays);
