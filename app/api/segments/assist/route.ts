@@ -3,11 +3,16 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUserRole } from "@/lib/auth/current-role";
 import { isPermitted, resolveGrant } from "@/lib/auth/roles";
-import { proposeSegment, AiUnavailableError } from "@/lib/crm/segment-ai";
+import { proposeSegment, AiUnavailableError, AiTimeoutError } from "@/lib/crm/segment-ai";
 import { getServerDict } from "@/lib/i18n/server";
 import { logApiFailure } from "@/lib/crm/failure-log";
 
 export const dynamic = "force-dynamic";
+// Advisory ceiling for platforms that honour it (e.g. Vercel); Railway runs a persistent server and
+// does NOT enforce this, so the real guard against a 524 is the AbortController timeout in
+// proposeSegment (AI_TIMEOUT_MS = 25s) — this just documents the intended budget and helps anywhere
+// the export IS read. Kept above the model timeout so the abort fires first.
+export const maxDuration = 30;
 
 /**
  * AI segment assistant. Free text → (server) LLM → JSON → sanitizeAssistOutput → PROPOSAL.
@@ -64,12 +69,18 @@ export async function POST(request: NextRequest) {
   try {
     proposal = await proposeSegment(text, { canViewHealth, lang });
   } catch (e) {
+    // Timeout first (it is a subclass of AiUnavailableError): its own message so the UI can say
+    // "try again or build manually" instead of the generic "unavailable".
+    if (e instanceof AiTimeoutError) {
+      logApiFailure("/segments/assist", "ai_timeout", { code: "model_timeout" });
+      return NextResponse.json({ error: "ai_timeout", message: t.ai.timeout }, { status: 503 });
+    }
     if (e instanceof AiUnavailableError) {
       logApiFailure("/segments/assist", "ai_unavailable", { code: e.message.slice(0, 40) });
       return NextResponse.json({ error: "ai_unavailable", message: t.ai.unavailable }, { status: 503 });
     }
     logApiFailure("/segments/assist", "assist_failed", {});
-    return NextResponse.json({ error: "assist_failed" }, { status: 500 });
+    return NextResponse.json({ error: "assist_failed", message: t.ai.failed }, { status: 500 });
   }
 
   // Mandatory audit — parameterized read. Records the RESOLVED criteria, never the raw text.
