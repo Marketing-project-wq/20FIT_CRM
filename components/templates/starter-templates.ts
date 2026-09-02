@@ -20,10 +20,15 @@ export interface StarterTemplate {
   html: string;
 }
 
-/** Mobile thumbnail crop (px, authored-600 space): header + first lines only — the part that
- *  distinguishes the templates — so several cards fit on one phone screen instead of one card filling
- *  it. Sits above every starter's header height, so no header is cut. */
-export const MOBILE_PREVIEW_CROP_PX = 210;
+/** Mobile thumbnail crop (px, authored-600 space): header + the first distinguishing element — so
+ *  several cards fit on one phone screen instead of one card filling it. Set to 290 so the Promo
+ *  starter's "Klaim Sekarang" button clears the crop WHOLE: its bottom edge is at y≈283 (measured), so
+ *  260 would have sliced it in half — and the button (vs the Newsletter's "Sorotan" block) is exactly
+ *  what tells the two red-header templates apart. At 300 the button sits fully inside with ~17px of the
+ *  email's own padding below it (so the bottom fade rests on padding, not on the button). Still short
+ *  enough that 3 cards fit a typical phone screen, and above every starter's header height so no header
+ *  is ever cut. */
+export const MOBILE_PREVIEW_CROP_PX = 300;
 
 const wrap = (inner: string) =>
   `<!DOCTYPE html>

@@ -278,7 +278,15 @@ function StarterThumb({ html, title, cropPx }: { html: string; title: string; cr
         style={{ width: 600, height: crop, transform: `scale(${scale})`, visibility: scale ? "visible" : "hidden" }}
       />
       {cropped && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-white to-transparent" aria-hidden />
+        // A faint hint that the email continues below the crop — NOT a veil over readable content.
+        // Confined to the bottom ~18% of the card and only partially opaque, so every line that fits
+        // inside the crop stays fully legible (at 210px the old solid half-card fade swallowed the
+        // Newsletter/Promo sub-header lines that are the whole point of showing the top).
+        <div
+          className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-white/40 to-transparent"
+          style={{ height: scale ? Math.round(crop * scale * 0.12) : undefined }}
+          aria-hidden
+        />
       )}
     </div>
   );
