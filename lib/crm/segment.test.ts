@@ -6,6 +6,7 @@ import {
   isRevenueCriterion,
   EMPTY_CRITERIA,
   SEGMENT_NULL,
+  MAX_CRITERION_VALUES,
 } from "./segment";
 import { FILTER_VALUE_MAX } from "./audience-constants";
 
@@ -30,12 +31,33 @@ describe("multi-source criteria (TUGAS 2)", () => {
 
 describe("staging_20fit_data criteria (Sprint 3Y)", () => {
   it("keeps a valid RFM value (incl the Campion misspelling) and program key; rejects unknowns", () => {
-    expect(parseCriteria({ srcRfm: "Campion user" }).srcRfm).toBe("Campion user");
-    expect(parseCriteria({ srcRfm: "Loyal user" }).srcRfm).toBe("Loyal user");
-    expect(parseCriteria({ srcRfm: "Champion user" }).srcRfm).toBeNull(); // not stored → not accepted
-    expect(parseCriteria({ srcRfm: "-" }).srcRfm).toBeNull(); // absence, not a bucket
-    expect(parseCriteria({ srcProgram: "fitco_user" }).srcProgram).toBe("fitco_user");
-    expect(parseCriteria({ srcProgram: "not_a_program" }).srcProgram).toBeNull();
+    // A LEGACY bare string (criteria saved before multi-select) is accepted and wrapped to a
+    // one-element array — the backward-compat path, no data migration.
+    expect(parseCriteria({ srcRfm: "Campion user" }).srcRfm).toEqual(["Campion user"]);
+    expect(parseCriteria({ srcRfm: "Loyal user" }).srcRfm).toEqual(["Loyal user"]);
+    expect(parseCriteria({ srcRfm: "Champion user" }).srcRfm).toEqual([]); // not stored → not accepted
+    expect(parseCriteria({ srcRfm: "-" }).srcRfm).toEqual([]); // absence, not a bucket
+    expect(parseCriteria({ srcProgram: "fitco_user" }).srcProgram).toEqual(["fitco_user"]);
+    expect(parseCriteria({ srcProgram: "not_a_program" }).srcProgram).toEqual([]);
+  });
+  it("accepts a multi-value array, drops unknowns, de-dupes (OR within the criterion)", () => {
+    expect(parseCriteria({ srcProgram: ["sportfest_half", "sportfest_double"] }).srcProgram)
+      .toEqual(["sportfest_half", "sportfest_double"]);
+    expect(parseCriteria({ srcProgram: ["sportfest_half", "nope", "sportfest_half"] }).srcProgram)
+      .toEqual(["sportfest_half"]); // unknown dropped, duplicate removed
+    expect(parseCriteria({ srcRfm: ["Loyal user", "New User", "Loyal user"] }).srcRfm)
+      .toEqual(["Loyal user", "New User"]);
+  });
+  it("caps a multi-value criterion at MAX_CRITERION_VALUES (each value = one RPC)", () => {
+    // 12 distinct valid program keys → only the first MAX (10) survive; the sanitizer is the
+    // server-side hard cap, so no request (AI or manual) can force more round-trips than the UI allows.
+    const twelve = [
+      "sportfest_half", "sportfest_relay", "sportfest_double", "sportfest_single", "fitco_user",
+      "training_session", "physio_massage", "protection", "paid_shop", "arena", "gym", "padel",
+    ];
+    const out = parseCriteria({ srcProgram: twelve }).srcProgram;
+    expect(out).toHaveLength(MAX_CRITERION_VALUES);
+    expect(out).toEqual(twelve.slice(0, MAX_CRITERION_VALUES));
   });
   it("counts RFM + program as active narrowing", () => {
     expect(activeCriteriaCount(parseCriteria({ srcRfm: "New User", srcProgram: "fitco_user" }))).toBe(2);
@@ -115,7 +137,7 @@ describe("activeCriteriaCount", () => {
         ecoUnit: "clinic", ecoProduct: "Transaksi Clinic",
         srcHyrox: true, srcMy20fit: true, srcRecency: true,
         srcArena: false, srcGym: false, srcClinicPatient: false, srcClinicTxn: false,
-        srcRfm: null, srcProgram: null,
+        srcRfm: [], srcProgram: [],
         joinedWithinDays: null, inactiveForDays: null,
         exclude: { ecoUnit: null, srcArena: false, srcGym: false, srcHyrox: false, srcMy20fit: false, srcRecency: false },
       }),

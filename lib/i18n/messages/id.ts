@@ -521,6 +521,9 @@ export const id = {
     programAll: "Semua program",
     programGroupNonClinical: "Program (non-klinis)",
     programGroupClinical: "Klinik (butuh izin data kesehatan)",
+    programAddMore: "+ Tambah program…",
+    rfmAddMore: "+ Tambah tingkat…",
+    multiMax: "Maksimum {n} nilai per kriteria.",
     stagingGated: "digerbangi",
     stagingHidden: "disembunyikan —",
     computeBtn: "Hitung",
@@ -590,6 +593,7 @@ export const id = {
     rbClinicTxn: "punya transaksi klinik",
     rbRfm: "Tingkat pelanggan",
     rbProgram: "ikut program",
+    rbAndMore: "+{n} lainnya",
     rbWordCity: "kota",
     rbWordRevenue: "revenue",
     // ── validator errors (validateFilterTree, lang-aware) ──

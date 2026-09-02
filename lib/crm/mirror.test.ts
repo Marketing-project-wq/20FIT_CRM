@@ -46,8 +46,8 @@ describe("activeMirrorFlagColumns — the mirror-served presence flags", () => {
     const nonMirror = crit({
       srcRecency: true,
       srcClinicTxn: true,
-      srcRfm: "New User",
-      srcProgram: "hyrox",
+      srcRfm: ["New User"],
+      srcProgram: ["sportfest_half"],
       ecoUnit: "arena",
       ecoProduct: null,
       unit: "gym",
