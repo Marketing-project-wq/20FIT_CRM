@@ -119,8 +119,15 @@ export const PRD_ACTIONS = [
  *     the ability to hand out every other permission, so it sits above the whole matrix and is
  *     denied to EVERY other role — CRM Manager and Viewer included. The three-role model (K-43)
  *     states this explicitly. canManageRoles() is the one predicate that gates it.
+ *
+ *   audience.import — bulk-create people in master_customer from an uploaded CSV (Fase 1, 2026-09-02).
+ *     NOT in PRD 17.2. This is the HIGHEST-authority write in the app so far: it creates net-new
+ *     profiles AND marks them contactable, i.e. it can grow the sendable audience. Higher authority
+ *     than profile.edit_demographic (which is fill-empty-only and cannot create people). SUPER-ADMIN
+ *     ONLY for Fase 1 — smallest blast radius for a first write-to-production entry path; may widen to
+ *     crm_manager later. Pending Jeff approval. canImportAudience() is the one predicate that gates it.
  */
-export const EXTENSION_ACTIONS = ["profile.edit_demographic", "role.granted"] as const;
+export const EXTENSION_ACTIONS = ["profile.edit_demographic", "role.granted", "audience.import"] as const;
 
 export const ACTIONS = [...PRD_ACTIONS, ...EXTENSION_ACTIONS] as const;
 
@@ -145,6 +152,7 @@ const MATRIX: Record<Role, Record<Action, Grant>> = {
   super_admin: {
     "profile.edit_demographic": "allow", // EXTENSION (not PRD 17.2) — see EXTENSION_ACTIONS / K-32
     "role.granted": "allow", // EXTENSION — the ONLY role that may hand out roles (K-43)
+    "audience.import": "allow", // EXTENSION — super-admin ONLY (Fase 1); highest-authority write
     "profile.view_list": "allow",
     "profile.view_contact": "allow",
     "profile.view_health": "allow",
@@ -164,6 +172,7 @@ const MATRIX: Record<Role, Record<Action, Grant>> = {
   crm_manager: {
     "profile.edit_demographic": "allow", // EXTENSION (not PRD 17.2) — see EXTENSION_ACTIONS / K-32
     "role.granted": "deny", // K-43 — CRM Manager may NOT add/change roles (super-admin exclusive)
+    "audience.import": "deny", // EXTENSION — super-admin only in Fase 1 (may widen to crm_manager later)
     "profile.view_list": "allow",
     "profile.view_contact": "allow",
     "profile.view_health": "allow",
@@ -186,6 +195,7 @@ const MATRIX: Record<Role, Record<Action, Grant>> = {
     // feature rarely usable, and the write is fill-empty-only + audited (lowest-authority write).
     "profile.edit_demographic": "allow",
     "role.granted": "deny", // K-43 — super-admin exclusive
+    "audience.import": "deny", // EXTENSION — super-admin only (Fase 1)
     "profile.view_list": "allow",
     "profile.view_contact": "allow",
     "profile.view_health": "deny",
@@ -211,6 +221,7 @@ const MATRIX: Record<Role, Record<Action, Grant>> = {
     // unit scope exists, resolveGrant turns every own_unit into needs_scope = DENY.
     "profile.edit_demographic": "own_unit", // EXTENSION (not PRD 17.2) — fail-closed until scope exists
     "role.granted": "deny", // K-43 — super-admin exclusive
+    "audience.import": "deny", // EXTENSION — super-admin only (Fase 1)
     "profile.view_list": "own_unit",
     "profile.view_contact": "own_unit",
     "profile.view_health": "deny",
@@ -230,6 +241,7 @@ const MATRIX: Record<Role, Record<Action, Grant>> = {
   analyst: {
     "profile.edit_demographic": "deny", // EXTENSION (not PRD 17.2) — analyst has no contact/write access
     "role.granted": "deny", // K-43 — super-admin exclusive
+    "audience.import": "deny", // EXTENSION — super-admin only (Fase 1)
     "profile.view_list": "masked", // sees the list; phone/email masked server-side
     "profile.view_contact": "deny",
     "profile.view_health": "deny",
@@ -249,6 +261,7 @@ const MATRIX: Record<Role, Record<Action, Grant>> = {
   data_steward: {
     "profile.edit_demographic": "allow", // EXTENSION (not PRD 17.2) — the data-curation role; NIK/DOB dedup
     "role.granted": "deny", // K-43 — super-admin exclusive
+    "audience.import": "deny", // EXTENSION — super-admin only (Fase 1)
     "profile.view_list": "allow",
     "profile.view_contact": "allow",
     "profile.view_health": "deny",
@@ -277,6 +290,7 @@ const MATRIX: Record<Role, Record<Action, Grant>> = {
   viewer: {
     "profile.edit_demographic": "deny",
     "role.granted": "deny", // K-43 — super-admin exclusive (the WAJIB: Viewer must never touch this)
+    "audience.import": "deny", // EXTENSION — Viewer is view-only; never writes, never imports
     "profile.view_list": "masked",
     "profile.view_contact": "deny", // masked in the list (see decision above)
     "profile.view_health": "deny",
@@ -419,6 +433,16 @@ export function canSeeMedical(role: unknown, ctx: AccessContext = {}): boolean {
  */
 export function canManageRoles(role: unknown, ctx: AccessContext = {}): boolean {
   return isPermitted(role, "role.granted", ctx);
+}
+
+/**
+ * THE audience-import gate, in ONE place (Fase 1, 2026-09-02). May this role bulk-create people in
+ * master_customer from an uploaded CSV? SUPER-ADMIN ONLY — it is the highest-authority write in the app
+ * (it grows the sendable audience). Every server path that runs an import MUST gate on this; a UI that
+ * merely hides the upload is not enough. Fail-closed.
+ */
+export function canImportAudience(role: unknown, ctx: AccessContext = {}): boolean {
+  return isPermitted(role, "audience.import", ctx);
 }
 
 /**

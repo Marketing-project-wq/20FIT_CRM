@@ -174,6 +174,7 @@ export const id = {
   // Sentences with an inline mono token / link / count are split into parts so the exact styling
   // survives translation. Warnings live under audience.warn.* (guarded).
   audience: {
+    importCsv: "Impor CSV",
     maskedBadge: "Kontak disamarkan",
     subtitlePre: "Data audiens 20FIT — ",
     subtitleMid: " profil",

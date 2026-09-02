@@ -1,5 +1,25 @@
 # RENCANA — Ingest pembeli ticket.20fit.id (event "Indonesia Sports Summit 2026 – JHR")
 
+> ## ✏️ KOREKSI (2026-09-02) — `legacy_import_unverified` TIDAK berlaku untuk jalur `csv_import`
+>
+> Dokumen ini (dan T-24) menyatakan bahwa impor massal masuk sebagai **`legacy_import_unverified`** =
+> ada di pool tetapi TIDAK boleh dikirimi pemasaran. Dengan keputusan pemilik produk **2026-09-02**,
+> aturan itu **SALAH untuk jalur impor CSV audiens** (`source='csv_import'`, lihat
+> `docs/RENCANA-impor-audiens.md`). Bedanya jelas dan sengaja dibedakan:
+>
+> - **Jalur `csv_import` → LANGSUNG contactable.** Data ini bukan daftar asing: consent sudah diberikan
+>   **di titik pengumpulan** (mis. formulir pendaftaran Sportfest), dan impor hanya memindahkan data yang
+>   seharusnya sudah ada di Supabase. Jadi K-36 berlaku penuh: consent bukan gerbang, unsubscribe +
+>   suppression tetap satu-satunya pengunci. Operator **wajib** mengisi "sumber pengumpulan" yang
+>   disimpan sebagai **bukti** (baris `crm_consent`, basis `opt_in`) — bukti, bukan gerbang.
+> - **`legacy_import_unverified` tetap berlaku** untuk impor yang provenance-nya **memang tidak
+>   diketahui** — daftar asing tanpa titik-consent yang jelas (mis. skenario 598 pembuka tiket di
+>   dokumen ini, selama §4 belum dijawab). Itu masuk pool tapi tidak dipasarkan.
+>
+> **Jangan** memakai keputusan `csv_import` sebagai preseden untuk daftar asing. Yang membedakan bukan
+> "diimpor lewat CSV atau tidak" — yang membedakan adalah **apakah consent benar-benar diperoleh di titik
+> pengumpulan**. Kalau tidak jelas, default tetap `legacy_import_unverified`.
+
 **Status: INVESTIGASI — BERGATE. Belum diimplementasikan.** Dokumen ini TUGAS B: memetakan apa yang
 bisa dan tidak bisa dikerjakan, bukan membangun pipeline. Tidak ada kode ingest yang ditulis sampai
 pemilik menyetujui salah satu opsi di bawah.

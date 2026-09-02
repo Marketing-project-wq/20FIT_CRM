@@ -19,6 +19,7 @@
     "clsx": "^2.1.1",
     "lucide-react": "^1.31.0",
     "next": "14.2.35",
+    "papaparse": "^5.7.0",
     "react": "^18",
     "react-dom": "^18",
     "tailwind-merge": "^3.6.0",
@@ -26,6 +27,7 @@
   },
   "devDependencies": {
     "@types/node": "^20",
+    "@types/papaparse": "^5.5.2",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "autoprefixer": "^10.5.4",

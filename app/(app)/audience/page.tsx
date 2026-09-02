@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import { Upload } from "lucide-react";
 import { getCurrentUserRole } from "@/lib/auth/current-role";
-import { canViewProfileList, isPermitted, resolveGrant } from "@/lib/auth/roles";
+import { canViewProfileList, canImportAudience, isPermitted, resolveGrant } from "@/lib/auth/roles";
 import { Badge } from "@/components/ui/badge";
 import { AudiencePool } from "@/components/audience/audience-pool";
 import { SuppressionPanel } from "@/components/consent/suppression-panel";
@@ -55,7 +57,18 @@ export default async function AudiencePage({ searchParams }: { searchParams?: { 
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="font-display text-[32px] font-black uppercase leading-none text-ink">{t.nav.audience}</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="font-display text-[32px] font-black uppercase leading-none text-ink">{t.nav.audience}</h1>
+        {canImportAudience(role) && (
+          <Link
+            href="/audience/import"
+            className="inline-flex items-center gap-1.5 rounded-sm border border-glass-border bg-glass px-3 py-1.5 font-body text-[13px] text-ink hover:border-red"
+          >
+            <Upload className="h-4 w-4" aria-hidden />
+            {t.audience.importCsv}
+          </Link>
+        )}
+      </div>
       <TabBar tabs={tabs} active={active} />
 
       {active === "list" && (
