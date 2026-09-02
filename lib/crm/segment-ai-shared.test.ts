@@ -37,8 +37,8 @@ describe("sanitizeAssistOutput — the AI security boundary", () => {
       { canViewHealth: true },
     );
     expect(p.criteria.srcHyrox).toBe(true);
-    expect(p.criteria.srcRfm).toBe("Campion user");
-    expect(p.criteria.srcProgram).toBe("fitco_user");
+    expect(p.criteria.srcRfm).toEqual(["Campion user"]); // legacy bare string accepted → array
+    expect(p.criteria.srcProgram).toEqual(["fitco_user"]);
     expect(p.criteria.ecoUnit).toBeNull(); // unknown eco unit rejected
   });
 
@@ -49,7 +49,7 @@ describe("sanitizeAssistOutput — the AI security boundary", () => {
     );
     expect(blocked.clinicalBlocked).toBe(true);
     expect(blocked.criteria.srcClinicPatient).toBe(false);
-    expect(blocked.criteria.srcProgram).toBeNull(); // clinical program stripped
+    expect(blocked.criteria.srcProgram).toEqual([]); // clinical program stripped
 
     const allowed = sanitizeAssistOutput(
       { srcClinicPatient: true, srcProgram: "clinic_2024_2025" },
@@ -57,13 +57,22 @@ describe("sanitizeAssistOutput — the AI security boundary", () => {
     );
     expect(allowed.clinicalBlocked).toBe(false);
     expect(allowed.criteria.srcClinicPatient).toBe(true);
-    expect(allowed.criteria.srcProgram).toBe("clinic_2024_2025");
+    expect(allowed.criteria.srcProgram).toEqual(["clinic_2024_2025"]);
+  });
+
+  it("PER-ELEMENT strip: drops only the clinical key, keeps the non-clinical one (no view_health)", () => {
+    const p = sanitizeAssistOutput(
+      { srcProgram: ["sportfest_half", "clinic_2024_2025", "runfest_5k"] },
+      { canViewHealth: false },
+    );
+    expect(p.clinicalBlocked).toBe(true);
+    expect(p.criteria.srcProgram).toEqual(["sportfest_half", "runfest_5k"]); // clinic gone, rest survive
   });
 
   it("keeps a NON-clinical program for a role without view_health (only clinic is gated)", () => {
     const p = sanitizeAssistOutput({ srcProgram: "runfest_5k" }, { canViewHealth: false });
     expect(p.clinicalBlocked).toBe(false);
-    expect(p.criteria.srcProgram).toBe("runfest_5k");
+    expect(p.criteria.srcProgram).toEqual(["runfest_5k"]);
   });
 
   it("caps conditions, unexpressible notes, and the note length", () => {

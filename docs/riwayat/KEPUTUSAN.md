@@ -1009,3 +1009,56 @@ run juga — keduanya muncul di sini, dibedakan, karena artinya beda saat menelu
 
 **Pembatalan:** kiriman terjadwal pending bisa dibatalkan langsung dari barisnya (kiriman terjadwal
 yang tak bisa dibatalkan adalah jebakan) — `cancelScheduledSendAction`, digerbangi send.*.
+
+## K-51 · Asisten AI segmen — model reasoning (deepseek-v4-flash) diganti ke deepseek-chat; nol keberhasilan sejak dipasang
+
+**2026-09-02.** Operator melaporkan asisten AI segmen gagal ("HTTP 524"). Investigasi bertahap
+menutup satu per satu kandidat dengan bukti, bukan tebakan:
+
+1. **524 → bukan kunci hilang.** 524 = edge proxy memutus setelah request menggantung ~100 detik.
+   Kunci yang hilang melempar `AiUnavailableError` SEBELUM panggilan jaringan → 503 seketika, bukan
+   524. Jadi 524 justru membuktikan kunci ADA dan model-nya yang menggantung. (PR #26 memasang
+   AbortController 25 dtk + `maxDuration`, mengubah 524 mentah jadi 503 tertangani + i18n.)
+2. **Setelah #26: 503 `ai_unavailable`, code `empty model reply` (HTTP 200).** Diambil dari log
+   Railway (`logApiFailure` = `console.error`, BUKAN tabel DB — tak ada `crm_failure*`). Panggilan
+   berhasil (200), tapi `choices[0].message.content` kosong.
+3. **Akar masalah: model reasoning menaruh jawaban di `message.reasoning`, `content` kosong** —
+   dan/atau `max_tokens: 700` habis untuk reasoning (`finish_reason: length`). `ChatResponse` di
+   `segment-ai.ts` hanya membaca `content` → `empty model reply`. Slug `deepseek/deepseek-v4-flash-0731`
+   **valid** (diverifikasi di katalog OpenRouter), jadi bukan salah nama model.
+4. **Bukti kunci: NOL keberhasilan sejak dipasang** (`crm_audit_log` `metadata->>'view' =
+   'segment_ai_assist'` → count 0). Bukan regresi — model ini tak pernah sekali pun menghasilkan
+   usulan valid. Pertanyaannya "apakah model cocok", bukan "apa yang rusak".
+
+**Keputusan pemilik: ganti `SEGMENT_AI_MODEL` → `deepseek/deepseek-chat`** (model konvensional
+non-reasoning yang mengembalikan JSON di `content`). Berhasil, **tanpa perubahan kode**. Pelajaran:
+untuk ekstraksi JSON terstruktur, model instruct konvensional > model reasoning dengan `max_tokens`
+kecil; kalau nanti perlu model reasoning, kode harus membaca `reasoning`/`finish_reason` — tapi itu
+melemahkan batas keamanan (reasoning bebas-bentuk melewati `sanitizeAssistOutput`), jadi hindari.
+
+## K-52 · Kriteria srcProgram + srcRfm jadi MULTI-nilai (array) — OR di dalam kriteria, AND antar-kriteria
+
+**2026-09-02.** Skema kriteria hanya menampung SATU program (`srcProgram: string | null`), jadi
+dropdown single-select dan prompt AI "salah satu key" membuat multi-program mustahil diungkapkan —
+bagian dari keluhan "AI cuma kasih info filter, tak mengelompokkan". Urutan perbaikan: SKEMA →
+UI → AI (memperbaiki prompt saja tak menyelesaikan apa pun).
+
+- **Tipe:** `srcProgram`/`srcRfm` → `string[]`. Beberapa nilai di-**union** (OR di dalam kriteria),
+  lalu di-**intersect** dengan kriteria lain (AND antar-kriteria). `unionSets`/`intersectSets` di
+  `lib/crm/id-sets.ts` (murni, teruji).
+- **Kompatibilitas mundur TANPA migrasi:** 0 segmen tersimpan memakai `srcProgram` (dicek di DB), dan
+  sanitizer `parseCriteria` menerima string lama → array satu elemen. Defensif permanen.
+- **Gate klinis lockstep:** `clinicalProgramKeys`/`hasClinicalCriteria` = SATU klasifikator yang
+  dipakai jalur route manual (403) DAN asisten AI (strip). AI men-strip **per-elemen** (buang key
+  klinis, pertahankan non-klinis). Test tripwire `segment-clinical-gate.test.ts` gagal kalau salah
+  satu jalur menyimpang.
+- **UI:** multi-select via chip + dropdown "tambah" (tanpa library baru); ringkasan dipotong
+  "+N lainnya" agar tak jadi baris tak berujung.
+- **Ruang lingkup:** srcProgram + srcRfm saja (srcRfm kembar struktural, dikerjakan seragam meski
+  ditandai "tak terpakai" di 4A-T4). unit/segment/city/eco DITUNDA.
+
+**Catatan "Sportfest 2 dan 3":** kosakata program hanya punya `Sportfest v.02` (Half/Relay/Double/
+Single) — diverifikasi di STAGING_PROGRAMS DAN kolom `staging_20fit_data`. Tak ada "Sportfest 2/3".
+Catatan AI yang mengaku tidak yakin JUSTRU BENAR. Multi-select memperbaiki "Half + Double" (nyata);
+"Sportfest 2/3" tetap tak eksis — itu kekurangan kosakata (menunggu klarifikasi operator), bukan bug
+yang multi-select selesaikan. Tak ada kosakata program ditambah berdasarkan tebakan.

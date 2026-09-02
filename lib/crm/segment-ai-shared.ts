@@ -14,7 +14,7 @@
 
 import { AUDIENCE_UNITS, AUDIENCE_SEGMENTS, SEGMENT_NULL, capFilterValue, FILTER_VALUE_MAX } from "./audience-constants";
 import type { LeafField } from "./filter-tree";
-import { parseCriteria, hasClinicalCriteria, type SegmentCriteria } from "./segment";
+import { parseCriteria, hasClinicalCriteria, nonClinicalProgramKeys, type SegmentCriteria } from "./segment";
 import { programByKey } from "./staging-constants";
 import { getDictionary } from "../i18n";
 import type { Lang } from "../i18n/config";
@@ -123,17 +123,20 @@ export function sanitizeAssistOutput(raw: unknown, opts: { canViewHealth: boolea
     inactiveForDays: o.inactiveForDays,
   });
 
-  // Clinical gate — identical rule to the manual builder + the route. If the role can't view
-  // health, STRIP the clinical criteria (never return them) and flag it.
+  // Clinical gate — SAME classifier (hasClinicalCriteria / clinicalProgramKeys) the manual route
+  // uses. The route REJECTS a clinical request (403); the assistant STRIPS it and continues so the
+  // operator still gets a usable proposal. With multi-select programs the strip is PER-ELEMENT:
+  // drop only the clinical program keys, keep the non-clinical ones (nonClinicalProgramKeys). The
+  // clinic flags are cleared wholesale. A clinical key can never survive to the resolver for a role
+  // without view_health, so a count can't infer clinic membership — same boundary as before.
   let clinicalBlocked = false;
   if (hasClinicalCriteria(criteria) && !opts.canViewHealth) {
     clinicalBlocked = true;
-    const programIsClinical = criteria.srcProgram ? programByKey(criteria.srcProgram)?.clinical === true : false;
     criteria = {
       ...criteria,
       srcClinicPatient: false,
       srcClinicTxn: false,
-      srcProgram: programIsClinical ? null : criteria.srcProgram,
+      srcProgram: nonClinicalProgramKeys(criteria.srcProgram),
     };
   }
 
@@ -194,9 +197,17 @@ export function describeProposal(p: AssistProposal, lang: Lang = "id"): string {
   if (cr.srcGym) parts.push(s.rbGym);
   if (cr.srcClinicPatient) parts.push(s.rbClinicPatient);
   if (cr.srcClinicTxn) parts.push(s.rbClinicTxn);
-  if (cr.srcRfm) parts.push(`${s.rbRfm} ${cr.srcRfm}`);
-  if (cr.srcProgram) parts.push(`${s.rbProgram} ${programByKey(cr.srcProgram)?.label ?? cr.srcProgram}`);
+  if (cr.srcRfm.length) parts.push(`${s.rbRfm} ${summarizeList(cr.srcRfm, s)}`);
+  if (cr.srcProgram.length) parts.push(`${s.rbProgram} ${summarizeList(cr.srcProgram.map((k) => programByKey(k)?.label ?? k), s)}`);
   return parts.length > 0 ? parts.join(` ${s.rbAnd} `) : s.rbWholePoolNoCriteria;
+}
+
+/** Join a multi-value list readably (OR within a criterion), capping at MAX so a big multi-select
+ *  can't become an endless line — the rest collapse to "+N lainnya" / "+N more". */
+function summarizeList(items: string[], s: ReturnType<typeof segWords>): string {
+  const MAX = 3;
+  if (items.length <= MAX) return items.join(", ");
+  return `${items.slice(0, MAX).join(", ")} ${s.rbAndMore.replace("{n}", String(items.length - MAX))}`;
 }
 
 /** Whether the proposal actually narrows anything (else the model failed to map the request). */
@@ -207,6 +218,6 @@ export function proposalIsEmpty(p: AssistProposal): boolean {
 function hasNoSourceCriteria(c: SegmentCriteria): boolean {
   return (
     !c.ecoUnit && !c.ecoProduct && !c.srcHyrox && !c.srcMy20fit && !c.srcRecency &&
-    !c.srcArena && !c.srcGym && !c.srcClinicPatient && !c.srcClinicTxn && !c.srcRfm && !c.srcProgram
+    !c.srcArena && !c.srcGym && !c.srcClinicPatient && !c.srcClinicTxn && !c.srcRfm.length && !c.srcProgram.length
   );
 }

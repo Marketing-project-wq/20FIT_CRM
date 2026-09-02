@@ -5,7 +5,7 @@ import { type LeafField } from "@/lib/crm/filter-tree";
 import { AUDIENCE_UNITS, AUDIENCE_SEGMENTS, SEGMENT_NULL } from "@/lib/crm/audience-constants";
 import { ECOSYSTEM_UNITS, ECOSYSTEM_PRODUCTS_BY_UNIT } from "@/lib/crm/engagement-constants";
 import { STAGING_RFM_VALUES, STAGING_PROGRAMS } from "@/lib/crm/staging-constants";
-import { type SegmentCriteria } from "@/lib/crm/segment";
+import { type SegmentCriteria, MAX_CRITERION_VALUES } from "@/lib/crm/segment";
 import { useI18n } from "@/components/i18n/lang-provider";
 import type { Row } from "@/components/segments/filter-tree-builder";
 
@@ -69,8 +69,8 @@ export function UnifiedFilterBuilder({
   if (criteria.srcGym) activeCriteria.push("c:srcGym");
   if (criteria.srcClinicPatient) activeCriteria.push("c:srcClinicPatient");
   if (criteria.srcClinicTxn) activeCriteria.push("c:srcClinicTxn");
-  if (criteria.srcRfm) activeCriteria.push("c:srcRfm");
-  if (criteria.srcProgram) activeCriteria.push("c:srcProgram");
+  if (criteria.srcRfm.length) activeCriteria.push("c:srcRfm");
+  if (criteria.srcProgram.length) activeCriteria.push("c:srcProgram");
 
   function addCategory(key: CatKey) {
     if (key.startsWith("m:")) {
@@ -81,14 +81,16 @@ export function UnifiedFilterBuilder({
     // Toggle-style criteria default to "on"; value criteria get their first option.
     if (field === "ecoUnit") setCriterion("ecoUnit", ECOSYSTEM_UNITS[0]);
     else if (field === "ecoProduct") setCriterion("ecoProduct", ECOSYSTEM_PRODUCTS_BY_UNIT[ECOSYSTEM_UNITS[0]][0]);
-    else if (field === "srcRfm") setCriterion("srcRfm", STAGING_RFM_VALUES[0]);
-    else if (field === "srcProgram") setCriterion("srcProgram", STAGING_PROGRAMS.find((p) => !p.clinical)!.key);
+    else if (field === "srcRfm") setCriterion("srcRfm", [STAGING_RFM_VALUES[0]]);
+    else if (field === "srcProgram") setCriterion("srcProgram", [STAGING_PROGRAMS.find((p) => !p.clinical)!.key]);
     else setCriterion(field, true as never);
   }
 
   function removeCriterion(key: CatKey) {
     const field = key.slice(2) as keyof SegmentCriteria;
-    if (field === "ecoUnit" || field === "ecoProduct" || field === "srcRfm" || field === "srcProgram") {
+    if (field === "srcRfm" || field === "srcProgram") {
+      setCriterion(field, [] as never); // multi-value → clear the whole list
+    } else if (field === "ecoUnit" || field === "ecoProduct") {
       setCriterion(field, null as never);
     } else {
       setCriterion(field, false as never);
@@ -194,24 +196,80 @@ function CriterionValue({
     </select>
   );
   if (keyName === "c:srcRfm") return (
-    <select className={selectCls} value={criteria.srcRfm ?? ""} onChange={(e) => setCriterion("srcRfm", e.target.value || null)}>
-      {STAGING_RFM_VALUES.map((v) => <option key={v} value={v}>{v}</option>)}
-    </select>
+    <MultiSelectChips
+      selected={criteria.srcRfm}
+      onChange={(v) => setCriterion("srcRfm", v)}
+      options={STAGING_RFM_VALUES.map((v) => ({ value: v, label: v }))}
+      addLabel={t.segments.rfmAddMore}
+    />
   );
   if (keyName === "c:srcProgram") return (
-    <select className={selectCls} value={criteria.srcProgram ?? ""} onChange={(e) => setCriterion("srcProgram", e.target.value || null)}>
-      <optgroup label={t.segments.programGroupNonClinical}>
-        {STAGING_PROGRAMS.filter((p) => !p.clinical).map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
-      </optgroup>
-      {canViewHealth && (
-        <optgroup label={t.segments.programGroupClinical}>
-          {STAGING_PROGRAMS.filter((p) => p.clinical).map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
-        </optgroup>
-      )}
-    </select>
+    <MultiSelectChips
+      selected={criteria.srcProgram}
+      onChange={(v) => setCriterion("srcProgram", v)}
+      options={STAGING_PROGRAMS.filter((p) => !p.clinical || canViewHealth).map((p) => ({ value: p.key, label: p.label, group: p.clinical ? t.segments.programGroupClinical : t.segments.programGroupNonClinical }))}
+      addLabel={t.segments.programAddMore}
+    />
   );
   // Boolean presence criteria — just show "ya".
   return <span className="font-body text-[13px] text-ink">{t.segments.unifiedYes}</span>;
+}
+
+/** Multi-value picker: selected values shown as removable chips + an "add" dropdown listing the
+ *  rest (grouped by optgroup when the options carry a `group`). Native select + chips — no new
+ *  library, wraps on mobile, uses the shared tokens so it reads in light and dark. Several picks
+ *  are OR'd within the criterion (union at resolve time). */
+function MultiSelectChips({
+  selected, onChange, options, addLabel,
+}: {
+  selected: string[];
+  onChange: (v: string[]) => void;
+  options: { value: string; label: string; group?: string }[];
+  addLabel: string;
+}) {
+  const { t } = useI18n();
+  const labelOf = (v: string) => options.find((o) => o.value === v)?.label ?? v;
+  const remaining = options.filter((o) => !selected.includes(o.value));
+  const groups = Array.from(new Set(remaining.map((o) => o.group).filter((g): g is string => !!g)));
+  const atCap = selected.length >= MAX_CRITERION_VALUES;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {selected.map((v) => (
+        <span key={v} className="inline-flex items-center gap-1 rounded-sm border border-glass-border bg-glass px-2 py-0.5 font-body text-[12px] text-ink">
+          {labelOf(v)}
+          <button
+            type="button"
+            onClick={() => onChange(selected.filter((x) => x !== v))}
+            aria-label={`${t.segments.removeCondition}: ${labelOf(v)}`}
+            className="text-ink-faint hover:text-red"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </span>
+      ))}
+      {/* At the cap, the picker is replaced by a clear message — never a silent no-op. */}
+      {atCap ? (
+        <span className="font-body text-[12px] italic text-ink-faint">
+          {t.segments.multiMax.replace("{n}", String(MAX_CRITERION_VALUES))}
+        </span>
+      ) : remaining.length > 0 ? (
+        <select
+          className={selectCls}
+          value=""
+          onChange={(e) => { if (e.target.value) onChange([...selected, e.target.value]); e.currentTarget.value = ""; }}
+        >
+          <option value="">{addLabel}</option>
+          {groups.length > 0
+            ? groups.map((g) => (
+                <optgroup key={g} label={g}>
+                  {remaining.filter((o) => o.group === g).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </optgroup>
+              ))
+            : remaining.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      ) : null}
+    </div>
+  );
 }
 
 function AddConditionSelect({ canViewHealth, onAdd }: { canViewHealth: boolean; onAdd: (k: CatKey) => void }) {
