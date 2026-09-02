@@ -482,7 +482,6 @@ export const en: Messages = {
     openConsent: "Open Consent",
     computeFailed: "Failed to compute",
     connFailed: "Couldn't reach the server.",
-    proposeFailed: "Failed to propose",
     treeIntro: "All rows are joined with AND. A row can be a single condition, or an OR group (e.g. “has an email OR has a phone”). Max 2 levels, 12 conditions.",
     fieldUnit: "Unit",
     fieldSegment: "Segment",
@@ -1666,5 +1665,7 @@ export const en: Messages = {
       "Time-based criteria aren't possible: the time columns in this data are load timestamps, not activity.",
     clinicalBlocked: "A clinical criterion was requested but dropped — it needs permission to see health data.",
     unavailable: "The AI assistant is unavailable right now. Use the manual filters — every criterion is still there.",
+    timeout: "The AI assistant did not respond in time. Try again, or build the criteria manually.",
+    failed: "Could not propose a segment. Try again, or build the criteria manually.",
   },
 };

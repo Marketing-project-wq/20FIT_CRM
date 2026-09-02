@@ -177,7 +177,11 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setAiError(data?.message ?? `${t.segments.proposeFailed} (HTTP ${res.status}).`);
+        // The server delivers an actionable i18n message for every failure it handles (503
+        // timeout/unavailable, 500, 403, 400). A response with NO JSON message is a gateway-level
+        // cut (e.g. a Cloudflare 524/504 HTML page before our route replied) — treat that as a
+        // timeout too. Never surface a raw "HTTP <code>": the operator can't act on a status number.
+        setAiError(data?.message ?? t.ai.timeout);
         return;
       }
       setAiProposal(data as AssistProposal);
