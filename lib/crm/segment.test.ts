@@ -6,6 +6,7 @@ import {
   isRevenueCriterion,
   EMPTY_CRITERIA,
   SEGMENT_NULL,
+  MAX_CRITERION_VALUES,
 } from "./segment";
 import { FILTER_VALUE_MAX } from "./audience-constants";
 
@@ -46,6 +47,17 @@ describe("staging_20fit_data criteria (Sprint 3Y)", () => {
       .toEqual(["sportfest_half"]); // unknown dropped, duplicate removed
     expect(parseCriteria({ srcRfm: ["Loyal user", "New User", "Loyal user"] }).srcRfm)
       .toEqual(["Loyal user", "New User"]);
+  });
+  it("caps a multi-value criterion at MAX_CRITERION_VALUES (each value = one RPC)", () => {
+    // 12 distinct valid program keys → only the first MAX (10) survive; the sanitizer is the
+    // server-side hard cap, so no request (AI or manual) can force more round-trips than the UI allows.
+    const twelve = [
+      "sportfest_half", "sportfest_relay", "sportfest_double", "sportfest_single", "fitco_user",
+      "training_session", "physio_massage", "protection", "paid_shop", "arena", "gym", "padel",
+    ];
+    const out = parseCriteria({ srcProgram: twelve }).srcProgram;
+    expect(out).toHaveLength(MAX_CRITERION_VALUES);
+    expect(out).toEqual(twelve.slice(0, MAX_CRITERION_VALUES));
   });
   it("counts RFM + program as active narrowing", () => {
     expect(activeCriteriaCount(parseCriteria({ srcRfm: "New User", srcProgram: "fitco_user" }))).toBe(2);

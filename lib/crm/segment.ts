@@ -262,15 +262,22 @@ export function parseCriteria(raw: unknown): SegmentCriteria {
   };
 }
 
+/** Max values allowed in ONE multi-value criterion (RFM / program). Each value costs one resolver
+ *  RPC (union in JS), so this bounds a single count's round-trips — the UI disables the picker at
+ *  the cap, and the sanitizer enforces it server-side so no request (AI or manual) can exceed it. */
+export const MAX_CRITERION_VALUES = 10;
+
 /** Parse an untrusted multi-value closed-list criterion (RFM buckets / program keys) into a clean,
  *  de-duplicated array of valid values. Accepts either an array OR a legacy bare string (wrapped to
  *  one element) — the sole backward-compat path for criteria stored before multi-select. Unknown
- *  values are dropped (never guessed); order is preserved; duplicates are removed. */
+ *  values are dropped (never guessed); order is preserved; duplicates are removed; the list is
+ *  capped at MAX_CRITERION_VALUES (extras beyond the cap are dropped). */
 function parseClosedList(v: unknown, valid: (x: unknown) => boolean): string[] {
   const arr = Array.isArray(v) ? v : typeof v === "string" ? [v] : [];
   const out: string[] = [];
   for (const item of arr) {
     if (typeof item === "string" && valid(item) && !out.includes(item)) out.push(item);
+    if (out.length >= MAX_CRITERION_VALUES) break;
   }
   return out;
 }

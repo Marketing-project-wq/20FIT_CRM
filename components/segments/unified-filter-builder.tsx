@@ -5,7 +5,7 @@ import { type LeafField } from "@/lib/crm/filter-tree";
 import { AUDIENCE_UNITS, AUDIENCE_SEGMENTS, SEGMENT_NULL } from "@/lib/crm/audience-constants";
 import { ECOSYSTEM_UNITS, ECOSYSTEM_PRODUCTS_BY_UNIT } from "@/lib/crm/engagement-constants";
 import { STAGING_RFM_VALUES, STAGING_PROGRAMS } from "@/lib/crm/staging-constants";
-import { type SegmentCriteria } from "@/lib/crm/segment";
+import { type SegmentCriteria, MAX_CRITERION_VALUES } from "@/lib/crm/segment";
 import { useI18n } from "@/components/i18n/lang-provider";
 import type { Row } from "@/components/segments/filter-tree-builder";
 
@@ -231,6 +231,7 @@ function MultiSelectChips({
   const labelOf = (v: string) => options.find((o) => o.value === v)?.label ?? v;
   const remaining = options.filter((o) => !selected.includes(o.value));
   const groups = Array.from(new Set(remaining.map((o) => o.group).filter((g): g is string => !!g)));
+  const atCap = selected.length >= MAX_CRITERION_VALUES;
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {selected.map((v) => (
@@ -246,7 +247,12 @@ function MultiSelectChips({
           </button>
         </span>
       ))}
-      {remaining.length > 0 && (
+      {/* At the cap, the picker is replaced by a clear message — never a silent no-op. */}
+      {atCap ? (
+        <span className="font-body text-[12px] italic text-ink-faint">
+          {t.segments.multiMax.replace("{n}", String(MAX_CRITERION_VALUES))}
+        </span>
+      ) : remaining.length > 0 ? (
         <select
           className={selectCls}
           value=""
@@ -261,7 +267,7 @@ function MultiSelectChips({
               ))
             : remaining.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
-      )}
+      ) : null}
     </div>
   );
 }

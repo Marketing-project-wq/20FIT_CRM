@@ -522,6 +522,7 @@ export const id = {
     programGroupClinical: "Klinik (butuh izin data kesehatan)",
     programAddMore: "+ Tambah program…",
     rfmAddMore: "+ Tambah tingkat…",
+    multiMax: "Maksimum {n} nilai per kriteria.",
     stagingGated: "digerbangi",
     stagingHidden: "disembunyikan —",
     computeBtn: "Hitung",

@@ -464,6 +464,7 @@ export const en: Messages = {
     programGroupClinical: "Clinic (needs health-data permission)",
     programAddMore: "+ Add program…",
     rfmAddMore: "+ Add tier…",
+    multiMax: "Maximum {n} values per criterion.",
     stagingGated: "gated by",
     stagingHidden: "hidden —",
     computeBtn: "Compute",
