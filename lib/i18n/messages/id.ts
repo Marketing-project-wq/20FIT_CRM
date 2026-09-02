@@ -541,7 +541,6 @@ export const id = {
     openConsent: "Buka Consent",
     computeFailed: "Gagal menghitung",
     connFailed: "Gagal terhubung ke server.",
-    proposeFailed: "Gagal mengusulkan",
     // ── filter tree builder ──
     treeIntro: "Semua baris digabung dengan DAN. Sebuah baris bisa berupa satu kondisi, atau grup ATAU (mis. “punya email ATAU punya telepon”). Maks 2 tingkat, 12 kondisi.",
     fieldUnit: "Unit",
@@ -1789,6 +1788,8 @@ export const id = {
       "Kriteria berbasis waktu tidak bisa: kolom waktu di data ini adalah cap muat, bukan aktivitas.",
     clinicalBlocked: "Kriteria klinis diminta tapi dibuang — butuh izin melihat data kesehatan.",
     unavailable: "Asisten AI sedang tidak tersedia. Pakai filter manual — semua kriteria tetap ada.",
+    timeout: "Asisten AI tidak merespons tepat waktu. Coba lagi, atau susun kriteria secara manual.",
+    failed: "Gagal mengusulkan segmen. Coba lagi, atau susun kriteria secara manual.",
   },
 } satisfies I18nShape;
 

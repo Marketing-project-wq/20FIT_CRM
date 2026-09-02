@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { X, Save, Eye, Image as ImageIcon, LayoutTemplate, Upload, Trash2, Blocks, Code, Monitor, Smartphone } from "lucide-react";
+import { X, Save, Eye, Image as ImageIcon, LayoutTemplate, Upload, Trash2, Blocks, Code, Monitor, Smartphone, FilePlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { STARTER_TEMPLATES } from "./starter-templates";
+import { STARTER_TEMPLATES, MOBILE_PREVIEW_CROP_PX } from "./starter-templates";
 import { BlockEditor, blocksToHtml, newBlock, type Block } from "./block-editor";
 import { renderEmailDocument } from "@/lib/crm/email-document";
 import {
@@ -170,7 +170,10 @@ export function EmailTemplateBuilder({ template, onClose }: EmailTemplateBuilder
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="flex h-full max-h-[90vh] w-full max-w-5xl flex-col rounded-lg bg-surface shadow-xl">
+      {/* max-h + flex-col, but NOT h-full: the modal sizes to its content (the gallery is short) up to
+          90vh, then the inner flex-1 region scrolls — instead of always stretching to 90vh and leaving
+          a big empty gap below a short gallery with the footer stranded at the bottom. */}
+      <div className="flex max-h-[90vh] w-full max-w-5xl flex-col rounded-lg bg-surface shadow-xl">
         <div className="flex items-center justify-between border-b border-glass-border px-6 py-4">
           <div>
             <h2 className="font-display text-[18px] font-bold text-ink">
@@ -204,7 +207,9 @@ export function EmailTemplateBuilder({ template, onClose }: EmailTemplateBuilder
           {step === "editor" && !isEditing ? (
             <Button variant="ghost" onClick={() => setStep("gallery")}>← Ganti template awal</Button>
           ) : (
-            <p className="font-mono text-[11px] text-ink-faint">Link unsubscribe ditambahkan otomatis</p>
+            // Empty spacer keeps "Batal" right-aligned. The unsubscribe note lives once in the header
+            // subtitle above — it used to be repeated here, which read as two separate claims.
+            <span />
           )}
           <div className="flex gap-2">
             <Button variant="outline" onClick={onClose}>Batal</Button>
@@ -220,28 +225,101 @@ export function EmailTemplateBuilder({ template, onClose }: EmailTemplateBuilder
   );
 }
 
+// Email starters are authored at 600px wide (see wrap() in starter-templates.ts). A CSS `transform:
+// scale()` does NOT change layout size, so the OLD thumbnail — a 480px iframe scaled 0.33 inside a
+// flex-centered box — centred the full 480×320 box (which overflowed), then shrank the result into the
+// top-left corner: content read as a tiny blob with dead space around it, AND the 600px email was
+// squeezed into 480px so proportions lied. Fix: render the iframe at the REAL 600px width, park it at
+// the container's top-left, and scale by (container width ÷ 600) measured live — so the top of the
+// email fills the card at true proportions, deterministically, at any card width.
+//
+// The visible height is a CROP in authored-600 space, not a fixed box: on desktop, `cropPx` is THIS
+// email's real content height (measured — see starter-templates.ts) so the card ends where the email
+// ends, with no dead #f4f4f5 tail; on mobile, a shorter crop (MOBILE_PREVIEW_CROP_PX = header + first
+// lines) so several cards fit one screen. The container height = cropPx × scale, so the crop scales
+// with the card. A bottom fade is shown ONLY when the crop is shorter than the email (mobile), so the
+// cut reads as "more below" rather than a chopped line.
+function StarterThumb({ html, title, cropPx }: { html: string; title: string; cropPx: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(0); // 0 until measured, so no full-size flash on first paint
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 639px)"); // Tailwind's `sm` breakpoint
+    const apply = () => setIsMobile(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width ?? 0;
+      setScale(w / 600); // 600 = the email's authored width
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const crop = isMobile ? Math.min(MOBILE_PREVIEW_CROP_PX, cropPx) : cropPx;
+  const cropped = crop < cropPx; // email continues below the crop → show a fade
+  return (
+    <div
+      ref={ref}
+      className="relative w-full overflow-hidden rounded border border-glass-border bg-white"
+      style={{ height: scale ? crop * scale : undefined, aspectRatio: scale ? undefined : String(600 / crop) }}
+    >
+      <iframe
+        srcDoc={html.replace(/\{\{first_name\}\}/g, "Andi")}
+        sandbox=""
+        aria-hidden
+        tabIndex={-1}
+        title={title}
+        className="pointer-events-none absolute left-0 top-0 origin-top-left border-0"
+        style={{ width: 600, height: crop, transform: `scale(${scale})`, visibility: scale ? "visible" : "hidden" }}
+      />
+      {cropped && (
+        // A faint hint that the email continues below the crop — NOT a veil over readable content.
+        // Confined to the bottom ~18% of the card and only partially opaque, so every line that fits
+        // inside the crop stays fully legible (at 210px the old solid half-card fade swallowed the
+        // Newsletter/Promo sub-header lines that are the whole point of showing the top).
+        <div
+          className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-white/40 to-transparent"
+          style={{ height: scale ? Math.round(crop * scale * 0.12) : undefined }}
+          aria-hidden
+        />
+      )}
+    </div>
+  );
+}
+
 function StarterGallery({ onPick }: { onPick: (id: string) => void }) {
   return (
     <div className="flex-1 overflow-auto p-6">
       <p className="mb-4 font-body text-[13px] text-ink-soft">Pilih titik awal — Anda bisa menyesuaikan semuanya setelah memilih.</p>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid items-start gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {STARTER_TEMPLATES.map((s) => (
           <button
             key={s.id}
             onClick={() => onPick(s.id)}
             className="card group flex flex-col gap-2 p-3 text-left transition-colors hover:border-red"
           >
-            <div className="flex h-40 items-center justify-center overflow-hidden rounded border border-glass-border bg-white">
-              <iframe
-                srcDoc={s.html.replace(/\{\{first_name\}\}/g, "Andi")}
-                sandbox=""
-                title={s.name}
-                className="pointer-events-none h-[320px] w-[480px] origin-top-left scale-[0.33] border-0"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <LayoutTemplate className="h-4 w-4 text-ink-soft" aria-hidden />
-              <span className="font-display text-[13px] font-bold text-ink">{s.name}</span>
+            {s.id === "blank" || s.previewCropPx === undefined ? (
+              // "Blank" has almost no content — a preview would look like a failed load, not an empty
+              // page. Show an explicit placeholder, and keep it SHORT (it's just an icon — it must not
+              // inherit the tall content-crop of the real previews).
+              <div className="flex h-28 w-full flex-col items-center justify-center gap-2 rounded border border-dashed border-glass-border bg-glass text-center" aria-hidden>
+                <FilePlus className="h-8 w-8 text-ink-faint" />
+                <span className="px-3 font-body text-[12px] text-ink-soft">Mulai dari halaman kosong</span>
+              </div>
+            ) : (
+              <StarterThumb html={s.html} title={s.name} cropPx={s.previewCropPx} />
+            )}
+            <div>
+              <div className="flex items-center gap-2">
+                <LayoutTemplate className="h-4 w-4 shrink-0 text-ink-soft" aria-hidden />
+                <span className="font-display text-[13px] font-bold text-ink">{s.name}</span>
+              </div>
+              <p className="mt-1 font-body text-[12px] leading-snug text-ink-soft">{s.description}</p>
             </div>
           </button>
         ))}
