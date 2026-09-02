@@ -67,17 +67,35 @@ describe("planImport", () => {
     expect(p.insertRows.map((r) => r.emailNormalized)).toEqual(["a@x.com", "c@x.com"]);
   });
 
-  it("skips a row matching an existing person by email OR phone", () => {
+  it("EMAIL-PRIMARY dedup (K-55): skips an email match, but INSERTS a phone-only match with a shared-phone flag", () => {
     const keys: ImportKeys = { ...noKeys, existingEmails: new Set(["a@x.com"]), existingPhones: new Set(["62822"]) };
     const rows = [
-      { name: "A", email: "a@x.com", phone: "" }, // email exists
-      { name: "B", email: "b@x.com", phone: "0822" }, // phone 62822 exists
-      { name: "C", email: "c@x.com", phone: "0833" }, // new
+      { name: "A", email: "a@x.com", phone: "" }, // email exists → SKIP (unambiguous same identity)
+      { name: "B", email: "b@x.com", phone: "0822" }, // NEW email, phone 62822 exists → INSERT + shared-phone flag
+      { name: "C", email: "c@x.com", phone: "0833" }, // new → insert
     ];
     const p = planImport(rows, mapping, keys);
-    expect(p.summary.duplicatesExisting).toBe(2);
+    expect(p.summary.duplicatesEmail).toBe(1); // only A
+    expect(p.summary.sharedPhone).toBe(1); // B — inserted, but its phone collides with an existing contact
+    expect(p.summary.netInsert).toBe(2); // B and C both inserted — a shared number never drops a distinct person
+    expect(p.insertRows.map((r) => r.emailNormalized)).toEqual(["b@x.com", "c@x.com"]);
+    expect(p.outcomes.find((o) => o.email === "b@x.com")?.status).toBe("insert_shared_phone");
+    expect(p.outcomes.find((o) => o.email === "a@x.com")?.status).toBe("skip_duplicate_email");
+  });
+
+  it("suppressed dominates the shared-phone label, but both are counted", () => {
+    const keys: ImportKeys = {
+      ...noKeys,
+      existingPhones: new Set(["62822"]),
+      suppressedPhones: new Set(["62822"]),
+    };
+    const rows = [{ name: "B", email: "b@x.com", phone: "0822" }]; // new email; phone both shared AND suppressed
+    const p = planImport(rows, mapping, keys);
     expect(p.summary.netInsert).toBe(1);
-    expect(p.insertRows[0].emailNormalized).toBe("c@x.com");
+    expect(p.summary.sharedPhone).toBe(1);
+    expect(p.summary.suppressed).toBe(1);
+    expect(p.summary.netContactable).toBe(0);
+    expect(p.outcomes[0].status).toBe("insert_suppressed"); // suppressed wins the per-row label
   });
 
   it("skips a duplicate email within the same file (case-insensitive)", () => {

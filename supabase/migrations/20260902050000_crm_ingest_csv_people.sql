@@ -72,11 +72,13 @@ begin
      where ek is not null and ek like '%@%'
        and (pk is null or pk ~ '^62[0-9]+$')
   ),
-  -- Skip anyone already in master by email OR phone (dedup = skip-only).
+  -- Dedup is EMAIL-PRIMARY (K-55): skip only an EMAIL match — email is a personal identity. A phone
+  -- is a SHARED identifier, so a phone-only match is NOT skipped here; the colliding phone is nulled in
+  -- `phone_safe` below instead, so a distinct person is never dropped for sharing a number. This matches
+  -- the pure planner (import-audience.ts) exactly, so dry-run counts equal what execute writes.
   new_people as (
     select v.* from valid v
      where not exists (select 1 from public.master_customer m where m.email_normalized = v.ek)
-       and (v.pk is null or not exists (select 1 from public.master_customer m where m.phone_normalized = v.pk))
   ),
   -- One row per email within the batch (keep the most complete).
   deduped as (

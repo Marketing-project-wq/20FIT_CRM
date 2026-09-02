@@ -11,8 +11,9 @@ import { normalizeEmail, normalizePhoneID } from "./normalize";
  *  - Rows are DIRECTLY CONTACTABLE (K-36: consent is not a gate; unsubscribe/suppression is). The
  *    import just moves data whose consent was given at the collection point. The mandatory
  *    "collection source" is stored as EVIDENCE (in crm_consent), not as a gate.
- *  - Dedup is SKIP-ONLY: a row matching an existing person (by normalized email OR phone) is skipped,
- *    never merged, never overwritten. Master stays authoritative.
+ *  - Dedup is EMAIL-PRIMARY, SKIP-ONLY (K-55): an EMAIL match with an existing person is skipped; a
+ *    phone-only match is INSERTED and flagged (a shared number must not drop a distinct person), with
+ *    the colliding phone nulled at write. Never merged, never overwritten. Master stays authoritative.
  *  - Suppression is untouched and still wins: a NET-NEW person whose identity is suppressed is still
  *    imported (they are a real new person) but is counted separately so the operator sees how many of
  *    the imported rows will never receive a send.
@@ -90,7 +91,10 @@ export function normalizeMappedRow(raw: Record<string, string>, mapping: ColumnM
 export type RowStatus =
   | "insert"
   | "insert_suppressed" // will be inserted, but is suppressed → will never receive a send
-  | "skip_duplicate_existing" // matches a person already in master (email or phone)
+  | "insert_shared_phone" // NEW email, but the phone matches an existing contact — INSERTED (email is the
+  //                         identity key) and flagged; the shared phone is nulled at write (master's phone
+  //                         is unique), so a distinct person is never dropped just for sharing a number.
+  | "skip_duplicate_email" // email matches a person already in master → skipped (identity is unambiguous)
   | "skip_duplicate_in_batch" // same email appeared earlier in this file
   | "skip_invalid"; // no usable email (email is required in Fase 1)
 
@@ -103,11 +107,13 @@ export interface RowOutcome {
 export interface ImportSummary {
   read: number; // total data rows read
   validEmail: number; // rows with a usable (normalizable) email
-  duplicatesExisting: number;
+  duplicatesEmail: number; // skipped: email matches an existing person (dedup is email-primary)
   duplicatesInBatch: number;
   invalid: number; // no valid email
+  sharedPhone: number; // INSERTED, but the phone matches an existing contact (shared number) — surfaced
+  //                      as its own figure so the operator sees it before confirming, not hidden.
   suppressed: number; // net-new rows that are suppressed (inserted, but will never receive)
-  netInsert: number; // total rows that will be inserted (INCLUDING suppressed)
+  netInsert: number; // total rows that will be inserted (INCLUDING suppressed and shared-phone)
   netContactable: number; // netInsert − suppressed (the count that can actually be sent to)
 }
 
@@ -137,9 +143,10 @@ export function planImport(
   const s: ImportSummary = {
     read: rows.length,
     validEmail: 0,
-    duplicatesExisting: 0,
+    duplicatesEmail: 0,
     duplicatesInBatch: 0,
     invalid: 0,
+    sharedPhone: 0,
     suppressed: 0,
     netInsert: 0,
     netContactable: 0,
@@ -156,11 +163,13 @@ export function planImport(
     }
     s.validEmail++;
 
-    const dupExisting =
-      keys.existingEmails.has(email) || (n.phoneNormalized !== null && keys.existingPhones.has(n.phoneNormalized));
-    if (dupExisting) {
-      s.duplicatesExisting++;
-      outcomes.push({ index, status: "skip_duplicate_existing", email });
+    // Dedup is EMAIL-PRIMARY (K-55): email is a personal identity, so an email match is an unambiguous
+    // duplicate → skip. A phone is a SHARED identifier (household, a parent registering children, an
+    // office line), so a phone-only match must NOT drop a distinct person — it is inserted and flagged
+    // instead. Suppression stays keyed on both (below); being in the pool never means being contactable.
+    if (keys.existingEmails.has(email)) {
+      s.duplicatesEmail++;
+      outcomes.push({ index, status: "skip_duplicate_email", email });
       return;
     }
 
@@ -171,13 +180,19 @@ export function planImport(
     }
     seenEmails.add(email);
 
+    const sharedPhone = n.phoneNormalized !== null && keys.existingPhones.has(n.phoneNormalized);
     const suppressed =
       keys.suppressedEmails.has(email) || (n.phoneNormalized !== null && keys.suppressedPhones.has(n.phoneNormalized));
     insertRows.push(n);
     s.netInsert++;
+    if (sharedPhone) s.sharedPhone++; // counted independently — a row can be both shared-phone and suppressed
+    // Per-row label priority: suppressed (won't ever send) dominates the shared-phone flag on screen,
+    // but both are reflected in the summary figures above.
     if (suppressed) {
       s.suppressed++;
       outcomes.push({ index, status: "insert_suppressed", email });
+    } else if (sharedPhone) {
+      outcomes.push({ index, status: "insert_shared_phone", email });
     } else {
       outcomes.push({ index, status: "insert", email });
     }

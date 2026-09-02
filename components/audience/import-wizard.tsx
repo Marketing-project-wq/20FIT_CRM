@@ -39,7 +39,7 @@ interface DryRunResponse {
   phase: "dry_run";
   mapping: ColumnMapping;
   preview: Record<string, string>[];
-  plan: { summary: ImportSummary };
+  plan: { summary: ImportSummary; outcomes: { index: number; status: string; email: string | null }[] };
 }
 interface ExecuteResponse {
   ok: true;
@@ -58,6 +58,7 @@ export function ImportWizard() {
   const [mapping, setMapping] = useState<ColumnMapping>({});
   const [preview, setPreview] = useState<Record<string, string>[]>([]);
   const [summary, setSummary] = useState<ImportSummary | null>(null);
+  const [dryOutcomes, setDryOutcomes] = useState<{ index: number; status: string; email: string | null }[]>([]);
   const [collectionSource, setCollectionSource] = useState("");
   const [report, setReport] = useState<ExecuteResponse | null>(null);
   const [busy, setBusy] = useState(false);
@@ -122,6 +123,7 @@ export function ImportWizard() {
     const data = (await post("dry_run")) as DryRunResponse | null;
     if (!data) return;
     setSummary(data.plan.summary);
+    setDryOutcomes(data.plan.outcomes ?? []);
     setPreview(data.preview);
     setStep("summary");
   }
@@ -141,6 +143,7 @@ export function ImportWizard() {
     setMapping({});
     setPreview([]);
     setSummary(null);
+    setDryOutcomes([]);
     setCollectionSource("");
     setReport(null);
     setError(null);
@@ -238,9 +241,14 @@ export function ImportWizard() {
             <Stat label="Akan masuk" value={summary.netInsert} tone="green" />
             <Stat label="Bisa dikirimi" value={summary.netContactable} tone="green" />
             <Stat label="Kena suppression" value={summary.suppressed} tone="amber" hint="Masuk pool, tapi tak akan menerima kiriman" />
-            <Stat label="Duplikat (dilewati)" value={summary.duplicatesExisting + summary.duplicatesInBatch} />
+            <Stat label="Telepon bersama" value={summary.sharedPhone} tone="amber" hint="Tetap masuk (email unik), tapi teleponnya sama dengan kontak yang sudah ada" />
+            <Stat label="Duplikat email (dilewati)" value={summary.duplicatesEmail + summary.duplicatesInBatch} />
             <Stat label="Tak valid (tanpa email)" value={summary.invalid} />
           </div>
+
+          {/* Per-row reasons BEFORE confirming — checking why each row is skipped/flagged is the point
+              of a dry-run. Shows skips AND the shared-phone / suppressed inserts, each with its reason. */}
+          <ProblemList outcomes={dryOutcomes} />
 
           <div className="mt-6">
             <label className="mb-1 block font-display text-[13px] font-bold text-ink">
@@ -260,11 +268,19 @@ export function ImportWizard() {
             />
           </div>
 
-          <div className="mt-5 flex items-center gap-2">
+          <div className="mt-5 flex flex-wrap items-center gap-2">
             <Button variant="outline" onClick={() => setStep("map")}>← Kembali ke pemetaan</Button>
-            <Button onClick={runExecute} disabled={busy || collectionSource.trim() === "" || summary.netInsert === 0}>
+            <Button
+              onClick={runExecute}
+              disabled={busy || collectionSource.trim() === "" || summary.netInsert === 0}
+              className="disabled:cursor-not-allowed disabled:opacity-50"
+            >
               {busy ? "Mengimpor…" : `Konfirmasi & impor ${summary.netInsert.toLocaleString("id-ID")} orang`}
             </Button>
+            {/* Say WHY the confirm button is inert — never a silent dead button (K-55). */}
+            {collectionSource.trim() === "" && summary.netInsert > 0 && (
+              <span className="font-body text-[12px] text-ink-faint">Isi “sumber pengumpulan” untuk mengaktifkan.</span>
+            )}
           </div>
         </div>
       )}
@@ -278,12 +294,13 @@ export function ImportWizard() {
           <div className="grid gap-3 sm:grid-cols-3">
             <Stat label="Berhasil masuk" value={report.committed.inserted} tone="green" />
             <Stat label="Kena suppression" value={report.plan.summary.suppressed} tone="amber" hint="Masuk, tapi takkan dikirimi" />
-            <Stat label="Dilewati / tak valid" value={report.plan.summary.duplicatesExisting + report.plan.summary.duplicatesInBatch + report.plan.summary.invalid} />
+            <Stat label="Telepon bersama" value={report.plan.summary.sharedPhone} tone="amber" hint="Masuk, teleponnya sama dengan kontak lain" />
+            <Stat label="Dilewati / tak valid" value={report.plan.summary.duplicatesEmail + report.plan.summary.duplicatesInBatch + report.plan.summary.invalid} />
           </div>
           <p className="mt-4 font-body text-[12px] text-ink-soft">
             Batch <span className="font-mono">{report.batch}</span>. {report.mirrorRefreshed ? "Pool sudah diperbarui." : "Pool akan diperbarui pada refresh berikutnya."}
           </p>
-          <ProblemList outcomes={report.plan.summary.invalid + report.plan.summary.duplicatesExisting + report.plan.summary.duplicatesInBatch > 0 ? report.plan.outcomes : []} />
+          <ProblemList outcomes={report.plan.outcomes} />
           <div className="mt-5">
             <Button variant="outline" onClick={reset}>Impor file lain</Button>
           </div>
@@ -329,21 +346,28 @@ function Stat({ label, value, tone, hint }: { label: string; value: number; tone
   );
 }
 
+/** Per-row reasons. Lists every row that is NOT a plain insert — both SKIPS and flagged inserts
+ *  (shared phone / suppressed) — each with its reason. The dedup match field is explicit (email vs
+ *  phone) so the operator can tell an unambiguous email duplicate from a shared-number flag. It never
+ *  shows WHO the row collided with — exposing another customer to the uploader is a separate,
+ *  audited decision (K-55). Row number is +2: 1 for the header, 1 for 0-based index. */
 function ProblemList({ outcomes }: { outcomes: { index: number; status: string; email: string | null }[] }) {
-  const problems = outcomes.filter((o) => o.status.startsWith("skip_"));
-  if (problems.length === 0) return null;
+  const rows = outcomes.filter((o) => o.status !== "insert");
+  if (rows.length === 0) return null;
   const LABEL: Record<string, string> = {
-    skip_duplicate_existing: "Sudah ada di pool",
-    skip_duplicate_in_batch: "Duplikat di file ini",
-    skip_invalid: "Email tidak valid",
+    skip_duplicate_email: "Email sudah ada (dilewati)",
+    skip_duplicate_in_batch: "Email dobel di file ini (dilewati)",
+    skip_invalid: "Email tidak valid (dilewati)",
+    insert_shared_phone: "Telepon cocok kontak lain (tetap masuk)",
+    insert_suppressed: "Kena suppression (masuk, takkan dikirimi)",
   };
   return (
     <details className="mt-4">
-      <summary className="cursor-pointer font-body text-[13px] text-ink-soft">Lihat baris yang dilewati ({problems.length})</summary>
+      <summary className="cursor-pointer font-body text-[13px] text-ink-soft">Lihat baris yang dilewati atau ditandai ({rows.length})</summary>
       <div className="mt-2 max-h-64 overflow-y-auto rounded-sm border border-glass-border">
         <table className="w-full border-collapse text-left">
           <tbody>
-            {problems.slice(0, 500).map((p) => (
+            {rows.slice(0, 500).map((p) => (
               <tr key={p.index} className="border-b border-glass-border/50">
                 <td className="px-3 py-1.5 font-mono text-[12px] text-ink-faint">baris {p.index + 2}</td>
                 <td className="px-3 py-1.5 font-body text-[12px] text-ink">{p.email ?? "—"}</td>

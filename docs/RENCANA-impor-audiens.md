@@ -15,8 +15,13 @@ yang ada (`crm_ingest_activity_people`), bukan jalur baru.
    `evidence` jsonb `{source, batch, uploaded_by, filename, collection_source}` — **bukti, bukan
    gerbang**. Koreksi bertanggal terhadap `RENCANA-ingest-ticket.md` ditulis (jalur asing tetap
    `legacy_import_unverified`).
-2. **Dedup — LEWATI saja**, tanpa fill-blanks. Cocok email ATAU telepon (ternormalisasi) dengan master
-   → tidak dimasukkan. Tak pernah menimpa. Master tetap otoritatif.
+2. **Dedup — EMAIL-PRIMER, LEWATI saja** (K-55, 2026-09-02, mengganti "email ATAU telepon"). Cocok
+   **email** (ternormalisasi) dengan master → dilewati (identitas personal, tak ambigu). Cocok
+   **telepon saja** → **tetap dimasukkan** tapi ditandai "telepon bersama" (angka tersendiri di
+   ringkasan), dan teleponnya di-null-kan saat tulis (master unik pada telepon) — telepon adalah
+   pengenal bersama (rumah tangga/orang tua/kantor), tak boleh menghapus orang berbeda. Tak pernah
+   menimpa; master tetap otoritatif. Suppression tetap keyed telepon (tak berubah) — masuk pool ≠ bisa
+   dikirimi.
 3. **Parser — papaparse** (satu-satunya dependency baru yang disetujui). Parsing di server.
 4. **Excel — ditunda.** CSV dulu.
 5. **Cap — 20.000 baris/file** (Fase 1, `MAX_IMPORT_ROWS`, satu konstanta). Diperbesar setelah terbukti.

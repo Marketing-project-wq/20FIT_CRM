@@ -131,7 +131,7 @@ export async function POST(request: NextRequest) {
         actor_email: userEmail,
         action: "audience.imported",
         target_table: "master_customer",
-        summary: `Impor CSV audiens: ${meta.inserted} masuk (${plan.summary.suppressed} kena suppression), ${plan.summary.duplicatesExisting + plan.summary.duplicatesInBatch} duplikat, ${plan.summary.invalid} tak valid.`,
+        summary: `Impor CSV audiens: ${meta.inserted} masuk (${plan.summary.suppressed} kena suppression, ${plan.summary.sharedPhone} telepon bersama), ${plan.summary.duplicatesEmail + plan.summary.duplicatesInBatch} duplikat email, ${plan.summary.invalid} tak valid.`,
         metadata: {
           view: "audience_csv_import",
           batch: batchId,

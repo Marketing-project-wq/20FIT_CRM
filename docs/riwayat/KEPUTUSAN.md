@@ -1090,3 +1090,41 @@ tanpa fill-blanks; cap **20.000 baris** (`MAX_IMPORT_ROWS`); dry-run **terbukti 
 bukan sekadar review; rollback SQL siap pakai per batch (`source='csv_import'` + `tags`); migrasi fungsi
 `crm_ingest_csv_people` **BERGATE** (belum diterapkan). Suppression tak disentuh — identitas ter-suppress
 yang diimpor ulang tetap tersaring saat kirim. Rincian: `docs/RENCANA-impor-audiens.md`.
+
+## K-55 · Impor CSV — dedup EMAIL-PRIMER (telepon bersama tetap masuk + ditandai) + laporan per-baris di dry-run
+
+**2026-09-02.** Uji dry-run pertama (super-admin, di produksi, nol tulisan) menabrakkan nomor
+karangan `0812-3456-7890` dengan seorang customer nyata **lewat telepon** (email karangan tak ada di
+master). Ini membuka risiko yang belum dibahas: aturan lama "cocok email ATAU telepon → lewati"
+**menghapus diam-diam orang berbeda yang sah** hanya karena berbagi nomor (pasangan, orang tua
+mendaftarkan anak, nomor kantor).
+
+**Keputusan pemilik (dikerjakan SEKARANG, bukan Fase 2 — alasannya: nol impor pernah jalan, jadi tak
+ada data terdampak dan tak ada perilaku yang berubah bagi siapa pun; mengubah setelah ada 20.000 baris
+impor lama berarti dua aturan hidup di data yang sama):**
+
+- **Email = kunci dedup utama.** Cocok email dengan master → **lewati** (identitas personal, tak ambigu).
+- **Cocok telepon saja → tetap MASUK**, ditandai kategori `insert_shared_phone` ("telepon bersama").
+  Teleponnya di-null-kan saat tulis (master unik pada `phone_normalized` — sudah ada `phone_safe` di
+  fungsi ingest; anti-join `new_people` diubah jadi **email-saja** supaya baris ini lolos). Planner
+  murni (`import-audience.ts`) dan fungsi SQL **cocok persis** → hitung dry-run = yang ditulis execute.
+- **Angka "telepon bersama" tampil tersendiri di ringkasan** (bukan tersembunyi) — operator melihat
+  "12 orang berbagi telepon" sebelum konfirmasi.
+- **Suppression tak berubah** — tetap keyed email + telepon; masuk pool ≠ bisa dikirimi.
+
+**Laporan per-baris.** `ProblemList` kini muncul juga di langkah **ringkasan/dry-run** (dulu hanya
+pasca-execute — memeriksa alasan SEBELUM impor adalah inti dry-run), menampilkan tiap baris yang bukan
+insert-polos (skip + `insert_shared_phone` + `insert_suppressed`) dengan **kolom yang cocok jelas
+(email vs telepon)**. **Tidak** menampilkan identitas customer yang ditabrak — memperlihatkan data
+pelanggan lain ke pengunggah adalah paparan ber-audit tersendiri, pintu yang sengaja tidak dibuka.
+
+**Afordansi tombol.** Tombol "Konfirmasi & impor" memang sudah tertahan dua lapis (disabled saat
+`collectionSource` kosong + server tolak `collection_source_required`) — yang kurang cuma terlihatnya;
+ditambah `disabled:opacity-50 cursor-not-allowed` + petunjuk inline "Isi sumber pengumpulan untuk
+mengaktifkan". Tombol dry-run "Hitung ringkasan" memang tak butuh field itu (wajar) dan namanya sudah
+berbeda dari tombol konfirmasi.
+
+**Temuan kualitas data (ukur, tak dibersihkan):** dari 81.680 telepon di master, ~150 jelas palsu (98
+panjang tak wajar + 66 berurutan + 2 satu-digit) = **~0,2%** — kecil, bukan sistemik. `0812-3456-7890`
+salah satu dari yang berurutan itu. **Tak ada** telepon yang dipakai >1 baris master (indeks unik).
+Tak ada yang dibersihkan tanpa persetujuan.
