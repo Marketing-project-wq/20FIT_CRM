@@ -60,6 +60,19 @@ Full spec: `PRD — 20FIT Audience Data & CRM System v1.1`.
 > production deploy** — the "do NOT merge until steps 1–2 are done" order above stands, and is now
 > confirmed to be the exact and only trigger.
 
+> ## ⚠️ URUTAN DEPLOY — migrasi 38 & 39 lebih dulu, baru merge (3 Sep 2026)
+>
+> Branch `claude/silent-send-failure-fix-o6s4d8` mengirimkan kode yang menulis **nilai baru** ke dua
+> kolom ber-CHECK: `crm_message_log.failure_cause = 'provider_throttled'` (K-54) dan
+> `crm_campaign_run.status IN ('partial','failed')` (K-55). Kedua CHECK di produksi **belum**
+> menerimanya (dibaca dari `pg_constraint` 3 Sep 2026).
+>
+> **Terapkan migrasi 38 lalu 39 (satu per satu, lewat `apply_migration`) SEBELUM merge ke `main`.**
+> Merge = deploy produksi seketika. Kalau kodenya tayang lebih dulu: kirim yang ter-throttle gagal
+> saat UPDATE dan barisnya tertinggal berstatus `queued`, dan `finalizeRunStatus` melempar saat
+> mencoba menulis `partial`/`failed` — run selesai tapi statusnya tak pernah diperbarui. Urutan
+> sebaliknya (migrasi dulu) aman: CHECK yang lebih longgar tak mengganggu kode lama.
+
 > ## ⚠️ Migration ledger diverged — do NOT run `supabase db push`
 >
 > Every CRM migration was applied to `cpvzwqptzcxnwzfzgrmt` via the Supabase MCP
@@ -106,6 +119,8 @@ Full spec: `PRD — 20FIT Audience Data & CRM System v1.1`.
 > | 35 | `…20260901032000_crm_run_label_not_null` | `20260901032000` | `SET NOT NULL` on `crm_campaign_run.label` and `crm_scheduled_send.run_label` — enforces "every campaign has a name" at the DB now that new runs require a validated name and the legacy NULLs were backfilled in migration 34. Ordered strictly **after** 34 (nulls filled first). Safe against the scheduled-send cron: it writes a name via `cronRunLabel` (`s.runLabel?.trim() || defaultCampaignLabel(...)`, never empty, never ISO) — the whitespace seam a bare `??` would miss was closed in the same PR. Pre-apply check: `pending_total=0` (no due row the live cron could turn into a NULL insert in the pre-deploy window). **Applied + verified 1 Sep 2026**: both columns `is_nullable = NO`; cron cycle after the constraint confirmed `succeeded`. |
 > | 36 | `…20260901083000_crm_cleanup_uji_iso_labels` | `20260901083000` | Data-only cleanup of 3 legacy `crm_campaign_run` names carrying a raw ISO timestamp (`"UJI kirim internal 2026-08-25T…Z"`, ids `7eb5ddb7`/`ade3fb47`/`232a5d50`). These are NOT the cron artifact — they came from the **old manual composer's auto-generate** (segment name + ISO), created 25 Aug 2026 before name became mandatory; that write path is dead. Rewritten to the same human default as migration 34 (`"{segment} · DD Mon YYYY HH:MM"` WIB). **Scoped + idempotent**: touches only those 3 ids, guarded `label ~ '\d{4}-\d{2}-\d{2}T'` (re-run = no-op). Owner reviewed the 3 values before applying. **Applied + verified 1 Sep 2026**: all 3 rewritten, and the **single** cron-path ISO row `2d030cb4` was rewritten earlier this session by direct guarded SQL (not ledgered as a migration; production-only row) → post-cleanup **0 ISO-shaped labels remain** in either table. |
 > | 37 | `…20260902050000_crm_ingest_csv_people` | *(NOT YET APPLIED — GATED)* | CSV audience import write path (Fase 1). `crm_ingest_csv_people(jsonb, uuid, text, uuid)` — `SECURITY DEFINER`, EXECUTE `service_role` only, mirrors `crm_ingest_activity_people`: inserts net-new people (safe columns only) with `source='csv_import'` + `tags=['csv_import','batch:<uuid>']`, skip-only dedup (email OR phone), phone-conflict nulling, plus a `crm_consent` evidence row per person (`basis='opt_in'`, evidence jsonb with the operator's collection source). Creates the function only — runs NO import. **Held per owner: no production import (or migration apply) without explicit approval.** Rollback SQL + rationale in `docs/RENCANA-impor-audiens.md`. Owner decision 2026-09-02: imported rows are directly contactable (K-36), consent is evidence not a gate; `legacy_import_unverified` stays for unknown-provenance imports (correction in `docs/RENCANA-ingest-ticket.md`). |
+> | 38 | `…20260903090000_crm_message_log_add_provider_throttled` | *(BELUM DITERAPKAN — BERGATE)* | Migrasi A / T-41 / K-54 — menambah `provider_throttled` ke `crm_message_log_failure_cause_check`. 429/402/503 = provider men-throttle **kami**, bukan menolak **penerima**; `provider_rejected` tetap untuk 4xx level-penerima. Drop + recreate constraint dengan nama sama dalam satu transaksi; kolom tetap nullable, tak ada baris ditulis ulang, nilai lama tetap sah (`daily_limit` dibawa apa adanya — tak pernah ditulis kode mana pun, terkonfirmasi 3 Sep 2026). SQL + rollback ada di berkasnya. **Wajib diterapkan SEBELUM kode ini menyentuh produksi** — tanpa itu, kirim yang ter-throttle gagal saat UPDATE dan barisnya tertinggal `queued`. |
+> | 39 | `…20260903091000_crm_campaign_run_add_partial_failed` | *(BELUM DITERAPKAN — BERGATE)* | Migrasi B / T-42 / K-55 — menambah `partial` + `failed` ke `crm_campaign_run_status_check`. Run yang sebagian/seluruhnya gagal berhenti dilaporkan `sent`. **Keduanya TIDAK resumable**: `RESUMABLE_RUN_STATUSES = {draft, sending}`, dijaga di `listResumableRuns`, `getRunForPair`, dan test pemindai sumber — me-resume run 3 Sep berarti menghubungi ulang 18.119 orang. **Tanpa backfill**: nol baris lama ditulis ulang (izin terpisah); run `5f5f3a57` tetap berstatus `sent`, kegagalannya terlihat lewat kolom "Gagal" di Riwayat Pengiriman. **Wajib diterapkan SEBELUM merge** — tanpa itu `finalizeRunStatus` melempar saat menulis status baru. |
 >
 > **Count reconciliation (re-checked against `schema_migrations` on 2026-08-21): 22 CRM
 > migration files on `main` → 24 CRM ledger entries in the DB.** The gap between files and

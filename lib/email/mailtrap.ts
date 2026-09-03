@@ -10,7 +10,8 @@ import { extractMessageId } from "./mailtrap-parse";
  *
  * Errors are surfaced as thrown Error with NO PII (never the recipient, never the body) so
  * callers can log status/code only, matching app/login/actions.ts. The token is never
- * logged.
+ * logged. A non-2xx additionally carries `err.status` (the numeric HTTP status) as a property —
+ * a number cannot echo an address, and it is what the send log records as the failure code.
  */
 
 const SEND_ENDPOINT = "https://send.api.mailtrap.io/api/send";
@@ -67,10 +68,27 @@ export async function sendTransactionalEmail(
 
   if (!res.ok) {
     // Do NOT include the recipient or the response body verbatim (could echo the address).
-    throw new Error(`Mailtrap send failed with HTTP ${res.status}.`);
+    // The numeric status travels as a PROPERTY (err.status), never as extra prose: it is the one
+    // piece of provider feedback that is PII-free by construction, and without it every failure
+    // reached the send log as `unknown` + NULL (T-41). The message text is unchanged.
+    throw mailtrapHttpError(res.status);
   }
 
   return { providerMessageId: extractMessageId(await safeJson(res)) };
+}
+
+/** A non-2xx from the Sending API, carrying the HTTP status as a readable property. The MESSAGE is
+ *  identical to what it always was; `status` is what the caller classifies on (429/402/503 = the
+ *  provider throttling US, other 4xx = a recipient-level rejection) and records as the PII-free code.
+ *  NOTHING from the response body is attached — see the throw site. */
+export interface MailtrapSendError extends Error {
+  status: number;
+}
+
+function mailtrapHttpError(status: number): MailtrapSendError {
+  const err = new Error(`Mailtrap send failed with HTTP ${status}.`) as MailtrapSendError;
+  err.status = status;
+  return err;
 }
 
 /** Parse the response JSON without throwing (a 2xx with an unexpected body must not fail a send

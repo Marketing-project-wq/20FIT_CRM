@@ -23,22 +23,41 @@
  *      is exactly what hid the reset bug for days — so the cause is a first-class column.
  *   6. Hard-bounce auto-stop at the approved 5% threshold: a run that is bouncing badly stops itself
  *      (stoppedHighBounce) rather than burning the domain's reputation to the end of the list.
+ *   7. Consecutive-failure auto-stop at 20: a run that is failing on EVERY recipient in a row has hit
+ *      a wall (provider down, credential dead, quota gone), not 20 bad addresses. It stops itself
+ *      (stoppedConsecutiveFailures) instead of writing the rest of the list as failures.
  */
 
 import type { IdentityKind } from "./suppression-input";
 
 export type Channel = "email" | "whatsapp";
 
-/** The four differentiated send-failure causes (rule 5). `unknown` is the honest bucket for an
- *  unclassifiable error — it is still recorded distinctly, never silently merged into a success. */
-export type SendFailureCause = "invalid_address" | "hard_bounce" | "provider_rejected" | "unknown";
+/** The differentiated send-failure causes (rule 5). `unknown` is the honest bucket for an
+ *  unclassifiable error — it is still recorded distinctly, never silently merged into a success.
+ *
+ *  `provider_throttled` (429 / 402 / 503) is deliberately SEPARATE from `provider_rejected`: those
+ *  statuses mean the provider is throttling / cutting off US (rate limit, quota or capacity), they
+ *  say NOTHING about the recipient. Folding them into `provider_rejected` would make our own
+ *  throttling read as a recipient problem and would poison any future bounce/suppression decision
+ *  built on these counts. `provider_rejected` stays what it says: a recipient-level 4xx. */
+export type SendFailureCause =
+  | "invalid_address"
+  | "hard_bounce"
+  | "provider_rejected"
+  | "provider_throttled"
+  | "unknown";
 
 export const SEND_FAILURE_CAUSES: readonly SendFailureCause[] = [
   "invalid_address",
   "hard_bounce",
   "provider_rejected",
+  "provider_throttled",
   "unknown",
 ];
+
+/** HTTP statuses that mean "the provider is throttling us", not "this recipient is bad".
+ *  429 too many requests · 402 payment/quota exhausted · 503 service unavailable. */
+export const THROTTLE_STATUSES: readonly number[] = [429, 402, 503];
 
 /** Above this many recipients the send UI must show a SECOND confirmation (RENCANA-batas-kirim):
  *  not a quota — a guard against choosing "everyone" and hitting send without seeing the scale. */
@@ -55,12 +74,17 @@ export interface SendConfig {
   bounceThreshold: number;
   /** Don't auto-stop before this many attempts — a tiny run shouldn't stop on one bounce. */
   minBounceSample: number;
+  /** Consecutive failures that halt the run (rule 7). A wall — the provider refusing every request —
+   *  is not a per-recipient problem, so continuing only writes tens of thousands of identical
+   *  failures. Owner-approved 20, deliberately level with minBounceSample. */
+  maxConsecutiveFailures: number;
 }
 
 export const DEFAULT_SEND_CONFIG: SendConfig = {
   dailyLimit: 1000,
   bounceThreshold: 0.05,
   minBounceSample: 20,
+  maxConsecutiveFailures: 20,
 };
 
 export interface SendRecipient {
@@ -135,6 +159,35 @@ export interface SendSummary {
   failed: Record<SendFailureCause, number>;
   deferredDailyLimit: number; // over today's budget → left for a later run (NOT failed)
   stoppedHighBounce: boolean;
+  /** Rule 7: the run halted itself after `maxConsecutiveFailures` failures in a row. */
+  stoppedConsecutiveFailures: boolean;
+}
+
+/** The cause with the most failures, or null when there were none. Used to label a halted run with
+ *  the reason that dominated it — a class name we defined, never provider text. Ties resolve by the
+ *  declared order of SEND_FAILURE_CAUSES, so the answer is deterministic. */
+export function dominantFailureCause(
+  failed: Record<SendFailureCause, number>,
+): SendFailureCause | null {
+  let best: SendFailureCause | null = null;
+  let bestN = 0;
+  for (const cause of SEND_FAILURE_CAUSES) {
+    const n = failed[cause] ?? 0;
+    if (n > bestN) {
+      best = cause;
+      bestN = n;
+    }
+  }
+  return best;
+}
+
+/** Total failures across every cause — the single number a run's status and the operator's failure
+ *  block are decided on. One place, so a new cause can never be forgotten by a caller that hand-adds
+ *  four fields (which is exactly how `nextRunStatus` came to never see failures at all, T-42). */
+export function totalFailed(failed: Record<SendFailureCause, number>): number {
+  let n = 0;
+  for (const cause of SEND_FAILURE_CAUSES) n += failed[cause] ?? 0;
+  return n;
 }
 
 /** DETERMINISTIC idempotency key — a pure function of (campaign, recipient, channel). Documented in
@@ -149,8 +202,22 @@ export function buildIdempotencyKey(args: {
 }
 
 /**
- * Classify a thrown send failure into one of the four causes (rule 5). Best-effort from an HTTP
- * status / provider code / message; the default is `unknown` — recorded distinctly, never hidden.
+ * Classify a thrown send failure into one of the causes (rule 5). Best-effort from an HTTP status /
+ * provider code / message; the default is `unknown` — recorded distinctly, never hidden.
+ *
+ * ORDER MATTERS. Since T-41 gave the mailer an `err.status`, the throttle check runs FIRST:
+ *   1. 429/402/503 → provider_throttled — the provider is throttling US, whatever the prose says.
+ *   2. the recipient-level keyword branches (invalid address / hard bounce / rejection).
+ *   3. any remaining status ≥ 400 → provider_rejected — this is where a bare 4xx or 5xx lands, and
+ *      it is what stopped 18,119 status-bearing failures from being filed as `unknown`.
+ *   4. otherwise `unknown` — e.g. a network throw, whose code sendFailureCode still records.
+ *
+ * WHY THE KEYWORDS STAY ABOVE THE GENERIC STATUS FALLBACK (step 2 before step 3): a 422 that also
+ * says "invalid email address" is a MORE specific answer than "the provider rejected it", and rule 5
+ * exists to keep those apart. Our own mailer never puts provider prose in the message (it could echo
+ * the address), so for its errors steps 2 and 3 cannot disagree — the refinement only bites on an
+ * error that genuinely carries recipient-level text. Step 1 is exempt and absolute: throttling must
+ * never be re-read as a recipient problem no matter what words come with it.
  */
 export function classifySendFailure(err: unknown): SendFailureCause {
   const e = (err ?? {}) as { status?: number; code?: string | number; message?: string };
@@ -158,6 +225,8 @@ export function classifySendFailure(err: unknown): SendFailureCause {
   const code = String(e.code ?? "").toLowerCase();
   const msg = String(e.message ?? "").toLowerCase();
   const hay = `${code} ${msg}`;
+
+  if (status !== undefined && THROTTLE_STATUSES.includes(status)) return "provider_throttled";
 
   // A malformed / non-existent address (syntactic or "mailbox does not exist").
   if (
@@ -179,6 +248,34 @@ export function classifySendFailure(err: unknown): SendFailureCause {
   }
   if (status !== undefined && status >= 400) return "provider_rejected";
   return "unknown";
+}
+
+/** Codes are stored VERBATIM in crm_message_log.error_message, a PII-free column, so only this
+ *  shape is ever allowed through: letters, digits, `_ . -`, at most 40 chars. Anything else (any
+ *  free text, therefore anything that could echo an address) is dropped rather than trimmed. */
+const SAFE_CODE = /^[A-Za-z0-9_.-]{1,40}$/;
+
+/**
+ * The PII-free code recorded for a failed send. In priority order:
+ *   1. `err.status` — the HTTP status our mailer now attaches (T-41).
+ *   2. `err.cause.code` — a fetch/undici network throw's `ECONNRESET` / `ETIMEDOUT` / `ENOTFOUND`.
+ *   3. `err.code` — a library/provider code.
+ * Returns null when nothing safe is available — an honest NULL, never a guess and never prose.
+ * NOTE what is NOT here: `err.message`, and nothing at all from the provider's response body.
+ */
+export function sendFailureCode(err: unknown): string | null {
+  const e = (err ?? {}) as {
+    status?: unknown;
+    code?: unknown;
+    cause?: { code?: unknown } | null;
+  };
+  if (typeof e.status === "number" && Number.isFinite(e.status)) return String(e.status);
+  for (const raw of [e.cause?.code, e.code]) {
+    if (raw == null) continue;
+    const candidate = String(raw).trim();
+    if (SAFE_CODE.test(candidate)) return candidate;
+  }
+  return null;
 }
 
 /**
@@ -208,8 +305,16 @@ export function shouldStopForBounces(
   return hardBounces / attempted > threshold;
 }
 
-function emptyFailed(): Record<SendFailureCause, number> {
-  return { invalid_address: 0, hard_bounce: 0, provider_rejected: 0, unknown: 0 };
+/** A zeroed per-cause counter. EXPORTED so no caller hand-writes the object literal and silently
+ *  omits a newly added cause (the pre-run bounce halt in send-campaign.ts did exactly that). */
+export function emptySendFailureCounts(): Record<SendFailureCause, number> {
+  return {
+    invalid_address: 0,
+    hard_bounce: 0,
+    provider_rejected: 0,
+    provider_throttled: 0,
+    unknown: 0,
+  };
 }
 
 /**
@@ -229,17 +334,19 @@ export async function runSend(
     sent: 0,
     skippedSuppressed: 0,
     skippedAlreadySent: 0,
-    failed: emptyFailed(),
+    failed: emptySendFailureCounts(),
     deferredDailyLimit: 0,
     stoppedHighBounce: false,
+    stoppedConsecutiveFailures: false,
   };
 
   const alreadyToday = await ports.todaySentCount();
   let budget = Math.max(0, config.dailyLimit - alreadyToday);
   let hardBounces = 0;
+  let consecutiveFailures = 0;
 
   for (const r of recipients) {
-    if (summary.stoppedHighBounce) break;
+    if (summary.stoppedHighBounce || summary.stoppedConsecutiveFailures) break;
 
     // Rule 1: suppression is checked HERE, at send time — not when the segment was counted.
     if (await ports.isSuppressed(r.customerId, r.channel)) {
@@ -288,19 +395,26 @@ export async function runSend(
       await ports.record(key, { status: "sent", providerMessageId: res.providerMessageId });
       summary.sent++;
       budget--;
+      consecutiveFailures = 0; // rule 7: the streak is CONSECUTIVE — one success clears it.
     } catch (err) {
       // Rule 5: differentiated cause; one failure does NOT stop the rest.
       const cause = classifySendFailure(err);
       const status = cause === "hard_bounce" ? "bounced" : "failed";
-      const code = (err as { status?: number; code?: string | number })?.status
-        ?? (err as { code?: string | number })?.code
-        ?? null;
+      // PII-free scalar only: HTTP status, else a network/library code of a safe shape, else null.
+      const code = sendFailureCode(err);
       await ports.record(key, { status, failureCause: cause, code });
       summary.failed[cause]++;
       if (cause === "hard_bounce") hardBounces++;
       // Rule 6: auto-stop if the hard-bounce ratio crosses the approved threshold.
       if (shouldStopForBounces(hardBounces, summary.attempted, config.bounceThreshold, config.minBounceSample)) {
         summary.stoppedHighBounce = true;
+      }
+      // Rule 7: auto-stop on a WALL. N failures in a row is a provider/config problem, not N
+      // recipient problems; carrying on only writes thousands of identical rows (T-41's run wrote
+      // 18,119 of them over 1h47m). The caller records the halt on the run itself.
+      consecutiveFailures++;
+      if (consecutiveFailures >= config.maxConsecutiveFailures) {
+        summary.stoppedConsecutiveFailures = true;
       }
     }
   }

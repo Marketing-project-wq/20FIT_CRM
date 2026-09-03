@@ -1038,3 +1038,163 @@ pesan/UI sendiri — jangan pernah meruntuhkannya jadi satu string. Biaya diam-d
 tiap peruntuhan memaksa penyelidikan produksi berikutnya mulai dari nol. Cek cepat sebelum menulis
 handler `catch` tunggal: "apakah dua pemanggil akan bertindak beda tergantung sebabnya?" — jika ya,
 pisahkan sekarang.
+
+---
+
+## T-41 — Status HTTP dibuang DUA KALI → 18.119 baris `unknown` + NULL — 3 Sep 2026
+
+Run `5f5f3a57-72b8-431b-8818-298fef5027d5` ("Ajakan beli tiket PLN Mobile 5K Series"). Setelah 124
+pengiriman diterima provider, tembok jatuh pada **07:20:13 UTC** dan **18.119** percobaan berikutnya
+gagal berturut-turut sampai 09:07:28 — tanpa satu pun menyimpan alasannya.
+
+**Terukur (SQL langsung ke produksi, 3 Sep 2026):**
+
+| status | n | `created_at` pertama | `created_at` terakhir | `failure_cause` | `error_message` |
+|---|---:|---|---|---|---|
+| `delivered` | 117 | 07:19:23.775 | 07:20:12.852 | NULL | NULL |
+| `sent` | 2 | 07:19:26.789 | 07:20:06.923 | NULL | NULL |
+| `bounced` | 5 | 07:19:30.056 | 07:20:10.859 | `hard_bounce` | NULL |
+| `failed` | **18.119** | **07:20:13.276** | 09:07:28.973 | **`unknown` (18.119/18.119)** | **NULL (18.119/18.119)** |
+
+Nol pengecualian: setiap baris gagal berkelas `unknown` dengan `error_message` kosong. Run dibuat
+07:18:54.775 — jendela sukses hanya **±49 detik**, lalu ±165 kegagalan/menit selama 1 jam 47 menit.
+
+**Sebab: status dibuang dua kali, di dua berkas berbeda.**
+1. `lib/email/mailtrap.ts` melempar `new Error(\`Mailtrap send failed with HTTP ${res.status}.\`)` —
+   statusnya hanya ada di dalam **teks pesan**, tidak pernah sebagai properti.
+2. `classifySendFailure` (`lib/crm/send-run.ts`) membaca `e.status`, yang **tak pernah terisi** →
+   cabang kata-kunci tak cocok ("Mailtrap send failed with HTTP 429." tak memuat kata kunci apa pun)
+   → `unknown`. Lalu `runSend` mengambil `err.status ?? err.code ?? null` → **null** →
+   `error_message` NULL.
+
+Dua penjaga yang seharusnya saling menutupi justru gagal pada satu akar yang sama. Aturan 5
+send-run.ts ("sebab adalah kolom kelas satu") benar; yang tak ada adalah datanya.
+
+**Yang TIDAK boleh jadi perbaikan:** menyimpan potongan body respons provider. `crm_message_log`
+dirancang bebas PII (identitas hanya keyed-HMAC; komentar kolom `identity_hash`: *"Raw contact never
+stored"*), dan komentar sengaja di `mailtrap.ts` baris 69 melarangnya karena body bisa meng-echo
+alamat penerima. Usulan awal "+ potongan body provider" **ditarik sebelum ditulis**.
+
+**Perbaikan (sprint ini).** `err.status` dibawa sebagai properti (pesan tak berubah);
+`classifySendFailure` memeriksa status lebih dulu; kegagalan jaringan dicatat sebagai **kode saja**
+(`ECONNRESET`/`ETIMEDOUT`, lewat `err.cause.code`), disaring pola `^[A-Za-z0-9_.-]{1,40}$` sehingga
+teks bebas dijatuhkan utuh, bukan dipotong ke kolom. Dikunci di `send-run.test.ts`: untuk sembilan
+status (400/401/402/403/422/429/500/503/504) tak ada satu pun yang mendarat `unknown` + NULL.
+
+## T-42 — `nextRunStatus` tak pernah melihat jumlah gagal → run 99,3% gagal ditandai `sent` — 3 Sep 2026
+
+Run yang sama tercatat di `crm_campaign_run` dengan **`status = 'sent'`** dan `last_error = NULL`,
+padahal 18.119 dari 18.243 penerima (99,3%) gagal.
+
+**Sebab.** `nextRunStatus(summary)` hanya menerima `{ deferredDailyLimit, stoppedHighBounce }`.
+Jumlah gagal **tidak pernah menjadi masukan**, jadi tak ada nilai kegagalan yang bisa mengubah
+jawabannya. Tiga pemanggil (`app/(app)/campaigns/actions.ts`, `app/api/campaigns/run-scheduled/route.ts`,
+`lib/crm/send-test-harness.ts`) masing-masing menyusun sendiri objek dua-field itu dari `summary` yang
+lengkap — kegagalan tersedia di ruang lingkup, tak ada yang meneruskannya.
+
+Akibatnya layar Riwayat Pengiriman, baris run, dan hasil di composer semuanya berkata kampanye sudah
+terkirim. Ini bukan salah baca operator: sistem memang melaporkannya begitu.
+
+**Perbaikan.** `nextRunStatus` menerima `{ sent, failed, deferredDailyLimit, stoppedHighBounce,
+stoppedConsecutiveFailures }`; `finalizeRunStatus` menerima **seluruh** summary (bukan dua field
+pilihan) sehingga pemanggil tak bisa lupa; status baru `partial`/`failed` (Migrasi B). Cabang
+kegagalan diletakkan **di atas** cabang deferral: `sending` adalah satu-satunya status yang mengundang
+resume, dan run yang gagal tak boleh mengundangnya. **`partial` dan `failed` tidak resumable** —
+`RESUMABLE_RUN_STATUSES = {draft, sending}`, dijaga di `listResumableRuns`, di `getRunForPair`, dan
+oleh test. Status run lama **tidak** di-backfill (keputusan pemilik terpisah).
+
+## T-43 — Plafon harian membatasi KEBERHASILAN, bukan PERCOBAAN — 3 Sep 2026
+
+`crm_send_config.daily_limit` = **1000** hari itu. `crm_message_log` bertambah **18.243 baris** pada
+hari yang sama.
+
+**Terukur:**
+
+| hari UTC | total baris | sent | delivered | bounced | failed |
+|---|---:|---:|---:|---:|---:|
+| 2026-09-03 | **18.243** | 2 | 117 | 5 | 18.119 |
+| 2026-08-31 | 3 | 0 | 3 | 0 | 0 |
+| 2026-08-25 | 1 | 0 | 1 | 0 | 0 |
+
+**Sebab (kode).** `lib/crm/send-run.ts`: `budget--` berada di dalam blok `try`, **setelah**
+`ports.record(..., {status:"sent"})` berhasil. Cabang `catch` mencatat kegagalan dan **tak pernah
+menyentuh budget**. Jadi budget hanya turun 124 kali sepanjang run; ia tak pernah mencapai 0, nol
+penerima ditangguhkan, dan 18.119 percobaan gagal berjalan tanpa rem.
+
+Plafon itu memang plafon **pengiriman berhasil di dalam satu run** — bukan plafon percobaan, dan
+(lihat T-44) bukan plafon harian. Sebutan "batas harian" di UI menjanjikan sesuatu yang tak
+diberikannya.
+
+**Tidak diperbaiki di sprint ini — sengaja.** Menghitung percobaan alih-alih keberhasilan mengubah
+arti jatah 300 workflow / 700 manual yang sudah diputuskan pemilik (PETA-WORKFLOW §7). Dieskalasikan
+utuh dengan opsi + trade-off di **`docs/ESKALASI-plafon-kirim.md`**; keputusannya milik pemilik.
+
+## T-44 — Keberhasilan KELUAR dari penghitung plafon saat webhook mengubah `sent` → `delivered` — 3 Sep 2026
+
+Temuan turunan dari T-43 tapi **sebab dan perbaikannya berbeda**, jadi dicatat terpisah.
+
+`todaySentCount()` (`lib/crm/send-campaign.ts`) menghitung `crm_message_log` dengan
+`.eq("status","sent")` saja. Webhook Mailtrap kemudian memindahkan baris yang sama ke `delivered`
+(`app/api/mailtrap/webhook/route.ts`, `patch.status = effect.status`). Baris yang paling terbukti
+berhasil justru berhenti dihitung.
+
+**Terukur untuk 3 Sep 2026:**
+
+```
+todaySentCount() akan mengembalikan : 2
+Diterima provider hari itu (2xx)    : 124
+→ 98,4% pengiriman berhasil hilang dari penghitung plafon
+```
+
+**Batas dampaknya — jangan dilebihkan.** `todaySentCount()` dipanggil **sekali** di awal run, lalu
+budget dilacak di memori. Maka:
+- **Dalam satu run:** tak berpengaruh. Budget in-memory tetap membatasi.
+- **Run kedua di hari yang sama:** `alreadyToday` = 2 → budget = 998, padahal 124 sudah terkirim.
+  Rantai tiga kampanye berarti plafon 1000 berlaku **per kampanye**, bukan per hari.
+
+**Kesimpulan gabungan T-43 + T-44, apa adanya:** `crm_send_config.daily_limit` **bukan plafon harian
+atas apa pun**. Ia membatasi pengiriman berhasil di dalam satu run, dan tidak lebih. Ini penting
+sekarang karena kampanye penyelesaian ke ~12.021 orang (angka pemilik) harus berjalan lintas hari/run — persis
+skenario yang dibocorkan T-44. Opsi perbaikan ada di `docs/ESKALASI-plafon-kirim.md`; **tidak dibangun
+di sprint ini.**
+
+## T-45 — Bounce keras tak pernah di-auto-suppress: nol suppression aktif — 3 Sep 2026
+
+**Terukur:** `crm_suppression` berisi **1 baris**, berstatus **`lifted`** → **nol suppression aktif**
+di seluruh sistem. Kelima hard bounce dari run 3 Sep di-join ke `crm_suppression`: **0** baris
+suppression, **0** aktif. Kelima orang itu masih sepenuhnya kontaktabel dan akan menerima kampanye
+berikutnya.
+
+Jalur bounce sendiri berjalan benar: webhook memverifikasi tanda tangan, mengisi `bounced_at`,
+menetapkan `failure_cause='hard_bounce'` (kelima baris punya `provider_message_id` + `sent_at` +
+`bounced_at`). Yang tak ada adalah langkah berikutnya — tak ada kode yang menulis `crm_suppression`
+saat bounce keras masuk.
+
+Ini penting karena menurut `docs/KEBUTUHAN-SISTEM.md` **suppression adalah satu-satunya gerbang
+nyata** (K-36): consent bukan gerbang, jadi tak ada lapisan lain yang menahan pengiriman ke alamat
+yang sudah terbukti mati.
+
+**TIDAK diperbaiki, sengaja.** Menulis baris `crm_suppression` = rekonsiliasi, keputusan pemilik
+terpisah, dan tabel ini append-only (tak bisa dibatalkan seperti backfill consent). Dicatat sebagai
+temuan agar berhenti menjadi asumsi.
+
+## Catatan — rekonsiliasi Mailchimp belum bisa diturunkan
+
+Angka irisan Mailchimp ∩ CRM dari laporan 3 Sep **tidak dicatat di sini sebagai angka**: laporan itu
+adalah laporan yang sama yang menghasilkan cap waktu "07:18:26" yang kini terbukti tidak diukur, jadi
+seluruh angka turunannya berstatus **belum terverifikasi**, bukan "tinggal pilih basis".
+
+Rekonsiliasi menunggu ekspor sumber; **tidak dapat diturunkan dari basis data ini** — nol tabel
+Mailchimp di proyek `cpvzwqptzcxnwzfzgrmt` (dicari lewat `information_schema.tables`, terverifikasi
+3 Sep 2026). Segmen run ini (`cd20a01f`, "Seluruh Peserta Event 20FIT") adalah kriteria
+`ecoUnit='event'`, bukan daftar email tempelan dari Mailchimp.
+
+**Metode saat ekspornya ada** (belum dijalankan): muat ekspor ke tabel staging sementara → normalisasi
+email lewat `lib/crm/normalize.ts` (kanon yang sama dengan pool) → join ke
+`master_customer.email_normalized` → `customer_id` → join ke `crm_message_log` pada
+`campaign_id = '5f5f3a57-72b8-431b-8818-298fef5027d5'` → hitung irisan **per status**, dan nyatakan
+basisnya secara eksplisit (117 `delivered` / 119 tak-diketahui-gagal / 124 diterima provider). Jangan
+pernah menempelkan alamat pelanggan ke dalam laporan atau konteks percakapan; yang dilaporkan hanya
+hitungan. Catatan logika: bila klaim "irisan ∩ bounced = 0" benar, pertanyaan basis larut sendiri
+(119 dan 124 memberi angka sama) — tapi klaim itu berasal dari laporan yang sama, jadi tetap harus
+diturunkan ulang.

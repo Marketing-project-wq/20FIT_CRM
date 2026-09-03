@@ -1090,3 +1090,74 @@ tanpa fill-blanks; cap **20.000 baris** (`MAX_IMPORT_ROWS`); dry-run **terbukti 
 bukan sekadar review; rollback SQL siap pakai per batch (`source='csv_import'` + `tags`); migrasi fungsi
 `crm_ingest_csv_people` **BERGATE** (belum diterapkan). Suppression tak disentuh — identitas ter-suppress
 yang diimpor ulang tetap tersaring saat kirim. Rincian: `docs/RENCANA-impor-audiens.md`.
+
+---
+
+## K-54 · `provider_throttled` jadi kelas kegagalan tersendiri — 429/402/503 BUKAN `provider_rejected`
+
+**Keputusan (3 Sep 2026).** Kegagalan kirim dengan HTTP **429 / 402 / 503** dicatat sebagai
+`provider_throttled`, kelas baru di `crm_message_log_failure_cause_check` (Migrasi A).
+`provider_rejected` tetap berarti penolakan **level-penerima** (4xx lain).
+
+**Alasan.** Ketiga status itu berkata provider sedang membatasi **kami** — rate limit, kuota habis,
+kapasitas — dan tak berkata apa pun tentang penerima. Menyatukannya dengan `provider_rejected`
+membuat throttling kami sendiri terbaca sebagai masalah penerima. Itu bukan sekadar label yang
+kurang rapi: begitu ada logika bounce/suppression yang membaca hitungan ini (T-45 menunjukkan
+langkah itu memang belum dibangun), penerima yang tidak bersalah akan disuppress karena provider
+kehabisan kuota. Kelas yang salah hari ini menjadi orang yang salah dihapus besok.
+
+**Urutan klasifikasi** (`classifySendFailure`): throttle (status, mutlak) → cabang kata-kunci
+level-penerima → sisa status ≥ 400 → `unknown`. Cabang kata-kunci ditahan **di atas** fallback status
+karena `{status:422, message:"Invalid email address"}` → `invalid_address` adalah jawaban yang lebih
+spesifik dan sudah dikunci test sejak awal; mailer kami sendiri tak pernah membawa prosa provider
+(bisa meng-echo alamat), jadi untuk galat kami kedua cabang itu tak mungkin berselisih. Throttle
+dikecualikan dan mutlak.
+
+**Yang membalikkan keputusan ini:** bukti bahwa provider memakai 429/402/503 untuk menolak penerima
+tertentu (bukan membatasi pengirim). Sampai itu ada, jangan gabungkan.
+
+## K-55 · Status run `partial` dan `failed` — dan keduanya TIDAK resumable
+
+**Keputusan (3 Sep 2026).** `crm_campaign_run.status` bertambah `partial` (sebagian terkirim,
+sebagian gagal) dan `failed` (ada kegagalan, nol terkirim) — Migrasi B. Aturan lengkap ada di
+`nextRunStatus`; cabang kegagalan berada **di atas** cabang deferral.
+
+**Alasan.** Tanpa keduanya, satu-satunya cara melaporkan run yang selesai adalah `sent`, dan run 3 Sep
+(124 diterima, 18.119 gagal) memang tercatat `sent` (T-42).
+
+**Batas keras yang menyertainya.** `RESUMABLE_RUN_STATUSES = {draft, sending}`. Status baru **tidak
+boleh** masuk ke sana. Konsekuensinya konkret: run 3 Sep punya 18.119 baris gagal yang belum
+ter-claim-sukses, jadi me-resume-nya berarti menghubungi ulang 18.119 orang — sebagian sudah
+dikontak lewat jalur lain. Dijaga tiga lapis: `listResumableRuns` memakai konstanta (bukan daftar
+inline), `getRunForPair` memeriksa ulang status (id run datang dari klien), dan
+`lib/crm/campaign-run.test.ts` memindai sumber agar keduanya tak bisa dilonggarkan diam-diam.
+
+**Tanpa backfill.** Status run lama tidak ditulis ulang; itu izin terpisah. Kegagalan run lama tetap
+terlihat lewat kolom "Gagal" di Riwayat Pengiriman, yang dihitung dari `crm_message_log` apa pun
+status run-nya.
+
+**Yang membalikkan keputusan ini:** keputusan pemilik bahwa run yang sebagian gagal harus bisa
+dilanjutkan. Kalau itu diambil, jangan menambah statusnya ke daftar resumable — buat jalur "lanjutkan
+sisa" yang eksplisit dan menghitung ulang sisanya, supaya "boleh dilanjutkan" tak pernah menjadi
+default yang tak sengaja.
+
+## K-56 · Berhenti otomatis setelah 20 kegagalan beruntun
+
+**Keputusan (3 Sep 2026, ambang disetujui pemilik).** `runSend` menghentikan run setelah
+**20 kegagalan berturut-turut**: `stoppedConsecutiveFailures` di summary, status run → `stopped`,
+dan `recordRunError` menulis `last_error` PII-free
+(`stopped_consecutive_failures failed_total=N top_cause=<kelas>` — kosakata kami sendiri, tak pernah
+teks provider).
+
+**Alasan.** 20 kegagalan beruntun adalah tembok (provider mati, kredensial kedaluwarsa, kuota habis),
+bukan 20 alamat bermasalah. Run 3 Sep meneruskan tembok itu selama **1 jam 47 menit** dan menulis
+18.119 baris identik. Beruntun, bukan total: satu keberhasilan mengosongkan hitungannya, jadi run
+yang gagal sesekali tetap berjalan sampai habis.
+
+**Ambang 20 sengaja sejajar `minBounceSample`** (20). Keduanya menjawab pertanyaan yang sama — "berapa
+percobaan sebelum kami boleh menyimpulkan sesuatu tentang run ini?" — dan dua angka berbeda untuk satu
+pertanyaan hanya akan berpisah diam-diam. **Tidak** dikaitkan ke `daily_limit` (aturan pemilik e:
+konfigurasi auto-stop tak pernah dikopel ke batas harian).
+
+**Yang membalikkan keputusan ini:** run sah yang wajar-wajar saja gagal 20 kali beruntun lalu pulih
+(misalnya provider yang mengembalikan 429 per-penerima sebagai antrean normal). Bukti itu belum ada.
