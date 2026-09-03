@@ -1250,6 +1250,103 @@ boleh dilanjutkan atau harus dimulai ulang. Sebelum mengubah urutan cabang di at
 tanyakan bukan "label mana yang paling akurat?" melainkan **"tindakan apa yang dipaksakan label ini,
 dan apa yang terjadi kalau operator terpaksa memulai ulang?"**
 
+## T-47 — Delapan migrasi CRM diterapkan TANPA stempel ledger; satu tak pernah diterapkan — 3 Sep 2026
+
+Sapuan rekonsiliasi ledger (repo ↔ `supabase_migrations.schema_migrations`, difilter **per nama**,
+bukan rentang versi). Hasilnya menjelaskan mengapa `supabase db push` masih berbahaya, dan menemukan
+satu berkas yang selama ini dianggap sudah jalan padahal tidak.
+
+### Angka pokok (47 berkas repo)
+
+| | jumlah |
+|---|---:|
+| Stempel **identik** dengan nama berkas | 17 |
+| Stempel **divergen** (waktu apply ≠ nama berkas) | 21 |
+| **Tanpa stempel sama sekali** | 9 |
+| **Stempel yatim** (versi di ledger tanpa berkas repo) | **0** |
+
+Ketidakcocokannya **satu arah**: ada berkas tanpa stempel, tak ada stempel tanpa berkas.
+
+### Temuan 1 — jendela 26–28 Agu benar-benar kosong di ledger
+
+Seluruh `schema_migrations` untuk 26–28 Agu 2026 hanya berisi **tiga** baris, semuanya milik tim lain
+(`backup_event_positions_i18n_20260828`, `guest_scan_quota`, `guest_scan_quota_lifetime_5`). **Nol**
+stempel CRM. Bahkan tak ada stempel apa pun antara `20260825162238` dan `20260828041518`.
+
+Artinya delapan berkas CRM bertanggal 26–28 Agu dijalankan lewat jalur yang **tidak menstempel**
+(`execute_sql` atau SQL editor), bukan `apply_migration`. Tujuh di antaranya **terbukti sudah
+diterapkan** — objek dan datanya hidup, diukur 3 Sep 2026:
+
+| berkas | bukti hidup |
+|---|---|
+| `…0826090000_seed_default_email_template` | 2 baris `default_newsletter` (id+en) di `crm_message_template` |
+| `…0826110000_crm_test_recipient` | tabel ada, 1 baris |
+| `…0827090000_crm_activity_layer` | `crm_activity_event` 1.525 baris, `crm_customer_activity` 741 baris, 2 fungsi di katalog |
+| `…0827100000_ingest_activity_people` | `crm_ingest_activity_people` ada (1 overload) |
+| `…0827110000_crm_workflow` | `crm_workflow` 1 baris, `crm_workflow_enrollment` 36 baris |
+| `…0828090000_crm_brand_asset` | tabel 1 baris + bucket Storage `brand-assets` (`public = true`) |
+| `…0828100000_crm_scheduled_send` | tabel 1 baris + job pg_cron `crm-run-scheduled-sends` (jobid 18, aktif) |
+
+Bukti silang tambahan untuk `crm_workflow`: migrasi 32 (`crm_campaign_run_owner_xor`, **berstempel**,
+31 Agu) memasang FK ke `crm_workflow(id)` dan berhasil — tabel itu pasti sudah ada sebelumnya.
+
+### Temuan 2 — `crm_email_unsubscribe` TIDAK PERNAH diterapkan
+
+`to_regclass('public.crm_email_unsubscribe')` = **NULL**. Berkasnya ada di repo sejak 26 Agu,
+tak punya stempel, dan tabelnya tak pernah dibuat. Selama ini ia terhitung sebagai "migrasi 26–28
+Agu dari sesi lain" — satu kelompok dengan tujuh yang benar-benar jalan, sehingga ketidakhadirannya
+tak pernah terlihat.
+
+**Tidak ada yang rusak hari ini:** pemindaian kode 3 Sep 2026 menemukan **nol** rujukan ke
+`crm_email_unsubscribe` di luar berkas migrasinya sendiri. Unsubscribe yang nyata berjalan lewat
+`crm_suppression` (K-36), bukan tabel ini. Jadi ini "berkas tanpa pemakai", bukan galat runtime yang
+menunggu.
+
+**TIDAK saya terapkan** (perintah eksplisit: jangan tambal sendiri). Keputusannya milik pemilik, dan
+ada dua arah yang sama sahnya: menerapkannya kalau log unsubscribe per-template memang masih
+diinginkan, **atau menghapus berkasnya** kalau `crm_suppression` sudah menjawab kebutuhannya —
+membiarkan berkas migrasi yang tak pernah dijalankan di repo persis yang membuat `db push` berbahaya.
+
+### Temuan 3 — tiga stempel di ledger README ternyata salah
+
+Baris 34/35/36 README mencatat stempel yang **sama dengan nama berkas**. `schema_migrations` berkata
+lain:
+
+| baris | nama berkas | tercatat di README | stempel sebenarnya |
+|---|---|---|---|
+| 34 | `20260901031500_crm_backfill_run_labels` | `20260901031500` | **`20260901074234`** |
+| 35 | `20260901032000_crm_run_label_not_null` | `20260901032000` | **`20260901081307`** |
+| 36 | `20260901083000_crm_cleanup_uji_iso_labels` | `20260901083000` | **`20260901083824`** |
+
+Ketiganya **memang diterapkan** — hanya stempelnya yang salah dicatat. Nilai lamanya tidak ada di
+ledger sama sekali, jadi ini bukan kasus ambigu. **Dikoreksi ke nilai terukur** (ini pencatatan
+ulang fakta, bukan menambal celah). Baris 23 juga dirapikan: kolom nama berkasnya menuliskan stempel
+ledger (`…154415`), padahal berkas nyatanya `20260821060000_unify_identity_sources_aplus.sql`.
+
+### Kenapa ini penting melampaui kerapian
+
+Ledger adalah **satu-satunya** hal yang memberi tahu `supabase db push` apa yang sudah jalan. Karena
+mayoritas berkas memakai `create table if not exists` / `create or replace`, sebuah `db push` tidak
+akan meledak dengan rapi — sebagian besar akan **lolos diam-diam** sambil menyisipkan ulang data
+seed, menulis ulang grant dan policy, tanpa apa pun yang menandainya. Kegagalan keras masih lebih
+baik daripada itu.
+
+**Pelajaran, sejalur dengan T-20:** stempel ledger dibuat oleh **jalur** yang dipakai, bukan oleh
+berkas yang ditulis. `apply_migration` menstempel; `execute_sql` dan SQL editor tidak. Menaruh
+berkas `.sql` di `supabase/migrations/` **bukan** tindakan yang membuat migrasi tercatat.
+
+### Syarat agar `supabase db push` aman (belum satu pun terpenuhi)
+
+1. Setiap berkas repo punya stempel ledger — lewat `--include-all` + repair, atau `migration repair`
+   per versi, bukan dengan menjalankan ulang SQL-nya.
+2. `crm_email_unsubscribe` diputuskan: diterapkan, atau berkasnya dihapus.
+3. `crm_ingest_csv_people` (bergate) dikeluarkan dari jalur push sampai pemilik menyetujuinya —
+   `db push` tidak mengenal konsep "bergate", dan akan menerapkannya tanpa bertanya.
+4. Ledger **bersama** dengan tim lain: setiap repair harus menargetkan versi CRM per nama, tak
+   pernah per rentang versi (T-20).
+
+Sampai keempatnya beres, jalurnya tetap `apply_migration` satu per satu.
+
 ## Catatan — rekonsiliasi Mailchimp belum bisa diturunkan
 
 Angka irisan Mailchimp ∩ CRM dari laporan 3 Sep **tidak dicatat di sini sebagai angka**: laporan itu
