@@ -33,13 +33,26 @@ interface AnalyzeResponse {
   phase: "analyze";
   mapping: ColumnMapping;
   preview: Record<string, string>[];
+  delimiter?: string;
+}
+
+/** Human-readable name for the delimiter papaparse detected, so the operator can sanity-check the parse
+ *  (a `;` file misread as `,` is the classic silent misparse). */
+const DELIMITER_LABEL: Record<string, string> = {
+  ",": "koma (,)",
+  ";": "titik koma (;)",
+  "\t": "tab",
+  "|": "garis tegak (|)",
+};
+function delimiterLabel(d: string): string {
+  return DELIMITER_LABEL[d] ?? `"${d}"`;
 }
 interface DryRunResponse {
   ok: true;
   phase: "dry_run";
   mapping: ColumnMapping;
   preview: Record<string, string>[];
-  plan: { summary: ImportSummary };
+  plan: { summary: ImportSummary; outcomes: { index: number; status: string; email: string | null }[] };
 }
 interface ExecuteResponse {
   ok: true;
@@ -57,7 +70,9 @@ export function ImportWizard() {
   const [headers, setHeaders] = useState<string[]>([]);
   const [mapping, setMapping] = useState<ColumnMapping>({});
   const [preview, setPreview] = useState<Record<string, string>[]>([]);
+  const [delimiter, setDelimiter] = useState<string>(",");
   const [summary, setSummary] = useState<ImportSummary | null>(null);
+  const [dryOutcomes, setDryOutcomes] = useState<{ index: number; status: string; email: string | null }[]>([]);
   const [collectionSource, setCollectionSource] = useState("");
   const [report, setReport] = useState<ExecuteResponse | null>(null);
   const [busy, setBusy] = useState(false);
@@ -110,6 +125,7 @@ export function ImportWizard() {
       setHeaders(Object.keys(a.mapping));
       setMapping(a.mapping);
       setPreview(a.preview);
+      if (a.delimiter) setDelimiter(a.delimiter);
       setStep("map");
     } catch {
       setError("Gagal membaca file.");
@@ -122,6 +138,7 @@ export function ImportWizard() {
     const data = (await post("dry_run")) as DryRunResponse | null;
     if (!data) return;
     setSummary(data.plan.summary);
+    setDryOutcomes(data.plan.outcomes ?? []);
     setPreview(data.preview);
     setStep("summary");
   }
@@ -140,7 +157,9 @@ export function ImportWizard() {
     setHeaders([]);
     setMapping({});
     setPreview([]);
+    setDelimiter(",");
     setSummary(null);
+    setDryOutcomes([]);
     setCollectionSource("");
     setReport(null);
     setError(null);
@@ -180,13 +199,24 @@ export function ImportWizard() {
 
       {step === "map" && (
         <div className="glass rounded-card p-6">
-          <div className="mb-3 flex items-center gap-2">
-            <FileText className="h-4 w-4 text-ink-soft" aria-hidden />
-            <span className="font-body text-[13px] text-ink">{filename}</span>
+          <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="flex items-center gap-2">
+              <FileText className="h-4 w-4 text-ink-soft" aria-hidden />
+              <span className="font-body text-[13px] text-ink">{filename}</span>
+            </span>
+            <span className="font-body text-[12px] text-ink-faint">
+              Pemisah terdeteksi: {delimiterLabel(delimiter)} · {headers.length} kolom
+            </span>
           </div>
           <p className="mb-4 font-body text-[13px] text-ink-soft">
             Pasangkan tiap kolom CSV ke field tujuan. Tebakan otomatis dari nama kolom — ubah bila perlu. Setidaknya
-            satu kolom harus dipetakan ke <strong>Email</strong>.
+            satu kolom harus dipetakan ke <strong>Email</strong>.{" "}
+            {headers.length <= 1 && (
+              <span className="text-amber">
+                Hanya satu kolom terbaca — kalau file Anda pakai titik koma atau tab, pemisahnya mungkin salah dibaca.
+                Buka file dan periksa pemisahnya.
+              </span>
+            )}
           </p>
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-left">
@@ -238,9 +268,44 @@ export function ImportWizard() {
             <Stat label="Akan masuk" value={summary.netInsert} tone="green" />
             <Stat label="Bisa dikirimi" value={summary.netContactable} tone="green" />
             <Stat label="Kena suppression" value={summary.suppressed} tone="amber" hint="Masuk pool, tapi tak akan menerima kiriman" />
-            <Stat label="Duplikat (dilewati)" value={summary.duplicatesExisting + summary.duplicatesInBatch} />
+            <Stat label="Telepon bersama" value={summary.sharedPhone} tone="amber" hint="Tetap masuk (email unik), tapi teleponnya sama dengan kontak yang sudah ada" />
+            {summary.sharedPhoneSuppressed > 0 && (
+              <Stat
+                label="Dilewati — telepon ter-suppress"
+                value={summary.sharedPhoneSuppressed}
+                tone="amber"
+                hint="Teleponnya sama dengan kontak yang sudah berhenti berlangganan — tidak diimpor demi menepati permintaan stop"
+              />
+            )}
+            <Stat label="Duplikat email (dilewati)" value={summary.duplicatesEmail + summary.duplicatesInBatch} />
             <Stat label="Tak valid (tanpa email)" value={summary.invalid} />
+            {summary.phoneExcelBroken > 0 && (
+              <Stat
+                label="Telepon rusak (format Excel)"
+                value={summary.phoneExcelBroken}
+                tone="amber"
+                hint="Teleponnya jadi notasi ilmiah — angkanya hilang, tak bisa dipakai"
+              />
+            )}
           </div>
+
+          {summary.phoneExcelBroken > 0 && (
+            <p className="tint-amber mt-3 flex items-start gap-2 rounded-sm px-3 py-2 font-body text-[12px]">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+              <span>
+                {summary.phoneExcelBroken.toLocaleString("id-ID")} baris punya telepon yang Excel ubah jadi notasi
+                ilmiah (mis. “6,28129E+12”) — angka aslinya <strong>hilang permanen</strong>, jadi teleponnya
+                dikosongkan (tidak ditebak). Barisnya tetap masuk kalau emailnya valid. Untuk memperbaiki: di Excel,
+                format kolom telepon sebagai <strong>Teks</strong> dulu sebelum menyimpan CSV, lalu ekspor ulang.
+              </span>
+            </p>
+          )}
+
+          <UnmappedColumns headers={headers} mapping={mapping} />
+
+          {/* Per-row reasons BEFORE confirming — checking why each row is skipped/flagged is the point
+              of a dry-run. Shows skips AND the shared-phone / suppressed inserts, each with its reason. */}
+          <ProblemList outcomes={dryOutcomes} />
 
           <div className="mt-6">
             <label className="mb-1 block font-display text-[13px] font-bold text-ink">
@@ -260,11 +325,19 @@ export function ImportWizard() {
             />
           </div>
 
-          <div className="mt-5 flex items-center gap-2">
+          <div className="mt-5 flex flex-wrap items-center gap-2">
             <Button variant="outline" onClick={() => setStep("map")}>← Kembali ke pemetaan</Button>
-            <Button onClick={runExecute} disabled={busy || collectionSource.trim() === "" || summary.netInsert === 0}>
+            <Button
+              onClick={runExecute}
+              disabled={busy || collectionSource.trim() === "" || summary.netInsert === 0}
+              className="disabled:cursor-not-allowed disabled:opacity-50"
+            >
               {busy ? "Mengimpor…" : `Konfirmasi & impor ${summary.netInsert.toLocaleString("id-ID")} orang`}
             </Button>
+            {/* Say WHY the confirm button is inert — never a silent dead button (K-55). */}
+            {collectionSource.trim() === "" && summary.netInsert > 0 && (
+              <span className="font-body text-[12px] text-ink-faint">Isi “sumber pengumpulan” untuk mengaktifkan.</span>
+            )}
           </div>
         </div>
       )}
@@ -278,12 +351,16 @@ export function ImportWizard() {
           <div className="grid gap-3 sm:grid-cols-3">
             <Stat label="Berhasil masuk" value={report.committed.inserted} tone="green" />
             <Stat label="Kena suppression" value={report.plan.summary.suppressed} tone="amber" hint="Masuk, tapi takkan dikirimi" />
-            <Stat label="Dilewati / tak valid" value={report.plan.summary.duplicatesExisting + report.plan.summary.duplicatesInBatch + report.plan.summary.invalid} />
+            <Stat label="Telepon bersama" value={report.plan.summary.sharedPhone} tone="amber" hint="Masuk, teleponnya sama dengan kontak lain" />
+            <Stat label="Dilewati / tak valid" value={report.plan.summary.duplicatesEmail + report.plan.summary.duplicatesInBatch + report.plan.summary.invalid + report.plan.summary.sharedPhoneSuppressed} />
+            {report.plan.summary.phoneExcelBroken > 0 && (
+              <Stat label="Telepon rusak (format Excel)" value={report.plan.summary.phoneExcelBroken} tone="amber" hint="Teleponnya dikosongkan — angkanya hilang" />
+            )}
           </div>
           <p className="mt-4 font-body text-[12px] text-ink-soft">
             Batch <span className="font-mono">{report.batch}</span>. {report.mirrorRefreshed ? "Pool sudah diperbarui." : "Pool akan diperbarui pada refresh berikutnya."}
           </p>
-          <ProblemList outcomes={report.plan.summary.invalid + report.plan.summary.duplicatesExisting + report.plan.summary.duplicatesInBatch > 0 ? report.plan.outcomes : []} />
+          <ProblemList outcomes={report.plan.outcomes} />
           <div className="mt-5">
             <Button variant="outline" onClick={reset}>Impor file lain</Button>
           </div>
@@ -329,21 +406,44 @@ function Stat({ label, value, tone, hint }: { label: string; value: number; tone
   );
 }
 
+/** Which uploaded columns were NOT imported (mapped to "ignore"). Surfaced so the operator sees, e.g.,
+ *  that an "Event" column was left out — a silent drop is how data quietly goes missing. Names only,
+ *  no values. */
+function UnmappedColumns({ headers, mapping }: { headers: string[]; mapping: ColumnMapping }) {
+  const ignored = headers.filter((h) => (mapping[h] ?? "ignore") === "ignore" && h.trim() !== "");
+  if (ignored.length === 0) return null;
+  return (
+    <p className="mt-3 font-body text-[12px] text-ink-soft">
+      Kolom tidak diimpor ({ignored.length}):{" "}
+      <span className="text-ink">{ignored.join(", ")}</span>. Hanya nama, email, telepon, dan kota yang masuk — sisanya
+      diabaikan. Kalau salah satunya seharusnya ikut, kembali ke pemetaan.
+    </p>
+  );
+}
+
+/** Per-row reasons. Lists every row that is NOT a plain insert — both SKIPS and flagged inserts
+ *  (shared phone / suppressed) — each with its reason. The dedup match field is explicit (email vs
+ *  phone) so the operator can tell an unambiguous email duplicate from a shared-number flag. It never
+ *  shows WHO the row collided with — exposing another customer to the uploader is a separate,
+ *  audited decision (K-55). Row number is +2: 1 for the header, 1 for 0-based index. */
 function ProblemList({ outcomes }: { outcomes: { index: number; status: string; email: string | null }[] }) {
-  const problems = outcomes.filter((o) => o.status.startsWith("skip_"));
-  if (problems.length === 0) return null;
+  const rows = outcomes.filter((o) => o.status !== "insert");
+  if (rows.length === 0) return null;
   const LABEL: Record<string, string> = {
-    skip_duplicate_existing: "Sudah ada di pool",
-    skip_duplicate_in_batch: "Duplikat di file ini",
-    skip_invalid: "Email tidak valid",
+    skip_duplicate_email: "Email sudah ada (dilewati)",
+    skip_duplicate_in_batch: "Email dobel di file ini (dilewati)",
+    skip_invalid: "Email tidak valid (dilewati)",
+    skip_shared_phone_suppressed: "Telepon ter-suppress (dilewati — tak dibuat kontak baru)",
+    insert_shared_phone: "Telepon cocok kontak lain (tetap masuk)",
+    insert_suppressed: "Kena suppression (masuk, takkan dikirimi)",
   };
   return (
     <details className="mt-4">
-      <summary className="cursor-pointer font-body text-[13px] text-ink-soft">Lihat baris yang dilewati ({problems.length})</summary>
+      <summary className="cursor-pointer font-body text-[13px] text-ink-soft">Lihat baris yang dilewati atau ditandai ({rows.length})</summary>
       <div className="mt-2 max-h-64 overflow-y-auto rounded-sm border border-glass-border">
         <table className="w-full border-collapse text-left">
           <tbody>
-            {problems.slice(0, 500).map((p) => (
+            {rows.slice(0, 500).map((p) => (
               <tr key={p.index} className="border-b border-glass-border/50">
                 <td className="px-3 py-1.5 font-mono text-[12px] text-ink-faint">baris {p.index + 2}</td>
                 <td className="px-3 py-1.5 font-body text-[12px] text-ink">{p.email ?? "—"}</td>

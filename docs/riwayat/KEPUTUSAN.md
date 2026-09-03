@@ -1090,3 +1090,90 @@ tanpa fill-blanks; cap **20.000 baris** (`MAX_IMPORT_ROWS`); dry-run **terbukti 
 bukan sekadar review; rollback SQL siap pakai per batch (`source='csv_import'` + `tags`); migrasi fungsi
 `crm_ingest_csv_people` **BERGATE** (belum diterapkan). Suppression tak disentuh — identitas ter-suppress
 yang diimpor ulang tetap tersaring saat kirim. Rincian: `docs/RENCANA-impor-audiens.md`.
+
+## K-55 · Impor CSV — dedup EMAIL-PRIMER (telepon bersama tetap masuk + ditandai) + laporan per-baris di dry-run
+
+**2026-09-02.** Uji dry-run pertama (super-admin, di produksi, nol tulisan) menabrakkan nomor
+karangan `0812-3456-7890` dengan seorang customer nyata **lewat telepon** (email karangan tak ada di
+master). Ini membuka risiko yang belum dibahas: aturan lama "cocok email ATAU telepon → lewati"
+**menghapus diam-diam orang berbeda yang sah** hanya karena berbagi nomor (pasangan, orang tua
+mendaftarkan anak, nomor kantor).
+
+**Keputusan pemilik (dikerjakan SEKARANG, bukan Fase 2 — alasannya: nol impor pernah jalan, jadi tak
+ada data terdampak dan tak ada perilaku yang berubah bagi siapa pun; mengubah setelah ada 20.000 baris
+impor lama berarti dua aturan hidup di data yang sama):**
+
+- **Email = kunci dedup utama.** Cocok email dengan master → **lewati** (identitas personal, tak ambigu).
+- **Cocok telepon saja → tetap MASUK**, ditandai kategori `insert_shared_phone` ("telepon bersama").
+  Teleponnya di-null-kan saat tulis (master unik pada `phone_normalized` — sudah ada `phone_safe` di
+  fungsi ingest; anti-join `new_people` diubah jadi **email-saja** supaya baris ini lolos). Planner
+  murni (`import-audience.ts`) dan fungsi SQL **cocok persis** → hitung dry-run = yang ditulis execute.
+- **Angka "telepon bersama" tampil tersendiri di ringkasan** (bukan tersembunyi) — operator melihat
+  "12 orang berbagi telepon" sebelum konfirmasi.
+- **Suppression tak berubah** — tetap keyed email + telepon; masuk pool ≠ bisa dikirimi.
+
+**Laporan per-baris.** `ProblemList` kini muncul juga di langkah **ringkasan/dry-run** (dulu hanya
+pasca-execute — memeriksa alasan SEBELUM impor adalah inti dry-run), menampilkan tiap baris yang bukan
+insert-polos (skip + `insert_shared_phone` + `insert_suppressed`) dengan **kolom yang cocok jelas
+(email vs telepon)**. **Tidak** menampilkan identitas customer yang ditabrak — memperlihatkan data
+pelanggan lain ke pengunggah adalah paparan ber-audit tersendiri, pintu yang sengaja tidak dibuka.
+
+**Afordansi tombol.** Tombol "Konfirmasi & impor" memang sudah tertahan dua lapis (disabled saat
+`collectionSource` kosong + server tolak `collection_source_required`) — yang kurang cuma terlihatnya;
+ditambah `disabled:opacity-50 cursor-not-allowed` + petunjuk inline "Isi sumber pengumpulan untuk
+mengaktifkan". Tombol dry-run "Hitung ringkasan" memang tak butuh field itu (wajar) dan namanya sudah
+berbeda dari tombol konfirmasi.
+
+**Temuan kualitas data (ukur, tak dibersihkan):** dari 81.680 telepon di master, ~150 jelas palsu (98
+panjang tak wajar + 66 berurutan + 2 satu-digit) = **~0,2%** — kecil, bukan sistemik. `0812-3456-7890`
+salah satu dari yang berurutan itu. **Tak ada** telepon yang dipakai >1 baris master (indeks unik).
+Tak ada yang dibersihkan tanpa persetujuan.
+
+### Addendum 2026-09-03 — celah suppression telepon-bersama, dan penutupannya (opsi d)
+
+Meng-null-kan telepon bersama (di atas) membuka celah yang pemilik minta ditutup **sepenuhnya**, bukan
+dikurangi: `fetchSuppressedCustomerIds` (`lib/crm/contactability-read.ts`) mencocokkan orang yang
+ter-suppress ke `customer_id` **hanya** lewat `master_customer.phone_normalized` dan `email_normalized`.
+Telepon yang di-null jadi tak terlihat oleh suppression telepon **selamanya**.
+
+**Lebar celah — ditelusuri, ternyata sempit (dugaan pemilik benar).** Orang yang masuk lewat jalur
+telepon-bersama **tetap punya email** (email adalah kunci yang membuatnya masuk); yang di-null cuma
+telepon. Maka bila ia unsubscribe lewat **email**, suppression email tetap mencocokkannya. Yang lolos
+**hanya** suppression yang di-key ke **telepon** dan dibuat **setelah** impor.
+
+**Angka nyata (diukur 2026-09-03, `execute_sql`):** `crm_suppression` = **1 baris total** (`email`,
+`status='lifted'`) → **0 suppression telepon selamanya, 0 aktif apa pun**. Jalur yang membuat
+suppression telepon: **hanya form manual staf `/consent`** (opt-out via WhatsApp/telepon, reason
+`user_request`). Tautan unsubscribe email selalu `kind:'email'` (`send-campaign.ts:337`), dan belum ada
+jalur kirim WA → tak ada suppression telepon otomatis. Maka sisa celah efektif **≈ nol** hari ini.
+
+**Keputusan pemilik — opsi (d), dikerjakan (planner saja, tanpa perubahan skema):** saat impor, kalau
+telepon cocok kontak yang **sudah ada** (`existingPhones`) **dan** telepon itu **sedang ter-suppress**
+(`suppressedPhones`) → baris **tidak diimpor** (status `skip_shared_phone_suppressed`, dihitung
+tersendiri). Alasannya: telepon itu akan di-null saat tulis; menolak membuat identitas bisa-dikontak
+untuk nomor yang pemiliknya minta stop menutup celah **sepenuhnya untuk suppression yang ada saat
+impor**. Email-suppression **tidak** dicarve-out (email ditulis utuh → tetap tercocokkan). Baris
+telepon-ter-suppress yang teleponnya **baru** (tak bentrok) tetap masuk sebagai "kena suppression"
+(teleponnya ditulis, jadi tetap tersaring) — **tidak** over-suppress. Ditegakkan di planner murni
+(`import-audience.ts`); baris carve-out **tak pernah** sampai ke RPC (`insertRows` sudah menyaringnya),
+jadi fungsi SQL tak perlu tahu soal suppression. Test lockstep membuktikan baris carve-out absen dari
+`insertRows`.
+
+**Opsi (b) — longgarkan indeks unik telepon — DITUNDA (dicatat sebagai opsi masa depan, tidak
+dikerjakan).** Hanya (b) yang menutup **present + future** (termasuk suppression telepon yang dibuat
+setelah impor). Tapi ia mengubah invariant master (banyak hal bersandar pada "satu telepon = satu
+orang") — tak proporsional untuk celah yang hari ini nol baris. Dikerjakan hanya bila suppression
+telepon jadi sering (mis. jalur kirim WA + opt-out WA otomatis diaktifkan). Opsi (a) "simpan nomor di
+kolom terpisah" **ditolak**: `fetchSuppressedCustomerIds` tak membaca kolom lain, jadi tak menutup apa
+pun.
+
+### Addendum 2026-09-03 — tiga tambahan transparansi impor (keterlihatan, bukan tambal data)
+
+- **Telepon rusak format Excel.** `isExcelBrokenPhone()` mendeteksi notasi ilmiah (`6,28129E+12`).
+  Telepon **dikosongkan, tidak ditebak**; baris tetap masuk bila email valid; dihitung kategori
+  tersendiri ("Telepon rusak (format Excel)") + cara memperbaiki (format kolom Teks, ekspor ulang).
+  Diverifikasi: `normalizePhoneID("6,28129E+12")` → `null` (bukan sampah) — jadi ini soal keterlihatan,
+  bukan menambal kebocoran data.
+- **Pemisah terdeteksi + peringatan 1 kolom.** papaparse auto-detect `, ; \t |` ditampilkan; peringatan
+  bila hanya 1 kolom terbaca (gejala klasik file `;`/tab salah-parse).
+- **Kolom tak terpetakan** (mis. "Event") disebut di ringkasan — drop diam-diam adalah cara data hilang.

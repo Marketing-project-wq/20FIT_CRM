@@ -15,11 +15,28 @@ yang ada (`crm_ingest_activity_people`), bukan jalur baru.
    `evidence` jsonb `{source, batch, uploaded_by, filename, collection_source}` — **bukti, bukan
    gerbang**. Koreksi bertanggal terhadap `RENCANA-ingest-ticket.md` ditulis (jalur asing tetap
    `legacy_import_unverified`).
-2. **Dedup — LEWATI saja**, tanpa fill-blanks. Cocok email ATAU telepon (ternormalisasi) dengan master
-   → tidak dimasukkan. Tak pernah menimpa. Master tetap otoritatif.
-3. **Parser — papaparse** (satu-satunya dependency baru yang disetujui). Parsing di server.
-4. **Excel — ditunda.** CSV dulu.
-5. **Cap — 20.000 baris/file** (Fase 1, `MAX_IMPORT_ROWS`, satu konstanta). Diperbesar setelah terbukti.
+2. **Dedup — EMAIL-PRIMER, LEWATI saja** (K-55, 2026-09-02, mengganti "email ATAU telepon"). Cocok
+   **email** (ternormalisasi) dengan master → dilewati (identitas personal, tak ambigu). Cocok
+   **telepon saja** → **tetap dimasukkan** tapi ditandai "telepon bersama" (angka tersendiri di
+   ringkasan), dan teleponnya di-null-kan saat tulis (master unik pada telepon) — telepon adalah
+   pengenal bersama (rumah tangga/orang tua/kantor), tak boleh menghapus orang berbeda. Tak pernah
+   menimpa; master tetap otoritatif. **Pengecualian (opsi d):** kalau telepon bersama itu sedang
+   ter-suppress, baris **tidak diimpor** — lihat bagian **Suppression**. Masuk pool ≠ bisa dikirimi.
+3. **Parser — papaparse** (satu-satunya dependency baru yang disetujui). Parsing di server. Pemisah
+   (`, ; \t |`) di-auto-detect papaparse; pilihan pemisahnya ditampilkan di layar pemetaan
+   ("Pemisah terdeteksi: …") + jumlah kolom, plus peringatan bila hanya 1 kolom terbaca (gejala klasik
+   file `;`/tab yang salah dibaca) — operator bisa memeriksa, bukan diam-diam salah parse.
+4. **Telepon rusak format Excel — DETEKSI & TOLAK, jangan perbaiki** (2026-09-03). Excel diam-diam
+   menulis ulang nomor panjang jadi notasi ilmiah ("6,28129E+12") saat kolom bukan Teks — angka aslinya
+   **hilang permanen**. `isExcelBrokenPhone()` mendeteksi polanya; teleponnya dikosongkan (tak ditebak),
+   baris tetap masuk kalau emailnya valid, dan dihitung sebagai kategori tersendiri di ringkasan
+   ("Telepon rusak (format Excel) — N baris") dengan cara memperbaiki (format kolom sebagai Teks lalu
+   ekspor ulang). `normalizePhoneID("6,28129E+12")` sudah mengembalikan `null` (bukan sampah) — deteksi
+   ini menambah **transparansi**, bukan mencegah data kotor tersimpan.
+5. **Kolom tak terpetakan ditampilkan.** Ringkasan menyebut kolom yang di-"abaikan" (mis. "Event") biar
+   operator sadar apa yang tidak ikut — drop diam-diam adalah cara data hilang tanpa ketahuan.
+6. **Excel (.xlsx) — ditunda.** CSV dulu (butuh SheetJS — keputusan terpisah).
+7. **Cap — 20.000 baris/file** (Fase 1, `MAX_IMPORT_ROWS`, satu konstanta). Diperbesar setelah terbukti.
 
 ## Yang dibangun
 
@@ -44,11 +61,33 @@ yang ada (`crm_ingest_activity_people`), bukan jalur baru.
 
 ## Suppression
 
-Tidak berubah dan tidak disentuh. Suppression keyed by identitas (email/telepon ternormalisasi) dan
-dicek saat kirim (`fetchSuppressedCustomerIds`) via `phone_normalized`/`email_normalized`. Maka:
-identitas ter-suppress yang diimpor ulang **tetap tersaring** saat kirim. Impor **tak pernah** menulis
-atau mengubah `crm_suppression`. Baris net-new yang ter-suppress tetap dimasukkan (mereka orang nyata)
-tapi dihitung terpisah ("kena suppression") supaya operator tahu berapa yang takkan menerima kiriman.
+Impor **tak pernah** menulis atau mengubah `crm_suppression`. Suppression keyed by identitas
+(email/telepon ternormalisasi) dan dicek saat kirim (`fetchSuppressedCustomerIds`) via
+`phone_normalized`/`email_normalized`.
+
+- **Ter-suppress lewat EMAIL** → baris net-new tetap **dimasukkan** (orang nyata) tapi dihitung
+  terpisah ("kena suppression"). Emailnya ditulis utuh, jadi tetap tersaring saat kirim.
+- **Ter-suppress lewat TELEPON, dan teleponnya bersama** (sudah ada di master) → **TIDAK diimpor**
+  (opsi d, K-55). Telepon bersama di-null-kan saat tulis, sehingga suppression telepon jadi buta ke
+  baris itu; maka kita tolak membuat identitas bisa-dikontak untuk nomor yang pemiliknya minta stop.
+  Dilewati dengan status `skip_shared_phone_suppressed`, dihitung tersendiri di ringkasan. **Menutup
+  celah SEPENUHNYA untuk suppression yang ada saat impor.**
+- **Ter-suppress lewat TELEPON, tapi teleponnya baru** (tak ada di master) → dimasukkan sebagai
+  "kena suppression"; teleponnya ditulis utuh, jadi suppression telepon tetap mencocokkannya saat
+  kirim. Tidak perlu dilewati.
+
+**Sisa celah (dan kenapa kecil).** Yang tak tertutup opsi (d): seseorang ber-telepon-bersama yang
+meng-*unsubscribe* lewat TELEPON **setelah** impor — teleponnya sudah ter-null, jadi suppression
+telepon tak mencocokkannya. Catatan penting: orang itu **tetap punya email** (email adalah kunci yang
+membuatnya masuk), jadi kalau suppress-nya lewat email, tetap tercocokkan. Yang lolos **hanya**
+suppression yang di-key ke telepon dan dibuat setelah impor. Diukur 2026-09-03: `crm_suppression`
+berisi **1 baris total** (email, sudah lifted) — **0 suppression telepon selamanya, 0 aktif**. Satu-
+satunya jalur yang membuat suppression telepon adalah **form manual staf /consent** (opt-out via
+WhatsApp/telepon); tautan unsubscribe email selalu meng-key ke **email** (`send-campaign.ts` menetapkan
+`kind:'email'`), tak ada jalur otomatis telepon (WA belum punya jalur kirim). Maka sisa celah efektif
+**≈ nol** hari ini. Penutupan penuh present+future hanya lewat **opsi (b)** (longgarkan indeks unik
+telepon) — **DITUNDA**, dikerjakan hanya bila suppression telepon jadi sering (mis. jalur kirim WA +
+opt-out WA otomatis diaktifkan).
 
 ## Rollback (siap pakai — untuk tiap batch)
 
