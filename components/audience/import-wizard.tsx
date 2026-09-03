@@ -269,6 +269,14 @@ export function ImportWizard() {
             <Stat label="Bisa dikirimi" value={summary.netContactable} tone="green" />
             <Stat label="Kena suppression" value={summary.suppressed} tone="amber" hint="Masuk pool, tapi tak akan menerima kiriman" />
             <Stat label="Telepon bersama" value={summary.sharedPhone} tone="amber" hint="Tetap masuk (email unik), tapi teleponnya sama dengan kontak yang sudah ada" />
+            {summary.sharedPhoneSuppressed > 0 && (
+              <Stat
+                label="Dilewati — telepon ter-suppress"
+                value={summary.sharedPhoneSuppressed}
+                tone="amber"
+                hint="Teleponnya sama dengan kontak yang sudah berhenti berlangganan — tidak diimpor demi menepati permintaan stop"
+              />
+            )}
             <Stat label="Duplikat email (dilewati)" value={summary.duplicatesEmail + summary.duplicatesInBatch} />
             <Stat label="Tak valid (tanpa email)" value={summary.invalid} />
             {summary.phoneExcelBroken > 0 && (
@@ -344,7 +352,7 @@ export function ImportWizard() {
             <Stat label="Berhasil masuk" value={report.committed.inserted} tone="green" />
             <Stat label="Kena suppression" value={report.plan.summary.suppressed} tone="amber" hint="Masuk, tapi takkan dikirimi" />
             <Stat label="Telepon bersama" value={report.plan.summary.sharedPhone} tone="amber" hint="Masuk, teleponnya sama dengan kontak lain" />
-            <Stat label="Dilewati / tak valid" value={report.plan.summary.duplicatesEmail + report.plan.summary.duplicatesInBatch + report.plan.summary.invalid} />
+            <Stat label="Dilewati / tak valid" value={report.plan.summary.duplicatesEmail + report.plan.summary.duplicatesInBatch + report.plan.summary.invalid + report.plan.summary.sharedPhoneSuppressed} />
             {report.plan.summary.phoneExcelBroken > 0 && (
               <Stat label="Telepon rusak (format Excel)" value={report.plan.summary.phoneExcelBroken} tone="amber" hint="Teleponnya dikosongkan — angkanya hilang" />
             )}
@@ -425,6 +433,7 @@ function ProblemList({ outcomes }: { outcomes: { index: number; status: string; 
     skip_duplicate_email: "Email sudah ada (dilewati)",
     skip_duplicate_in_batch: "Email dobel di file ini (dilewati)",
     skip_invalid: "Email tidak valid (dilewati)",
+    skip_shared_phone_suppressed: "Telepon ter-suppress (dilewati — tak dibuat kontak baru)",
     insert_shared_phone: "Telepon cocok kontak lain (tetap masuk)",
     insert_suppressed: "Kena suppression (masuk, takkan dikirimi)",
   };

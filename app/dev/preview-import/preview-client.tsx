@@ -19,6 +19,7 @@ const SUMMARY = {
   duplicatesEmail: 150,
   duplicatesInBatch: 30,
   sharedPhone: 12,
+  sharedPhoneSuppressed: 2,
   suppressed: 8,
   netInsert: 1000,
   netContactable: 992,
@@ -28,6 +29,7 @@ const OUTCOMES = [
   { index: 9, status: "skip_duplicate_email", email: "sudahada@mail.com" },
   { index: 15, status: "skip_duplicate_in_batch", email: "dobel@mail.com" },
   { index: 22, status: "insert_shared_phone", email: "berbagitelepon@mail.com" },
+  { index: 27, status: "skip_shared_phone_suppressed", email: "teleponstop@mail.com" },
   { index: 31, status: "insert_suppressed", email: "unsub@mail.com" },
 ];
 

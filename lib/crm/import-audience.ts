@@ -14,9 +14,12 @@ import { normalizeEmail, normalizePhoneID } from "./normalize";
  *  - Dedup is EMAIL-PRIMARY, SKIP-ONLY (K-55): an EMAIL match with an existing person is skipped; a
  *    phone-only match is INSERTED and flagged (a shared number must not drop a distinct person), with
  *    the colliding phone nulled at write. Never merged, never overwritten. Master stays authoritative.
- *  - Suppression is untouched and still wins: a NET-NEW person whose identity is suppressed is still
- *    imported (they are a real new person) but is counted separately so the operator sees how many of
- *    the imported rows will never receive a send.
+ *  - Suppression still wins. A NET-NEW person whose EMAIL is suppressed is imported (a real new person)
+ *    but counted separately — their email is written intact, so send-time suppression still catches them.
+ *    A person whose SHARED phone (one already in master) is suppressed is NOT imported at all (opsi d):
+ *    that phone is nulled at write, which would blind phone-suppression, so we refuse to create a
+ *    contactable identity for a number whose owner opted out. This closes the gap for suppressions that
+ *    exist at import time; the after-import residual is opsi (b), deferred (see K-55).
  */
 
 /** Hard cap for Fase 1 — small on purpose to shrink the blast radius of a first write-to-production
@@ -112,6 +115,11 @@ export type RowStatus =
   | "insert_shared_phone" // NEW email, but the phone matches an existing contact — INSERTED (email is the
   //                         identity key) and flagged; the shared phone is nulled at write (master's phone
   //                         is unique), so a distinct person is never dropped just for sharing a number.
+  | "skip_shared_phone_suppressed" // (K-55, opsi d) shared phone that is CURRENTLY suppressed → NOT imported.
+  //                         The shared phone would be nulled at write, so a phone-keyed suppression on it
+  //                         would be invisible at send. We refuse to create a contactable identity for a
+  //                         number whose owner asked to stop — the row is skipped, closing the gap for
+  //                         suppressions that exist at import time.
   | "skip_duplicate_email" // email matches a person already in master → skipped (identity is unambiguous)
   | "skip_duplicate_in_batch" // same email appeared earlier in this file
   | "skip_invalid"; // no usable email (email is required in Fase 1)
@@ -135,6 +143,9 @@ export interface ImportSummary {
   //                           duplicate, etc.).
   sharedPhone: number; // INSERTED, but the phone matches an existing contact (shared number) — surfaced
   //                      as its own figure so the operator sees it before confirming, not hidden.
+  sharedPhoneSuppressed: number; // SKIPPED (opsi d): shared phone that is currently suppressed. Not
+  //                      imported — a contactable identity is never created for a number whose owner
+  //                      opted out. Counted so the operator sees the guard fired. Usually 0.
   suppressed: number; // net-new rows that are suppressed (inserted, but will never receive)
   netInsert: number; // total rows that will be inserted (INCLUDING suppressed and shared-phone)
   netContactable: number; // netInsert − suppressed (the count that can actually be sent to)
@@ -171,6 +182,7 @@ export function planImport(
     invalid: 0,
     phoneExcelBroken: 0,
     sharedPhone: 0,
+    sharedPhoneSuppressed: 0,
     suppressed: 0,
     netInsert: 0,
     netContactable: 0,
@@ -209,8 +221,24 @@ export function planImport(
     seenEmails.add(email);
 
     const sharedPhone = n.phoneNormalized !== null && keys.existingPhones.has(n.phoneNormalized);
-    const suppressed =
-      keys.suppressedEmails.has(email) || (n.phoneNormalized !== null && keys.suppressedPhones.has(n.phoneNormalized));
+    const suppressedByEmail = keys.suppressedEmails.has(email);
+    const suppressedByPhone = n.phoneNormalized !== null && keys.suppressedPhones.has(n.phoneNormalized);
+
+    // (d) SUPPRESSION CARVE-OUT (K-55). A shared phone is nulled at write (master's phone is unique), so
+    // a phone-keyed suppression on that number is invisible to send-time suppression (fetchSuppressedCustomerIds
+    // resolves phones via phone_normalized, which is now NULL for this row). If the colliding phone is
+    // CURRENTLY suppressed, we must NOT create a contactable identity for it — skip the row entirely. This
+    // closes the gap FULLY for suppressions that exist at import time. The residual (a phone opt-out recorded
+    // AFTER import on the nulled number) is only closed by relaxing the phone unique index (opsi b, deferred);
+    // measured empty today (0 phone-keyed suppressions ever, verified 2026-09-03). Email suppression is NOT
+    // carved out here: an email is written intact, so it stays matchable at send — those rows insert-as-suppressed.
+    if (sharedPhone && suppressedByPhone) {
+      s.sharedPhoneSuppressed++;
+      outcomes.push({ index, status: "skip_shared_phone_suppressed", email });
+      return;
+    }
+
+    const suppressed = suppressedByEmail || suppressedByPhone;
     insertRows.push(n);
     s.netInsert++;
     if (sharedPhone) s.sharedPhone++; // counted independently — a row can be both shared-phone and suppressed

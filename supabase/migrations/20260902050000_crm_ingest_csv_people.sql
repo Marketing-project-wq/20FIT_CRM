@@ -13,9 +13,14 @@
 --  - Each inserted person gets a crm_consent row with basis='opt_in' + evidence jsonb (source, batch,
 --    uploaded_by, filename via collection_source) — EVIDENCE, not a gate. This is why, if ever asked
 --    "why was this person emailed", the answer is in the data, not in someone's memory.
---  - Dedup is SKIP-ONLY (email OR phone already in master → not inserted). No overwrite, no fill-blanks.
---  - Suppression is untouched: a suppressed identity re-imported is still filtered at send (suppression
---    is keyed by normalized identity, resolved via phone_normalized/email_normalized).
+--  - Dedup is EMAIL-PRIMARY, SKIP-ONLY (K-55): an email match is skipped; a phone-only match is inserted
+--    with its colliding phone nulled (phone_safe below). No overwrite, no fill-blanks.
+--  - Suppression: a suppressed EMAIL re-imported is still filtered at send (resolved via email_normalized).
+--    The SHARED-PHONE + phone-suppressed case (opsi d) is handled ENTIRELY in the pure planner
+--    (import-audience.ts): such rows are dropped from insertRows BEFORE this function is called, so they
+--    never appear in p_rows. This function therefore needs no suppression knowledge — it only ever
+--    receives rows the planner already cleared. (Enforcing it here too would need the suppression set
+--    passed in; deliberately not done — the planner is the single decision point, proven by its tests.)
 --
 -- SAFE COLUMNS ONLY (Fase 0 honored): full_name, email(+normalized), phone_normalized, city, source,
 -- tags, first_seen_at. NOT imported here: NIK, DOB, gender, health — they need their own legal basis.

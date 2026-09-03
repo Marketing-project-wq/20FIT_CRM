@@ -108,7 +108,7 @@ describe("planImport", () => {
     expect(p.outcomes.find((o) => o.email === "a@x.com")?.status).toBe("skip_duplicate_email");
   });
 
-  it("suppressed dominates the shared-phone label, but both are counted", () => {
+  it("(d) SKIPS a shared phone that is currently suppressed — never creates a contactable identity for a nulled, suppressed number", () => {
     const keys: ImportKeys = {
       ...noKeys,
       existingPhones: new Set(["62822"]),
@@ -116,11 +116,39 @@ describe("planImport", () => {
     };
     const rows = [{ name: "B", email: "b@x.com", phone: "0822" }]; // new email; phone both shared AND suppressed
     const p = planImport(rows, mapping, keys);
+    expect(p.summary.sharedPhoneSuppressed).toBe(1);
+    expect(p.summary.netInsert).toBe(0); // NOT imported — the row is skipped, closing the send-time gap
+    expect(p.summary.sharedPhone).toBe(0); // it never reached the insert path
+    expect(p.summary.suppressed).toBe(0);
+    expect(p.insertRows).toHaveLength(0); // LOCKSTEP: the carved-out row is absent from what execute writes
+    expect(p.outcomes[0].status).toBe("skip_shared_phone_suppressed");
+  });
+
+  it("(d) does NOT over-skip: a suppressed phone that is NOT shared is imported (phone written → suppression still catches it at send)", () => {
+    const keys: ImportKeys = { ...noKeys, suppressedPhones: new Set(["62822"]) }; // suppressed but NOT in existingPhones
+    const rows = [{ name: "B", email: "b@x.com", phone: "0822" }];
+    const p = planImport(rows, mapping, keys);
+    expect(p.summary.sharedPhoneSuppressed).toBe(0); // not shared → carve-out does not fire
+    expect(p.summary.netInsert).toBe(1);
+    expect(p.summary.suppressed).toBe(1); // inserted-as-suppressed; its phone is written, so send-time filter works
+    expect(p.summary.netContactable).toBe(0);
+    expect(p.insertRows).toHaveLength(1); // LOCKSTEP: it DOES reach execute (with its phone intact)
+    expect(p.outcomes[0].status).toBe("insert_suppressed");
+  });
+
+  it("(d) a shared phone that is suppressed BY EMAIL only (phone not suppressed) still imports — email is written intact and matchable", () => {
+    const keys: ImportKeys = {
+      ...noKeys,
+      existingPhones: new Set(["62822"]),
+      suppressedEmails: new Set(["b@x.com"]),
+    };
+    const rows = [{ name: "B", email: "b@x.com", phone: "0822" }]; // phone shared but NOT suppressed; email suppressed
+    const p = planImport(rows, mapping, keys);
+    expect(p.summary.sharedPhoneSuppressed).toBe(0);
     expect(p.summary.netInsert).toBe(1);
     expect(p.summary.sharedPhone).toBe(1);
     expect(p.summary.suppressed).toBe(1);
-    expect(p.summary.netContactable).toBe(0);
-    expect(p.outcomes[0].status).toBe("insert_suppressed"); // suppressed wins the per-row label
+    expect(p.outcomes[0].status).toBe("insert_suppressed");
   });
 
   it("skips a duplicate email within the same file (case-insensitive)", () => {
