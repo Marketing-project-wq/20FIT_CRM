@@ -15,6 +15,7 @@ const SUMMARY = {
   read: 1200,
   validEmail: 1180,
   invalid: 20,
+  phoneExcelBroken: 5,
   duplicatesEmail: 150,
   duplicatesInBatch: 30,
   sharedPhone: 12,
@@ -39,7 +40,7 @@ export function ImportPreview() {
         const body = JSON.parse((init?.body as string) ?? "{}");
         const phase = body.phase as string;
         let payload: unknown;
-        if (phase === "analyze") payload = { ok: true, phase, mapping: MAPPING, preview: PREVIEW };
+        if (phase === "analyze") payload = { ok: true, phase, mapping: MAPPING, preview: PREVIEW, delimiter: ";" };
         else if (phase === "dry_run") payload = { ok: true, phase, mapping: MAPPING, preview: PREVIEW, plan: { summary: SUMMARY, outcomes: OUTCOMES } };
         else payload = { ok: true, phase: "execute", plan: { summary: SUMMARY, outcomes: OUTCOMES }, committed: { inserted: 1000 }, batch: "b1e9c0a2-fixture", mirrorRefreshed: true };
         return new Response(JSON.stringify(payload), { status: 200, headers: { "Content-Type": "application/json" } });

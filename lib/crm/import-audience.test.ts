@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   guessColumnMapping,
+  isExcelBrokenPhone,
   normalizeMappedRow,
   planImport,
   MAX_IMPORT_ROWS,
@@ -47,6 +48,30 @@ describe("normalizeMappedRow", () => {
     const n = normalizeMappedRow({ Nama: "X", Surel: "not-an-email", HP: "abc", Kota: "", X: "" }, mapping);
     expect(n.emailNormalized).toBeNull();
     expect(n.phoneNormalized).toBeNull();
+  });
+  it("flags an Excel-mangled phone (scientific notation), drops the phone, keeps a valid email", () => {
+    const n = normalizeMappedRow({ Nama: "X", Surel: "x@x.com", HP: "6,28129E+12", Kota: "", X: "" }, mapping);
+    expect(n.phoneExcelBroken).toBe(true);
+    expect(n.phoneNormalized).toBeNull(); // digits are gone — never guessed-fixed
+    expect(n.emailNormalized).toBe("x@x.com"); // the row can still import on its email
+  });
+  it("does not flag a normal phone", () => {
+    const n = normalizeMappedRow({ Nama: "X", Surel: "x@x.com", HP: "0812-3456-7890", Kota: "", X: "" }, mapping);
+    expect(n.phoneExcelBroken).toBe(false);
+    expect(n.phoneNormalized).toBe("6281234567890");
+  });
+});
+
+describe("isExcelBrokenPhone", () => {
+  it("detects the shapes Excel produces (comma or dot decimal, upper/lower E, +)", () => {
+    for (const raw of ["6,28129E+12", "6.28129E+12", "6e+12", "6E12", "1,5e5", " 6,28129E+12 "]) {
+      expect(isExcelBrokenPhone(raw)).toBe(true);
+    }
+  });
+  it("does not flag real phones or empty/garbage", () => {
+    for (const raw of ["6281234567890", "0812-3456-7890", "+62 812 3456", "", null, undefined, "abc", "E+12"]) {
+      expect(isExcelBrokenPhone(raw)).toBe(false);
+    }
   });
 });
 

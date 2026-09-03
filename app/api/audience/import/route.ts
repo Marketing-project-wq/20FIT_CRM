@@ -76,6 +76,10 @@ export async function POST(request: NextRequest) {
   const parsed = Papa.parse<Record<string, string>>(csvText, { header: true, skipEmptyLines: "greedy" });
   const headers = (parsed.meta.fields ?? []).map((h) => h.trim());
   const rows = (parsed.data ?? []).filter((r) => r && typeof r === "object");
+  // papaparse auto-detects the delimiter (it tries , \t | ; and picks the one giving the most consistent
+  // column count). We surface its choice so the operator can catch the rare misdetection — e.g. a `;`
+  // file where every value landed in one column would show delimiter="," here and a single header.
+  const delimiter = parsed.meta.delimiter || ",";
 
   const admin = createAdminClient();
   const batchId = crypto.randomUUID();
@@ -168,7 +172,9 @@ export async function POST(request: NextRequest) {
 
   // Trim the plan before returning: the client needs summary + per-row outcomes, NOT insertRows (that
   // is the bulk of the payload and carries the imported emails the browser already has from its upload).
-  const trimmed = result.plan ? { ...result, plan: { summary: result.plan.summary, outcomes: result.plan.outcomes } } : result;
+  const trimmed = result.plan
+    ? { ...result, plan: { summary: result.plan.summary, outcomes: result.plan.outcomes }, delimiter }
+    : { ...result, delimiter };
 
   // A successful execute added people — refresh the read mirror so they appear in the pool/segments.
   if (result.phase === "execute" && result.committed) {

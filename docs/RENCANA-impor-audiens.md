@@ -22,9 +22,21 @@ yang ada (`crm_ingest_activity_people`), bukan jalur baru.
    pengenal bersama (rumah tangga/orang tua/kantor), tak boleh menghapus orang berbeda. Tak pernah
    menimpa; master tetap otoritatif. Suppression tetap keyed telepon (tak berubah) — masuk pool ≠ bisa
    dikirimi.
-3. **Parser — papaparse** (satu-satunya dependency baru yang disetujui). Parsing di server.
-4. **Excel — ditunda.** CSV dulu.
-5. **Cap — 20.000 baris/file** (Fase 1, `MAX_IMPORT_ROWS`, satu konstanta). Diperbesar setelah terbukti.
+3. **Parser — papaparse** (satu-satunya dependency baru yang disetujui). Parsing di server. Pemisah
+   (`, ; \t |`) di-auto-detect papaparse; pilihan pemisahnya ditampilkan di layar pemetaan
+   ("Pemisah terdeteksi: …") + jumlah kolom, plus peringatan bila hanya 1 kolom terbaca (gejala klasik
+   file `;`/tab yang salah dibaca) — operator bisa memeriksa, bukan diam-diam salah parse.
+4. **Telepon rusak format Excel — DETEKSI & TOLAK, jangan perbaiki** (2026-09-03). Excel diam-diam
+   menulis ulang nomor panjang jadi notasi ilmiah ("6,28129E+12") saat kolom bukan Teks — angka aslinya
+   **hilang permanen**. `isExcelBrokenPhone()` mendeteksi polanya; teleponnya dikosongkan (tak ditebak),
+   baris tetap masuk kalau emailnya valid, dan dihitung sebagai kategori tersendiri di ringkasan
+   ("Telepon rusak (format Excel) — N baris") dengan cara memperbaiki (format kolom sebagai Teks lalu
+   ekspor ulang). `normalizePhoneID("6,28129E+12")` sudah mengembalikan `null` (bukan sampah) — deteksi
+   ini menambah **transparansi**, bukan mencegah data kotor tersimpan.
+5. **Kolom tak terpetakan ditampilkan.** Ringkasan menyebut kolom yang di-"abaikan" (mis. "Event") biar
+   operator sadar apa yang tidak ikut — drop diam-diam adalah cara data hilang tanpa ketahuan.
+6. **Excel (.xlsx) — ditunda.** CSV dulu (butuh SheetJS — keputusan terpisah).
+7. **Cap — 20.000 baris/file** (Fase 1, `MAX_IMPORT_ROWS`, satu konstanta). Diperbesar setelah terbukti.
 
 ## Yang dibangun
 

@@ -62,6 +62,19 @@ export interface NormalizedRow {
   emailNormalized: string | null; // canonical, for dedup + suppression match
   phoneNormalized: string | null; // canonical 62… (no +), for dedup + suppression match
   city: string | null;
+  /** True when the raw phone was mangled by Excel into scientific notation (e.g. "6,28129E+12") — the
+   *  original digits are GONE and unrecoverable, so the phone is dropped (never guessed-fixed) and the
+   *  operator is told, not left in the dark. The row can still import on its email. */
+  phoneExcelBroken: boolean;
+}
+
+/** Excel silently rewrites a long number (a phone!) as scientific notation when a column isn't Text:
+ *  "6.28129E+12" / "6,28129E+12" / "6E+12". The digits are lost for good. We DETECT and REJECT — never
+ *  "repair" — because there is nothing left to repair. Fix at source: format the column as Text. */
+const EXCEL_SCI_NOTATION = /^\d([.,]\d+)?e[+-]?\d+$/i;
+
+export function isExcelBrokenPhone(raw: string | null | undefined): boolean {
+  return raw != null && EXCEL_SCI_NOTATION.test(raw.trim());
 }
 
 /** Apply a mapping to one raw CSV record and normalize the contact identities through the ONE canon
@@ -79,12 +92,17 @@ export function normalizeMappedRow(raw: Record<string, string>, mapping: ColumnM
     else if (field === "phone") phone = v;
     else if (field === "city") city = v;
   }
+  const phoneExcelBroken = isExcelBrokenPhone(phone);
   return {
     fullName: fullName || null,
     email: email || null,
     emailNormalized: normalizeEmail(email),
-    phoneNormalized: normalizePhoneID(phone),
+    // A phone Excel mangled into scientific notation has lost its digits — it is dropped (never
+    // guessed-fixed). normalizePhoneID would return null for it anyway, but we short-circuit so the
+    // intent is explicit and the row carries the flag the operator is shown.
+    phoneNormalized: phoneExcelBroken ? null : normalizePhoneID(phone),
     city: city || null,
+    phoneExcelBroken,
   };
 }
 
@@ -110,6 +128,11 @@ export interface ImportSummary {
   duplicatesEmail: number; // skipped: email matches an existing person (dedup is email-primary)
   duplicatesInBatch: number;
   invalid: number; // no valid email
+  phoneExcelBroken: number; // rows whose phone was Excel-mangled to scientific notation — phone dropped,
+  //                           row still counts under its email disposition; surfaced so the operator
+  //                           knows to re-export the source column as Text. Independent of every other
+  //                           figure (a broken phone can accompany a valid email that inserts, a
+  //                           duplicate, etc.).
   sharedPhone: number; // INSERTED, but the phone matches an existing contact (shared number) — surfaced
   //                      as its own figure so the operator sees it before confirming, not hidden.
   suppressed: number; // net-new rows that are suppressed (inserted, but will never receive)
@@ -146,6 +169,7 @@ export function planImport(
     duplicatesEmail: 0,
     duplicatesInBatch: 0,
     invalid: 0,
+    phoneExcelBroken: 0,
     sharedPhone: 0,
     suppressed: 0,
     netInsert: 0,
@@ -155,6 +179,10 @@ export function planImport(
   rows.forEach((raw, index) => {
     const n = normalizeMappedRow(raw, mapping);
     const email = n.emailNormalized;
+
+    // Count a mangled phone once, independent of what happens to the row below (its email may be valid
+    // and insert, or invalid and skip) — the operator is told either way, never silently.
+    if (n.phoneExcelBroken) s.phoneExcelBroken++;
 
     if (email === null) {
       s.invalid++;

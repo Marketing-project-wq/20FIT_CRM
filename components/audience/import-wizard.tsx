@@ -33,6 +33,19 @@ interface AnalyzeResponse {
   phase: "analyze";
   mapping: ColumnMapping;
   preview: Record<string, string>[];
+  delimiter?: string;
+}
+
+/** Human-readable name for the delimiter papaparse detected, so the operator can sanity-check the parse
+ *  (a `;` file misread as `,` is the classic silent misparse). */
+const DELIMITER_LABEL: Record<string, string> = {
+  ",": "koma (,)",
+  ";": "titik koma (;)",
+  "\t": "tab",
+  "|": "garis tegak (|)",
+};
+function delimiterLabel(d: string): string {
+  return DELIMITER_LABEL[d] ?? `"${d}"`;
 }
 interface DryRunResponse {
   ok: true;
@@ -57,6 +70,7 @@ export function ImportWizard() {
   const [headers, setHeaders] = useState<string[]>([]);
   const [mapping, setMapping] = useState<ColumnMapping>({});
   const [preview, setPreview] = useState<Record<string, string>[]>([]);
+  const [delimiter, setDelimiter] = useState<string>(",");
   const [summary, setSummary] = useState<ImportSummary | null>(null);
   const [dryOutcomes, setDryOutcomes] = useState<{ index: number; status: string; email: string | null }[]>([]);
   const [collectionSource, setCollectionSource] = useState("");
@@ -111,6 +125,7 @@ export function ImportWizard() {
       setHeaders(Object.keys(a.mapping));
       setMapping(a.mapping);
       setPreview(a.preview);
+      if (a.delimiter) setDelimiter(a.delimiter);
       setStep("map");
     } catch {
       setError("Gagal membaca file.");
@@ -142,6 +157,7 @@ export function ImportWizard() {
     setHeaders([]);
     setMapping({});
     setPreview([]);
+    setDelimiter(",");
     setSummary(null);
     setDryOutcomes([]);
     setCollectionSource("");
@@ -183,13 +199,24 @@ export function ImportWizard() {
 
       {step === "map" && (
         <div className="glass rounded-card p-6">
-          <div className="mb-3 flex items-center gap-2">
-            <FileText className="h-4 w-4 text-ink-soft" aria-hidden />
-            <span className="font-body text-[13px] text-ink">{filename}</span>
+          <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="flex items-center gap-2">
+              <FileText className="h-4 w-4 text-ink-soft" aria-hidden />
+              <span className="font-body text-[13px] text-ink">{filename}</span>
+            </span>
+            <span className="font-body text-[12px] text-ink-faint">
+              Pemisah terdeteksi: {delimiterLabel(delimiter)} · {headers.length} kolom
+            </span>
           </div>
           <p className="mb-4 font-body text-[13px] text-ink-soft">
             Pasangkan tiap kolom CSV ke field tujuan. Tebakan otomatis dari nama kolom — ubah bila perlu. Setidaknya
-            satu kolom harus dipetakan ke <strong>Email</strong>.
+            satu kolom harus dipetakan ke <strong>Email</strong>.{" "}
+            {headers.length <= 1 && (
+              <span className="text-amber">
+                Hanya satu kolom terbaca — kalau file Anda pakai titik koma atau tab, pemisahnya mungkin salah dibaca.
+                Buka file dan periksa pemisahnya.
+              </span>
+            )}
           </p>
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-left">
@@ -244,7 +271,29 @@ export function ImportWizard() {
             <Stat label="Telepon bersama" value={summary.sharedPhone} tone="amber" hint="Tetap masuk (email unik), tapi teleponnya sama dengan kontak yang sudah ada" />
             <Stat label="Duplikat email (dilewati)" value={summary.duplicatesEmail + summary.duplicatesInBatch} />
             <Stat label="Tak valid (tanpa email)" value={summary.invalid} />
+            {summary.phoneExcelBroken > 0 && (
+              <Stat
+                label="Telepon rusak (format Excel)"
+                value={summary.phoneExcelBroken}
+                tone="amber"
+                hint="Teleponnya jadi notasi ilmiah — angkanya hilang, tak bisa dipakai"
+              />
+            )}
           </div>
+
+          {summary.phoneExcelBroken > 0 && (
+            <p className="tint-amber mt-3 flex items-start gap-2 rounded-sm px-3 py-2 font-body text-[12px]">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+              <span>
+                {summary.phoneExcelBroken.toLocaleString("id-ID")} baris punya telepon yang Excel ubah jadi notasi
+                ilmiah (mis. “6,28129E+12”) — angka aslinya <strong>hilang permanen</strong>, jadi teleponnya
+                dikosongkan (tidak ditebak). Barisnya tetap masuk kalau emailnya valid. Untuk memperbaiki: di Excel,
+                format kolom telepon sebagai <strong>Teks</strong> dulu sebelum menyimpan CSV, lalu ekspor ulang.
+              </span>
+            </p>
+          )}
+
+          <UnmappedColumns headers={headers} mapping={mapping} />
 
           {/* Per-row reasons BEFORE confirming — checking why each row is skipped/flagged is the point
               of a dry-run. Shows skips AND the shared-phone / suppressed inserts, each with its reason. */}
@@ -296,6 +345,9 @@ export function ImportWizard() {
             <Stat label="Kena suppression" value={report.plan.summary.suppressed} tone="amber" hint="Masuk, tapi takkan dikirimi" />
             <Stat label="Telepon bersama" value={report.plan.summary.sharedPhone} tone="amber" hint="Masuk, teleponnya sama dengan kontak lain" />
             <Stat label="Dilewati / tak valid" value={report.plan.summary.duplicatesEmail + report.plan.summary.duplicatesInBatch + report.plan.summary.invalid} />
+            {report.plan.summary.phoneExcelBroken > 0 && (
+              <Stat label="Telepon rusak (format Excel)" value={report.plan.summary.phoneExcelBroken} tone="amber" hint="Teleponnya dikosongkan — angkanya hilang" />
+            )}
           </div>
           <p className="mt-4 font-body text-[12px] text-ink-soft">
             Batch <span className="font-mono">{report.batch}</span>. {report.mirrorRefreshed ? "Pool sudah diperbarui." : "Pool akan diperbarui pada refresh berikutnya."}
@@ -343,6 +395,21 @@ function Stat({ label, value, tone, hint }: { label: string; value: number; tone
       <div className="mt-1 font-body text-[12px] text-ink-soft">{label}</div>
       {hint && <div className="mt-0.5 font-body text-[11px] text-ink-faint">{hint}</div>}
     </div>
+  );
+}
+
+/** Which uploaded columns were NOT imported (mapped to "ignore"). Surfaced so the operator sees, e.g.,
+ *  that an "Event" column was left out — a silent drop is how data quietly goes missing. Names only,
+ *  no values. */
+function UnmappedColumns({ headers, mapping }: { headers: string[]; mapping: ColumnMapping }) {
+  const ignored = headers.filter((h) => (mapping[h] ?? "ignore") === "ignore" && h.trim() !== "");
+  if (ignored.length === 0) return null;
+  return (
+    <p className="mt-3 font-body text-[12px] text-ink-soft">
+      Kolom tidak diimpor ({ignored.length}):{" "}
+      <span className="text-ink">{ignored.join(", ")}</span>. Hanya nama, email, telepon, dan kota yang masuk — sisanya
+      diabaikan. Kalau salah satunya seharusnya ikut, kembali ke pemetaan.
+    </p>
   );
 }
 
