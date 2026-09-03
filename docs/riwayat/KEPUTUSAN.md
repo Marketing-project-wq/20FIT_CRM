@@ -1120,7 +1120,10 @@ tertentu (bukan membatasi pengirim). Sampai itu ada, jangan gabungkan.
 
 **Keputusan (3 Sep 2026).** `crm_campaign_run.status` bertambah `partial` (sebagian terkirim,
 sebagian gagal) dan `failed` (ada kegagalan, nol terkirim) — Migrasi B. Aturan lengkap ada di
-`nextRunStatus`; cabang kegagalan berada **di atas** cabang deferral.
+`nextRunStatus`, dengan urutan **auto-stop → deferral → kegagalan → `sent`**: selama masih ada
+penerima tertangguhkan, jawabannya `sending` (run tetap bisa dilanjutkan), dan kedua status baru
+hanya memutuskan keadaan **akhir** run yang sudah tak punya sisa kirim. Versi pertama membalik dua
+cabang tengah itu dan menelantarkan run terpecah — lihat T-46.
 
 **Alasan.** Tanpa keduanya, satu-satunya cara melaporkan run yang selesai adalah `sent`, dan run 3 Sep
 (124 diterima, 18.119 gagal) memang tercatat `sent` (T-42).

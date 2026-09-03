@@ -42,10 +42,15 @@ export interface DeliveryRow {
   templateKey: string;
   recipientCount: number; // shown_sendable for a schedule; logged rows for a run
   /** Log rows that FAILED for this run (status 'failed'). Shown on the row whenever it is > 0 — a
-   *  run whose recipients mostly failed must not read as a clean send. Counted for EVERY run, not
-   *  just the ones whose status now says partial/failed: runs finished before those statuses existed
-   *  still carry their failures (the 3 Sep run is filed 'sent' with 18,119 of them, and is not being
-   *  back-filled), and this is where they become visible. 0 for a scheduled row that never ran. */
+   *  run whose recipients mostly failed must not read as a clean send. Counted for EVERY run, at
+   *  EVERY status, and that is load-bearing in three ways:
+   *    - 'sent' — runs finished before partial/failed existed still carry their failures (the 3 Sep
+   *      run is filed 'sent' with 18,119 of them and is deliberately not back-filled);
+   *    - 'sending' — a run still working through the daily ceiling keeps its status even when some
+   *      recipients failed (T-46: deferral outranks failure, so the run stays resumable). The
+   *      failures must not vanish from the screen just because the status is not 'partial';
+   *    - 'stopped' — a halted run's failure count is the size of what it halted on.
+   *  0 for a scheduled row that never became a run. */
   failedCount: number;
   state: DeliveryState;
   time: string; // UTC ISO — scheduled_at for upcoming, created_at for a run

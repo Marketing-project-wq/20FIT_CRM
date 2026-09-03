@@ -15,6 +15,12 @@
 -- owner decision, and this migration deliberately does not take it. The 3 Sep run keeps status
 -- 'sent'; its 18,119 failures become visible through the deliveries list's failure count instead.
 --
+-- APPLIED + VERIFIED 2026-09-03 (ledger stamp 20260903125151 — differs from this file name, apply
+-- time). Post-apply, re-read from pg_constraint:
+--   CHECK ((status = ANY (ARRAY['draft','sending','sent','stopped','partial','failed'])))
+-- convalidated = true. No backfill: all 14 run rows untouched, 5f5f3a57 still status 'sent', and the
+-- listResumableRuns-equivalent query for its (segment, template) pair returns ZERO rows.
+--
 -- Pre-apply state (read from pg_constraint 2026-09-03):
 --   CHECK ((status = ANY (ARRAY['draft','sending','sent','stopped'])))
 

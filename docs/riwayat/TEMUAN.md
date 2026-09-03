@@ -1075,6 +1075,15 @@ dirancang bebas PII (identitas hanya keyed-HMAC; komentar kolom `identity_hash`:
 stored"*), dan komentar sengaja di `mailtrap.ts` baris 69 melarangnya karena body bisa meng-echo
 alamat penerima. Usulan awal "+ potongan body provider" **ditarik sebelum ditulis**.
 
+**KETERBATASAN yang harus dinyatakan apa adanya.** Himpunan throttle `{429, 402, 503}` adalah
+**hipotesis, bukan turunan dari insiden ini**. Status sebenarnya dari 18.119 kegagalan itu dibuang —
+itulah temuannya — jadi **kami masih tidak tahu tembok apa yang jatuh pada 07:20:13**. Kalau
+ternyata `403` (kuota/plan habis), kode baru akan melabelinya `provider_rejected`, bukan
+`provider_throttled`. Itu tidak fatal: `sendFailureCode` tetap menyimpan angka statusnya di
+`error_message`, jadi salah-klasifikasi bisa dipulihkan dari data tanpa mengirim ulang apa pun, dan
+penyesuaian himpunannya sebaris. Pemilik akan memeriksa dashboard Mailtrap untuk 3 Sep guna
+mengetahui status sebenarnya; jangan sajikan himpunan ini seolah terukur sampai itu ada.
+
 **Perbaikan (sprint ini).** `err.status` dibawa sebagai properti (pesan tak berubah);
 `classifySendFailure` memeriksa status lebih dulu; kegagalan jaringan dicatat sebagai **kode saja**
 (`ECONNRESET`/`ETIMEDOUT`, lewat `err.cause.code`), disaring pola `^[A-Za-z0-9_.-]{1,40}$` sehingga
@@ -1097,9 +1106,9 @@ terkirim. Ini bukan salah baca operator: sistem memang melaporkannya begitu.
 
 **Perbaikan.** `nextRunStatus` menerima `{ sent, failed, deferredDailyLimit, stoppedHighBounce,
 stoppedConsecutiveFailures }`; `finalizeRunStatus` menerima **seluruh** summary (bukan dua field
-pilihan) sehingga pemanggil tak bisa lupa; status baru `partial`/`failed` (Migrasi B). Cabang
-kegagalan diletakkan **di atas** cabang deferral: `sending` adalah satu-satunya status yang mengundang
-resume, dan run yang gagal tak boleh mengundangnya. **`partial` dan `failed` tidak resumable** —
+pilihan) sehingga pemanggil tak bisa lupa; status baru `partial`/`failed` (Migrasi B). Urutan
+cabangnya: auto-stop → **deferral** → kegagalan → `sent`. Versi pertama menaruh kegagalan di atas
+deferral dan itu **salah** — lihat **T-46**. **`partial` dan `failed` tidak resumable** —
 `RESUMABLE_RUN_STATUSES = {draft, sending}`, dijaga di `listResumableRuns`, di `getRunForPair`, dan
 oleh test. Status run lama **tidak** di-backfill (keputusan pemilik terpisah).
 
@@ -1177,6 +1186,69 @@ yang sudah terbukti mati.
 **TIDAK diperbaiki, sengaja.** Menulis baris `crm_suppression` = rekonsiliasi, keputusan pemilik
 terpisah, dan tabel ini append-only (tak bisa dibatalkan seperti backfill consent). Dicatat sebagai
 temuan agar berhenti menjadi asumsi.
+
+## T-46 — Aturan status yang diam-diam mengambil keputusan operasional → kirim ganda — 3 Sep 2026
+
+**Tertangkap di tinjauan pemilik, BUKAN di produksi.** Tak ada baris data yang terpengaruh; aturannya
+diperbaiki sebelum di-merge. Dicatat justru karena itu: pola yang sama dengan T-42, tapi bermuara pada
+kirim ganda ke ribuan orang, bukan sekadar label yang salah.
+
+**Aturan yang salah** (versi pertama `nextRunStatus`, perbaikan T-42):
+
+```ts
+if (outcome.failed > 0) return outcome.sent > 0 ? "partial" : "failed";
+if (outcome.deferredDailyLimit > 0) return "sending";
+```
+
+Alasannya terdengar benar dan ditulis sebagai komentar di kode: *"run yang gagal tak boleh mengundang
+resume"*. Dijalankan terhadap kampanye penyelesaian (~12.021 orang, angka pemilik) yang **harus**
+dipecah lintas hari oleh plafon harian:
+
+| langkah | keadaan |
+|---|---|
+| 1 | Hari 1: 1.000 terkirim, ~11.000 ditangguhkan plafon, **3** kegagalan sesaat |
+| 2 | `failed > 0` menang → status **`partial`** |
+| 3 | `partial` bukan resumable (K-55, sengaja) → **11.000 sisanya terlantar** |
+| 4 | Satu-satunya langkah operator: **run baru** → `campaign_id` baru |
+| 5 | `buildIdempotencyKey` = `{campaign_id}:{customer}:{channel}` → **kunci seluruhnya baru** |
+| 6 | 1.000 orang yang sudah menerima **menerima lagi** |
+
+**Tiga kegagalan sesaat menghasilkan kirim ganda ke seribu orang.** Idempotency bekerja persis
+seperti rancangannya — kunci deterministik per run — jadi tak ada penjaga di bawahnya yang menangkap
+ini. Yang rusak adalah statusnya, dan status itulah satu-satunya hal yang menentukan apakah run boleh
+dilanjutkan.
+
+**Akar masalahnya sebuah penyamaan.** *"Ada 3 kegagalan"* dan *"run ini gagal"* bukan hal yang sama,
+tapi `failed > 0` memperlakukannya sama. Selama masih ada penerima tertangguhkan, tindakan yang benar
+adalah **melanjutkan**. Kekhawatiran asli ("run yang gagal jangan mengundang resume") sudah punya
+jalurnya sendiri di cabang teratas: kegagalan **sistemik** (`stoppedHighBounce`,
+`stoppedConsecutiveFailures`) keluar sebagai `stopped` dan tak pernah sampai ke `sending`. Jadi cabang
+kegagalan hanya perlu memutuskan keadaan **akhir** run yang sudah tak punya sisa kirim.
+
+**Urutan yang benar** (dipakai sekarang):
+
+```
+1. stoppedHighBounce || stoppedConsecutiveFailures  → stopped
+2. deferredDailyLimit > 0                           → sending
+3. failed > 0                                       → sent > 0 ? partial : failed
+4. selain itu                                       → sent
+```
+
+Dikunci tiga test eksplisit di `lib/crm/campaign-run.test.ts`: `{sent:1000, failed:3,
+deferred:11000}` → `sending` **dan** resumable (dengan langkah 1–6 di atas ditulis sebagai komentar,
+supaya siapa pun yang tergoda membalik urutannya membaca akibatnya lebih dulu); `{sent:0, failed:5,
+deferred:0}` → `failed`; `{sent:100, failed:5, deferred:0}` → `partial`; plus satu test bahwa tembok
+nyata tetap `stopped` walau ada 11.000 tertangguhkan.
+
+**Kegagalan tetap terlihat meski statusnya `sending`.** `lib/crm/deliveries.ts` menghitung baris gagal
+untuk **setiap** run tanpa memandang statusnya, dan barisnya menampilkan angka itu begitu > 0 — jadi
+"run ini masih berjalan" tak pernah berarti "kegagalannya hilang dari layar".
+
+**Pelajaran (nyambung ke T-40).** Aturan status terlihat seperti pelabelan, padahal ia **keputusan
+operasional**: di sistem ini status run adalah satu-satunya hal yang memutuskan apakah pekerjaan
+boleh dilanjutkan atau harus dimulai ulang. Sebelum mengubah urutan cabang di aturan seperti ini,
+tanyakan bukan "label mana yang paling akurat?" melainkan **"tindakan apa yang dipaksakan label ini,
+dan apa yang terjadi kalau operator terpaksa memulai ulang?"**
 
 ## Catatan — rekonsiliasi Mailchimp belum bisa diturunkan
 

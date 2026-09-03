@@ -11,6 +11,13 @@
 -- recreated with the same name in one transaction — the table is never left unconstrained to a
 -- concurrent writer.
 --
+-- APPLIED + VERIFIED 2026-09-03 (ledger stamp 20260903125132 — differs from this file name, the
+-- same divergence pattern as migrations 15/28/30). Pre-apply, measured immediately before:
+-- crm_message_log = 18,247 rows; runs in draft/sending = 0; crm_scheduled_send pending = 0;
+-- failure_cause values in use = (null) / hard_bounce / unknown, all legal under old AND new CHECK.
+-- Post-apply, re-read from pg_constraint: the array carries provider_throttled, convalidated = true,
+-- 18,247 rows unchanged (nothing rewritten), provider_throttled = 0 rows.
+--
 -- Pre-apply state (read from pg_constraint 2026-09-03):
 --   CHECK (((failure_cause IS NULL) OR (failure_cause = ANY
 --     (ARRAY['invalid_address','hard_bounce','provider_rejected','daily_limit','unknown']))))
