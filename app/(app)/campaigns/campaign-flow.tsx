@@ -44,6 +44,35 @@ type Channel = "email" | null;
 const selectCls =
   "h-10 w-full rounded-sm border border-glass-border bg-glass px-3 font-body text-[14px] text-ink focus:outline-none focus:ring-2 focus:ring-red";
 
+/** One collapsible step. MODULE-scoped on purpose: a component defined inside CampaignFlow gets a new
+ *  function identity every render, so React would remount its subtree — and drop input focus — on every
+ *  keystroke. `open`/`setOpen` are passed as props (the only state it needs). */
+function Step({ n, title, done, locked, summary, open, setOpen, children }: {
+  n: 0 | 1 | 2 | 3 | 4; title: string; done: boolean; locked: boolean; summary?: string;
+  open: 0 | 1 | 2 | 3 | 4; setOpen: (n: 0 | 1 | 2 | 3 | 4) => void; children: React.ReactNode;
+}) {
+  const isOpen = open === n && !locked;
+  return (
+    <section className={`rounded-card border ${locked ? "border-glass-border/50 opacity-60" : "border-glass-border"} bg-glass`}>
+      <button
+        type="button"
+        disabled={locked}
+        onClick={() => !locked && setOpen(n)}
+        className="flex w-full items-center gap-3 px-5 py-4 text-left disabled:cursor-not-allowed"
+      >
+        <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full font-display text-[13px] font-bold ${done ? "bg-red text-white" : locked ? "bg-glass text-ink-faint" : "border border-red text-red"}`}>
+          {done ? <Check className="h-4 w-4" /> : locked ? <Lock className="h-3.5 w-3.5" /> : n === 0 ? <MessageCircle className="h-3.5 w-3.5" /> : n}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="font-display text-[15px] font-bold uppercase tracking-wide text-ink">{title}</span>
+          {!isOpen && summary && <span className="mt-0.5 block truncate font-body text-[12px] text-ink-soft">{summary}</span>}
+        </span>
+      </button>
+      {isOpen && <div className="border-t border-glass-border px-5 py-5">{children}</div>}
+    </section>
+  );
+}
+
 /**
  * Campaign flow — five steps:
  * 0 Kanal → 1 Siapa → 2 Pesan → 3 Review (preview + uji kirim ke admin) → 4 Kirim ke audiens
@@ -296,30 +325,10 @@ export function CampaignFlow({
       ? <Badge tone="blue">{cc.runStatusSending}</Badge>
       : <Badge tone="neutral">{cc.runStatusDraft}</Badge>;
 
-  function Step({ n, title, done, locked, summary, children }: {
-    n: 0 | 1 | 2 | 3 | 4; title: string; done: boolean; locked: boolean; summary?: string; children: React.ReactNode;
-  }) {
-    const isOpen = open === n && !locked;
-    return (
-      <section className={`rounded-card border ${locked ? "border-glass-border/50 opacity-60" : "border-glass-border"} bg-glass`}>
-        <button
-          type="button"
-          disabled={locked}
-          onClick={() => !locked && setOpen(n)}
-          className="flex w-full items-center gap-3 px-5 py-4 text-left disabled:cursor-not-allowed"
-        >
-          <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full font-display text-[13px] font-bold ${done ? "bg-red text-white" : locked ? "bg-glass text-ink-faint" : "border border-red text-red"}`}>
-            {done ? <Check className="h-4 w-4" /> : locked ? <Lock className="h-3.5 w-3.5" /> : n === 0 ? <MessageCircle className="h-3.5 w-3.5" /> : n}
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="font-display text-[15px] font-bold uppercase tracking-wide text-ink">{title}</span>
-            {!isOpen && summary && <span className="mt-0.5 block truncate font-body text-[12px] text-ink-soft">{summary}</span>}
-          </span>
-        </button>
-        {isOpen && <div className="border-t border-glass-border px-5 py-5">{children}</div>}
-      </section>
-    );
-  }
+  // `Step` lives at MODULE scope (below), NOT inside this component. A component defined inside
+  // CampaignFlow gets a NEW function identity on every render, so React remounts its whole subtree —
+  // dropping the focused input's focus on each keystroke (the "Nama kampanye" bug). Hoisting gives it a
+  // stable identity; `open`/`setOpen` pass as props. Guarded by campaign-step-stable-identity.test.ts.
 
   return (
     <div className="flex flex-col gap-3">
@@ -333,7 +342,7 @@ export function CampaignFlow({
       )}
 
       {/* STEP 0 · KANAL */}
-      <Step n={0} title={c.step0Title} done={step0Done} locked={false}
+      <Step n={0} title={c.step0Title} done={step0Done} locked={false} open={open} setOpen={setOpen}
         summary={channel === "email" ? c.step0SummaryEmail : undefined}
       >
         <div className="flex flex-col gap-3">
@@ -370,7 +379,7 @@ export function CampaignFlow({
       </Step>
 
       {/* STEP 1 · SIAPA */}
-      <Step n={1} title={c.step1Title} done={step1Done} locked={!step0Done}
+      <Step n={1} title={c.step1Title} done={step1Done} locked={!step0Done} open={open} setOpen={setOpen}
         summary={segment ? segment.name : undefined}
       >
         <div className="flex flex-col gap-4">
@@ -451,7 +460,7 @@ export function CampaignFlow({
       </Step>
 
       {/* STEP 2 · PESAN */}
-      <Step n={2} title={c.step2Title} done={step2Done} locked={!step1Done}
+      <Step n={2} title={c.step2Title} done={step2Done} locked={!step1Done} open={open} setOpen={setOpen}
         summary={template ? template.name : undefined}
       >
         <div className="flex flex-col gap-4">
@@ -490,7 +499,7 @@ export function CampaignFlow({
       </Step>
 
       {/* STEP 3 · REVIEW — preview jumlah audiens + uji kirim ke admin */}
-      <Step n={3} title={c.step3Title} done={step3Done} locked={!step2Done}
+      <Step n={3} title={c.step3Title} done={step3Done} locked={!step2Done} open={open} setOpen={setOpen}
         summary={preview?.ok ? `${fmt(preview.sendable ?? 0)} ${c.step3SummarySuffix}` : undefined}
       >
         <div className="flex flex-col gap-4">
@@ -531,7 +540,7 @@ export function CampaignFlow({
       </Step>
 
       {/* STEP 4 · KIRIM ke audiens */}
-      <Step n={4} title={c.step4Title} done={!!result?.ok} locked={!step3Done}
+      <Step n={4} title={c.step4Title} done={!!result?.ok} locked={!step3Done} open={open} setOpen={setOpen}
         summary={result?.ok && result.summary ? `${fmt(result.summary.sent)} ${c.step4SummarySuffix}` : undefined}
       >
         <div className="flex flex-col gap-4">
