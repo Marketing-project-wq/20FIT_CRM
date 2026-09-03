@@ -33,11 +33,16 @@ const TEMPLATES = [
 // Delivery History fixtures — one of every state + both origins, to show the renamed markers and the
 // segment+date default name ("gmail test · 31 Agu 2026" instead of "Unnamed"/an ISO timestamp).
 const DELIVERIES: DeliveryRow[] = [
-  { kind: "scheduled", id: "d1", runId: null, label: "gmail test · 31 Agu 2026", ownerName: "gmail test", source: "manual", templateKey: "welcome", recipientCount: 36, state: "upcoming", time: "2026-09-02T02:00:00Z", cancellable: true, lastError: null },
-  { kind: "scheduled", id: "d2", runId: null, label: "Peserta RUNFEST · 30 Agu 2026", ownerName: "Peserta RUNFEST punya email", source: "manual", templateKey: "welcome", recipientCount: 11546, state: "overdue", time: "2026-08-30T06:00:00Z", cancellable: true, lastError: null },
-  { kind: "run", id: "d3", runId: "r3", label: "Member gym aktif · 29 Agu 2026", ownerName: "Member gym aktif", source: "manual", templateKey: "welcome", recipientCount: 812, state: "running", time: "2026-08-31T01:00:00Z", cancellable: false, lastError: null },
-  { kind: "run", id: "d4", runId: "r4", label: "Reaktivasi app · 28 Agu 2026", ownerName: "Alur reaktivasi", source: "auto", templateKey: "reactivate", recipientCount: 1500, state: "done", time: "2026-08-28T03:00:00Z", cancellable: false, lastError: null },
-  { kind: "run", id: "d5", runId: "r5", label: "Broadcast Sept #1", ownerName: "Semua member", source: "manual", templateKey: "welcome", recipientCount: 240, state: "stopped", time: "2026-08-27T04:00:00Z", cancellable: false, lastError: "bounce keras > 5% (auto-stop reputasi domain)" },
+  { kind: "scheduled", id: "d1", runId: null, label: "gmail test · 31 Agu 2026", ownerName: "gmail test", source: "manual", templateKey: "welcome", recipientCount: 36, failedCount: 0, state: "upcoming", time: "2026-09-02T02:00:00Z", cancellable: true, lastError: null },
+  { kind: "scheduled", id: "d2", runId: null, label: "Peserta RUNFEST · 30 Agu 2026", ownerName: "Peserta RUNFEST punya email", source: "manual", templateKey: "welcome", recipientCount: 11546, failedCount: 0, state: "overdue", time: "2026-08-30T06:00:00Z", cancellable: true, lastError: null },
+  { kind: "run", id: "d3", runId: "r3", label: "Member gym aktif · 29 Agu 2026", ownerName: "Member gym aktif", source: "manual", templateKey: "welcome", recipientCount: 812, failedCount: 3, state: "running", time: "2026-08-31T01:00:00Z", cancellable: false, lastError: null },
+  { kind: "run", id: "d4", runId: "r4", label: "Reaktivasi app · 28 Agu 2026", ownerName: "Alur reaktivasi", source: "auto", templateKey: "reactivate", recipientCount: 1500, failedCount: 0, state: "done", time: "2026-08-28T03:00:00Z", cancellable: false, lastError: null },
+  { kind: "run", id: "d5", runId: "r5", label: "Broadcast Sept #1", ownerName: "Semua member", source: "manual", templateKey: "welcome", recipientCount: 240, failedCount: 12, state: "stopped", time: "2026-08-27T04:00:00Z", cancellable: false, lastError: "bounce keras > 5% (auto-stop reputasi domain)" },
+  // d3 above is the T-46 shape: a run still SENDING (deferred by the daily ceiling) that already has
+  // failures. Its status stays resumable on purpose; the failure count must still show on the row.
+  // The two states added with T-42, so the markers are visible here before they occur in production.
+  { kind: "run", id: "d6", runId: "r6", label: "Ajakan tiket · 26 Agu 2026", ownerName: "Peserta event", source: "manual", templateKey: "welcome", recipientCount: 18243, failedCount: 18119, state: "partial", time: "2026-08-26T07:00:00Z", cancellable: false, lastError: null },
+  { kind: "run", id: "d7", runId: "r7", label: "Promo akhir pekan · 25 Agu 2026", ownerName: "Member gym aktif", source: "manual", templateKey: "welcome", recipientCount: 640, failedCount: 640, state: "failed", time: "2026-08-25T09:00:00Z", cancellable: false, lastError: "stopped_consecutive_failures failed_total=640 top_cause=provider_throttled" },
 ];
 
 export default function PreviewCampaign() {

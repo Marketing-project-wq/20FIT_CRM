@@ -10,6 +10,8 @@ import { formatCount, formatDateTime } from "@/lib/i18n";
 import { validateCampaignName } from "@/lib/crm/campaign-name";
 import { saveCampaignDraft, loadCampaignDraft, clearCampaignDraft } from "@/lib/crm/campaign-draft";
 import { segmentBuilderUrlFromCompose } from "@/lib/crm/campaign-nav";
+import { SEND_FAILURE_CAUSES, totalFailed } from "@/lib/crm/send-run";
+import type { SendFailureCause } from "@/lib/crm/send-run";
 import { PreviewEmailPanel } from "./preview-email-panel";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -43,6 +45,16 @@ type Channel = "email" | null;
 
 const selectCls =
   "h-10 w-full rounded-sm border border-glass-border bg-glass px-3 font-body text-[14px] text-ink focus:outline-none focus:ring-2 focus:ring-red";
+
+/** Failure-cause → dictionary key. Keyed by the cause union, so adding a cause to the engine without
+ *  a label here is a COMPILE error rather than a blank line in the operator's failure block. */
+const FAIL_CAUSE_KEY: Record<SendFailureCause, "failCauseInvalidAddress" | "failCauseHardBounce" | "failCauseProviderRejected" | "failCauseProviderThrottled" | "failCauseUnknown"> = {
+  invalid_address: "failCauseInvalidAddress",
+  hard_bounce: "failCauseHardBounce",
+  provider_rejected: "failCauseProviderRejected",
+  provider_throttled: "failCauseProviderThrottled",
+  unknown: "failCauseUnknown",
+};
 
 /** One collapsible step. MODULE-scoped on purpose: a component defined inside CampaignFlow gets a new
  *  function identity every render, so React would remount its subtree — and drop input focus — on every
@@ -663,9 +675,36 @@ export function CampaignFlow({
                 <Badge tone="green">{cc.resSent}: {fmt(result.summary.sent)}</Badge>
                 <Badge tone="neutral">{cc.resAlreadySent}: {fmt(result.summary.skippedAlreadySent)}</Badge>
                 <Badge tone="blue">{cc.resSkipped}: {fmt(result.summary.skippedSuppressed)}</Badge>
-                <Badge tone="red">{cc.resFailed}: {fmt(result.summary.failed.invalid_address + result.summary.failed.hard_bounce + result.summary.failed.provider_rejected + result.summary.failed.unknown)}</Badge>
+                <Badge tone="red">{cc.resFailed}: {fmt(totalFailed(result.summary.failed))}</Badge>
                 <Badge tone="neutral">{cc.resWithheld}: {fmt(result.withheldPrelaunch ?? 0)}</Badge>
               </div>
+
+              {/* THE FAILURE BLOCK (T-41). A badge in a row of five badges is not how someone learns
+                  that a send failed — the 3 Sep run reported 18,119 failures and nobody read it as a
+                  problem for hours. When anything failed, the count and the causes get their own
+                  tinted panel, right here, at the moment the operator is still looking. No new data
+                  is fetched: this is what the send response already returned. */}
+              {totalFailed(result.summary.failed) > 0 && (
+                <div className="tint-red flex flex-col gap-1.5 rounded-card p-3" role="alert">
+                  <p className="font-body text-[13px] font-semibold text-red">
+                    {cc.failBlockTitle.replace("{n}", fmt(totalFailed(result.summary.failed)))}
+                  </p>
+                  <ul className="flex flex-col gap-0.5 font-body text-[12px] leading-relaxed text-ink-soft">
+                    {SEND_FAILURE_CAUSES.filter((cause) => result.summary!.failed[cause] > 0).map((cause) => (
+                      <li key={cause}>
+                        {cc[FAIL_CAUSE_KEY[cause]]}: <span className="font-semibold">{fmt(result.summary!.failed[cause])}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="font-body text-[12px] leading-relaxed text-ink-soft">
+                    {result.summary.stoppedConsecutiveFailures
+                      ? cc.failBlockHalted
+                      : result.summary.sent > 0
+                        ? cc.failBlockPartial
+                        : cc.failBlockAll}
+                  </p>
+                </div>
+              )}
               {!result.realSend && <p className="font-body text-[12px] leading-relaxed text-ink-faint">{cc.resInternalNote}</p>}
             </div>
           )}

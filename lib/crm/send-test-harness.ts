@@ -218,10 +218,7 @@ export async function runInternalSendTest(actor: { actorId: string; actorEmail: 
     return { ok: false, error: "send_threw", detail: cause, runId: run.id };
   }
 
-  const runStatus = await finalizeRunStatus(run.id, {
-    deferredDailyLimit: result.summary.deferredDailyLimit,
-    stoppedHighBounce: result.summary.stoppedHighBounce,
-  });
+  const runStatus = await finalizeRunStatus(run.id, result.summary);
 
   // Read the artifacts back from the real tables — this is what the 7-point report cites.
   const { data: logs } = await admin

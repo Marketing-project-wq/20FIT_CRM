@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { renderEmailDocument } from "./email-document";
+import type { RunStatus } from "./campaign-run-status";
 
 /**
  * Deliveries read layer — the "Kiriman" tab under Campaigns. Scheduled, running, done and stopped are
@@ -20,7 +21,15 @@ import { renderEmailDocument } from "./email-document";
  * tracing a problem).
  */
 
-export type DeliveryState = "upcoming" | "overdue" | "running" | "done" | "stopped" | "cancelled";
+export type DeliveryState =
+  | "upcoming"
+  | "overdue"
+  | "running"
+  | "done"
+  | "partial"
+  | "failed"
+  | "stopped"
+  | "cancelled";
 export type DeliverySource = "manual" | "auto";
 
 export interface DeliveryRow {
@@ -32,6 +41,17 @@ export interface DeliveryRow {
   source: DeliverySource;
   templateKey: string;
   recipientCount: number; // shown_sendable for a schedule; logged rows for a run
+  /** Log rows that FAILED for this run (status 'failed'). Shown on the row whenever it is > 0 — a
+   *  run whose recipients mostly failed must not read as a clean send. Counted for EVERY run, at
+   *  EVERY status, and that is load-bearing in three ways:
+   *    - 'sent' — runs finished before partial/failed existed still carry their failures (the 3 Sep
+   *      run is filed 'sent' with 18,119 of them and is deliberately not back-filled);
+   *    - 'sending' — a run still working through the daily ceiling keeps its status even when some
+   *      recipients failed (T-46: deferral outranks failure, so the run stays resumable). The
+   *      failures must not vanish from the screen just because the status is not 'partial';
+   *    - 'stopped' — a halted run's failure count is the size of what it halted on.
+   *  0 for a scheduled row that never became a run. */
+  failedCount: number;
   state: DeliveryState;
   time: string; // UTC ISO — scheduled_at for upcoming, created_at for a run
   cancellable: boolean; // only a pending scheduled send
@@ -55,15 +75,17 @@ interface RunRow {
   workflow_id: string | null;
   template_key: string;
   label: string | null;
-  status: "draft" | "sending" | "sent" | "stopped";
+  status: RunStatus;
   created_at: string;
   last_error: string | null;
 }
 
-const RUN_STATE: Record<RunRow["status"], DeliveryState> = {
+const RUN_STATE: Record<RunStatus, DeliveryState> = {
   draft: "running",
   sending: "running",
   sent: "done",
+  partial: "partial",
+  failed: "failed",
   stopped: "stopped",
 };
 
@@ -88,16 +110,27 @@ async function resolveOwnerNames(
   return { segments, workflows };
 }
 
-/** Count logged recipients per run (crm_message_log.campaign_id = run.id) — one head-count per run. */
-async function countRecipients(admin: SupabaseClient, runIds: string[]): Promise<Map<string, number>> {
-  const counts = new Map<string, number>();
+interface RunCounts {
+  logged: number;
+  failed: number;
+}
+
+/** Logged + FAILED recipients per run (crm_message_log.campaign_id = run.id) — two head-counts per
+ *  run, no row read. The failed count is not derived from the run's status: a run can carry failures
+ *  whatever its status says, and that discrepancy is exactly what the list must show. */
+async function countRecipients(admin: SupabaseClient, runIds: string[]): Promise<Map<string, RunCounts>> {
+  const counts = new Map<string, RunCounts>();
   await Promise.all(
     runIds.map(async (id) => {
-      const { count } = await admin
-        .from("crm_message_log")
-        .select("id", { count: "exact", head: true })
-        .eq("campaign_id", id);
-      counts.set(id, count ?? 0);
+      const [{ count: logged }, { count: failed }] = await Promise.all([
+        admin.from("crm_message_log").select("id", { count: "exact", head: true }).eq("campaign_id", id),
+        admin
+          .from("crm_message_log")
+          .select("id", { count: "exact", head: true })
+          .eq("campaign_id", id)
+          .eq("status", "failed"),
+      ]);
+      counts.set(id, { logged: logged ?? 0, failed: failed ?? 0 });
     }),
   );
   return counts;
@@ -156,6 +189,7 @@ export async function listDeliveries(admin: SupabaseClient, limit = 100, nowIso 
       source: "manual",
       templateKey: s.template_key,
       recipientCount: s.shown_sendable ?? 0,
+      failedCount: 0, // a scheduled row has no log rows yet; its run will carry them
       state,
       time: s.scheduled_at,
       cancellable: s.status === "pending",
@@ -178,8 +212,9 @@ export async function listDeliveries(admin: SupabaseClient, limit = 100, nowIso 
       ownerName,
       source,
       templateKey: r.template_key,
-      recipientCount: counts.get(r.id) ?? 0,
-      state: RUN_STATE[r.status],
+      recipientCount: counts.get(r.id)?.logged ?? 0,
+      failedCount: counts.get(r.id)?.failed ?? 0,
+      state: RUN_STATE[r.status] ?? "running",
       time: r.created_at,
       cancellable: false,
       lastError: r.last_error,

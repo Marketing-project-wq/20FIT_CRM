@@ -16,6 +16,8 @@ import { realSendEnabled, maySendTo } from "./send-gate";
 import {
   runSend,
   DEFAULT_SEND_CONFIG,
+  emptySendFailureCounts,
+  totalFailed,
   type SendPorts,
   type SendRecipient,
   type RenderedMessage,
@@ -369,6 +371,10 @@ export async function sendCampaign(input: CampaignSendInput, nowIso: string): Pr
         patch.sent_at = nowIso;
       } else if (outcome.status === "bounced" || outcome.status === "failed") {
         patch.failure_cause = outcome.failureCause;
+        // error_message holds the PII-free CODE only (HTTP status, or a network code like
+        // ECONNRESET) — produced by sendFailureCode, shape-checked there. Never provider prose,
+        // never any part of the response body: crm_message_log stores no readable contact, and a
+        // provider body can echo the recipient address (see lib/email/mailtrap.ts).
         patch.error_message = outcome.code == null ? null : String(outcome.code);
         if (outcome.status === "bounced") patch.bounced_at = nowIso;
       }
@@ -398,9 +404,10 @@ export async function sendCampaign(input: CampaignSendInput, nowIso: string): Pr
         sent: 0,
         skippedSuppressed: 0,
         skippedAlreadySent: 0,
-        failed: { invalid_address: 0, hard_bounce: 0, provider_rejected: 0, unknown: 0 },
+        failed: emptySendFailureCounts(),
         deferredDailyLimit: 0,
         stoppedHighBounce: true,
+        stoppedConsecutiveFailures: false,
       }
     : await runSend(engineRecipients, ports, input.campaignId, hashIdentityFor, config);
 
@@ -412,9 +419,7 @@ export async function sendCampaign(input: CampaignSendInput, nowIso: string): Pr
       actor_email: input.actorEmail,
       action: SEND_ACTION,
       target_table: "crm_message_log",
-      summary: `Kirim kampanye (terkirim ${summary.sent}, dilewati ${summary.skippedSuppressed}, gagal ${
-        summary.failed.invalid_address + summary.failed.hard_bounce + summary.failed.provider_rejected + summary.failed.unknown
-      }).`,
+      summary: `Kirim kampanye (terkirim ${summary.sent}, dilewati ${summary.skippedSuppressed}, gagal ${totalFailed(summary.failed)}).`,
       metadata: {
         campaign_id: input.campaignId,
         template_key: input.templateKey,
@@ -428,7 +433,9 @@ export async function sendCampaign(input: CampaignSendInput, nowIso: string): Pr
         skipped_already_sent: summary.skippedAlreadySent,
         deferred_daily_limit: summary.deferredDailyLimit,
         stopped_high_bounce: summary.stoppedHighBounce,
+        stopped_consecutive_failures: summary.stoppedConsecutiveFailures,
         failed: summary.failed,
+        failed_total: totalFailed(summary.failed),
       },
     });
     if (error) {

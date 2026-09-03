@@ -18,6 +18,10 @@ const STATE_META: Record<DeliveryState, { key: keyof Dict["campaignsPage"]["deli
   overdue: { key: "stateOverdue", tone: "red" }, // past its time but never ran — the T-40 #8 symptom, made loud
   running: { key: "stateRunning", tone: "amber" },
   done: { key: "stateDone", tone: "green" },
+  // Two states a run can now land in honestly instead of being filed as "Selesai" (T-42): some
+  // recipients failed (partial) or every one did (failed).
+  partial: { key: "statePartial", tone: "amber" },
+  failed: { key: "stateFailed", tone: "red" },
   stopped: { key: "stateStopped", tone: "red" },
   cancelled: { key: "stateCancelled", tone: "neutral" },
 };
@@ -37,6 +41,7 @@ const REC_CAUSE: Record<string, keyof Dict["messagesPage"]> = {
   invalid_address: "causeInvalid",
   hard_bounce: "causeHardBounce",
   provider_rejected: "causeProvider",
+  provider_throttled: "causeThrottled",
   daily_limit: "causeDaily",
   unknown: "causeUnknown",
 };
@@ -239,6 +244,9 @@ export function DeliveriesTab({
                   <span>{d.colOwner}: {row.ownerName ?? <span className="italic text-ink-faint">{d.ownerUnresolved}</span>}</span>
                   <span>{d.colTemplate}: <span className="font-mono">{row.templateKey}</span></span>
                   <span>{d.colRecipients}: {row.recipientCount}</span>
+                  {row.failedCount > 0 && (
+                    <span className="font-semibold text-red">{d.colFailed}: {row.failedCount}</span>
+                  )}
                   <span className="font-mono">{wibDisplay(row.time)}</span>
                 </div>
                 {row.lastError && (

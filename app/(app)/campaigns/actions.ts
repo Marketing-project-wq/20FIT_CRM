@@ -372,10 +372,8 @@ export async function sendCampaignAction(args: {
     return { ok: false, error: "send_threw", detail: cause, runId, runLabel, isNewRun };
   }
 
-  const runStatus = await finalizeRunStatus(runId, {
-    deferredDailyLimit: result.summary.deferredDailyLimit,
-    stoppedHighBounce: result.summary.stoppedHighBounce,
-  });
+  // The WHOLE summary — the status rule reads the failure counts too (T-42).
+  const runStatus = await finalizeRunStatus(runId, result.summary);
 
   return {
     ok: true,

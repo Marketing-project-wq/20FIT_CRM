@@ -75,10 +75,7 @@ export async function POST(req: NextRequest) {
           },
           new Date().toISOString(),
         );
-        await finalizeRunStatus(run.id, {
-          deferredDailyLimit: result.summary.deferredDailyLimit,
-          stoppedHighBounce: result.summary.stoppedHighBounce,
-        });
+        await finalizeRunStatus(run.id, result.summary);
         await markScheduledSent(admin, s.id);
         sent++;
       } catch (e) {
