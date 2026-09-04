@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { safeCode } from "./safe-code";
 import {
   guessColumnMapping,
   normalizeMappedRow,
@@ -6,6 +7,7 @@ import {
   MAX_IMPORT_ROWS,
   type ColumnMapping,
   type ImportKeys,
+  importFailureMessage,
 } from "./import-audience";
 
 const noKeys: ImportKeys = {
@@ -105,5 +107,64 @@ describe("planImport", () => {
 
   it("MAX_IMPORT_ROWS is the small Fase-1 cap", () => {
     expect(MAX_IMPORT_ROWS).toBe(20_000);
+  });
+});
+
+// ── T-49: a failed import names its class, and no prose ever reaches a code field ─────────────
+describe("importFailureMessage — the class, and whether retrying can help", () => {
+  it("names the missing RPC and says retrying will not help", () => {
+    for (const code of ["PGRST202", "42883"]) {
+      const m = importFailureMessage(code);
+      expect(m).toContain(code);
+      expect(m).toMatch(/tidak akan berhasil/);
+    }
+  });
+
+  it("names a rejected value as a configuration defect, not the operator's file", () => {
+    const m = importFailureMessage("23514");
+    expect(m).toContain("23514");
+    expect(m).toMatch(/bukan masalah berkas Anda/);
+    expect(m).toMatch(/tidak akan berhasil/);
+  });
+
+  it("says 'try again' ONLY where trying again can actually work", () => {
+    // A timeout is the one class where a retry (smaller file) is real advice.
+    expect(importFailureMessage("57014")).toMatch(/Coba lagi/);
+    // Everywhere else it must not promise that.
+    for (const code of ["PGRST202", "42883", "23514", "23505", "23503", "42501", null]) {
+      expect(importFailureMessage(code), `code ${code}`).not.toMatch(/Coba lagi/);
+    }
+  });
+
+  it("is honest when the database gave no code at all", () => {
+    expect(importFailureMessage(null)).toMatch(/tidak memberi kode/);
+  });
+
+  it("still names an unknown code rather than swallowing it", () => {
+    expect(importFailureMessage("40001")).toContain("40001");
+  });
+});
+
+describe("safeCode — the shared PII-free shape guard (used by the import route and send path)", () => {
+  it("accepts real codes", () => {
+    expect(safeCode("23514")).toBe("23514");
+    expect(safeCode("PGRST202")).toBe("PGRST202");
+    expect(safeCode("ECONNRESET")).toBe("ECONNRESET");
+    expect(safeCode(429)).toBe("429");
+  });
+
+  it("drops Postgres prose WHOLE — a truncated leak is still a leak", () => {
+    // The exact shape that made the old `e.message.slice(0, 60)` a PII leak.
+    expect(safeCode('Key (email_normalized)=(orang@contoh.co.id) already exists')).toBeNull();
+    expect(safeCode('duplicate key value violates unique constraint "idx_master"')).toBeNull();
+    expect(safeCode("new row violates check constraint")).toBeNull();
+  });
+
+  it("drops anything that is not code-shaped", () => {
+    expect(safeCode(null)).toBeNull();
+    expect(safeCode(undefined)).toBeNull();
+    expect(safeCode({ code: "23514" })).toBeNull();
+    expect(safeCode("x".repeat(41))).toBeNull();
+    expect(safeCode("")).toBeNull();
   });
 });

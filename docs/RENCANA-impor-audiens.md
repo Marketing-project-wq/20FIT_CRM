@@ -11,7 +11,7 @@ yang ada (`crm_ingest_activity_people`), bukan jalur baru.
 1. **Consent — baris impor LANGSUNG contactable** (bukan `legacy_import_unverified`). K-36 berlaku:
    consent sudah diberikan di titik pengumpulan; impor hanya memindahkan data yang seharusnya sudah ada
    di Supabase. Yang WAJIB (tapi tidak memblokir): field **"sumber pengumpulan"** diisi saat unggah
-   (deskripsi konkret asal daftar), disimpan sebagai baris `crm_consent` `basis='opt_in'` +
+   (deskripsi konkret asal daftar), disimpan sebagai baris `crm_consent` `basis='explicit_opt_in'` +
    `evidence` jsonb `{source, batch, uploaded_by, filename, collection_source}` — **bukti, bukan
    gerbang**. Koreksi bertanggal terhadap `RENCANA-ingest-ticket.md` ditulis (jalur asing tetap
    `legacy_import_unverified`).
@@ -54,6 +54,16 @@ tapi dihitung terpisah ("kena suppression") supaya operator tahu berapa yang tak
 
 Setiap baris impor distempel `source='csv_import'` + `tags=['csv_import','batch:<uuid>']`; consent-nya
 `source='csv_import'` dengan `evidence->>'batch'`. Untuk membatalkan satu batch:
+
+> ### ⚠️ URUTANNYA WAJIB — consent DULU, baru orangnya
+>
+> Bukan preferensi gaya. `crm_consent.customer_id` **nullable** dengan FK
+> `ON DELETE SET NULL` (diverifikasi di `pg_constraint`, 3 Sep 2026). Kalau langkah 2 dijalankan
+> lebih dulu, baris consent-nya **tidak ikut terhapus** — ia bertahan dengan `customer_id = NULL`,
+> yatim, dan satu-satunya jejak yang menautkannya ke batch tinggal `evidence->>'batch'`. Perintah
+> penghapusan consent di bawah masih bisa menemukannya lewat kolom itu, tapi orang yang menjalankan
+> rollback terbalik tidak akan tahu bahwa masih ada yang tersisa: langkah 2 melaporkan sukses, dan
+> tak ada apa pun yang menandai baris yatim itu. Jalankan 1 → 2 → 3, dalam urutan itu.
 
 ```sql
 -- 1) hapus baris consent-evidence batch

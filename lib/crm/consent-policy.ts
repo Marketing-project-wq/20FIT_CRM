@@ -30,6 +30,21 @@ export const CONSENT_BASES: readonly ConsentBasis[] = ["legacy_import_unverified
 export const CONSENT_PURPOSES: readonly ConsentPurpose[] = ["marketing", "transactional"];
 
 /**
+ * The other two closed vocabularies of crm_consent, mirrored here for the SAME reason as the two
+ * above: so a write path — including one written in SQL — can be CHECKED against a canon that lives
+ * in one place. Added 3 Sep 2026 after migration 37 was found writing `basis='opt_in'`, a value the
+ * schema has never accepted (T-48). `status` is validity, NOT legal basis ('withdrawn' is a status);
+ * `channel` is the contact channel the consent covers. Both are fixed by migration 3's CHECKs and are
+ * asserted against them — live-recorded AND parsed out of the migration files — in
+ * consent-vocabulary.parity.test.ts.
+ */
+export type ConsentStatus = "active" | "withdrawn";
+export type ConsentChannel = "whatsapp" | "email" | "sms" | "phone_call";
+
+export const CONSENT_STATUSES: readonly ConsentStatus[] = ["active", "withdrawn"];
+export const CONSENT_CHANNELS: readonly ConsentChannel[] = ["whatsapp", "email", "sms", "phone_call"];
+
+/**
  * THE legal decision, isolated to one boolean. Flipped to `true` on 2026-08-12 by the product
  * owner's on-the-record decision to run Migrasi 11 (backfill consent), which writes active
  * MARKETING (and transactional) consent for the legacy import under

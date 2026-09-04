@@ -1169,6 +1169,9 @@ di sprint ini.**
 
 ## T-45 — Bounce keras tak pernah di-auto-suppress: nol suppression aktif — 3 Sep 2026
 
+> **DIKOREKSI SEBAGIAN — lihat T-50.** Kalimat "nol suppression aktif" adalah potret satu momen
+> (benar saat diukur), bukan keadaan permanen. Bagian bounce-tak-pernah-di-auto-suppress tetap berlaku.
+
 **Terukur:** `crm_suppression` berisi **1 baris**, berstatus **`lifted`** → **nol suppression aktif**
 di seluruh sistem. Kelima hard bounce dari run 3 Sep di-join ke `crm_suppression`: **0** baris
 suppression, **0** aktif. Kelima orang itu masih sepenuhnya kontaktabel dan akan menerima kampanye
@@ -1346,6 +1349,135 @@ berkas `.sql` di `supabase/migrations/` **bukan** tindakan yang membuat migrasi 
    pernah per rentang versi (T-20).
 
 Sampai keempatnya beres, jalurnya tetap `apply_migration` satu per satu.
+
+## T-48 — Migrasi 37 menulis `basis='opt_in'`, nilai yang tak pernah ada di skema — 3 Sep 2026
+
+**Tertangkap di tinjauan, sebelum diterapkan. Nol baris data terpengaruh.**
+
+Migrasi `20260902050000_crm_ingest_csv_people` menyisipkan baris `crm_consent` dengan
+`basis = 'opt_in'`. CHECK yang hidup menerima **dua** nilai saja:
+
+```
+crm_consent_basis_check
+  CHECK ((basis = ANY (ARRAY['legacy_import_unverified'::text, 'explicit_opt_in'::text])))
+crm_consent : 408.119 baris   ← CHECK-nya nyata, bukan rencana
+```
+
+Nilai yang benar adalah **`explicit_opt_in`**; komentar migrasinya sendiri sudah menyatakan
+maksudnya ("it does NOT land as `legacy_import_unverified`"), penulisnya hanya memakai nama pendek
+yang tidak ada di skema.
+
+### (i) `CREATE FUNCTION` yang sukses BUKAN bukti fungsi itu jalan
+
+Ini inti temuannya. PL/pgSQL **tidak** menyelesaikan nama tabel/kolom dan **tidak** memvalidasi
+nilai terhadap constraint saat `CREATE` — badan fungsi hanya di-parse. Jadi kalau migrasi ini
+diterapkan apa adanya:
+
+1. `apply_migration` **berhasil**;
+2. verifikasi katalog (`pg_proc`, tanda tangan, grant) **semuanya hijau**;
+3. impor pertama gagal `23514`, transaksi rollback, nol baris masuk;
+4. pemilik melihat pesan galat yang sama persis seperti sebelumnya.
+
+Satu siklus gerbang penuh terbuang untuk kembali ke titik yang sama. **Konsekuensi prosedural:**
+verifikasi pasca-apply untuk sebuah fungsi wajib menyertakan **panggilan sungguhan** — satu baris
+sintetis di dalam transaksi yang di-`rollback` — bukan hanya pembacaan katalog. Membaca katalog
+membuktikan fungsi itu **ada**, bukan bahwa ia **jalan**.
+
+### (ii) Tidak ada preseden yang pernah jalan untuk disalin
+
+Header migrasi 37 berkata ia "mirrors `crm_ingest_activity_people` (migrasi 28)". Diperiksa di
+katalog: `position('crm_consent' in pg_get_functiondef(...))` untuk fungsi itu = **false** — migrasi
+28 **sama sekali tidak menyentuh `crm_consent`**. Yang dicerminkan hanyalah pola `SECURITY DEFINER`
++ insert `master_customer`; bagian consent-nya **baru**, tanpa contoh yang pernah berhasil.
+
+Itu penjelasan paling meyakinkan kenapa nilai salah bisa lolos: penulisnya tidak punya baris kerja
+untuk disalin, dan tak ada apa pun di jalur itu yang memvalidasi tebakannya.
+
+### (iii) Gerbang consent dilewati sepenuhnya oleh jalur tulis SQL
+
+`lib/crm/consent-policy.ts` menyebut `purposePermittedForBasis` sebagai *"the **ONE gate** a write
+path must call before recording a consent row… **fail-closed** on unknown input"*. Migrasi 37
+menulis barisnya **di dalam SQL** — tak satu baris TypeScript pun berjalan, gerbang itu tak pernah
+dipanggil. Kalau ia dipanggil, `isConsentBasis('opt_in')` mengembalikan `false` dan kesalahannya
+muncul saat menulis kode, bukan di produksi.
+
+Gerbang itu tak bisa dipanggil dari SQL. Penutupnya: **`lib/crm/consent-vocabulary.parity.test.ts`**
+— membaca SQL sebagai teks dan menerapkan kanon yang sama padanya. Tiga lapis: (A) kanon TS ==
+CHECK yang direkam live 3 Sep 2026; (B) kanon TS == CHECK yang didefinisikan berkas migrasi
+(otomatis merah kalau migrasi mendatang mengubah CHECK tanpa TS ikut); (C) setiap literal
+`basis`/`purpose`/`status`/`channel` yang ditulis SQL ke `crm_consent` harus ada di kanon, dan tiap
+pasangan `(basis, purpose)` harus lolos `purposePermittedForBasis` — gerbangnya sendiri. Ketiganya
+**fail-closed**: parser yang tak paham sebuah CHECK atau sebuah insert akan GAGAL, bukan melewatinya.
+Dibuktikan menggigit pada kedua arah (kembalikan `'opt_in'` → 2 test merah; ubah CHECK di migrasi
+tanpa mengubah TS → lapis B merah).
+
+**Perbaikan:** `'opt_in'` → `'explicit_opt_in'` di enam tempat (migrasi 37 baris 13 + 114, `README.md`
+ledger #37, `RENCANA-ingest-ticket.md`, `RENCANA-impor-audiens.md`, `KEPUTUSAN.md`). **Nol perubahan
+kode aplikasi** — jalur impor TypeScript tak pernah menyebut `basis`; nilainya diputuskan seluruhnya
+di dalam fungsi SQL. CHECK **tidak** dilebarkan: dua nama untuk satu hal adalah pola yang sudah
+berkali-kali menggigit proyek ini.
+
+## T-49 — Pesan galat impor menelan penyebab, dan membocorkan prosa Postgres ke field kode — 3 Sep 2026
+
+Instans **ketujuh** (hitungan pemilik) dari pola kegagalan senyap di `RANGKUMAN.md` §5 + T-41.
+
+`app/api/audience/import/route.ts` menjawab **setiap** kegagalan impor dengan satu kalimat:
+
+```ts
+logApiFailure("/audience/import", "import_failed", { code: e.message.slice(0, 60) });
+return NextResponse.json({ error: "import_failed", message: "Gagal memproses impor. Coba lagi." });
+```
+
+**Dua cacat, dan yang kedua lebih serius.**
+
+1. *"Coba lagi"* adalah saran yang **tidak akan pernah berhasil** untuk sebagian besar penyebabnya.
+   Kalau RPC-nya tidak ada (`PGRST202`), atau nilainya melanggar CHECK (`23514`), mengulang dijamin
+   gagal lagi. Pemilik menekan tombol itu berkali-kali karena sistem menyuruhnya.
+2. Field `ctx.code` di `logApiFailure` **bertipe kode**, tapi yang dijejalkan ke sana adalah **pesan
+   Postgres bebas, dipotong 60 karakter**. Isi pesan itu bukan milik kita: sebagian mengutip baris
+   yang bermasalah (`Key (email_normalized)=(…) already exists`). Jadi ini **jalur kebocoran PII**,
+   bukan sekadar pesan yang buruk — dan pemotongan tidak menolong: kebocoran yang lebih pendek tetap
+   kebocoran, sekaligus merusak kodenya.
+
+**Perbaikan.** Kode saja, disaring bentuk. Aturan bentuknya dipindah ke satu kanon bersama,
+`lib/crm/safe-code.ts` (`^[A-Za-z0-9_.-]{1,40}$`), dipakai oleh **dua** jalur tulis: `sendFailureCode`
+(T-41) dan rute impor — karena "aturan yang ditulis dua kali akan menyimpang" sudah terbukti di
+proyek ini. Nilai diambil **utuh atau tidak sama sekali**; prosa dijatuhkan, tak pernah dipotong.
+`importFailureMessage(code)` (murni, teruji) menamai kelasnya dan menyatakan terus terang apakah
+mengulang bisa menolong — dan *"Coba lagi"* kini hanya muncul untuk `57014` (timeout), satu-satunya
+kelas di mana itu saran yang nyata.
+
+## T-50 — Koreksi T-45: potret satu momen disajikan sebagai keadaan permanen — 3 Sep 2026
+
+T-45 menulis: *"`crm_suppression` berisi 1 baris berstatus `lifted` → nol suppression aktif"*. Beberapa
+jam kemudian query dengan bentuk yang sama mengembalikan `active`, baris yang sama (id dan
+`created_at` identik). Saat itu saya tidak bisa memastikan mana yang salah.
+
+**Audit log menjawabnya, dan pengukuran saya waktu itu BENAR:**
+
+| Waktu (UTC) | Aksi |
+|---|---|
+| 31 Agu 04:37:19 | `suppression.added` — klik pertama |
+| 31 Agu 04:39:52 | `suppression.lifted` — dicabut 2,5 menit kemudian (uji coba) |
+| 3 Sep 13:38:44 | `suppression.added` — klik uji pemilik |
+
+Jadi pada saat T-45 ditulis, barisnya memang `lifted`. Yang salah bukan pengukurannya melainkan
+**klaimnya**: T-45 menyajikan potret satu momen ("nol suppression aktif") sebagai sifat sistem.
+Suppression adalah keadaan yang hidup — orang bisa berhenti berlangganan kapan saja — jadi angkanya
+hanya sah dengan cap waktunya. **Aturan yang diambil:** setiap angka dari tabel yang berubah karena
+tindakan pengguna ditulis dengan cap waktu pengukuran, dan jangan pernah dinyatakan sebagai keadaan
+permanen.
+
+Bagian T-45 yang lain **tetap berlaku**, diverifikasi ulang 3 Sep: kelima penerima hard-bounce run
+`5f5f3a57` punya **0** baris suppression, **0** aktif. Bounce keras masih tidak pernah di-auto-suppress.
+
+**Temuan turunan — `created_at` tidak menjawab "kapan orang ini minta berhenti".** RPC unsubscribe
+**mengaktifkan ulang baris lama** alih-alih menyisipkan yang baru, jadi `created_at` baris itu masih
+tertulis **31 Agustus** padahal permintaan terakhirnya 3 September. Rantai lengkapnya hanya ada di
+`crm_audit_log`. Untuk pertanyaan kepatuhan ("kapan persisnya orang ini menarik consent?") tabel
+`crm_suppression` **bukan** sumber yang benar — audit log yang benar. Dicatat, **tidak diubah**:
+memperbaikinya butuh keputusan (kolom `reactivated_at`, atau baris baru per permintaan) dan sebuah
+migrasi.
 
 ## Catatan — rekonsiliasi Mailchimp belum bisa diturunkan
 

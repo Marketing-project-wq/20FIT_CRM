@@ -1074,7 +1074,7 @@ persetujuan Jeff** (seperti extension `profile.edit_demographic` / K-32 dan `rol
 + suppression satu-satunya pengunci). Alasannya: data ini bukan daftar asing — consent sudah diberikan
 di titik pengumpulan (mis. formulir pendaftaran), impor hanya memindahkan data yang seharusnya sudah ada
 di Supabase. Yang **wajib** (bukan gerbang): field "sumber pengumpulan" saat unggah, disimpan sebagai
-`crm_consent` `basis='opt_in'` + `evidence` jsonb — **bukti**, supaya "kenapa orang ini dikirimi email"
+`crm_consent` `basis='explicit_opt_in'` + `evidence` jsonb — **bukti**, supaya "kenapa orang ini dikirimi email"
 terjawab dari data, bukan ingatan. **Apa yang membalik:** kalau ternyata sebuah daftar tidak benar-benar
 punya titik-consent (daftar asing), jalurnya BUKAN `csv_import` melainkan `legacy_import_unverified`
 (masuk pool, tak dipasarkan) — lihat koreksi bertanggal di `docs/RENCANA-ingest-ticket.md`. Pembeda

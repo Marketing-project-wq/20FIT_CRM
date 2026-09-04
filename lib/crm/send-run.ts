@@ -28,6 +28,7 @@
  *      (stoppedConsecutiveFailures) instead of writing the rest of the list as failures.
  */
 
+import { safeCode } from "./safe-code";
 import type { IdentityKind } from "./suppression-input";
 
 export type Channel = "email" | "whatsapp";
@@ -250,11 +251,6 @@ export function classifySendFailure(err: unknown): SendFailureCause {
   return "unknown";
 }
 
-/** Codes are stored VERBATIM in crm_message_log.error_message, a PII-free column, so only this
- *  shape is ever allowed through: letters, digits, `_ . -`, at most 40 chars. Anything else (any
- *  free text, therefore anything that could echo an address) is dropped rather than trimmed. */
-const SAFE_CODE = /^[A-Za-z0-9_.-]{1,40}$/;
-
 /**
  * The PII-free code recorded for a failed send. In priority order:
  *   1. `err.status` — the HTTP status our mailer now attaches (T-41).
@@ -262,6 +258,7 @@ const SAFE_CODE = /^[A-Za-z0-9_.-]{1,40}$/;
  *   3. `err.code` — a library/provider code.
  * Returns null when nothing safe is available — an honest NULL, never a guess and never prose.
  * NOTE what is NOT here: `err.message`, and nothing at all from the provider's response body.
+ * The shape rule itself lives in ./safe-code (shared with the CSV import route, T-49).
  */
 export function sendFailureCode(err: unknown): string | null {
   const e = (err ?? {}) as {
@@ -271,9 +268,8 @@ export function sendFailureCode(err: unknown): string | null {
   };
   if (typeof e.status === "number" && Number.isFinite(e.status)) return String(e.status);
   for (const raw of [e.cause?.code, e.code]) {
-    if (raw == null) continue;
-    const candidate = String(raw).trim();
-    if (SAFE_CODE.test(candidate)) return candidate;
+    const code = safeCode(raw);
+    if (code !== null) return code;
   }
   return null;
 }
