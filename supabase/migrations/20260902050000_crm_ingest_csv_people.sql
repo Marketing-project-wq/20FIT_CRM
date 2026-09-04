@@ -10,9 +10,12 @@
 --    import moves data whose consent was given at the collection point; it does NOT land as
 --    legacy_import_unverified (that framing stays for imports of genuinely-unknown provenance — see
 --    docs/RENCANA-ingest-ticket.md correction dated 2026-09-02).
---  - Each inserted person gets a crm_consent row with basis='opt_in' + evidence jsonb (source, batch,
---    uploaded_by, filename via collection_source) — EVIDENCE, not a gate. This is why, if ever asked
---    "why was this person emailed", the answer is in the data, not in someone's memory.
+--  - Each inserted person gets a crm_consent row with basis='explicit_opt_in' + evidence jsonb (source,
+--    batch, uploaded_by, filename via collection_source) — EVIDENCE, not a gate. This is why, if ever
+--    asked "why was this person emailed", the answer is in the data, not in someone's memory.
+--    'explicit_opt_in' is one of the TWO values crm_consent_basis_check accepts (the other is
+--    'legacy_import_unverified'). The short name 'opt_in' stood here until 3 Sep 2026 and does NOT
+--    exist in the schema — see T-48. Do not widen the CHECK to admit it.
 --  - Dedup is SKIP-ONLY (email OR phone already in master → not inserted). No overwrite, no fill-blanks.
 --  - Suppression is untouched: a suppressed identity re-imported is still filtered at send (suppression
 --    is keyed by normalized identity, resolved via phone_normalized/email_normalized).
@@ -107,11 +110,12 @@ begin
     from phone_safe
     returning customer_id
   )
-  -- Consent EVIDENCE (basis opt_in), one row per inserted person. Not a gate — proof of provenance.
+  -- Consent EVIDENCE (basis explicit_opt_in — a value crm_consent_basis_check accepts), one row per
+  -- inserted person. Not a gate — proof of provenance.
   insert into public.crm_consent
     (customer_id, channel, purpose, basis, status, source, evidence, recorded_at, updated_at)
   select
-    i.customer_id, 'email', 'marketing', 'opt_in', 'active', 'csv_import',
+    i.customer_id, 'email', 'marketing', 'explicit_opt_in', 'active', 'csv_import',
     jsonb_build_object(
       'source', 'csv_import',
       'batch', p_batch_id::text,

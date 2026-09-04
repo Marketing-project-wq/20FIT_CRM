@@ -186,3 +186,37 @@ export function planImport(
   s.netContactable = s.netInsert - s.suppressed;
   return { summary: s, insertRows, outcomes };
 }
+
+/**
+ * The operator-facing message for a FAILED import write, from the database's error code alone
+ * (T-49). Pure, so it is testable and so it can never accidentally be handed anything but a code.
+ *
+ * WHAT THIS REPLACES. The route used to answer every failure with "Gagal memproses impor. Coba lagi."
+ * — which hid the cause AND advised an action that could not work: when the RPC does not exist, or
+ * the value violates a CHECK, retrying is guaranteed to fail again. It also fed the raw Postgres
+ * message into a field typed as a code; Postgres messages are not ours to trust with PII.
+ *
+ * So the class is named, and each message says plainly whether retrying can help. `code` is already
+ * shape-guarded (safeCode) before it reaches here — never prose, never a row value.
+ */
+export function importFailureMessage(code: string | null): string {
+  switch (code) {
+    case "PGRST202":
+    case "42883":
+      return `Jalur tulis impor belum ada di database (kode ${code}). Migrasi crm_ingest_csv_people belum diterapkan — mengulang tidak akan berhasil sampai migrasi itu dijalankan.`;
+    case "23514":
+      return "Database menolak nilai yang ditulis impor (pelanggaran aturan kolom, kode 23514). Ini cacat konfigurasi impor, bukan masalah berkas Anda — mengulang tidak akan berhasil. Laporkan kodenya.";
+    case "23505":
+      return "Ada baris yang bentrok dengan data yang sudah ada (kode 23505). Pra-cek meloloskannya, jadi ini perlu ditinjau — mengulang berkas yang sama kemungkinan besar gagal lagi.";
+    case "23503":
+      return "Baris impor merujuk data yang tidak ada (kode 23503). Perlu ditinjau — mengulang tidak akan berhasil.";
+    case "42501":
+      return "Peran yang dipakai tidak berwenang menjalankan impor (kode 42501). Ini soal hak akses, bukan berkas Anda.";
+    case "57014":
+      return "Database membatalkan operasi karena berjalan terlalu lama (kode 57014). Coba lagi dengan berkas yang lebih kecil.";
+    case null:
+      return "Impor gagal dan database tidak memberi kode. Laporkan kejadian ini — jangan diulang berkali-kali tanpa penjelasan.";
+    default:
+      return `Impor gagal (kode ${code}). Laporkan kode ini — mengulang tanpa ada yang berubah kemungkinan besar gagal lagi.`;
+  }
+}

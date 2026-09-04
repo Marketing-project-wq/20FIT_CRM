@@ -11,7 +11,7 @@
 >   **di titik pengumpulan** (mis. formulir pendaftaran Sportfest), dan impor hanya memindahkan data yang
 >   seharusnya sudah ada di Supabase. Jadi K-36 berlaku penuh: consent bukan gerbang, unsubscribe +
 >   suppression tetap satu-satunya pengunci. Operator **wajib** mengisi "sumber pengumpulan" yang
->   disimpan sebagai **bukti** (baris `crm_consent`, basis `opt_in`) — bukti, bukan gerbang.
+>   disimpan sebagai **bukti** (baris `crm_consent`, basis `explicit_opt_in`) — bukti, bukan gerbang.
 > - **`legacy_import_unverified` tetap berlaku** untuk impor yang provenance-nya **memang tidak
 >   diketahui** — daftar asing tanpa titik-consent yang jelas (mis. skenario 598 pembuka tiket di
 >   dokumen ini, selama §4 belum dijawab). Itu masuk pool tapi tidak dipasarkan.

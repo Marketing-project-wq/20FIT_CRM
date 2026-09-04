@@ -5,12 +5,14 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUserRole } from "@/lib/auth/current-role";
 import { canImportAudience } from "@/lib/auth/roles";
 import { logApiFailure } from "@/lib/crm/failure-log";
+import { safeCode } from "@/lib/crm/safe-code";
 import {
   runImportRequest,
   type ImportDeps,
   type ImportInput,
   type ImportPhase,
 } from "@/lib/crm/import-audience-run";
+import { importFailureMessage } from "@/lib/crm/import-audience";
 import type { ImportKeys, ImportPlan, NormalizedRow } from "@/lib/crm/import-audience";
 
 export const dynamic = "force-dynamic";
@@ -120,7 +122,9 @@ export async function POST(request: NextRequest) {
         p_collection_source: meta.collectionSource,
         p_uploaded_by: userId,
       });
-      if (error) throw new Error(error.message);
+      // PII-FREE: carry the database's CODE, never its message. A Postgres error message can quote
+      // the offending row ("Key (email_normalized)=(…) already exists") — see safeCode.
+      if (error) throw rpcFailure(error.code);
       const inserted = typeof (data as { inserted?: number })?.inserted === "number" ? (data as { inserted: number }).inserted : 0;
       return { inserted };
     },
@@ -157,8 +161,14 @@ export async function POST(request: NextRequest) {
   try {
     result = await runImportRequest(input, deps);
   } catch (e) {
-    logApiFailure("/audience/import", "import_failed", { code: e instanceof Error ? e.message.slice(0, 60) : null });
-    return NextResponse.json({ error: "import_failed", message: "Gagal memproses impor. Coba lagi." }, { status: 500 });
+    // The code, shape-guarded. NOT e.message: this used to be `e.message.slice(0, 60)`, which fed
+    // free Postgres prose into a field typed as a code — a PII leak, not just a bad message (T-49).
+    const code = safeCode((e as { code?: unknown } | null)?.code);
+    logApiFailure("/audience/import", "import_failed", { code });
+    return NextResponse.json(
+      { error: "import_failed", code, message: importFailureMessage(code) },
+      { status: 500 },
+    );
   }
 
   if (!result.ok) {
@@ -182,6 +192,14 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json(trimmed, { headers: { "Cache-Control": "no-store" } });
+}
+
+/** A failed RPC as a PII-free Error: the database's code as a property, a fixed message. Mirrors
+ *  MailtrapSendError (T-41) — the code travels as data, never inside prose. */
+function rpcFailure(code: string | null | undefined): Error & { code: string | null } {
+  const err = new Error("crm_ingest_csv_people failed") as Error & { code: string | null };
+  err.code = safeCode(code);
+  return err;
 }
 
 function errorMessage(code: string): string {
