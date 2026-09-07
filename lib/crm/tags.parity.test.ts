@@ -133,6 +133,19 @@ describe("(C) migration 37 still carries all three changes after any merge", () 
     // with format:double and three nilai: bands.
     expect(body, "the signature must take p_tag_rows").toMatch(/p_tag_rows\s+jsonb/);
     expect(body, "each inserted row's own tags must be read").toContain("r->'tags'");
+    // AND the row's tags must actually REACH the insert. Reading them in the guard is not enough:
+    // `row_tags` was once referenced by the INSERT while no CTE carried it, which PL/pgSQL accepts
+    // at CREATE and fails on only at the first real import — the exact T-48 shape. Every CTE between
+    // `input` and `ins` must pass it through, so assert each hop rather than the endpoints.
+    for (const cte of ["input", "deduped", "phone_safe"]) {
+      const m = new RegExp(`${cte} as \\(([\\s\\S]*?)\\n  \\),`).exec(body);
+      expect(m, `could not find the ${cte} CTE`).toBeTruthy();
+      expect(
+        (m as RegExpExecArray)[1],
+        `${cte} must carry row_tags — otherwise the INSERT references a column no CTE provides, and ` +
+          `CREATE FUNCTION still succeeds`,
+      ).toContain("row_tags");
+    }
     expect(body, "the tagged_existing branch must exist").toContain("'tagged_existing'");
     expect(body, "existing people are marked tagged:, never batch:").toContain("'tagged:' || p_batch_id::text");
     expect(body).toContain("'shared_phone_in_batch'");

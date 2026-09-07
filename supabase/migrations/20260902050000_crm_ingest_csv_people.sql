@@ -114,7 +114,10 @@ begin
       nullif(trim(r->>'email'), '')                      as email_raw,
       lower(nullif(trim(r->>'email_normalized'), ''))    as ek,
       nullif(trim(r->>'phone_normalized'), '')           as pk,
-      nullif(trim(r->>'city'), '')                       as city
+      nullif(trim(r->>'city'), '')                       as city,
+      -- The row's OWN tags. Tags are per row, not per batch: one event file already mixes
+      -- format:single with format:double and all three nilai: bands.
+      coalesce(array(select jsonb_array_elements_text(coalesce(r->'tags', '[]'::jsonb))), '{}') as row_tags
     from jsonb_array_elements(p_rows) r
   ),
   -- Shape guard (defence in depth): a usable normalized email is required; a phone, if present, must
@@ -134,7 +137,7 @@ begin
   ),
   -- One row per email within the batch (keep the most complete).
   deduped as (
-    select distinct on (ek) full_name, email_raw, ek, pk, city
+    select distinct on (ek) full_name, email_raw, ek, pk, city, row_tags
       from new_people
      order by ek, (pk is not null) desc, (full_name is not null) desc
   ),
@@ -142,7 +145,7 @@ begin
   -- phone_normalized; better a profile without a phone than a failed insert or a stolen identity.
   phone_safe as (
     select
-      full_name, email_raw, ek, city,
+      full_name, email_raw, ek, city, row_tags,
       case
         when pk is null then null
         when exists (select 1 from public.master_customer m where m.phone_normalized = pk) then null
