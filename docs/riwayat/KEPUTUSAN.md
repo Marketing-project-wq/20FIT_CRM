@@ -1437,3 +1437,43 @@ marketing?* Kalau jawabannya tidak, kartunya belum layak kembali betapa pun masu
 `countContactableForPurpose` sengaja **tetap menerima parameter purpose** dan tidak diubah, supaya
 jalur transaksional kelak memanggilnya tanpa menulis aturan kedua (K-03: satu aturan, satu
 implementasi).
+
+## K-63 · Cap waktu layar BOD berasal dari `refreshed_at` blob, TIDAK PERNAH dari `now()`
+
+**Syarat pemilik saat menyetujui migrasi potret harian, 7 Sep 2026.** Halaman BOD memikul satu cap
+waktu, dan cap waktu itu **wajib** dibaca dari `crm_mirror_meta.refreshed_at` — bukan dari jam saat
+halaman dirender.
+
+**Alasannya bukan kerapian, melainkan bentuk kegagalannya.** Fungsi harian kini membaca belasan
+tabel milik divisi lain (`arena_*`, `gym_*`, `clinic_patients`, `my20fit_profile`,
+`cf_hyrox_participants`). Kalau salah satu tim mengganti nama kolom, refresh malam itu melempar
+galat dan blob-nya **tetap memuat isi kemarin**.
+
+- Cap waktu dari `now()` → angka kemarin, tanggal hari ini, tanpa batas waktu. Kegagalan itu
+  **tak terlihat**, di layar yang dipakai direksi mengambil keputusan.
+- Cap waktu dari `refreshed_at` → jamnya **berhenti bergerak**. Jam yang berhenti di halaman
+  bertanggal adalah alarm.
+
+**Halaman yang gagal dengan berisik lebih baik daripada halaman yang berbohong dengan tenang.**
+
+Ditambah spanduk merah kalau `refreshed_at` lebih tua dari **26 jam** — bukan 24, supaya cron yang
+mulai telat beberapa menit tidak disebut gagal; 26 jam lewat satu siklus dan jauh dari dua, jadi
+satu malam yang terlewat terlihat keesokan paginya. Jam yang berhenti diubah menjadi **kalimat**,
+karena tak ada yang membaca layar direksi dengan cara memeriksa apakah sebuah tanggal sudah dua hari
+lampau.
+
+**Dikunci oleh uji, bukan oleh niat** (`lib/crm/bod-snapshot.test.ts`, 16 pengujian): `measuredAt`
+diteruskan apa adanya dari baris blob; `parseBodSnapshot` murni sehingga tak punya akses ke jam sama
+sekali; pemindaian sumber memastikan komponen halaman tak memuat `new Date()` maupun `Date.now()`
+(komentar dikupas lebih dulu — aturannya tentang apa yang **dilakukan** kode, dan berkas itu memang
+menjelaskan aturannya dalam prosa yang menyebut panggilan terlarang itu); dan blob yang kehilangan
+satu kunci **melempar galat**, bukan menampilkan nol — termasuk blob enam-kunci yang persis akan
+ditinggalkan oleh rollback. Terbukti menggigit: cap waktu diganti `new Date()` → merah, dipulihkan
+→ hijau.
+
+**Satu ongkos, disebut di kartunya sendiri.** Potret harian memuat lima unit ekosistem; **`shop`
+tidak termasuk** (`lib/crm/mirror.ts` memang selalu menyatakannya — sebelumnya dihitung langsung).
+Menghitungnya langsung di sini akan memberi halaman ini cap waktu kedua, yaitu justru hal yang
+seluruh rancangan ini tolak. Jadi `shop` dikeluarkan dan kartunya **menyebutkannya**, alih-alih
+diam-diam mengecilkan total. Memasukkannya ke potret harian adalah perubahan satu baris pada fungsi
+malam — migrasi bergerbang tersendiri, bukan sekarang.

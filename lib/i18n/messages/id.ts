@@ -1812,8 +1812,19 @@ export const id = {
   bod: {
     title: "Ringkasan Direksi",
     subtitle: "Lima hal, satu halaman, satu waktu pengukuran.",
-    measuredAt: "Diukur",
+    measuredAt: "Data per",
     tz: "WIB",
+    // {hours} diisi dari data. Peringatan ini menyalakan jam yang berhenti menjadi kalimat —
+    // tanpanya pembaca harus sadar sendiri bahwa sebuah tanggal sudah dua hari lampau (K-63).
+    staleWarning:
+      "Angka di halaman ini sudah {hours} jam tidak diperbarui. Perhitungan malam terakhir kemungkinan gagal — jangan pakai halaman ini untuk keputusan sampai cap waktu di atas bergerak lagi.",
+    staleNever:
+      "Halaman ini belum pernah punya perhitungan sama sekali. Jangan pakai angkanya.",
+    // BUKAN "belum tersedia": ini keadaan galat saat halaman dibuka, bukan janji fitur. Frasa
+    // berbentuk janji akan ditangkap stale-phrase-scan, dan benar demikian — kalimat ini harus
+    // menyatakan apa yang terjadi sekarang, bukan apa yang akan datang.
+    snapshotMissing:
+      "Perhitungan harian tidak bisa dibaca, jadi tak ada satu angka pun yang ditampilkan. Ini BUKAN berarti angkanya nol — berarti angkanya tidak terbaca. Perhitungan berjalan setiap hari pukul 03:00 WIB; kalau ini bertahan sampai besok, ada yang rusak.",
     freshnessNote:
       "Perhitungan di halaman ini diperbarui setiap hari pukul 03:00 WIB. Profil baru TIDAK masuk otomatis — orang hanya bertambah lewat muatan manual, dan muatan terakhir adalah {date}. Jadwal harian itu menyegarkan hitungan, bukan menambah orang.",
     freshnessNoteNoLoad:
@@ -1837,7 +1848,8 @@ export const id = {
     unitsTitle: "Di unit bisnis mana",
     unitsNote:
       "Satu orang bisa masuk lebih dari satu unit, jadi angka-angka ini TIDAK boleh dijumlahkan menjadi total. Bagian ini dihitung sekali sehari, bukan saat halaman dibuka.",
-    unitsMeasuredAt: "dihitung",
+    unitsShopExcluded:
+      "Unit Toko tidak termasuk di sini: ia belum ikut dihitung dalam perhitungan harian, dan menghitungnya terpisah akan membuat halaman ini punya dua waktu yang berbeda. Jumlahnya kecil, tapi disebut supaya angkanya tidak terlihat berkurang tanpa sebab.",
     units: {
       membership: "Keanggotaan",
       event: "Event",

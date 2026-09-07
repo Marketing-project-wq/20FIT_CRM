@@ -1944,6 +1944,51 @@ dan sebaliknya. Itulah alasan `MixedBasisMeaning` menunjuk ke `source`, bukan me
 instruksi hapus menyeluruh.
 
 
+## T-61 — Fungsi cermin CRM kini bergantung pada skema divisi lain, dan kegagalan cron-nya tak diawasi siapa pun — 7 Sep 2026
+
+**Dicatat, tidak diperbaiki** — atas permintaan pemilik. Ini bukan cacat yang bisa ditambal; ia
+konsekuensi arsitektural yang lahir hari ini dan pantas dilihat sebelum menggigit.
+
+**Apa yang berubah.** Sampai 7 Sep 2026, `crm_refresh_customer_mirror()` hanya membaca tabel
+`crm_*`, matview cermin, dan satu tabel staging — semuanya milik proyek ini. Migrasi
+`crm_mirror_bod_daily_stats` menambahkan kartu "belum masuk CRM", dan celah itu **secara definisi**
+adalah sumber-dikurangi-pool: cermin hanya memuat baris pool, jadi flag `has_*`-nya hanya bisa
+menyatakan siapa yang **cocok**, tak pernah siapa yang **hilang**. Maka fungsi malam itu kini
+membaca sepuluh tabel milik tim lain:
+
+`my20fit_profile` · `cf_hyrox_participants` · `arena_class_bookings` · `arena_bookings` ·
+`arena_package_orders` · `arena_members` · `gym_class_bookings` · `gym_memberships` ·
+`gym_membership_orders` · `clinic_patients`
+
+Kalau salah satu tim itu mengganti nama kolom `email` atau `phone`, refresh malam itu melempar galat
+dan seluruh blob — termasuk keenam kunci lama yang tak ada hubungannya dengan sumber — berhenti
+diperbarui. Satu perubahan skema di divisi lain membekukan seluruh layar direksi.
+
+**Dan tak ada yang mengawasinya.** `cron.job_run_details` mencatat setiap jalannya. Diukur 7 Sep
+2026:
+
+| job | jalan tercatat | sukses | gagal | sejak |
+|---|---|---|---|---|
+| `crm-refresh-customer-mirror` (jobid 9) | 19 | **19** | 0 | 19 Agu 2026 |
+| `crm-refresh-customer-activity` (jobid 17) | 11 | **11** | 0 | 27 Agu 2026 |
+
+Riwayatnya bersih — dan itu justru sebabnya ini belum pernah terasa. **Nol kode membaca tabel itu.**
+Dipindai: tak ada rute, tak ada layar, tak ada peringatan, tak ada apa pun di repo ini yang menyentuh
+`cron.job_run_details`. Kegagalan pertama akan diketahui ketika seseorang kebetulan memperhatikan
+sebuah angka terlihat aneh.
+
+**Yang sudah dipasang sebagai penggantinya, dan batasnya.** K-63 membuat cap waktu halaman berasal
+dari `refreshed_at` blob, jadi refresh yang gagal membuat jamnya **berhenti** alih-alih maju di atas
+angka basi, dan spanduk >26 jam mengubahnya jadi kalimat. Itu mengubah kegagalan senyap menjadi
+kegagalan terlihat — **di satu layar**. Ia tidak memberi tahu siapa pun yang tidak sedang membuka
+layar itu, dan ia tidak menyebutkan cron yang mana atau galatnya apa.
+
+**Yang sebenarnya dibutuhkan, kalau kelak diputuskan:** pembacaan `cron.job_run_details` yang
+memeriksa apakah setiap job `crm-*` sukses dalam 26 jam terakhir, dan berbunyi ke seseorang — bukan
+ke sebuah halaman yang mungkin tak dibuka. Itu keputusan pemilik: ia butuh saluran pemberitahuan,
+dan proyek ini belum punya satu pun yang dipakai untuk peringatan operasional.
+
+
 ## Catatan — rekonsiliasi Mailchimp belum bisa diturunkan
 
 Angka irisan Mailchimp ∩ CRM dari laporan 3 Sep **tidak dicatat di sini sebagai angka**: laporan itu

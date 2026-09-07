@@ -32,10 +32,16 @@ import {
  *       of the schema. This layer is automatic: a future migration that alters a CHECK lands in
  *       supabase/migrations/, gets picked up here, and turns this test red unless the TypeScript
  *       canon follows it. That is the answer to "what if the CHECK changes and TS does not".
- *   (C) WRITE-PATH SCAN. Every `insert into crm_consent` in every migration is parsed positionally,
- *       and each literal it writes into basis/purpose/status/channel must be in the canon — plus each
- *       (basis, purpose) pair it writes must pass purposePermittedForBasis, the gate itself. This is
- *       the layer that would have caught 'opt_in' the day it was written.
+ *   (C) SQL WRITE-PATH SCAN. Every `insert into crm_consent` in every migration is parsed
+ *       positionally, and each literal it writes into basis/purpose/status/channel must be in the
+ *       canon — plus each (basis, purpose) pair it writes must pass purposePermittedForBasis, the
+ *       gate itself. This is the layer that would have caught 'opt_in' the day it was written.
+ *   (D) TYPESCRIPT WRITE-PATH SCAN — added 7 Sep 2026, BEFORE the hole exists. Layer C guards SQL;
+ *       nothing guarded TypeScript, because there is no TypeScript write path to crm_consent yet.
+ *       There will be: a per-person opt-in form is the entire reason `explicit_opt_in` was defined.
+ *       So any .ts/.tsx that writes to crm_consent (insert/upsert/update, or an RPC that writes it)
+ *       must call purposePermittedForBasis in the SAME file. Written now, while the correct answer
+ *       is obvious and the pressure to ship a form is not yet on.
  *
  * FAIL-CLOSED: if the parser cannot understand a CHECK or an insert it FAILS rather than skipping.
  * A vocabulary check that quietly passes on anything it cannot read is not a check.
@@ -266,5 +272,83 @@ describe("(C) every SQL write into crm_consent uses vocabulary the schema accept
         `${w.file} writes basis='${basis}' with purpose='${purpose}', which purposePermittedForBasis refuses`,
       ).toBe(true);
     }
+  });
+});
+
+// ── Layer D · TypeScript write paths ────────────────────────────────────────────────────────────
+
+const SRC_DIRS = ["lib", "app", "components"];
+
+/** Every .ts/.tsx under the app's source roots, excluding this repo's tests (a test may legitimately
+ *  write a consent row in a fixture without gating it — the guard is about production paths). */
+function sourceFiles(): { name: string; code: string }[] {
+  const out: { name: string; code: string }[] = [];
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === "node_modules" || entry.name === ".next") continue;
+        walk(full);
+      } else if (/\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name)) {
+        out.push({ name: full.slice(process.cwd().length + 1), code: readFileSync(full, "utf8") });
+      }
+    }
+  };
+  for (const d of SRC_DIRS) walk(join(process.cwd(), d));
+  return out;
+}
+
+/** Strip // line comments and block comments so prose ABOUT a write path is never read as one. */
+function stripTsComments(code: string): string {
+  return code.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+}
+
+/**
+ * Does this file WRITE to crm_consent? Deliberately broad, and fail-closed by construction: it
+ * matches a supabase-js write against the table (`.from("crm_consent") … .insert/.upsert/.update/
+ * .delete`) anywhere in the file, and any RPC whose name says it writes consent. Broad is correct
+ * here — a false positive costs one call to the gate, a false negative costs an ungated consent row.
+ */
+function writesConsent(code: string): boolean {
+  const c = stripTsComments(code);
+  if (/from\(\s*["'`]crm_consent["'`]\s*\)/.test(c) && /\.(insert|upsert|update|delete)\s*\(/.test(c)) {
+    return true;
+  }
+  // An RPC that records/backfills/ingests consent writes rows without naming the table.
+  return /\.rpc\(\s*["'`][a-z0-9_]*(?:consent)[a-z0-9_]*["'`]/i.test(c)
+    && !/\.rpc\(\s*["'`]crm_contactable_counts["'`]/.test(c);
+}
+
+function callsGate(code: string): boolean {
+  return /purposePermittedForBasis\s*\(/.test(stripTsComments(code));
+}
+
+describe("consent write-path gate — TypeScript (layer D)", () => {
+  const files = sourceFiles();
+
+  it("the scan actually reads this repo's source (a scanner over zero files is always green)", () => {
+    expect(files.length).toBeGreaterThan(100);
+    expect(files.some((f) => f.name.endsWith("lib/crm/consent-policy.ts"))).toBe(true);
+  });
+
+  it("no TypeScript file writes crm_consent without calling purposePermittedForBasis", () => {
+    const offenders = files.filter((f) => writesConsent(f.code) && !callsGate(f.code)).map((f) => f.name);
+    expect(
+      offenders,
+      "These files write to crm_consent but never call purposePermittedForBasis:\n  " +
+        offenders.join("\n  ") +
+        "\n\nconsent-policy.ts calls that function 'the ONE gate a write path must call before " +
+        "recording a consent row'. Until 7 Sep 2026 that sentence was a claim with zero enforcement " +
+        "and zero callers. It is now enforced HERE, and by layer C for SQL — not at runtime. Call " +
+        "the gate before inserting, and let it refuse an unknown (basis, purpose) pair.",
+    ).toEqual([]);
+  });
+
+  it("ZERO TypeScript write paths exist today — so this guard is armed, not merely satisfied", () => {
+    // The point of recording this: the guard passing tells you nothing on its own while the count
+    // is zero. When a real opt-in form arrives, this number becomes 1 and the assertion above is
+    // what makes it correct. If this ever fails because the count grew, that is the guard working —
+    // update the number, do not delete the test.
+    expect(files.filter((f) => writesConsent(f.code)).map((f) => f.name)).toEqual([]);
   });
 });

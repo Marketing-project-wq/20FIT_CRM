@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { fetchReach, fetchLoadHistory, type Reach, type Load } from "./bod";
+import type { Reach, Load } from "./bod";
+import { fetchReach, fetchLoadHistory } from "./reach-live";
 import { fetchStagingImportDob } from "./staging";
 import { STAGING_RFM_VALUES } from "./staging-constants";
 import {

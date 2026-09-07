@@ -1688,8 +1688,19 @@ export const en: Messages = {
   bod: {
     title: "Board summary",
     subtitle: "Five things, one page, one measurement time.",
-    measuredAt: "Measured",
+    measuredAt: "Data as of",
     tz: "WIB",
+    // {hours} is filled from data. This turns a stopped clock into a sentence — without it the
+    // reader has to notice for themselves that a date is two days old (K-63).
+    staleWarning:
+      "The figures on this page have not been updated for {hours} hours. Last night's calculation probably failed — do not use this page for a decision until the timestamp above moves again.",
+    staleNever:
+      "This page has never had a calculation at all. Do not use these figures.",
+    // NOT "not available yet": this is a runtime error state, not a feature promise. A promise-
+    // shaped phrase would be caught by stale-phrase-scan, and rightly so — this sentence must say
+    // what is happening now, not what is coming.
+    snapshotMissing:
+      "The daily calculation could not be read, so no figure is shown. This does NOT mean the figures are zero — it means they could not be read. The calculation runs every day at 03:00 WIB; if this persists into tomorrow, something is broken.",
     freshnessNote:
       "The calculations on this page refresh every day at 03:00 WIB. New profiles do NOT arrive automatically — people are only added by a manual load, and the most recent load was {date}. That daily schedule refreshes the counting, it does not add anyone.",
     freshnessNoteNoLoad:
@@ -1713,7 +1724,8 @@ export const en: Messages = {
     unitsTitle: "Which business unit",
     unitsNote:
       "One person can belong to more than one unit, so these figures must NOT be added into a total. This section is calculated once a day, not when the page is opened.",
-    unitsMeasuredAt: "calculated",
+    unitsShopExcluded:
+      "The Shop unit is not included here: it is not yet part of the daily calculation, and counting it separately would give this page two different times. It is small, but it is named so the figures do not appear to shrink for no reason.",
     units: {
       membership: "Membership",
       event: "Events",

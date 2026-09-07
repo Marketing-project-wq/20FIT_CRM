@@ -1,19 +1,9 @@
 import { BarList } from "./bar-list";
 import type { Dict, Lang } from "@/lib/i18n";
 import { formatCount, formatDate, formatDateTime } from "@/lib/i18n";
-import type { Reach, Load, DeliveryHealth } from "@/lib/crm/bod";
+import { isBodSnapshotStale, bodSnapshotAgeHours, type BodSnapshot } from "@/lib/crm/bod";
 
-export interface BodData {
-  measuredAt: string;
-  reach: Reach;
-  loads: Load[];
-  loadsTruncated: boolean;
-  units: { unit: string; people: number }[];
-  unitsRefreshedAt: string | null;
-  health: DeliveryHealth;
-  notInCrmDistinct: number;
-  notInCrmPerSourceSum: number;
-}
+export type BodData = BodSnapshot;
 
 /**
  * The five cards. Five is a limit on how many things must be read at once — not on how many
@@ -50,9 +40,23 @@ function Note({ children }: { children: React.ReactNode }) {
   return <p className="mt-4 font-body text-[12px] leading-relaxed text-ink-faint">{children}</p>;
 }
 
-export function BodContent({ data, t, lang }: { data: BodData; t: Dict; lang: Lang }) {
+export function BodContent({
+  data,
+  t,
+  lang,
+  nowMs,
+}: {
+  data: BodData;
+  t: Dict;
+  lang: Lang;
+  /** Injected so the staleness banner is testable without mocking a clock. The page passes
+   *  Date.now(); it is used ONLY to decide whether the snapshot is old, never to stamp it. */
+  nowMs: number;
+}) {
   const b = t.bod;
   const { reach, health } = data;
+  const stale = isBodSnapshotStale(data.measuredAt, nowMs);
+  const ageHours = bodSnapshotAgeHours(data.measuredAt, nowMs);
 
   // Share of the audience ever contacted. Computed, and shown to one decimal because rounding 0.15%
   // to "0%" would turn a real number into a claim that nobody has been contacted.
@@ -71,11 +75,24 @@ export function BodContent({ data, t, lang }: { data: BodData; t: Dict; lang: La
           <h1 className="font-display text-[30px] font-extrabold leading-none text-ink">{b.title}</h1>
           <p className="mt-2 font-body text-[14px] text-ink-soft">{b.subtitle}</p>
         </div>
-        {/* ONE timestamp for the whole page. Everything above it was measured in the same request. */}
+        {/* ONE timestamp for the whole page, and it is the SNAPSHOT'S OWN — never the clock.
+            If tonight's refresh fails, this stops moving instead of advancing over stale numbers
+            (K-63). That is why the value comes from data.measuredAt and there is no `new Date()`
+            anywhere in this component. */}
         <p className="font-mono text-[12px] text-ink-faint">
-          {b.measuredAt} {formatDateTime(data.measuredAt, lang)} {b.tz}
+          {b.measuredAt} {data.measuredAt ? formatDateTime(data.measuredAt, lang) : "—"} {b.tz}
         </p>
       </header>
+
+      {/* The stopped clock, said in words. Without this the reader must notice that a date is two
+          days old — and nobody reads a board screen that way. */}
+      {stale && (
+        <p className="tint-red rounded-sm px-4 py-3 font-body text-[13px] font-semibold leading-relaxed" role="alert">
+          {ageHours === null
+            ? b.staleNever
+            : b.staleWarning.replace("{hours}", formatCount(ageHours, lang))}
+        </p>
+      )}
 
       {/* B3 — the freshness boundary, said plainly. The three cron jobs refresh CALCULATIONS; not
           one of them adds a person. Anyone reading "updated daily" would otherwise assume both. */}
@@ -106,19 +123,16 @@ export function BodContent({ data, t, lang }: { data: BodData; t: Dict; lang: La
           ) : (
             <p className="font-body text-[13px] text-ink-soft">{b.growthEmpty}</p>
           )}
-          <Note>{data.loadsTruncated ? b.growthTruncated : b.growthNote}</Note>
+          <Note>{b.growthNote}</Note>
         </Card>
 
         <Card n={3} title={b.unitsTitle}>
           <BarList items={unitBars} lang={lang} />
-          <Note>
-            {b.unitsNote}
-            {" "}
-            {/* This card alone has its own freshness — see app/(app)/bod/page.tsx for why. */}
-            <span className="font-mono">
-              {b.unitsMeasuredAt} {data.unitsRefreshedAt ? formatDateTime(data.unitsRefreshedAt, lang) : "—"}
-            </span>
-          </Note>
+          {/* No per-card timestamp any more: the whole page shares the header's one (K-61/K-63).
+              What the card DOES have to say is which unit is missing — `shop` is not in the daily
+              snapshot, and counting it live would have handed this page a second freshness. Naming
+              it is honest; dropping it silently would shrink a total nobody could reconcile. */}
+          <Note>{b.unitsNote} {b.unitsShopExcluded}</Note>
         </Card>
 
         <Card n={4} title={b.healthTitle}>
