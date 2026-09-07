@@ -15,16 +15,22 @@ const SUMMARY = {
   read: 1200,
   validEmail: 1180,
   invalid: 20,
-  duplicatesExisting: 150,
+  phoneExcelBroken: 5,
+  duplicatesEmail: 150,
   duplicatesInBatch: 30,
+  sharedPhone: 12,
+  sharedPhoneSuppressed: 2,
   suppressed: 8,
   netInsert: 1000,
   netContactable: 992,
 };
 const OUTCOMES = [
   { index: 4, status: "skip_invalid", email: null },
-  { index: 9, status: "skip_duplicate_existing", email: "sudahada@mail.com" },
+  { index: 9, status: "skip_duplicate_email", email: "sudahada@mail.com" },
   { index: 15, status: "skip_duplicate_in_batch", email: "dobel@mail.com" },
+  { index: 22, status: "insert_shared_phone", email: "berbagitelepon@mail.com" },
+  { index: 27, status: "skip_shared_phone_suppressed", email: "teleponstop@mail.com" },
+  { index: 31, status: "insert_suppressed", email: "unsub@mail.com" },
 ];
 
 export function ImportPreview() {
@@ -36,8 +42,8 @@ export function ImportPreview() {
         const body = JSON.parse((init?.body as string) ?? "{}");
         const phase = body.phase as string;
         let payload: unknown;
-        if (phase === "analyze") payload = { ok: true, phase, mapping: MAPPING, preview: PREVIEW };
-        else if (phase === "dry_run") payload = { ok: true, phase, mapping: MAPPING, preview: PREVIEW, plan: { summary: SUMMARY } };
+        if (phase === "analyze") payload = { ok: true, phase, mapping: MAPPING, preview: PREVIEW, delimiter: ";" };
+        else if (phase === "dry_run") payload = { ok: true, phase, mapping: MAPPING, preview: PREVIEW, plan: { summary: SUMMARY, outcomes: OUTCOMES } };
         else payload = { ok: true, phase: "execute", plan: { summary: SUMMARY, outcomes: OUTCOMES }, committed: { inserted: 1000 }, batch: "b1e9c0a2-fixture", mirrorRefreshed: true };
         return new Response(JSON.stringify(payload), { status: 200, headers: { "Content-Type": "application/json" } });
       }
