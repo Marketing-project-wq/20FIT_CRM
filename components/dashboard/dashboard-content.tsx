@@ -1,16 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Clock, GitBranch, Cake } from "lucide-react";
+import { GitBranch, Cake } from "lucide-react";
 import { StatCard } from "./stat-card";
 import { BarList } from "./bar-list";
+import { BodSummary } from "./bod-content";
+import type { BodSnapshot } from "@/lib/crm/bod-snapshot";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Why } from "@/components/ui/why";
 import { useI18n } from "@/components/i18n/lang-provider";
-import { formatCount, formatDate, formatDateTime } from "@/lib/i18n";
+import { formatCount, formatDateTime } from "@/lib/i18n";
 
 interface SourceGap { key: string; total: number; inPool: number; gap: number }
-interface UnitCount { unit: string; profiles: number; source: "mirror" | "live" }
 interface ProductCount { product: string; registrations: number }
 interface ContactCoverage { both: number; emailOnly: number; phoneOnly: number; neither: number }
 interface MirrorMeta { refreshedAt: string | null; rowCount: number | null }
@@ -18,25 +19,31 @@ interface Candidates { total: number; bySource: { source: string; count: number 
 interface Fitco { matched: number; unmatched: number }
 
 // The blocks the dashboard loads independently (mirror lib/crm/dashboard.ts server shapes).
-interface ImmediateBlock { audienceSize: number; lastProfileAt: string | null; contactCoverage: ContactCoverage; importDob: number; workflowCount: number; workflowQueued: number; loads: Load[]; loadsTruncated: boolean }
-interface ReachBlock { emailable: number; whatsappable: number; poolTotal: number; everContacted: number }
-interface Load { at: string; count: number }
-interface MirrorBlock { unitSpread: UnitCount[]; importRfm: { value: string; count: number }[]; candidates: Candidates; fitco: Fitco; mirror: MirrorMeta }
+// `lastProfileAt` and `loads` are NOT here: the growth card moved to the summary, which reads them
+// from the daily snapshot. The API still returns them; this client simply does not carry what it no
+// longer renders — a field kept "just in case" is how a removed card gets quietly re-added.
+interface ImmediateBlock { audienceSize: number; contactCoverage: ContactCoverage; importDob: number; workflowCount: number; workflowQueued: number }
+// `unitSpread` is NOT here: the unit-spread card moved to the summary (same `engagement` blob).
+interface MirrorBlock { importRfm: { value: string; count: number }[]; candidates: Candidates; fitco: Fitco; mirror: MirrorMeta }
 interface EventsBlock { eventRegistrations: ProductCount[] }
 interface SourcesBlock { liveSources: SourceGap[] }
 
 /** The whole-page fixture shape (dev preview) — the union of every block. */
-export interface DashboardStats extends ImmediateBlock, ReachBlock, MirrorBlock, EventsBlock, SourcesBlock {}
+export interface DashboardStats extends ImmediateBlock, MirrorBlock, EventsBlock, SourcesBlock {}
 
-type BlockName = "immediate" | "reach" | "mirror" | "events" | "sources";
+// `reach` is NO LONGER one of the client's blocks (7 Sep 2026): reach moved to the summary layer,
+// which reads the daily snapshot server-side. Fetching it here too would put a second, live reach
+// figure on the same page — the disagreement this restructure removes. The /api/dashboard?block=reach
+// endpoint still exists and still works; nothing on this screen calls it.
+type BlockName = "immediate" | "mirror" | "events" | "sources";
 type Status = "loading" | "ready" | "error" | "denied";
 interface Block<T> { status: Status; data: T | null }
 
 const DASH = "—"; // "no source": nothing to measure (K-08). NEVER a loading state.
 const EVENT_TOP = 10;
-/** A mirror snapshot older than this reads as "may be behind" on screen (24h — the manual refresh
- *  cadence vs daily-growing sources; see the Freshness sprint). */
-const STALE_THRESHOLD_HOURS = 24;
+/* STALE_THRESHOLD_HOURS was removed on 7 Sep 2026 along with the unit-spread block it warned about.
+   The staleness warning now lives in the summary layer with a 26h threshold (BOD_STALE_AFTER_HOURS
+   in lib/crm/bod.ts) — one threshold, defined once, beside the data it judges. */
 
 function FreshTag({ children }: { children: React.ReactNode }) {
   return <span className="font-mono text-[11px] font-normal text-ink-faint">· {children}</span>;
@@ -55,9 +62,8 @@ function srcLabel(t: ReturnType<typeof useI18n>["t"], key: string): string {
 /** Split a full fixture into the five blocks (dev preview all-ready path). */
 function blocksFromStats(s: DashboardStats) {
   return {
-    immediate: { audienceSize: s.audienceSize, lastProfileAt: s.lastProfileAt, contactCoverage: s.contactCoverage, importDob: s.importDob, workflowCount: s.workflowCount, workflowQueued: s.workflowQueued, loads: s.loads, loadsTruncated: s.loadsTruncated } as ImmediateBlock,
-    reach: { emailable: s.emailable, whatsappable: s.whatsappable, poolTotal: s.poolTotal, everContacted: s.everContacted } as ReachBlock,
-    mirror: { unitSpread: s.unitSpread, importRfm: s.importRfm, candidates: s.candidates, fitco: s.fitco, mirror: s.mirror } as MirrorBlock,
+    immediate: { audienceSize: s.audienceSize, contactCoverage: s.contactCoverage, importDob: s.importDob, workflowCount: s.workflowCount, workflowQueued: s.workflowQueued } as ImmediateBlock,
+    mirror: { importRfm: s.importRfm, candidates: s.candidates, fitco: s.fitco, mirror: s.mirror } as MirrorBlock,
     events: { eventRegistrations: s.eventRegistrations } as EventsBlock,
     sources: { liveSources: s.liveSources } as SourcesBlock,
   };
@@ -98,61 +104,10 @@ function SkelBars({ rows, label }: { rows: number; label: string }) {
 type Dict = ReturnType<typeof useI18n>["t"];
 type Lang = ReturnType<typeof useI18n>["lang"];
 
-/**
- * D2 — the pool + reach SUMMARY card (replaces three near-identical big-number cards). Pool is the
- * headline (from the fast IMMEDIATE block); the two contactable figures are sub-lines (from the
- * slower live RPC), so they carry their own skeleton until it lands. When all three are equal it
- * collapses to one honest phrase ("whole pool contactable · zero suppression") instead of three
- * copies of the same number.
- */
-function PoolReachCard({
-  imm, con, immStatus, conStatus, t, lang,
-}: {
-  imm: ImmediateBlock | null; con: ReachBlock | null;
-  immStatus: Status; conStatus: Status; t: Dict; lang: Lang;
-}) {
-  // "Everyone is reachable" is true only when BOTH channels cover the whole pool — which is a much
-  // stronger claim than the old one, and today it is false: 82,830 profiles, 82,213 with an email,
-  // 81,679 with a phone. The old card could reach this branch whenever two identical consent counts
-  // matched the pool size, which said nothing about whether anyone could actually be contacted.
-  const allEqual = imm != null && con != null &&
-    imm.audienceSize === con.emailable && con.emailable === con.whatsappable;
-  return (
-    <div className="card p-5 sm:col-span-2">
-      <p className="font-display text-[12px] font-semibold uppercase tracking-wide text-ink-soft">{t.dashboard.summaryTitle}</p>
-      {immStatus === "loading" ? (
-        <Skeleton className="mt-2 h-[26px] w-1/2" label={t.dashboard.computing} />
-      ) : immStatus === "error" ? (
-        <p className="mt-2 font-body text-[13px] font-semibold text-red">{t.dashboard.blockFailed}</p>
-      ) : (
-        <p className="mt-2 font-display text-[32px] font-semibold leading-none text-ink">{imm ? formatCount(imm.audienceSize, lang) : DASH}</p>
-      )}
-      <p className="mt-1 font-mono text-[11px] text-ink-faint">{t.dashboard.summaryPoolLabel}</p>
+/* PoolReachCard was REMOVED on 7 Sep 2026. Reach is card 1 of the summary above, from the daily
+   snapshot. Keeping a second live copy on the same page would have produced two reach figures with
+   different timings, which is the disagreement this restructure exists to prevent. */
 
-      <div className="mt-4 border-t border-surface-border pt-3">
-        {conStatus === "loading" ? (
-          <div className="space-y-2"><Skeleton className="h-3.5 w-2/3" label={t.dashboard.computing} /><Skeleton className="h-3.5 w-1/2" /></div>
-        ) : conStatus === "error" ? (
-          <p className="font-body text-[12px] font-semibold text-red">{t.dashboard.blockFailed}</p>
-        ) : allEqual ? (
-          <p className="font-body text-[12px] text-ink">{t.dashboard.summaryReachAll}</p>
-        ) : (
-          <div className="space-y-1.5">
-            <div className="flex items-baseline justify-between gap-2">
-              <span className="font-body text-[12px] text-ink-soft">{t.dashboard.reachEmail}</span>
-              <span className="font-display text-[15px] font-bold tabular-nums text-ink">{con ? formatCount(con.emailable, lang) : DASH}</span>
-            </div>
-            <div className="flex items-baseline justify-between gap-2">
-              <span className="font-body text-[12px] text-ink-soft">{t.dashboard.reachWhatsapp}</span>
-              <span className="font-display text-[15px] font-bold tabular-nums text-ink">{con ? formatCount(con.whatsappable, lang) : DASH}</span>
-            </div>
-            <p className="pt-1 font-body text-[11px] leading-snug text-ink-faint">{t.dashboard.reachGapNote}</p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
 /** D2 — the five live-source gaps as ONE compact table instead of five cards. */
 function GapTable({ sources, t, lang }: { sources: SourceGap[]; t: Dict; lang: Lang }) {
@@ -233,7 +188,20 @@ function CandidateCard({ candidates, fitco, t, lang, mirrorAt }: {
  * zero, `—` = no source — and a pulsing SKELETON = still computing, never confused with either.
  */
 export function DashboardContent(
-  { previewStats, previewStatus }: { previewStats?: DashboardStats; previewStatus?: Partial<Record<BlockName, Status>> } = {},
+  {
+    previewStats,
+    previewStatus,
+    summary,
+    nowMs,
+  }: {
+    previewStats?: DashboardStats;
+    previewStatus?: Partial<Record<BlockName, Status>>;
+    /** The daily snapshot for the TOP layer, fetched server-side by app/(app)/page.tsx. Null when
+     *  it could not be read — the section then says so instead of vanishing. */
+    summary?: BodSnapshot | null;
+    /** Passed in for the staleness decision ONLY, never as a timestamp (K-63). */
+    nowMs?: number;
+  } = {},
 ) {
   const { lang, t } = useI18n();
   const isPreview = previewStats != null || previewStatus != null;
@@ -248,7 +216,6 @@ export function DashboardContent(
     };
     return {
       immediate: mk<ImmediateBlock>("immediate", derived?.immediate ?? null),
-      reach: mk<ReachBlock>("reach", derived?.reach ?? null),
       mirror: mk<MirrorBlock>("mirror", derived?.mirror ?? null),
       events: mk<EventsBlock>("events", derived?.events ?? null),
       sources: mk<SourcesBlock>("sources", derived?.sources ?? null),
@@ -256,7 +223,6 @@ export function DashboardContent(
   };
 
   const [immediate, setImmediate] = useState<Block<ImmediateBlock>>(() => initBlocks().immediate);
-  const [reach, setReach] = useState<Block<ReachBlock>>(() => initBlocks().reach);
   const [mirrorB, setMirrorB] = useState<Block<MirrorBlock>>(() => initBlocks().mirror);
   const [events, setEvents] = useState<Block<EventsBlock>>(() => initBlocks().events);
   const [sources, setSources] = useState<Block<SourcesBlock>>(() => initBlocks().sources);
@@ -265,7 +231,6 @@ export function DashboardContent(
 
   const setters: Record<BlockName, (b: Block<unknown>) => void> = {
     immediate: setImmediate as (b: Block<unknown>) => void,
-    reach: setReach as (b: Block<unknown>) => void,
     mirror: setMirrorB as (b: Block<unknown>) => void,
     events: setEvents as (b: Block<unknown>) => void,
     sources: setSources as (b: Block<unknown>) => void,
@@ -289,7 +254,7 @@ export function DashboardContent(
   useEffect(() => {
     if (isPreview) return; // dev preview renders fixture/status directly — no fetch (/dev/* is 404 in prod)
     const ac = new AbortController();
-    (["immediate", "reach", "mirror", "events", "sources"] as BlockName[]).forEach((n) => loadBlock(n, ac.signal));
+    (["immediate", "mirror", "events", "sources"] as BlockName[]).forEach((n) => loadBlock(n, ac.signal));
     return () => ac.abort();
   }, [isPreview, loadBlock]);
 
@@ -302,20 +267,11 @@ export function DashboardContent(
 
   // KPI value/state helpers, per source block.
   const imm = immediate.data;
-  const con = reach.data;
   // ── Captions rendered FROM DATA (K-60) ────────────────────────────────────────────────────
   // Every one of these used to be a sentence in the translation file stating a fact: "no workflow
   // table yet", "2 loads: 20 Apr & 31 Jul", "zero new since 1 August". All three were true when
   // written and false by the time anyone read them again. A translation file is not a place to
   // keep a fact — nothing re-checks it.
-  const loadDates = (imm?.loads ?? []).map((l) => formatDate(l.at, lang)).join(" · ");
-  const loadsHint = imm == null
-    ? undefined
-    : imm.loadsTruncated
-      ? t.dashboard.lastProfileHintTruncated.replace("{n}", formatCount(imm.loads.length, lang))
-      : t.dashboard.lastProfileHint
-          .replace("{n}", formatCount(imm.loads.length, lang))
-          .replace("{dates}", loadDates);
   const workflowHint = imm == null
     ? undefined
     : imm.workflowQueued > 0
@@ -328,13 +284,10 @@ export function DashboardContent(
     errorLabel: !denied && blockStatus === "error" ? t.dashboard.blockFailed : undefined,
   });
 
-  const freshKpi = kpi(immediate.status, denied ? DASH : imm ? formatDate(imm.lastProfileAt, lang) : DASH);
   const dobKpi = kpi(immediate.status, denied ? DASH : imm ? formatCount(imm.importDob, lang) : DASH);
 
-  // Mirror snapshot age (unit-spread block).
+  // Mirror snapshot freshness — still shown on the candidate card, which is snapshot-based.
   const mirrorAt = mirrorB.data?.mirror.refreshedAt ?? null;
-  const mirrorAgeHours = mirrorAt ? (Date.now() - new Date(mirrorAt).getTime()) / 3_600_000 : null;
-  const mirrorStale = mirrorAgeHours != null && mirrorAgeHours > STALE_THRESHOLD_HOURS;
 
   const eventList = events.data?.eventRegistrations ?? [];
   const shownEvents = showAllEvents ? eventList : eventList.slice(0, EVENT_TOP);
@@ -366,14 +319,31 @@ export function DashboardContent(
 
       {denied && <p className="font-body text-[13px] text-ink-soft">{t.access.dashboardHidden}</p>}
 
-      {/* KPI row (D2): pool + the two contactable figures are ONE summary card (pool is the
-          headline from the fast IMMEDIATE block; the contactable sub-figures arrive with the live
-          RPC). The remaining cards stay separate. "Workflow aktif" is a hard `—` (no table): a REAL
-          value that must stay visibly distinct from the pulsing skeletons around it (K-08). */}
+      {/* ══ LAPIS 1 — Ringkasan Direksi ══════════════════════════════════════════════════
+          One daily snapshot, one timestamp of its own (K-63). Server-fetched, so it never paints in
+          pieces. A null summary SAYS SO rather than disappearing: a top layer that vanished without
+          trace would be indistinguishable from a Dashboard that never had one. */}
+      {!denied && summary && <BodSummary data={summary} t={t} lang={lang} nowMs={nowMs ?? 0} />}
+      {!denied && summary === null && (
+        <p className="tint-red rounded-card px-4 py-3 font-body text-[13px] leading-relaxed">{t.bod.snapshotMissing}</p>
+      )}
+
+      {/* ══ LAPIS 2 — Detail operasional ═════════════════════════════════════════════════
+          The boundary is STATED, not implied. What was wrong before was never "more than one
+          freshness on a page" — it was "several freshnesses and nothing saying so". This heading and
+          its freshness line are the whole difference (K-61, revised). */}
+      {!denied && (
+        <header className="border-t-2 border-ink pt-4">
+          <h2 className="font-display text-[22px] font-extrabold leading-none text-ink">{t.dashboard.opsTitle}</h2>
+          <p className="mt-1.5 max-w-3xl font-body text-[13px] leading-relaxed text-ink-soft">{t.dashboard.opsNote}</p>
+        </header>
+      )}
+
+      {/* KPI row. The reach card and the "Profil terakhir bertambah" card were REMOVED from this
+          layer on 7 Sep 2026: both are in the summary above, and the same number twice on one page
+          is how two figures start disagreeing. Growth now lives there as bars, which say more than
+          a date did. */}
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <PoolReachCard imm={denied ? null : imm} con={denied ? null : con}
-          immStatus={denied ? "ready" : immediate.status} conStatus={denied ? "ready" : reach.status} t={t} lang={lang} />
-        <StatCard label={t.dashboard.lastProfile} {...freshKpi} hint={loadsHint} computingLabel={t.dashboard.computing} icon={<Clock className="h-4 w-4" />} />
         {/* Was a hard `—` with the hint "no workflow table yet". crm_workflow has existed since
             27 Aug 2026 and holds people waiting in it — both figures are now counted (K-60). */}
         <StatCard
@@ -405,23 +375,14 @@ export function DashboardContent(
             <p className="mt-1 max-w-3xl font-body text-[13px] leading-relaxed text-ink-soft">{t.dashboard.liveNote}</p>
           </div>
 
-          {/* Layer 1: the frozen pool (immediate). */}
+          {/* The baseline line, NUMBERLESS on purpose (7 Sep 2026). It used to restate the pool
+              size, the last load date, and the number of loads — all three of which are now in the
+              summary above (card 1, card 2's bars, and the freshness banner). Repeating them here
+              gave the same facts two renderings on one page, which is how two figures start to
+              disagree. What this section actually needs from the pool is the WORD, not the number:
+              "not in pool" is meaningless without saying what the pool is. */}
           <div className="card p-5">
-            {immediate.status === "ready" && imm ? (
-              <p className="font-body text-[13px] text-ink-soft">
-                {t.dashboard.poolLayerA}
-                <span className="font-display text-[15px] font-bold text-ink">{formatCount(imm.audienceSize, lang)}</span>
-                {t.dashboard.poolLayerB}
-                <span className="font-semibold text-ink">{formatDate(imm.lastProfileAt, lang)}</span>
-                {t.dashboard.poolLayerC
-                  .replace("{n}", formatCount(imm.loads.length, lang))
-                  .replace("{date}", formatDate(imm.loads.length > 0 ? imm.loads[imm.loads.length - 1].at : null, lang))}
-              </p>
-            ) : immediate.status === "error" ? (
-              <BlockFail t={t} onRetry={isPreview ? undefined : () => loadBlock("immediate")} />
-            ) : (
-              <Skeleton className="h-4 w-3/4" label={t.dashboard.computing} />
-            )}
+            <p className="font-body text-[13px] text-ink-soft">{t.dashboard.poolBaseline}</p>
           </div>
 
           {/* Layers 2+3: per live source as ONE table (D2) — total (live) + how many not yet pooled. */}
@@ -457,35 +418,10 @@ export function DashboardContent(
         </section>
       )}
 
-      {/* ── Unit spread (snapshot / mirror). ───────────────────────────────────────────── */}
-      {!denied && (
-        <section className="space-y-3">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="font-display text-[16px] font-bold text-ink">{t.dashboard.unitTitle}</h2>
-            {mirrorAt && <FreshTag>{t.dashboard.freshSnapshot} · {formatDateTime(mirrorAt, lang)}</FreshTag>}
-          </div>
-          <p className="max-w-3xl font-body text-[12px] leading-relaxed text-ink-faint">{t.dashboard.unitNote}</p>
-          {mirrorStale && (
-            <p className="tint-amber rounded-sm px-3 py-2 font-body text-[12px] leading-relaxed text-ink">
-              {t.dashboard.staleA}{STALE_THRESHOLD_HOURS}{t.dashboard.staleB}
-            </p>
-          )}
-          <div className="card p-5">
-            {mirrorB.status === "ready" && mirrorB.data ? (
-              <>
-                <BarList lang={lang} scale="sqrt" barClass="bg-blue"
-                  items={mirrorB.data.unitSpread.map((u) => ({ label: u.unit, value: u.profiles }))} />
-                {/* D1: the sqrt-scale diagnostic moved behind <Why> — collapsed, not deleted. */}
-                <div className="mt-3"><Why><p className="text-[11px] leading-relaxed text-ink-soft">{t.dashboard.unitScaleNote}</p></Why></div>
-              </>
-            ) : mirrorB.status === "error" ? (
-              <BlockFail t={t} onRetry={isPreview ? undefined : () => loadBlock("mirror")} />
-            ) : (
-              <SkelBars rows={6} label={t.dashboard.computing} />
-            )}
-          </div>
-        </section>
-      )}
+      {/* ── Unit spread REMOVED from this layer (7 Sep 2026) ──────────────────────────
+          It is card 3 of the summary above, from the same `dashboard_stats.engagement` blob. Two
+          copies of one figure on one page is exactly how a screen starts contradicting itself; the
+          summary's version also states which unit is missing (`shop`), which this one never did. */}
 
       {/* ── Event registrations (live). ───────────────────────────────────────────────── */}
       {!denied && (

@@ -1333,7 +1333,53 @@ niat menyesatkan. Semuanya benar pada hari ditulis. Yang rusak adalah **tempat p
 sebuah fakta yang disimpan di lapisan yang tak pernah diperiksa ulang. Menambal keempatnya tanpa
 memindahkan angkanya ke data hanya menyetel ulang jamnya.
 
-## K-61 · Layar BOD adalah potret harian — dan ronde RPC DIBATALKAN, bukan ditunda
+## K-61 · Potret harian, DUA LAPIS dalam satu Dashboard — dan ronde RPC DIBATALKAN, bukan ditunda
+
+> **DIREVISI 7 Sep 2026, beberapa jam setelah ditulis.** Versi pertama keputusan ini berbunyi
+> **"satu cap waktu untuk seluruh halaman"**, dan atas dasar itu saya membangun `/bod` sebagai
+> halaman tersendiri. Pemilik mengoreksi dua hal sekaligus: (a) arahan aslinya kurang — ia meminta
+> "halaman BOD" tanpa menanyakan hubungannya dengan Dashboard yang sudah ada, dan yang diinginkan
+> adalah **memperbaiki Dashboard**, bukan menambah halaman kedua; (b) karena itu aturannya harus
+> dinyatakan ulang, sebab kalimat lamanya akan dibaca sebagai **larangan** atas bentuk yang benar.
+>
+> **Aturan yang berlaku sekarang: satu waktu pengukuran PER BAGIAN, dan batas antar-bagian
+> DINYATAKAN.**
+>
+> Ini bukan pelonggaran. Keadaan lama yang diperbaiki bukan "halaman punya lebih dari satu
+> kesegaran" — sebuah layar operasional memang wajar begitu. Yang rusak adalah "halaman punya
+> beberapa kesegaran **tanpa ada yang mengatakannya**". Menuang kedua lapis jadi satu aliran tanpa
+> batas akan mengembalikan persis masalah itu, kali ini dengan sengaja.
+>
+> **Bentuknya:** satu Dashboard, dua lapis, batas terlihat.
+> - **Atas — Ringkasan Direksi.** Kelima kartu dari SATU potret harian, dengan cap waktu dari
+>   `refreshed_at` potret itu (K-63) dan spanduk basi >26 jam. Diambil server-side, jadi ia tak
+>   pernah tergambar sepotong-sepotong.
+> - **Bawah — Detail operasional.** Sisa Dashboard, dengan **judul bagian sendiri** dan
+>   **catatan kesegaran sendiri** yang menyatakan sebagian dihitung saat halaman dibuka.
+>
+> **Tiga kartu duplikat dihapus dari lapis bawah**, bukan dibiarkan tampil dua kali: jangkauan,
+> sebaran unit bisnis, dan tanggal muatan terakhir. Baris "pool" di blok sumber juga dibuat
+> **tanpa angka** — ia dulu mengulang ukuran pool, tanggal muatan terakhir, dan jumlah muatan,
+> ketiganya kini ada di ringkasan. Satu fakta dengan dua rendering di satu halaman adalah cara dua
+> angka mulai berselisih.
+>
+> **`/bod` menjadi redirect permanen ke Dashboard.** Tautan yang sudah dibagikan tetap hidup, dan
+> tak ada halaman kedua yang bisa menua sendiri. Saya **tidak** mengusulkan tautan khusus-direksi
+> sebagai gantinya: instruksi pemilik jelas, dan sebuah layar kedua yang membaca data yang sama
+> akan menyimpang dari yang pertama dengan sendirinya — kelas kegagalan yang sama yang sedang
+> diberantas sepanjang sprint ini.
+>
+> Dikunci `lib/crm/dashboard-layers.test.ts` (9 pengujian, pemindaian sumber): ketiga kartu duplikat
+> benar-benar absen dari lapis operasional, blok yang **tidak** duplikat tetap ada (pemindahan,
+> bukan penghapusan), kedua judul lapis ada di ID **dan** EN, dan `/bod` tetap redirect yang tak
+> mengambil data apa pun.
+>
+> Bagian di bawah ini adalah teks aslinya, dipertahankan karena alasannya masih berlaku — hanya
+> ruang lingkup "satu cap waktu" yang berubah dari *halaman* menjadi *bagian*.
+
+### Teks asli (7 Sep 2026, sebelum revisi)
+
+
 
 **Keputusan pemilik, 7 Sep 2026.** Saya menyodorkan dua pilihan untuk kartu "unit bisnis": angka
 benar dengan cap waktunya sendiri, atau tak ada kartu. Pemilik menolak keduanya dan mengambil yang

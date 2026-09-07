@@ -126,7 +126,7 @@ export default function DevDashboardPreview() {
           title="Muat — skeleton penuh"
           note="Semua blok masih menghitung. Skeleton berbentuk seperti isinya (balok angka, batang). 'Workflow aktif' tetap '—' (nilai nyata, K-08), tak ikut berkedip."
         >
-          <DashboardContent previewStatus={{ immediate: "loading", reach: "loading", mirror: "loading", events: "loading", sources: "loading" }} />
+          <DashboardContent previewStatus={{ immediate: "loading", mirror: "loading", events: "loading", sources: "loading" }} />
         </Case>
 
         <Case
@@ -134,7 +134,7 @@ export default function DevDashboardPreview() {
           title="Muat — sebagian sudah terisi"
           note="Blok murah (ukuran pool, kesegaran, cakupan, tgl lahir) sudah tampil; 'bisa dihubungi' (RPC), unit, event, dan sumber masih menyusul di tempatnya sendiri — halaman tak melompat."
         >
-          <DashboardContent previewStats={FIXTURE} previewStatus={{ immediate: "ready", reach: "loading", mirror: "loading", events: "loading", sources: "loading" }} />
+          <DashboardContent previewStats={FIXTURE} previewStatus={{ immediate: "ready", mirror: "loading", events: "loading", sources: "loading" }} />
         </Case>
 
         <Case
@@ -142,7 +142,7 @@ export default function DevDashboardPreview() {
           title="Muat — satu bagian gagal (blok snapshot / precompute)"
           note="Blok mirror (precompute) gagal — mis. blok dashboard_stats absen, pembaca fail-hard melempar. Ia tertangkap di batas blok: sebaran unit, RFM, dan kartu kandidat masing-masing menampilkan keadaan gagalnya sendiri + tombol coba lagi; pool, bisa dihubungi, cakupan, event tetap tampil normal. BUKAN halaman kosong, BUKAN nol palsu."
         >
-          <DashboardContent previewStats={FIXTURE} previewStatus={{ immediate: "ready", reach: "ready", mirror: "error", events: "ready", sources: "ready" }} />
+          <DashboardContent previewStats={FIXTURE} previewStatus={{ immediate: "ready", mirror: "error", events: "ready", sources: "ready" }} />
         </Case>
       </div>
 

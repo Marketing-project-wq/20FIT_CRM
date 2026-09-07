@@ -102,6 +102,12 @@ export const id = {
     previewBanner: "PRATINJAU · DATA FIXTURE — BUKAN ANGKA PRODUKSI",
     blockFailed: "Bagian ini gagal dimuat.",
     blockRetry: "Coba lagi",
+    // Judul + catatan lapis bawah. Batas antar-lapis DINYATAKAN, bukan disiratkan: yang dulu salah
+    // bukan "halaman punya lebih dari satu kesegaran", melainkan "punya beberapa kesegaran tanpa ada
+    // yang mengatakannya" (K-61 revisi).
+    opsTitle: "Detail operasional",
+    opsNote:
+      "Bagian di bawah ini BUKAN bagian dari ringkasan di atas, dan waktunya berbeda. Sebagian dihitung saat halaman ini dibuka, sebagian lagi berasal dari perhitungan harian — masing-masing blok menyebutkan sendiri yang mana. Kalau sebuah angka di sini tampak berbeda dari angka di ringkasan, cek dulu waktunya sebelum menyimpulkan ada yang salah.",
     audienceSize: "Ukuran audiens",
     audienceSizeHint: "data audiens 20FIT (baca saja)",
     reachEmail: "Bisa dikirimi email",
@@ -130,10 +136,8 @@ export const id = {
     // Dashboard Visual sprint — tiga lapis, visualisasi, kesegaran.
     liveTitle: "Sumber hidup versus pool beku",
     liveNote: "Pool CRM hanya bertambah lewat muatan manual — tak ada pipeline yang menyalurkan pendaftar baru ke dalamnya. Sumber di bawah dihitung langsung tiap request, jadi selisih “belum di pool” naik sendiri saat ada pendaftar baru — itu jawaban jujur untuk “terupdate otomatis”.",
-    poolLayerA: "Pool CRM: ",
-    poolLayerB: " profil, muatan terakhir ",
-    // {n} muatan, {date} tanggal muatan terakhir — keduanya dihitung dari created_at (K-60).
-    poolLayerC: " · {n} muatan manual sejauh ini, terakhir {date}. Tak ada yang bertambah di antara muatan.",
+    poolBaseline:
+      "Pembanding untuk tabel di bawah adalah seluruh profil yang sudah ada di CRM — angkanya, beserta riwayat muatannya, ada di ringkasan atas. Di sini yang dihitung adalah orang di sistem lain yang BELUM ada di antara mereka.",
     srcMy20fit: "my20fit",
     srcHyrox: "Hyrox",
     srcArena: "Arena",
