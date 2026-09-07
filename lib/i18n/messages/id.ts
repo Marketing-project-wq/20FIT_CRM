@@ -393,6 +393,11 @@ export const id = {
       // Backfilled banner. Nuance at risk: the backfill is REVERSIBLE and honestly labelled
       // "unverified per person"; suppression still WINS. Dropping "reversible"/"suppression wins"
       // would overstate the strength of a legacy consent basis.
+      mixedTitle: "Tabel ini kini memuat DUA dasar consent",
+      mixedBody: "Sampai impor CSV pertama, seluruh baris di sini berasal dari satu backfill dengan satu dasar. Sekarang tidak lagi. Baca setiap baris menurut dasarnya sendiri — dan JANGAN memperlakukan tabel ini sebagai satu blok yang bisa dihapus untuk membatalkan backfill: menghapus baris opt-in eksplisit bukan membatalkan backfill, melainkan menghapus bukti persetujuan orang per orang. Cara membatalkan tiap jalur tulis ada di berkas migrasinya masing-masing, disaring lewat `source`, bukan lewat dasar.",
+      mixedRows: "baris",
+      mixedOtherLabel: "dasar di luar kosakata",
+      mixedOtherNote: "ini seharusnya nol — laporkan, jangan diabaikan",
       backfilledTitleA: "Consent legacy sudah dibackfill — basis ",
       backfilledBodyA: "Backfill mencatat consent aktif untuk impor lama atas keputusan pemilik produk (12 Agu 2026): marketing + transactional, dengan basis ",
       backfilledBodyB: " yang jujur menandai “belum diverifikasi per orang”. Suppression tetap menang atas consent. Ini reversibel: ",
@@ -545,8 +550,6 @@ export const id = {
     countMatchedSub: "orang memenuhi definisi ini",
     countMktLabel: "Boleh dihubungi · marketing",
     countMktSub: "consent marketing aktif & tidak disuppress",
-    countSvcLabel: "Boleh dihubungi · layanan",
-    countSvcSub: "consent layanan (transactional) aktif & tidak disuppress — untuk CS/operasional",
     mirrorFreshA: "Filter sumber (Hyrox, arena, dll.) dibaca dari cermin data — disegarkan ",
     mirrorFreshB: ".",
     openConsent: "Buka Consent",
@@ -679,9 +682,6 @@ export const id = {
       mktZeroA: "Nol dari ",
       mktZeroB: ". Tak ada consent ",
       mktZeroC: " aktif (atau suppression menang). ",
-      svcZeroA: "Nol dari ",
-      svcZeroB: ". Tak ada consent ",
-      svcZeroC: " aktif (atau suppression menang).",
       // Read-only footer. Nuance at risk: nothing is saved/exported/sent because the FLOW isn't built
       // yet — "a button that refuses is worse than no button" — not because the role lacks permission.
       footer: "Menghitung berapa orang yang cocok — tidak menampilkan daftarnya · menyimpan kriteria butuh izin sesuai peran · tiap perhitungan tercatat.",

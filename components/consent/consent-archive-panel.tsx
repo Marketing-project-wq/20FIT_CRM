@@ -5,7 +5,7 @@ import { ShieldAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useConsentData, EmptyRegister, Pager } from "@/components/consent/consent-shared";
 import { useI18n } from "@/components/i18n/lang-provider";
-import { formatDate as fmtDate } from "@/lib/i18n";
+import { formatDate as fmtDate, formatCount } from "@/lib/i18n";
 
 /**
  * CONSENT-BASIS archive — the crm_consent half of the old /consent screen (408k rows), now a READ-ONLY
@@ -28,6 +28,43 @@ function ZeroMeaning() {
         {w.zeroBodyA}<span className="font-mono text-[12px]">purpose=marketing</span>
         {w.zeroBodyB}<span className="font-mono text-[12px]">status=active</span>{w.zeroBodyC}
       </p>
+    </div>
+  );
+}
+
+/**
+ * Shown once the table holds more than one legal basis (T-60). It says the MIX, from data, and it
+ * deliberately does NOT carry BackfilledMeaning's "delete the rows to undo it" line: that sentence
+ * describes reverting a backfill, and applied to `explicit_opt_in` rows it would describe deleting
+ * the evidence of a person's actual opt-in. The per-basis rollback recipes stay where they belong —
+ * beside each write path, keyed on `source`, not offered as one blanket instruction here.
+ */
+function MixedBasisMeaning({ legacy, optin, other }: { legacy: number; optin: number; other: number }) {
+  const { t, lang } = useI18n();
+  const w = t.consent.warn;
+  return (
+    <div className="tint-amber rounded-card p-5">
+      <div className="flex items-center gap-2">
+        <ShieldAlert className="h-4 w-4" aria-hidden />
+        <h2 className="font-display text-[15px] font-bold uppercase tracking-wide text-ink">{w.mixedTitle}</h2>
+      </div>
+      <p className="mt-3 max-w-3xl font-body text-[13px] leading-relaxed text-ink-soft">{w.mixedBody}</p>
+      <ul className="mt-3 space-y-1 font-body text-[13px] text-ink-soft">
+        <li>
+          <span className="font-mono text-[12px] text-ink">legacy_import_unverified</span> —{" "}
+          <strong className="tabular-nums">{formatCount(legacy, lang)}</strong> {w.mixedRows}
+        </li>
+        <li>
+          <span className="font-mono text-[12px] text-ink">explicit_opt_in</span> —{" "}
+          <strong className="tabular-nums">{formatCount(optin, lang)}</strong> {w.mixedRows}
+        </li>
+        {other > 0 && (
+          <li className="text-red">
+            <span className="font-mono text-[12px]">{w.mixedOtherLabel}</span> —{" "}
+            <strong className="tabular-nums">{formatCount(other, lang)}</strong> {w.mixedRows} · {w.mixedOtherNote}
+          </li>
+        )}
+      </ul>
     </div>
   );
 }
@@ -57,6 +94,7 @@ export function ConsentArchivePanel() {
   const [cpage, setCpage] = useState(1);
   const { data, loading, error } = useConsentData(cpage, 1);
   const consent = data?.consent;
+  const mix = data?.basisCounts;
 
   return (
     <section className="space-y-6">
@@ -65,7 +103,19 @@ export function ConsentArchivePanel() {
         <p className="mt-1 max-w-3xl font-body text-[13px] text-ink-soft">{t.consent.subtitleA}</p>
       </div>
 
-      {consent && consent.total > 0 ? <BackfilledMeaning /> : <ZeroMeaning />}
+      {/* THREE states, not two (T-60). The old code was `total > 0 ? BackfilledMeaning : ZeroMeaning`,
+          and BackfilledMeaning asserts that this table IS the legacy backfill and that deleting its
+          rows undoes that cleanly. Both claims were true while every row was legacy — 408,119 of
+          408,119, measured 7 Sep 2026 — and the CSV import breaks both: it writes `explicit_opt_in`
+          rows whose deletion destroys per-person opt-in evidence rather than reverting a backfill.
+          So the banner is now chosen from the DATA, and the mixed case gets its own wording. */}
+      {!consent || consent.total === 0 ? (
+        <ZeroMeaning />
+      ) : mix && (mix.explicitOptIn > 0 || mix.other > 0) ? (
+        <MixedBasisMeaning legacy={mix.legacy} optin={mix.explicitOptIn} other={mix.other} />
+      ) : (
+        <BackfilledMeaning />
+      )}
 
       <div className="rounded-card border border-glass-border p-5">
         <h3 className="font-display text-[13px] font-bold uppercase tracking-wide text-ink">

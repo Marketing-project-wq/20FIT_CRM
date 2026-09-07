@@ -1370,3 +1370,70 @@ Sampai gerbang itu dibuka, halaman tetap seperti sekarang: empat kartu dihitung 
 request, kartu unit bisnis memikul cap waktunya sendiri. Itu jujur, tapi belum memenuhi keputusan
 ini. **Menyatakan seluruh halaman "per 03:00" sementara empat kartunya dihitung barusan akan
 menjadi kelas kebohongan yang persis sedang kami berantas (K-60) — jadi tidak dilakukan.**
+
+## K-61 (tambahan) · Instruksi pemilik ditolak karena bertentangan dengan aturan sistem
+
+Dicatat atas permintaan pemilik sendiri, 7 Sep 2026.
+
+Instruksi aslinya: jadikan seluruh halaman BOD potret harian, "nol pengecualian, nol RPC, nol
+migrasi", dan beri satu cap waktu "per 03:00 WIB". Bagian **keputusannya** benar dan tetap berlaku.
+Bagian **harganya** salah: hanya `engagement` yang punya sumber harian; empat kartu lain tidak
+punya sama sekali, dan memberi mereka sumber harian berarti mengubah fungsi SQL
+`crm_refresh_customer_mirror()` — sebuah migrasi bergerbang (T-59).
+
+Yang **ditolak** bukan keputusannya, melainkan pelaksanaannya lebih dulu: melabeli halaman
+"per 03:00" sementara empat kartunya dihitung saat request. Penolakannya bukan preferensi dan bukan
+kehati-hatian umum — ia langsung bertabrakan dengan **K-60**, aturan yang pemilik tetapkan sendiri
+satu putaran sebelumnya: angka di layar dihitung dari data, dan sebuah kalimat kesegaran adalah
+klaim tentang data di bawahnya. Satu cap waktu "03:00" di atas empat angka berumur dua detik adalah
+persis kelas kesalahan yang K-60 dibuat untuk mengakhiri — hanya saja kali ini dilakukan sengaja.
+
+Pemilik menerima penolakan itu dan meminta migrasinya dikerjakan sebagai gantinya. Dicatat di sini
+supaya jelas bahwa aturan sistem mengikat instruksi juga, bukan hanya kode — dan bahwa cara
+menolak yang benar adalah menunjukkan aturan mana yang dilanggar, bukan menyatakan keberatan.
+
+
+## K-62 · Kartu "Boleh dihubungi · layanan" dihapus dari layar segmen — datanya tetap
+
+**Keputusan pemilik, 7 Sep 2026**, menutup T-58. Yang dihapus adalah **tampilannya**, bukan datanya.
+Baris consent `transactional` tetap utuh di basis data — ia nyata, dan akan bermakna kalau kelak ada
+jalur kirim transaksional dengan aturannya sendiri.
+
+**Alasannya bukan "labelnya salah", melainkan kartunya tidak bisa membawa informasi.** Diukur di
+produksi 7 Sep 2026:
+
+```
+marketing aktif (orang)                  : 82.253
+transactional aktif (orang)              : 82.253
+punya marketing TAPI tidak transactional :      0
+punya transactional TAPI tidak marketing :      0
+```
+
+Nol di **kedua** arah — bukan sekadar jumlah yang kebetulan sama, tapi **himpunan orang yang sama
+persis**. Backfill Migrasi 11 menulis kedua purpose untuk setiap orang. Karena kedua kartu menyaring
+populasi identik dengan kriteria identik dan suppression identik, kartu kedua **tidak akan pernah**
+menunjukkan angka berbeda dari kartu pertama, untuk kriteria apa pun. Ia bukan angka kedua; ia gema
+yang menyiratkan audiens kedua.
+
+Ditambah lagi, "layanan" tak pernah punya rujukan di kosakata sistem: `crm_consent_purpose_check`
+hanya menerima `marketing` dan `transactional`. Label itu tafsir seseorang yang tak pernah
+dituliskan sebagai keputusan.
+
+**Yang berubah, empat lapisan:** `lib/crm/segment-read.ts` (`SegmentCounts` kehilangan
+`contactableService`; hanya purpose `marketing` yang dihitung — satu query PostgREST lebih sedikit
+per hitung), `app/api/segments/route.ts` (respons, metadata audit, dan ringkasan audit), 
+`components/segments/segment-builder.tsx` (kartu ketiga dihapus, diganti komentar yang menjelaskan
+kenapa), dan kedua berkas i18n (lima kunci: `countSvcLabel`, `countSvcSub`, `svcZeroA/B/C`).
+
+Baris audit ikut dibersihkan dengan sengaja: audit mencatat **apa yang dilihat operator**. Mencatat
+angka yang tak pernah ditampilkan adalah mencatat sesuatu yang tak terjadi.
+
+**SYARAT PEMBALIKAN — baca ini sebelum menghidupkannya lagi.** Kartu ini boleh kembali **kalau, dan
+hanya kalau, jalur kirim transaksional benar-benar dibangun** — dan saat itu ia wajib **menyaring
+dengan aturan yang benar-benar berbeda**, bukan aturan yang sama dengan label lain. Uji kelayakannya
+satu kalimat: *apakah ada kriteria, apa pun itu, yang membuat angka ini berbeda dari angka
+marketing?* Kalau jawabannya tidak, kartunya belum layak kembali betapa pun masuk akal namanya.
+
+`countContactableForPurpose` sengaja **tetap menerima parameter purpose** dan tidak diubah, supaya
+jalur transaksional kelak memanggilnya tanpa menulis aturan kedua (K-03: satu aturan, satu
+implementasi).

@@ -1865,6 +1865,85 @@ data di bawahnya — kelas kesalahan yang sama persis dengan keempat caption di 
 sengaja kali ini. Halaman tetap apa adanya sampai gerbang migrasi dibuka.
 
 
+## T-60 — Pemeriksaan basis-ganda sebelum impor: satu dari empat akan pecah — 7 Sep 2026
+
+Seluruh 408.119 baris `crm_consent` hari ini berbasis `legacy_import_unverified`, dari satu
+`source` (`20fit_data_import`), atas 82.253 orang — diverifikasi 7 Sep 2026, satu kelompok
+homogen. Impor CSV pertama akan menulis `explicit_opt_in` dan menjadikan tabel ini **memuat dua
+dasar untuk pertama kalinya dalam sejarah sistem**. Apa pun yang diam-diam mengandaikan dasarnya
+seragam belum pernah diuji. Empat pemeriksaan, satu pecah.
+
+### 1. Layar Arsip Consent — **AKAN PECAH**, diperbaiki
+
+`consent-archive-panel.tsx` memilih spanduk dengan `consent.total > 0 ? BackfilledMeaning :
+ZeroMeaning`. `BackfilledMeaning` menyatakan, tanpa syarat, bahwa tabel ini **adalah** backfill
+legacy berbasis `legacy_import_unverified`, dan menutup dengan: *"Ini reversibel: nol trigger, dan
+menghapus baris membatalkannya bersih."*
+
+Hari ini kedua klaim itu benar, karena 408.119 dari 408.119 baris memang begitu. Sesudah impor,
+keduanya salah — dan kalimat terakhirnya berubah dari benar menjadi **berbahaya**: menghapus baris
+`explicit_opt_in` bukan membatalkan backfill, melainkan menghapus bukti persetujuan orang per
+orang. Spanduk itu akan terus mengatakannya, karena syaratnya hanya "ada baris".
+
+**Diperbaiki** (satu-satunya yang diperbaiki putaran ini, karena hanya ini yang pecah): tiga
+keadaan, bukan dua. Nol baris → `ZeroMeaning`. Semua legacy → `BackfilledMeaning`, tak berubah.
+Campuran → `MixedBasisMeaning`, yang menyebut jumlah **per dasar dari data** dan sengaja **tidak**
+membawa kalimat "hapus untuk membatalkan": cara membatalkan tiap jalur tulis ada di berkas
+migrasinya sendiri, disaring lewat `source`. Ditambah hitungan `other` — total dikurangi kedua
+dasar yang dikenal — supaya dasar di luar kosakata tak bisa bersembunyi di dalam total.
+
+### 2. Query `crm_consent` yang tak menyaring `basis` — aman, dengan satu catatan
+
+Dua jalur baca menyentuh tabel ini:
+
+- `fetchConsentScreen` (arsip) — tak menyaring dasar, dan memang tidak boleh: ia arsip.
+- `countProfilesWithConsent` — menyaring `purpose` + `status`, bukan `basis`. Itu benar menurut
+  **K-36**: consent adalah bukti, suppression adalah gerbang. Dan `BASIS_ALLOWED_PURPOSES` memberi
+  izin `marketing` pada **kedua** dasar, jadi menyaring dasar pun tak akan mengubah angkanya.
+
+**Catatannya, dan ini temuan tersendiri:** `purposePermittedForBasis` di `consent-policy.ts`
+menyebut dirinya *"the ONE gate a write path must call before recording a consent row"*. Dipindai
+7 Sep 2026: **tak ada satu pun kode produksi yang memanggilnya** — hanya pengujiannya sendiri.
+Migrasi 37 tidak memanggilnya (ia SQL, dan menuliskan `'explicit_opt_in'` sebagai literal; itulah
+sebabnya `consent-vocabulary.parity.test.ts` ada sebagai penggantinya). Jadi kalau
+`LEGACY_IMPORT_ALLOWS_MARKETING` kelak dibalik ke `false`, **tak ada** jalur baca maupun tulis yang
+akan menghormatinya — angka "bisa dihubungi" tidak berubah sedikit pun. Bendera itu hari ini
+dokumentasi, bukan gerbang. Dicatat, tidak diubah.
+
+### 3. Angka "contactable" — per ORANG, dan sudah terbukti tahan banyak-baris
+
+Kekhawatiran yang tepat, tapi kasusnya **sudah hidup hari ini** — lewat saluran, bukan dasar.
+Untuk `purpose='marketing'` yang aktif: **163.252 baris** atas **82.253 orang** (email + whatsapp
+per orang). Kalau hitungannya per-baris, layar sudah lama menampilkan 163.252 — angka yang lebih
+besar dari seluruh pool 82.830.
+
+Yang membuatnya per-orang: `countProfilesWithConsent` menghitung `master_customer` dengan **inner
+embed** `crm_consent!inner`, jadi `count` jatuh pada baris INDUK, satu per orang. Ini pernah
+diverifikasi silang terhadap `count(distinct customer_id)` langsung — keduanya 82.253, sementara
+tafsir baris-datar memberi 163.252 (dicatat di `contactability-read.ts`, 12 Agu 2026).
+
+Dan penjaga strukturalnya lebih kuat lagi: `crm_consent` unik pada **(customer_id, channel,
+purpose)** — dasar **bukan** bagian dari kunci itu. Jadi satu orang tak akan pernah bisa memiliki
+dua baris untuk saluran+purpose yang sama betapa pun banyak dasar yang ada. Dasar kedua tidak
+menambah bentuk baru apa pun bagi jalur hitung ini. **Tidak akan pecah.**
+
+### 4. Retensi / purge — tidak ada aturan per-dasar, karena tidak menyentuh tabel ini
+
+Kekhawatiran terbesar pemilik, dan ternyata paling kosong. `retention-policy.ts` beserta fungsi
+purge-nya beroperasi **hanya atas `crm_audit_log`**, menyaring berdasarkan **nama aksi audit**.
+Entri `{ kind: "prefix", value: "consent." }` di `COMPLIANCE_RULES` adalah aksi audit bernama
+`consent.*` — bukan baris `crm_consent`. Dipindai: **nol** aturan retensi apa pun atas baris
+`crm_consent`, dan nol penyebutan `basis` di seluruh jalur retensi/purge. Kedua dasar diperlakukan
+sama karena retensi tak pernah membacanya.
+
+**Sifat struktural yang menguntungkan, ditemukan saat memeriksa ini:** kedua resep rollback
+disaring lewat **`source`**, bukan `basis` — backfill Migrasi 11 memakai
+`where source = '20fit_data_import'`, impor CSV memakai `where source='csv_import' and
+evidence->>'batch' = …`. Keduanya saling lepas. Rollback impor tak mungkin menyentuh baris legacy,
+dan sebaliknya. Itulah alasan `MixedBasisMeaning` menunjuk ke `source`, bukan menawarkan satu
+instruksi hapus menyeluruh.
+
+
 ## Catatan — rekonsiliasi Mailchimp belum bisa diturunkan
 
 Angka irisan Mailchimp ∩ CRM dari laporan 3 Sep **tidak dicatat di sini sebagai angka**: laporan itu

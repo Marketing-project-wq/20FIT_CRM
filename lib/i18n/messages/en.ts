@@ -345,6 +345,11 @@ export const en: Messages = {
       zeroBodyB: " ",
       zeroBodyC: " is only an unsubscribe. The dashboard's “Contactable” card counts the whole pool minus those who unsubscribed — the result is a measured figure, not one written by hand.",
       // Nuance kept: reversible + honestly "unverified per person" + suppression still wins.
+      mixedTitle: "This table now holds TWO consent bases",
+      mixedBody: "Until the first CSV import, every row here came from one backfill under one basis. That is no longer true. Read each row by its own basis — and do NOT treat this table as a single block that can be deleted to undo the backfill: deleting explicit opt-in rows does not revert a backfill, it destroys the evidence of a person's actual consent. How to undo each write path lives in that path's own migration file, filtered on `source`, not on basis.",
+      mixedRows: "rows",
+      mixedOtherLabel: "basis outside the vocabulary",
+      mixedOtherNote: "this should be zero — report it, do not ignore it",
       backfilledTitleA: "Legacy consent has been backfilled — basis ",
       backfilledBodyA: "Backfill recorded active consent for the legacy import on the product owner's decision (12 Aug 2026): marketing + transactional, with basis ",
       backfilledBodyB: " that honestly marks it “not verified per person”. Suppression still wins over consent. This is reversible: ",
@@ -487,8 +492,6 @@ export const en: Messages = {
     countMatchedSub: "people meet this definition",
     countMktLabel: "Contactable · marketing",
     countMktSub: "active marketing consent & not suppressed",
-    countSvcLabel: "Contactable · service",
-    countSvcSub: "active service (transactional) consent & not suppressed — for CS/ops",
     mirrorFreshA: "Source filters (Hyrox, arena, etc.) are read from the data mirror — refreshed ",
     mirrorFreshB: ".",
     openConsent: "Open Consent",
@@ -613,9 +616,6 @@ export const en: Messages = {
       mktZeroA: "Zero of ",
       mktZeroB: ". No active ",
       mktZeroC: " consent (or suppression wins). ",
-      svcZeroA: "Zero of ",
-      svcZeroB: ". No active ",
-      svcZeroC: " consent (or suppression wins).",
       // Nuance kept: nothing is saved/exported/sent because the FLOW isn't built yet — "a button that
       // refuses is worse than no button" — not because the role lacks permission.
       footer: "Counts how many people match — it does not list them · saving criteria needs role permission · every computation is recorded.",

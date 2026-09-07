@@ -32,7 +32,6 @@ import { unionSets, intersectSets } from "./id-sets";
 export interface SegmentCounts {
   matched: number;
   contactableMarketing: number;
-  contactableService: number;
 }
 
 /** Apply the criteria filters to a master_customer query. Shared by the matched-count and the
@@ -245,18 +244,28 @@ export async function computeSegment(
     matched = await countMasterWithinIds(admin, criteria, Array.from(restrictIds), masterFilterExpr);
   }
 
-  // 2. Contactable — RUN the rule via the shared inner-embed count, per purpose. Marketing and
-  //    service are separate permissions (shown separately). Suppression is fetched ONCE and
-  //    shared (suppression wins for both). The SAME applyCriteria narrows the parent, so the
-  //    contactable counts respect the exact criteria + tree the matched count used. No rows
-  //    are pulled — head:true throughout, so the backfill cannot truncate this.
+  // 2. Contactable — RUN the rule via the shared inner-embed count, for MARKETING only.
+  //    Suppression is fetched once and applied; the SAME applyCriteria narrows the parent, so the
+  //    contactable count respects the exact criteria + tree the matched count used. No rows are
+  //    pulled — head:true throughout, so the backfill cannot truncate this.
+  //
+  //    THE `transactional` COUNT USED TO BE COMPUTED HERE TOO, and shown beside this one as
+  //    "Boleh dihubungi · layanan". It was removed on 7 Sep 2026 (K-62) because it could not carry
+  //    information. Measured on production that day: 82,253 people hold an active marketing
+  //    consent, 82,253 hold an active transactional one, and the two sets differ by ZERO in BOTH
+  //    directions — migration 11's backfill wrote both purposes for every person. Two cards
+  //    filtering identical populations with identical criteria and identical suppression can never
+  //    show different numbers, for any criteria at all. It was not a second figure; it was an echo
+  //    that implied a second population.
+  //
+  //    countContactableForPurpose still TAKES a purpose and the `transactional` rows are untouched
+  //    in the database — see K-62 for the condition that brings this back.
   const applyMaster: ApplyMaster = (q) => applyCriteria(q, criteria, masterFilterExpr);
   const suppressed = await fetchSuppressedCustomerIds(admin);
 
-  const [contactableMarketing, contactableService] = await Promise.all([
-    countContactableForPurpose(admin, "marketing", applyMaster, restrictIds, suppressed),
-    countContactableForPurpose(admin, "transactional", applyMaster, restrictIds, suppressed),
-  ]);
+  const contactableMarketing = await countContactableForPurpose(
+    admin, "marketing", applyMaster, restrictIds, suppressed,
+  );
 
-  return { matched, contactableMarketing, contactableService };
+  return { matched, contactableMarketing };
 }

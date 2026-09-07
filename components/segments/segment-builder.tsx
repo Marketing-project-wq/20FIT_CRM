@@ -20,7 +20,6 @@ import { QuickSegments } from "@/components/segments/quick-segments";
 interface Counts {
   matched: number;
   contactableMarketing: number;
-  contactableService: number;
   /** ISO time the mirror was last refreshed — present only when a source-presence flag shaped
    *  this count (that part is read from crm_customer_mirror). Null otherwise. */
   mirrorRefreshedAt?: string | null;
@@ -85,7 +84,7 @@ function TimeCriteria({
   );
 }
 
-export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, embedded = false, onComputed, returnTo }: { cityFillPct: number; cityFilled: number; total: number; canViewHealth: boolean; embedded?: boolean; onComputed?: (counts: { matched: number; contactableMarketing: number; contactableService: number } | null) => void; returnTo?: string | null }) {
+export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, embedded = false, onComputed, returnTo }: { cityFillPct: number; cityFilled: number; total: number; canViewHealth: boolean; embedded?: boolean; onComputed?: (counts: { matched: number; contactableMarketing: number } | null) => void; returnTo?: string | null }) {
   const { lang, t } = useI18n();
   const router = useRouter();
   const [c, setC] = useState<SegmentCriteria>(EMPTY_CRITERIA);
@@ -219,11 +218,10 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
       const next = {
         matched: data.matched as number,
         contactableMarketing: data.contactableMarketing as number,
-        contactableService: data.contactableService as number,
         mirrorRefreshedAt: (data.mirrorRefreshedAt ?? null) as string | null,
       };
       setCounts(next);
-      onComputed?.({ matched: next.matched, contactableMarketing: next.contactableMarketing, contactableService: next.contactableService });
+      onComputed?.({ matched: next.matched, contactableMarketing: next.contactableMarketing });
     } catch {
       setError(t.segments.connFailed);
       setCounts(null);
@@ -441,22 +439,15 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
             )}
           </div>
 
-          <div className={`${counts.contactableService === 0 ? "tint-red" : "glass"} rounded-card p-5`}>
-            <div className="flex items-center gap-2 text-ink-soft">
-              <Send className="h-4 w-4" aria-hidden />
-              <span className="font-display text-[12px] font-bold uppercase tracking-wide">{t.segments.countSvcLabel}</span>
-            </div>
-            <p className="mt-2 font-display text-[40px] font-black leading-none text-ink">{formatCount(counts.contactableService, lang)}</p>
-            {counts.contactableService === 0 ? (
-              <p className="mt-2 font-body text-[12px] leading-relaxed text-ink-soft">
-                {t.segments.warn.svcZeroA}{formatCount(counts.matched, lang)}{t.segments.warn.svcZeroB}<span className="font-mono">transactional</span>{t.segments.warn.svcZeroC}
-              </p>
-            ) : (
-              <p className="mt-1 font-body text-[12px] text-ink-faint">
-                {t.segments.countSvcSub}
-              </p>
-            )}
-          </div>
+          {/* THE THIRD CARD ("Boleh dihubungi · layanan") WAS REMOVED HERE on 7 Sep 2026 (K-62).
+              Do not put it back without reading that decision. It filtered `transactional` consent
+              beside this card's `marketing`, and measured on production the two populations differ
+              by ZERO in BOTH directions — 82,253 each, same people — because migration 11's
+              backfill wrote both purposes for everyone. Two cards over identical populations with
+              identical criteria cannot show different numbers, ever. And `layanan` never had a
+              referent in the consent vocabulary at all: crm_consent_purpose_check admits only
+              `marketing` and `transactional`. The rows stay in the database; what was removed is a
+              second big number implying a second audience. */}
         </section>
       )}
 
