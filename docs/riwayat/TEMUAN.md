@@ -1577,6 +1577,78 @@ menulis `## K-nn`, `git fetch` lalu baca `KEPUTUSAN.md` **di `origin/main`**, da
 lain yang sedang terbuka, ambil nomor setelah yang tertinggi di antara keduanya. Yang lebih baik lagi:
 sebutkan nomor yang dipakai di deskripsi PR, supaya tabrakan terlihat saat tinjauan, bukan saat merge.
 
+## T-54 — Migrasi 37 tidak pernah diurai Postgres sampai gerbang dibuka: satu koma hilang — 7 Sep 2026
+
+**Apa yang terjadi.** `apply_migration` untuk migrasi 37 ditolak pada percobaan pertama:
+
+```
+ERROR: 42601: syntax error at or near "tag_targets"
+```
+
+Penyebabnya satu karakter. CTE `ins` ditutup di baris 175 dengan `  )` tanpa koma, lalu — dipisahkan
+enam baris komentar — CTE berikutnya `tag_targets as (` dimulai. Berkas itu **tidak pernah bisa
+dibuat**, dalam bentuk apa pun, di basis data mana pun.
+
+**Mengapa tidak ada yang menangkapnya.** Ini satu lapis LEBIH AWAL dari T-48. T-48 berkata: `CREATE
+FUNCTION` yang berhasil hanya membuktikan fungsi itu ADA, bukan bahwa ia BERJALAN. Yang ini berkata:
+berkas migrasi di repo tidak pernah dibuktikan bahkan **bisa diurai**. Yang menjaga berkas ini adalah
+`tags.parity.test.ts`, `consent-vocabulary.parity.test.ts` dan `dedup.parity.test.ts` — 31 pengujian,
+dan **ketiga-tiganya lulus dengan koma yang hilang masih di tempatnya** (dijalankan sebelum dan
+sesudah perbaikan: 31 lulus, 31 lulus). Itu bukan kegagalan pengujian-pengujian tersebut: mereka
+memindai *teks sumber* untuk memastikan aturan yang sama muncul di TypeScript dan di SQL. Tidak ada
+satu pun yang berpura-pura menjadi pengurai SQL.
+
+Koma itu hilang saat `tag_targets`/`upd` disisipkan setelah CTE `ins` (pekerjaan TUGAS B). Kelas
+kesalahan yang sama persis dengan `row_tags` yang tak pernah sampai ke INSERT: **menyisipkan CTE ke
+tengah rantai `with` tidak diperiksa oleh apa pun kecuali Postgres sendiri.**
+
+**Biayanya, dan mengapa kecil.** Nol. Kegagalan terjadi pada waktu urai, sebelum DDL apa pun berlaku,
+dan `apply_migration` tidak menyetempel ledger untuk migrasi yang gagal. Keenam angka LANGKAH 1 diukur
+ulang setelah penolakan dan **identik** (04:06:51 → 04:10:51 UTC): `pg_proc` 0, stempel 0,
+`master_customer` 82.830, `crm_consent` 408.119, run draft/sending 0, kiriman terjadwal 0. Yang hilang
+hanya satu siklus gerbang pemilik.
+
+**Cara menghindarinya lain kali.** Urai berkas migrasi terhadap Postgres asli **sebelum** meminta
+gerbang, bukan sesudah. Ini murah dan tidak menyentuh produksi: `initdb` sebuah instans sekali pakai,
+`psql -v ON_ERROR_STOP=1 -f <berkas>`. PL/pgSQL tidak me-resolve nama tabel pada waktu `CREATE`
+(justru itulah T-48), jadi pengurai lokal tidak butuh satu pun tabel produksi untuk membuktikan
+sintaksis. Pemeriksaan itu dijalankan setelah kegagalan ini dan mengulang galat yang sama persis
+secara lokal, lalu membuktikan koma tersebut adalah satu-satunya galat sintaksis di berkas.
+
+**Yang BELUM dibuktikan oleh pengurai.** Bahwa nama tabel dan kolomnya benar. Itu diperiksa terpisah
+(lihat catatan uji coba lokal di bawah), bukan oleh `CREATE` yang berhasil.
+
+## T-55 — Orang yang sudah digabung (`merged_into`) dihitung "akan ditandai" oleh perencana, tapi dilewati oleh SQL — 7 Sep 2026
+
+**Statusnya: laten, belum menggigit.** Diukur 7 Sep 2026: `merged_into is not null` = **0** baris,
+`is_merged = true` = **0** baris di `master_customer`. Jadi ini tidak memengaruhi impor yang sedang
+digerbangi. Dicatat karena ia akan menggigit diam-diam pada penggabungan pertama.
+
+**Ketidakcocokannya.** `app/api/audience/import/route.ts:97` mengisi `existingEmails` dengan:
+
+```ts
+await admin.from("master_customer").select("email_normalized").in("email_normalized", emails)
+```
+
+— tanpa saringan `merged_into is null`. Maka baris yang sudah digabung ikut masuk. Perencana lalu
+memasukkan email itu ke `tagTargets` dan menaikkan `summary.taggedExisting`, sehingga layar Ringkasan
+menghitungnya sebagai "Akan ditandai (sudah ada)". Tetapi CTE `upd` di migrasi 37 menyaring
+`m.merged_into is null` — sengaja, karena baris yang digabung sudah memindahkan datanya ke tempat
+lain. Hasilnya orang itu **tidak disisipkan dan tidak ditandai**, dan `tagged_existing` yang
+dikembalikan lebih kecil daripada angka uji-kering, tanpa satu baris pun yang menjelaskan selisihnya.
+
+**Dibuktikan, bukan dinalar.** Dalam uji coba lokal (skema disalin dari produksi, di luar produksi),
+dua baris `p_tag_rows` diberikan — satu orang biasa, satu orang dengan `merged_into` terisi — dan
+fungsi mengembalikan `tagged_existing: 1`. Selisihnya senyap.
+
+**Ini keputusan, bukan perbaikan mekanis**, jadi tidak dikerjakan sendiri. Setidaknya tiga jalan
+masuk akal: (a) perencana ikut menyaring baris tergabung, dan barisnya dilaporkan sebagai kelas
+sendiri di layar; (b) SQL mengikuti orang itu ke `merged_into`-nya dan menandai baris penerusnya;
+(c) SQL mengembalikan angka "dilewati karena tergabung" terpisah supaya selisihnya terlihat, bukan
+tersembunyi. Ketiganya menjawab pertanyaan berbeda tentang apa arti "menandai orang yang sudah
+digabung", dan itu milik pemilik.
+
+
 ## Catatan — rekonsiliasi Mailchimp belum bisa diturunkan
 
 Angka irisan Mailchimp ∩ CRM dari laporan 3 Sep **tidak dicatat di sini sebagai angka**: laporan itu

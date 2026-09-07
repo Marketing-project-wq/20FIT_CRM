@@ -172,7 +172,7 @@ begin
       now(), now(), now()
     from phone_safe
     returning customer_id
-  )
+  ),
   -- EXISTING people (TUGAS B): the tags column and NOTHING else. Not source, not full_name, not the
   -- phone, not updated_at — master stays authoritative (owner decision, 2 Sep). Tags are ADDED to
   -- whatever is already there, never replace it. `merged_into is not null` is skipped: a merged row
