@@ -1758,6 +1758,113 @@ dilakukan sistem.
 sana. Tidak diselidiki putaran ini; disebut supaya rasio "126 dari 82.830" dibaca apa adanya.
 
 
+## T-58 — Kategori karangan yang sama (`layanan`) masih hidup di segment builder, dan di sana kedua angkanya SELALU sama — 7 Sep 2026
+
+**Dicatat, sengaja tidak diperbaiki.** Pemilik meminta ini didokumentasikan lengkap dengan lokasinya
+supaya tidak ditemukan ulang dari nol beberapa minggu lagi.
+
+T-56 memperbaiki kartu "Contactable · marketing / layanan" di dashboard. **Kategori yang sama masih
+hidup di layar segmen**, dan sekarang ia satu-satunya tempat tersisa:
+
+| Lapisan | Berkas | Baris |
+|---|---|---|
+| Baca | `lib/crm/segment-read.ts` | 35 (`contactableService`), 256–261 (`countContactableForPurpose(admin, 'transactional', …)`) |
+| API | `app/api/segments/route.ts` | 117 (teks audit "layanan"), 148 (`contactable_service`), 175 |
+| UI | `components/segments/segment-builder.tsx` | 22–23, 88, 221–226, 444–460 (kartu ketiga) |
+| Teks | `lib/i18n/messages/id.ts` | 548 `countSvcLabel: "Boleh dihubungi · layanan"`, 549 `countSvcSub`, 682–684 `warn.svcZero*` |
+
+**Yang lebih buruk dari sekadar nama, dan ini terukur.** Di dashboard, kedua angka kebetulan sama
+besar. Di sini saya periksa apakah keduanya menghitung **orang yang sama**, dan jawabannya ya —
+mutlak (diukur 7 Sep 2026):
+
+```
+marketing aktif (orang)                  : 82.253
+transactional aktif (orang)              : 82.253
+punya marketing TAPI tidak transactional :      0
+punya transactional TAPI tidak marketing :      0
+irisan                                   : 82.253
+```
+
+Nol di **kedua** arah. Kedua populasi itu identik, bukan sekadar sama besar. Karena kedua kartu
+menyaring populasi identik dengan kriteria yang sama dan suppression yang sama, **kartu kedua tidak
+akan pernah menampilkan angka berbeda dari kartu pertama, untuk kriteria apa pun.** Ia bukan angka;
+ia gema. Operator yang melihat dua angka besar berdampingan wajar menyimpulkan ada dua populasi.
+
+Penyebabnya sudah diketahui: backfill Migrasi 11 menulis baris `marketing` DAN `transactional` untuk
+setiap orang. Rincian per saluran memperlihatkan mekanismenya — `marketing/email=81.637`,
+`transactional/email=81.637` (angka yang sama persis), plus `transactional/phone_call=81.615` yang
+tidak punya pasangan marketing. Dan **seluruh 408.119 baris consent berbasis
+`legacy_import_unverified`**; nol `explicit_opt_in` sampai impor CSV pertama menulisnya.
+
+**Pertanyaan yang HARUS dijawab sebelum ini dikerjakan** — dan ini pertanyaan produk, bukan teknis:
+
+**Apa sebenarnya yang dimaksud kriteria "layanan" itu?** Ia tidak pernah punya rujukan di kosakata
+consent: `crm_consent_purpose_check` hanya menerima `marketing` dan `transactional`, dan nol baris
+memakai nilai lain. Label "layanan" adalah tafsir seseorang atas `transactional` yang tak pernah
+dituliskan. Tiga kemungkinan, dan pilihannya mengubah apa yang harus dibangun:
+
+1. **Ia memang berarti `transactional`** — pesan operasional (konfirmasi booking, pengingat jadwal).
+   Maka labelnya diperbaiki menjadi "transaksional", dan pertanyaan berikutnya: kenapa layar SEGMEN
+   (alat untuk menyusun kampanye) menampilkannya sama sekali? Segmen dipakai untuk mengirim
+   kampanye pemasaran; hitungan transaksional tidak memandu keputusan itu.
+2. **Ia dimaksudkan sebagai "boleh dihubungi CS"** — sebuah izin operasional yang tidak dimodelkan
+   di mana pun. Maka ia butuh nilai `purpose` sendiri, backfill sendiri, dan keputusan hukum
+   sendiri. Itu pekerjaan besar, bukan penggantian label.
+3. **Ia tidak dimaksudkan apa-apa** — sekadar warisan backfill Migrasi 11 yang naik ke UI karena
+   RPC-nya mengembalikan dua kunci. Maka kartunya dihapus, dan layar segmen menampilkan satu angka
+   jangkauan yang benar.
+
+Berdasarkan bukti di atas, **(3) yang paling mungkin** — tapi itu dugaan saya, bukan hasil
+pengukuran, dan menghapus sebuah kartu dari layar operator adalah keputusan pemilik. Yang saya
+ukur hanyalah bahwa kartu kedua tidak bisa berbeda dari kartu pertama.
+
+## T-59 — Potret harian menyeluruh untuk layar BOD butuh migrasi; empat dari lima kartu belum punya sumber harian — 7 Sep 2026
+
+Konteks: K-61 memutuskan seluruh halaman BOD menjadi potret harian dengan satu cap waktu. Temuan
+ini mencatat ongkos yang belum terlihat saat keputusan itu diambil — pemilik menyebutnya
+"nol RPC, nol migrasi", dan bagian "nol migrasi" tidak benar. Diverifikasi 7 Sep 2026.
+
+**Bagaimana potret harian ditulis hari ini.** Cron `crm-refresh-customer-mirror`, jadwal
+`0 20 * * *` (20:00 UTC = 03:00 WIB), perintahnya `select public.crm_refresh_customer_mirror();` —
+sebuah **fungsi SQL**, bukan rute aplikasi. Hasilnya mendarat di `crm_mirror_meta.dashboard_stats`,
+yang hari ini memuat tepat enam kunci: `engagement`, `rfm`, `fitco`, `ecosystem`, `candidates`,
+`sources`. Terbaca 7 Sep 2026: `refreshed_at = 2026-09-06 20:00:00 UTC`, `row_count = 82.830`.
+
+**Per kartu:**
+
+| Kartu | Bisa potret harian? | Kenapa |
+|---|---|---|
+| 3 · Unit bisnis | **Sudah** | `dashboard_stats.engagement`. Angkanya cocok orang-per-orang dengan hitungan langsung. |
+| 1 · Jangkauan | Belum ada sumbernya | Butuh `emailable`/`whatsappable`/`everContacted` masuk blob → ubah fungsi → migrasi |
+| 2 · Pertumbuhan | Belum ada sumbernya | idem |
+| 4 · Kesehatan kirim | Belum ada sumbernya | idem |
+| 5 · Celah CRM | Belum ada sumbernya | idem. Blob punya `candidates`, TAPI itu populasi berbeda — lihat di bawah |
+
+**Tak satu pun kartu mustahil secara prinsip.** Keempatnya terhalang fakta praktis yang sama: tak
+ada sumber hariannya, dan membuatnya berarti mengubah `crm_refresh_customer_mirror()`.
+
+**Satu jebakan yang hampir memakan saya.** Blob sudah punya kunci `candidates`, dan menggodanya
+dipakai untuk kartu 5 tanpa migrasi apa pun. **Itu populasi yang berbeda.** Kartu "Candidates not
+yet in the pool" milik dashboard operasional menghitung 2.799 dengan rincian sumber yang memuat
+`event_transaction` (1.887), `rc_ticket_invites`, `uob_users` — tabel yang **tidak ada sama sekali**
+di daftar lima sumber yang dipakai kartu BOD (1.374). Memakai `candidates` untuk kartu 5 akan
+mengganti arti angkanya tanpa mengganti judulnya. Itulah kenapa caption "apa yang dihitung" pada
+kartu 5 (butir 1 putaran ini) bukan hiasan.
+
+**Satu kartu yang layak dipertanyakan lagi saat gerbang dibuka: jangkauan (kartu 1).** Angka
+jangkauan mengurangi suppression, dan komentar di `lib/crm/dashboard.ts` menyatakan angka itu
+"never precomputed: a stale reach figure would say a person can be reached who has just asked to
+stop". Untuk layar BOD keberatan itu **lebih lemah dari kedengarannya**: layar ini tidak mengirim
+apa pun, dan jalur kirim memeriksa suppression secara langsung. Jadi jangkauan berumur 24 jam tak
+membuat siapa pun terkontak keliru. Tapi aturannya ditulis untuk alasan yang baik, dan mengendurkan
+sebagiannya harus disebut, bukan diselundupkan lewat.
+
+**Yang TIDAK dilakukan, dan kenapa.** Halaman tidak diubah untuk menyatakan "per 03:00" sementara
+empat kartunya dihitung saat request. Itu akan menjadi satu kalimat yang benar-benar salah tentang
+data di bawahnya — kelas kesalahan yang sama persis dengan keempat caption di T-56, dibuat
+sengaja kali ini. Halaman tetap apa adanya sampai gerbang migrasi dibuka.
+
+
 ## Catatan — rekonsiliasi Mailchimp belum bisa diturunkan
 
 Angka irisan Mailchimp ∩ CRM dari laporan 3 Sep **tidak dicatat di sini sebagai angka**: laporan itu

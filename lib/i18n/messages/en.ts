@@ -1733,8 +1733,13 @@ export const en: Messages = {
 
     gapTitle: "Not in the CRM yet",
     gapLabel: "people in other systems with no CRM profile",
+    // One line saying what is counted, ABOVE the number rather than in a footnote. Not decoration:
+    // without it a reader adds up the per-source figures on the operational screen and arrives at a
+    // different number — which has already happened once.
+    gapWhatItCounts:
+      "Distinct people, overlap between systems already removed. NOT a sum of the per-source figures.",
     gapNote:
-      "People other 20FIT systems already know, who have no profile here. Counted as DISTINCT PEOPLE — the per-system figures are not added up, because one person can be in two systems at once. This number rises on its own every day for as long as nothing feeds them in automatically; that is what it measures.",
+      "People other 20FIT systems already know, who have no profile here. Adding up the per-source figures on the operational screen gives a LARGER and wrong number, because someone in two systems is counted twice; the figure here has that overlap removed. Its scope is five source systems (my20fit, Arena, Gym, Hyrox, Clinic) — another card in the CRM counting “candidates” uses a different list of sources and therefore reports a different number; the two are not directly comparable. This number rises on its own every day for as long as nothing feeds them in automatically; that is what it measures.",
   },
   ai: {
     replyLanguageName: "English",

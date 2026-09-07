@@ -23,12 +23,23 @@ export const dynamic = "force-dynamic";
  *
  * ONE DEVIATION, STATED RATHER THAN HIDDEN: card 3 (business units) reads the daily precompute
  * (crm_mirror_meta.dashboard_stats), not a live count, and therefore carries its own refresh time
- * ON THE CARD. Counting distinct people per unit live would mean a COUNT(DISTINCT) over 67,828
- * membership rows and 19,333 event rows, which PostgREST cannot express and which this round has
- * no gated migration to add an RPC for. The precompute holds exactly the right figure (verified
- * 7 Sep 2026: its numbers match a live count of customer_engagement person-for-person), so the
- * choice is between the right number with its own timestamp and no card at all. It gets the
- * timestamp. The RPC that would remove the exception is proposed in the round report.
+ * ON THE CARD. It cannot be counted live: customer_engagement is unique on
+ * (customer_id, unit, product, COALESCE(period,'__NULL__')), so one person may hold several rows in
+ * one unit and a row count is NOT a headcount. Today membership happens to be 1:1 (67,828/67,828)
+ * while event (19,333/18,247) and clinic (1,163/1,014) are not — relying on that would be taking a
+ * snapshot for a permanent property, which is T-50 exactly.
+ *
+ * THE INTENDED END STATE IS THE OPPOSITE OF THIS EXCEPTION (K-61): the WHOLE page becomes a daily
+ * snapshot with one timestamp, and the per-unit RPC is cancelled outright — not parked. Timestamp
+ * consistency is the feature, not an oversight someone should later "fix" by making cards live.
+ *
+ * That is not done yet, and the reason is measured, not assumed (T-59): the daily snapshot is
+ * written by the SQL function public.crm_refresh_customer_mirror() (cron `0 20 * * *`), and its
+ * blob carries only engagement/rfm/fitco/ecosystem/candidates/sources. Four of the five cards have
+ * no daily source at all, so giving them one means changing that function — a gated migration.
+ * Until that gate opens the page stays as it is. Labelling the whole page "as of 03:00" while four
+ * cards were counted seconds ago would be one sentence that is precisely false about the data
+ * beneath it — the same failure K-60 exists to end, committed on purpose. So it is not done.
  *
  * NO INTERNAL VOCABULARY on this screen: no "pool", "mirror", "RFM", "ingest", "frozen". Those
  * words describe how this system is built, and the board is not reading about the plumbing.

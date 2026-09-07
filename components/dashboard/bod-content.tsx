@@ -135,6 +135,10 @@ export function BodContent({ data, t, lang }: { data: BodData; t: Dict; lang: La
         </Card>
 
         <Card n={5} title={b.gapTitle}>
+          {/* The one-line definition sits ABOVE the number, not in the footnote. A reader who has
+              only the figure will reconstruct its meaning from somewhere else — and the per-source
+              breakdown on the operational screen invites exactly the sum this number is not. */}
+          <p className="mb-3 font-body text-[12px] font-semibold leading-snug text-ink-soft">{b.gapWhatItCounts}</p>
           <Figure value={formatCount(data.notInCrmDistinct, lang)} label={b.gapLabel} tone="red" />
           <Note>{b.gapNote}</Note>
         </Card>

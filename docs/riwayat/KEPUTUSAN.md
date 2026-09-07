@@ -1332,3 +1332,41 @@ mekanisme yang membuat caption-caption di atas jadi bohong tanpa ada yang berboh
 niat menyesatkan. Semuanya benar pada hari ditulis. Yang rusak adalah **tempat penyimpanannya** —
 sebuah fakta yang disimpan di lapisan yang tak pernah diperiksa ulang. Menambal keempatnya tanpa
 memindahkan angkanya ke data hanya menyetel ulang jamnya.
+
+## K-61 · Layar BOD adalah potret harian — dan ronde RPC DIBATALKAN, bukan ditunda
+
+**Keputusan pemilik, 7 Sep 2026.** Saya menyodorkan dua pilihan untuk kartu "unit bisnis": angka
+benar dengan cap waktunya sendiri, atau tak ada kartu. Pemilik menolak keduanya dan mengambil yang
+ketiga: **jadikan seluruh halaman potret harian.** Satu cap waktu untuk semua kartu.
+
+> "Layar direksi tidak butuh kesegaran per detik; ia butuh bisa dikatakan dalam satu kalimat."
+
+Itu benar, dan lebih baik dari kedua pilihan saya. Untuk pertanyaan yang dijawab layar ini —
+seberapa besar biaya ketiadaan penyaluran otomatis, berapa orang bisa dijangkau, apakah orang
+kembali — angka berumur maksimal 24 jam tidak mengubah satu pun kesimpulan. Yang berubah adalah
+apakah pembaca bisa mengatakan kesegarannya dalam satu kalimat tanpa pengecualian.
+
+**RPC `COUNT(DISTINCT)` per unit dibatalkan, bukan diparkir.** Dicatat di sini secara khusus supaya
+tidak dihidupkan ulang oleh orang yang mengira konsistensi cap waktu itu kelalaian yang belum
+sempat diperbaiki. Ia bukan hutang teknis; ia keputusan. Konsistensi cap waktu **adalah** fiturnya.
+
+**Kenapa kartu unit bisnis tak bisa dibuat langsung, dan ini sifat skema bukan keadaan hari ini.**
+`customer_engagement` unik pada `(customer_id, unit, product, COALESCE(period,'__NULL__'))` —
+diverifikasi dari `pg_indexes`, 7 Sep 2026. Jadi satu orang **boleh** punya beberapa baris dalam
+satu unit, dan hitungan baris bukan hitungan orang. Hari ini `membership` kebetulan 1:1
+(67.828 baris / 67.828 orang) sementara `event` tidak (19.333 / 18.247) dan `clinic` tidak
+(1.163 / 1.014). Menyandarkan kartu pada "baris = orang" berarti memotret satu keadaan lalu
+memperlakukannya sebagai sifat permanen — persis T-50.
+
+**Yang belum terpecahkan, dan pemilik perlu tahu ongkosnya.** Potret harian yang benar-benar
+menyeluruh belum bisa dikerjakan tanpa gerbang. Cron `crm-refresh-customer-mirror`
+(`0 20 * * *` = 03:00 WIB) menjalankan **fungsi SQL** `public.crm_refresh_customer_mirror()`, dan
+blob `crm_mirror_meta.dashboard_stats` hari ini hanya memuat `engagement`, `rfm`, `fitco`,
+`ecosystem`, `candidates`, `sources`. Dari lima kartu BOD, **hanya kartu 3** punya sumber harian.
+Jangkauan, riwayat muatan, kesehatan pengiriman, dan celah CRM tidak — memberi mereka potret harian
+berarti mengubah fungsi itu, yaitu **migrasi bergerbang**. Rincian per kartu ada di **T-59**.
+
+Sampai gerbang itu dibuka, halaman tetap seperti sekarang: empat kartu dihitung langsung dalam satu
+request, kartu unit bisnis memikul cap waktunya sendiri. Itu jujur, tapi belum memenuhi keputusan
+ini. **Menyatakan seluruh halaman "per 03:00" sementara empat kartunya dihitung barusan akan
+menjadi kelas kebohongan yang persis sedang kami berantas (K-60) — jadi tidak dilakukan.**

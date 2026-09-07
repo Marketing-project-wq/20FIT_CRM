@@ -1857,8 +1857,13 @@ export const id = {
 
     gapTitle: "Belum masuk CRM",
     gapLabel: "orang di sistem lain yang belum punya profil di CRM",
+    // Satu baris yang menyatakan apa yang dihitung, DI ATAS angkanya, bukan di catatan kaki.
+    // Ini bukan hiasan: tanpa baris ini seorang pembaca menjumlahkan sendiri angka per-sumber di
+    // layar operasional dan mendapat angka lain — itu sudah terjadi sekali.
+    gapWhatItCounts:
+      "Orang berbeda, sudah dikurangi tumpang tindih antar-sistem. BUKAN penjumlahan angka per-sumber.",
     gapNote:
-      "Orang yang sudah dikenal sistem 20FIT lain tapi belum ada di CRM. Dihitung sebagai ORANG BERBEDA — angka per sistem tidak dijumlahkan, karena satu orang bisa ada di dua sistem sekaligus. Angka ini naik sendiri setiap hari selama belum ada penyaluran otomatis; itulah yang diukurnya.",
+      "Orang yang sudah dikenal sistem 20FIT lain tapi belum ada di CRM. Menjumlahkan angka per-sumber di layar operasional memberi angka yang LEBIH BESAR dan salah, karena satu orang bisa ada di dua sistem dan akan terhitung dua kali; angka di sini sudah dikurangi tumpang tindihnya. Cakupannya lima sistem sumber (my20fit, Arena, Gym, Hyrox, Klinik) — kartu lain di CRM yang menghitung “kandidat” memakai daftar sumber yang berbeda dan karenanya angkanya berbeda; keduanya tidak bisa dibandingkan langsung. Angka ini naik sendiri setiap hari selama belum ada penyaluran otomatis; itulah yang diukurnya.",
   },
   ai: {
     // Reasons the assistant returns for requests it cannot express — surfaced in the user's
