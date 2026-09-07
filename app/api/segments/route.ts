@@ -114,7 +114,10 @@ export async function POST(request: NextRequest) {
     actor_email: userEmail,
     action: "list.viewed",
     target_table: "master_customer",
-    summary: `Segment builder dihitung (cocok ${counts.matched}, marketing ${counts.contactableMarketing}, layanan ${counts.contactableService}).`,
+    // The audit records WHAT THE OPERATOR SAW. The "layanan" figure was removed from the screen
+    // (K-62), so it is removed from here too — an audit line naming a number nobody was shown
+    // would be a record of something that did not happen.
+    summary: `Segment builder dihitung (cocok ${counts.matched}, marketing ${counts.contactableMarketing}).`,
     // NON-PII: closed-list criteria + counts. city is user-typed, length-capped upstream.
     metadata: {
       view: "segment_builder",
@@ -145,7 +148,6 @@ export async function POST(request: NextRequest) {
       filter_tree: treeForAudit,
       matched: counts.matched,
       contactable_marketing: counts.contactableMarketing,
-      contactable_service: counts.contactableService,
     },
   });
   if (auditError) {
@@ -172,7 +174,6 @@ export async function POST(request: NextRequest) {
     {
       matched: counts.matched,
       contactableMarketing: counts.contactableMarketing,
-      contactableService: counts.contactableService,
       mirrorRefreshedAt,
     },
     { headers: { "Cache-Control": "no-store" } },

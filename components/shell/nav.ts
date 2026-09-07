@@ -1,5 +1,6 @@
 import {
   LayoutDashboard,
+  Presentation,
   Users,
   GitBranch,
   Megaphone,
@@ -17,6 +18,7 @@ export type NavItem = { label: string; href: string; icon: LucideIcon };
 export function navLabel(t: Dict, href: string, fallback: string): string {
   const map: Record<string, string> = {
     "/": t.nav.dashboard,
+    "/bod": t.nav.bod,
     "/audience": t.nav.audience,
     "/workflows": t.nav.workflows,
     "/campaigns": t.nav.campaigns,
@@ -27,7 +29,12 @@ export function navLabel(t: Dict, href: string, fallback: string): string {
 }
 
 /**
- * Sidebar navigation — SIX menus (was eleven, then seven). Exports was removed entirely: CSV export
+ * Sidebar navigation — SEVEN menus (7 Sep 2026: the board summary was added as its own screen
+ * rather than as a tab, because it answers a different question for a different reader and must
+ * carry ONE freshness stamp of its own; folding it into the operational dashboard would have mixed
+ * five independently-loading blocks into a page a board reads as one statement).
+ *
+ * Previously SIX menus (was eleven, then seven). Exports was removed entirely: CSV export
  * was the only data exit that did NOT honour unsubscribe, and the product manages audiences + sends
  * directly rather than moving data out. The criteria builder Exports hosted now lives only in
  * Campaigns; the old /exports route redirects there so no bookmark 404s. (The other dropped screens —
@@ -35,6 +42,7 @@ export function navLabel(t: Dict, href: string, fallback: string): string {
  */
 export const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard },
+  { label: "Board summary", href: "/bod", icon: Presentation },
   { label: "Audience", href: "/audience", icon: Users },
   { label: "Workflows", href: "/workflows", icon: GitBranch },
   { label: "Campaigns", href: "/campaigns", icon: Megaphone },

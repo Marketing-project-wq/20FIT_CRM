@@ -36,8 +36,26 @@ export interface SuppressionRow {
   created_at: string | null;
 }
 
+/**
+ * How many consent rows sit under each legal basis (T-60). Until 7 Sep 2026 this was not worth
+ * asking: all 408,119 rows were `legacy_import_unverified`, from one source, so the screen could
+ * describe the whole table in one sentence. The CSV import writes `explicit_opt_in`, which makes
+ * this the first time the table holds two bases — and the banner that described the table as a
+ * single legacy backfill would have gone on saying so, including the line about deleting the rows
+ * to undo it cleanly. That line is safe about a backfill and destructive about opt-in evidence.
+ *
+ * `other` exists so an unrecognised basis cannot hide inside a total: it is total minus the known
+ * two, and the screen says so out loud rather than silently under-reporting.
+ */
+export interface BasisCounts {
+  legacy: number;
+  explicitOptIn: number;
+  other: number;
+}
+
 export interface ConsentScreen {
   consent: { rows: ConsentRow[]; total: number; page: number; pageSize: number };
+  basisCounts: BasisCounts;
   suppression: { rows: SuppressionRow[]; total: number; page: number; pageSize: number };
 }
 
@@ -76,9 +94,39 @@ export async function fetchConsentScreen(
     .order("id", { ascending: false })
     .range(sFrom, sFrom + pageSize - 1);
 
-  const [consentRes, suppRes] = await Promise.all([consentQ, suppQ]);
+  // Two head counts over the CLOSED basis vocabulary — no rows transferred. Cheap enough to run
+  // on every open of the archive, and it must be live: the whole point is that the screen stops
+  // describing the table from memory.
+  const legacyQ = admin
+    .from("crm_consent")
+    .select("*", { count: "exact", head: true })
+    .eq("basis", "legacy_import_unverified");
+  const optinQ = admin
+    .from("crm_consent")
+    .select("*", { count: "exact", head: true })
+    .eq("basis", "explicit_opt_in");
+
+  const [consentRes, suppRes, legacyRes, optinRes] = await Promise.all([
+    consentQ,
+    suppQ,
+    legacyQ,
+    optinQ,
+  ]);
   if (consentRes.error) throw consentRes.error;
   if (suppRes.error) throw suppRes.error;
+  if (legacyRes.error) throw legacyRes.error;
+  if (optinRes.error) throw optinRes.error;
+
+  const legacy = legacyRes.count ?? 0;
+  const explicitOptIn = optinRes.count ?? 0;
+  const consentTotal = consentRes.count ?? 0;
+  const basisCounts = {
+    legacy,
+    explicitOptIn,
+    // Never negative: a total that is somehow smaller than the parts is a measurement problem, not
+    // a negative population, and showing "-3 rows" would be its own small lie.
+    other: Math.max(0, consentTotal - legacy - explicitOptIn),
+  };
 
   const suppression = ((suppRes.data ?? []) as SuppressionRow[]).map((r) => ({
     ...r,
@@ -88,10 +136,11 @@ export async function fetchConsentScreen(
   return {
     consent: {
       rows: (consentRes.data ?? []) as ConsentRow[],
-      total: consentRes.count ?? 0,
+      total: consentTotal,
       page: cPage,
       pageSize,
     },
+    basisCounts,
     suppression: {
       rows: suppression,
       total: suppRes.count ?? 0,

@@ -1074,7 +1074,7 @@ persetujuan Jeff** (seperti extension `profile.edit_demographic` / K-32 dan `rol
 + suppression satu-satunya pengunci). Alasannya: data ini bukan daftar asing — consent sudah diberikan
 di titik pengumpulan (mis. formulir pendaftaran), impor hanya memindahkan data yang seharusnya sudah ada
 di Supabase. Yang **wajib** (bukan gerbang): field "sumber pengumpulan" saat unggah, disimpan sebagai
-`crm_consent` `basis='opt_in'` + `evidence` jsonb — **bukti**, supaya "kenapa orang ini dikirimi email"
+`crm_consent` `basis='explicit_opt_in'` + `evidence` jsonb — **bukti**, supaya "kenapa orang ini dikirimi email"
 terjawab dari data, bukan ingatan. **Apa yang membalik:** kalau ternyata sebuah daftar tidak benar-benar
 punya titik-consent (daftar asing), jalurnya BUKAN `csv_import` melainkan `legacy_import_unverified`
 (masuk pool, tak dipasarkan) — lihat koreksi bertanggal di `docs/RENCANA-ingest-ticket.md`. Pembeda
@@ -1164,3 +1164,316 @@ konfigurasi auto-stop tak pernah dikopel ke batas harian).
 
 **Yang membalikkan keputusan ini:** run sah yang wajar-wajar saja gagal 20 kali beruntun lalu pulih
 (misalnya provider yang mengembalikan 429 per-penerima sebagai antrean normal). Bukti itu belum ada.
+
+## K-57 · Impor CSV — dedup EMAIL-PRIMER (telepon bersama tetap masuk + ditandai) + laporan per-baris di dry-run
+
+**2026-09-02.** Uji dry-run pertama (super-admin, di produksi, nol tulisan) menabrakkan nomor
+karangan `0812-3456-7890` dengan seorang customer nyata **lewat telepon** (email karangan tak ada di
+master). Ini membuka risiko yang belum dibahas: aturan lama "cocok email ATAU telepon → lewati"
+**menghapus diam-diam orang berbeda yang sah** hanya karena berbagi nomor (pasangan, orang tua
+mendaftarkan anak, nomor kantor).
+
+**Keputusan pemilik (dikerjakan SEKARANG, bukan Fase 2 — alasannya: nol impor pernah jalan, jadi tak
+ada data terdampak dan tak ada perilaku yang berubah bagi siapa pun; mengubah setelah ada 20.000 baris
+impor lama berarti dua aturan hidup di data yang sama):**
+
+- **Email = kunci dedup utama.** Cocok email dengan master → **lewati** (identitas personal, tak ambigu).
+- **Cocok telepon saja → tetap MASUK**, ditandai kategori `insert_shared_phone` ("telepon bersama").
+  Teleponnya di-null-kan saat tulis (master unik pada `phone_normalized` — sudah ada `phone_safe` di
+  fungsi ingest; anti-join `new_people` diubah jadi **email-saja** supaya baris ini lolos). Planner
+  murni (`import-audience.ts`) dan fungsi SQL **cocok persis** → hitung dry-run = yang ditulis execute.
+- **Angka "telepon bersama" tampil tersendiri di ringkasan** (bukan tersembunyi) — operator melihat
+  "12 orang berbagi telepon" sebelum konfirmasi.
+- **Suppression tak berubah** — tetap keyed email + telepon; masuk pool ≠ bisa dikirimi.
+
+**Laporan per-baris.** `ProblemList` kini muncul juga di langkah **ringkasan/dry-run** (dulu hanya
+pasca-execute — memeriksa alasan SEBELUM impor adalah inti dry-run), menampilkan tiap baris yang bukan
+insert-polos (skip + `insert_shared_phone` + `insert_suppressed`) dengan **kolom yang cocok jelas
+(email vs telepon)**. **Tidak** menampilkan identitas customer yang ditabrak — memperlihatkan data
+pelanggan lain ke pengunggah adalah paparan ber-audit tersendiri, pintu yang sengaja tidak dibuka.
+
+**Afordansi tombol.** Tombol "Konfirmasi & impor" memang sudah tertahan dua lapis (disabled saat
+`collectionSource` kosong + server tolak `collection_source_required`) — yang kurang cuma terlihatnya;
+ditambah `disabled:opacity-50 cursor-not-allowed` + petunjuk inline "Isi sumber pengumpulan untuk
+mengaktifkan". Tombol dry-run "Hitung ringkasan" memang tak butuh field itu (wajar) dan namanya sudah
+berbeda dari tombol konfirmasi.
+
+**Temuan kualitas data (ukur, tak dibersihkan):** dari 81.680 telepon di master, ~150 jelas palsu (98
+panjang tak wajar + 66 berurutan + 2 satu-digit) = **~0,2%** — kecil, bukan sistemik. `0812-3456-7890`
+salah satu dari yang berurutan itu. **Tak ada** telepon yang dipakai >1 baris master (indeks unik).
+Tak ada yang dibersihkan tanpa persetujuan.
+
+### Addendum 2026-09-03 — celah suppression telepon-bersama, dan penutupannya (opsi d)
+
+Meng-null-kan telepon bersama (di atas) membuka celah yang pemilik minta ditutup **sepenuhnya**, bukan
+dikurangi: `fetchSuppressedCustomerIds` (`lib/crm/contactability-read.ts`) mencocokkan orang yang
+ter-suppress ke `customer_id` **hanya** lewat `master_customer.phone_normalized` dan `email_normalized`.
+Telepon yang di-null jadi tak terlihat oleh suppression telepon **selamanya**.
+
+**Lebar celah — ditelusuri, ternyata sempit (dugaan pemilik benar).** Orang yang masuk lewat jalur
+telepon-bersama **tetap punya email** (email adalah kunci yang membuatnya masuk); yang di-null cuma
+telepon. Maka bila ia unsubscribe lewat **email**, suppression email tetap mencocokkannya. Yang lolos
+**hanya** suppression yang di-key ke **telepon** dan dibuat **setelah** impor.
+
+**Angka nyata (diukur 2026-09-03, `execute_sql`):** `crm_suppression` = **1 baris total** (`email`,
+`status='lifted'`) → **0 suppression telepon selamanya, 0 aktif apa pun**. Jalur yang membuat
+suppression telepon: **hanya form manual staf `/consent`** (opt-out via WhatsApp/telepon, reason
+`user_request`). Tautan unsubscribe email selalu `kind:'email'` (`send-campaign.ts:337`), dan belum ada
+jalur kirim WA → tak ada suppression telepon otomatis. Maka sisa celah efektif **≈ nol** hari ini.
+
+**Keputusan pemilik — opsi (d), dikerjakan (planner saja, tanpa perubahan skema):** saat impor, kalau
+telepon cocok kontak yang **sudah ada** (`existingPhones`) **dan** telepon itu **sedang ter-suppress**
+(`suppressedPhones`) → baris **tidak diimpor** (status `skip_shared_phone_suppressed`, dihitung
+tersendiri). Alasannya: telepon itu akan di-null saat tulis; menolak membuat identitas bisa-dikontak
+untuk nomor yang pemiliknya minta stop menutup celah **sepenuhnya untuk suppression yang ada saat
+impor**. Email-suppression **tidak** dicarve-out (email ditulis utuh → tetap tercocokkan). Baris
+telepon-ter-suppress yang teleponnya **baru** (tak bentrok) tetap masuk sebagai "kena suppression"
+(teleponnya ditulis, jadi tetap tersaring) — **tidak** over-suppress. Ditegakkan di planner murni
+(`import-audience.ts`); baris carve-out **tak pernah** sampai ke RPC (`insertRows` sudah menyaringnya),
+jadi fungsi SQL tak perlu tahu soal suppression. Test lockstep membuktikan baris carve-out absen dari
+`insertRows`.
+
+**Opsi (b) — longgarkan indeks unik telepon — DITUNDA (dicatat sebagai opsi masa depan, tidak
+dikerjakan).** Hanya (b) yang menutup **present + future** (termasuk suppression telepon yang dibuat
+setelah impor). Tapi ia mengubah invariant master (banyak hal bersandar pada "satu telepon = satu
+orang") — tak proporsional untuk celah yang hari ini nol baris. Dikerjakan hanya bila suppression
+telepon jadi sering (mis. jalur kirim WA + opt-out WA otomatis diaktifkan). Opsi (a) "simpan nomor di
+kolom terpisah" **ditolak**: `fetchSuppressedCustomerIds` tak membaca kolom lain, jadi tak menutup apa
+pun.
+
+### Addendum 2026-09-03 — tiga tambahan transparansi impor (keterlihatan, bukan tambal data)
+
+- **Telepon rusak format Excel.** `isExcelBrokenPhone()` mendeteksi notasi ilmiah (`6,28129E+12`).
+  Telepon **dikosongkan, tidak ditebak**; baris tetap masuk bila email valid; dihitung kategori
+  tersendiri ("Telepon rusak (format Excel)") + cara memperbaiki (format kolom Teks, ekspor ulang).
+  Diverifikasi: `normalizePhoneID("6,28129E+12")` → `null` (bukan sampah) — jadi ini soal keterlihatan,
+  bukan menambal kebocoran data.
+- **Pemisah terdeteksi + peringatan 1 kolom.** papaparse auto-detect `, ; \t |` ditampilkan; peringatan
+  bila hanya 1 kolom terbaca (gejala klasik file `;`/tab salah-parse).
+- **Kolom tak terpetakan** (mis. "Event") disebut di ringkasan — drop diam-diam adalah cara data hilang.
+
+---
+
+## K-58 · Impor CSV — tag: per baris, `tagged:` untuk yang sudah ada, tanpa baris `crm_consent`
+
+**Keputusan (4 Sep 2026).** Impor CSV membawa kolom `tags` dan menempelkannya ke dua populasi yang
+diperlakukan berbeda.
+
+**1. Tag adalah data PER BARIS, bukan per batch.** Berkas nyata pemilik membuktikannya: satu berkas
+event pun mencampur `format:single` dengan `format:double`, kedua nilai `kategori:`, dan ketiga
+tingkat `nilai:`. Array tingkat-batch tak bisa mewakilinya. Jadi tiap baris `p_rows` membawa `tags`
+sendiri, dan `p_tag_rows` membawa `{email, tags}`.
+
+**2. Yang ditandai hanya kecocokan EMAIL.** Mengikuti K-57: cocok telepon saja = **orang yang
+berbeda** → dimasukkan, dan pemilik telepon lama **tidak** ditandai — ia tak pernah ikut event itu.
+Aturan awal "email atau telepon → tandai" melestarikan premis dedup yang sudah diganti K-57.
+
+**3. Orang yang emailnya cocok tapi sedang ter-suppress TETAP ditandai.** Ini sengaja diputuskan,
+bukan kebetulan. Tag bukan gerbang: menandai tidak menghubungi siapa pun, dan suppression tetap
+menggigit di titik kirim (K-36). Menahan tag dari orang ter-suppress justru merusak data —
+segmentasi "peserta Sportfest 3" akan bolong tanpa alasan yang bisa dijelaskan, dan bolongnya tak
+terlihat. Yang menggerbangi pengiriman tetap satu: `crm_suppression`.
+
+**4. Penanda dibedakan BENTUKNYA:** orang baru `batch:<id>`, orang lama `tagged:<id>`. Alasannya
+bukan kerapian — rollback per-batch **menghapus** pada `batch:`. Kalau keduanya berbagi bentuk, orang
+yang diimpor batch B1 lalu ditandai lagi oleh B2 akan membawa `batch:B1` **dan** `batch:B2`, sehingga
+rollback B2 menghapus orang milik B1 **dengan seluruh penjaga utuh**. Lihat T-52.
+
+**5. Baris `master_customer` yang sudah ada disentuh HANYA pada kolom `tags`.** Bukan `source`, bukan
+`full_name`, bukan `phone_normalized`, bukan `city`, bukan `updated_at`. Master tetap otoritatif
+(keputusan 2 Sep).
+
+**6. TANPA baris `crm_consent` untuk orang yang sudah ada.** Tiga alasan: mereka sudah punya
+provenance sendiri; tag bukan gerbang sehingga kontaktabilitas tak berubah; dan
+`UNIQUE (customer_id, channel, purpose)` akan bertabrakan dengan 408.119 baris yang sudah tercatat.
+
+**Yang membalik keputusan ini:** kalau kelak tag dipakai sebagai gerbang pengiriman (bukan hanya
+segmentasi), butir 3 harus ditinjau ulang — menandai orang ter-suppress akan berarti sesuatu yang
+lain sepenuhnya. Aturannya sekarang aman justru **karena** tag tidak menghubungi siapa pun.
+
+## K-59 · Orang yang sudah digabung: disaring perencana, **dan** dihitung terpisah
+
+**Keputusan pemilik, 7 Sep 2026.** Baris impor yang emailnya hanya cocok dengan profil
+`merged_into is not null` tidak disisipkan dan tidak ditandai — dan itu **muncul sebagai angkanya
+sendiri** (`skippedMerged`, kelas baris `skip_merged`, kartu "Dilewati — profil sudah digabung"),
+bukan lenyap ke dalam "Akan ditandai" yang mengecil tanpa sebab.
+
+Kalimat pemilik yang menjadi aturannya: **"Angka boleh berkurang; tidak boleh berkurang diam-diam."**
+
+Kenapa dua-duanya, bukan salah satu. Menyaring saja membuat uji-kering cocok dengan yang ditulis,
+tapi selisihnya tetap tak terjelaskan bagi operator. Menghitung saja membiarkan uji-kering
+menjanjikan tag yang tak pernah menempel. Bersama-sama, layar uji-kering dan layar laporan
+mengatakan hal yang sama, dan alasan setiap pengurangan ada di layar.
+
+**Yang TIDAK diputuskan:** mengikuti orang itu ke profil penerusnya lalu menandai baris penerus.
+Itu keputusan perilaku tersendiri ("apa arti menandai orang yang sudah digabung?") dan ditunda.
+Hari ini `merged_into is not null` = 0 di produksi, jadi tak ada yang mendesak.
+
+Rinciannya, termasuk jebakan "sempitkan saja `existingEmails`" yang justru mencerminkan cacatnya
+secara terbalik, ada di **T-55**.
+
+## K-60 · Angka di layar dihitung dari data, tidak pernah ditulis di string i18n
+
+**Keputusan pemilik, 7 Sep 2026**, lahir dari caption dashboard yang menyatakan hal-hal yang tidak
+benar lagi (lihat T-56): "no workflow table yet" padahal `crm_workflow` ada dengan 36 enrollment
+menunggu; "2 loads: 20 Apr & 31 Jul" padahal muatannya **tiga**; "zero new since 1 August" padahal
+577 orang masuk 27 Agustus.
+
+**Aturannya:** setiap angka yang muncul di layar **dihitung dari data pada waktu render**. Angka
+tidak pernah ditulis sebagai literal di dalam string terjemahan. Sebuah string i18n boleh memuat
+placeholder; ia tidak boleh memuat fakta.
+
+**Satu pengecualian, dengan syarat.** Kalau sebuah angka benar-benar tak bisa dihitung dari basis
+data ini, ia boleh ditulis — tapi **wajib** membawa (1) tanggal pengukurannya dan (2) tanda visual
+bahwa ia manual. Angka manual tanpa tanggal adalah klaim yang menua diam-diam, dan itu persis
+mekanisme yang membuat caption-caption di atas jadi bohong tanpa ada yang berbohong.
+
+**Kenapa ini keputusan dan bukan sekadar tambalan:** caption yang salah tadi tidak ditulis dengan
+niat menyesatkan. Semuanya benar pada hari ditulis. Yang rusak adalah **tempat penyimpanannya** —
+sebuah fakta yang disimpan di lapisan yang tak pernah diperiksa ulang. Menambal keempatnya tanpa
+memindahkan angkanya ke data hanya menyetel ulang jamnya.
+
+## K-61 · Layar BOD adalah potret harian — dan ronde RPC DIBATALKAN, bukan ditunda
+
+**Keputusan pemilik, 7 Sep 2026.** Saya menyodorkan dua pilihan untuk kartu "unit bisnis": angka
+benar dengan cap waktunya sendiri, atau tak ada kartu. Pemilik menolak keduanya dan mengambil yang
+ketiga: **jadikan seluruh halaman potret harian.** Satu cap waktu untuk semua kartu.
+
+> "Layar direksi tidak butuh kesegaran per detik; ia butuh bisa dikatakan dalam satu kalimat."
+
+Itu benar, dan lebih baik dari kedua pilihan saya. Untuk pertanyaan yang dijawab layar ini —
+seberapa besar biaya ketiadaan penyaluran otomatis, berapa orang bisa dijangkau, apakah orang
+kembali — angka berumur maksimal 24 jam tidak mengubah satu pun kesimpulan. Yang berubah adalah
+apakah pembaca bisa mengatakan kesegarannya dalam satu kalimat tanpa pengecualian.
+
+**RPC `COUNT(DISTINCT)` per unit dibatalkan, bukan diparkir.** Dicatat di sini secara khusus supaya
+tidak dihidupkan ulang oleh orang yang mengira konsistensi cap waktu itu kelalaian yang belum
+sempat diperbaiki. Ia bukan hutang teknis; ia keputusan. Konsistensi cap waktu **adalah** fiturnya.
+
+**Kenapa kartu unit bisnis tak bisa dibuat langsung, dan ini sifat skema bukan keadaan hari ini.**
+`customer_engagement` unik pada `(customer_id, unit, product, COALESCE(period,'__NULL__'))` —
+diverifikasi dari `pg_indexes`, 7 Sep 2026. Jadi satu orang **boleh** punya beberapa baris dalam
+satu unit, dan hitungan baris bukan hitungan orang. Hari ini `membership` kebetulan 1:1
+(67.828 baris / 67.828 orang) sementara `event` tidak (19.333 / 18.247) dan `clinic` tidak
+(1.163 / 1.014). Menyandarkan kartu pada "baris = orang" berarti memotret satu keadaan lalu
+memperlakukannya sebagai sifat permanen — persis T-50.
+
+**Yang belum terpecahkan, dan pemilik perlu tahu ongkosnya.** Potret harian yang benar-benar
+menyeluruh belum bisa dikerjakan tanpa gerbang. Cron `crm-refresh-customer-mirror`
+(`0 20 * * *` = 03:00 WIB) menjalankan **fungsi SQL** `public.crm_refresh_customer_mirror()`, dan
+blob `crm_mirror_meta.dashboard_stats` hari ini hanya memuat `engagement`, `rfm`, `fitco`,
+`ecosystem`, `candidates`, `sources`. Dari lima kartu BOD, **hanya kartu 3** punya sumber harian.
+Jangkauan, riwayat muatan, kesehatan pengiriman, dan celah CRM tidak — memberi mereka potret harian
+berarti mengubah fungsi itu, yaitu **migrasi bergerbang**. Rincian per kartu ada di **T-59**.
+
+Sampai gerbang itu dibuka, halaman tetap seperti sekarang: empat kartu dihitung langsung dalam satu
+request, kartu unit bisnis memikul cap waktunya sendiri. Itu jujur, tapi belum memenuhi keputusan
+ini. **Menyatakan seluruh halaman "per 03:00" sementara empat kartunya dihitung barusan akan
+menjadi kelas kebohongan yang persis sedang kami berantas (K-60) — jadi tidak dilakukan.**
+
+## K-61 (tambahan) · Instruksi pemilik ditolak karena bertentangan dengan aturan sistem
+
+Dicatat atas permintaan pemilik sendiri, 7 Sep 2026.
+
+Instruksi aslinya: jadikan seluruh halaman BOD potret harian, "nol pengecualian, nol RPC, nol
+migrasi", dan beri satu cap waktu "per 03:00 WIB". Bagian **keputusannya** benar dan tetap berlaku.
+Bagian **harganya** salah: hanya `engagement` yang punya sumber harian; empat kartu lain tidak
+punya sama sekali, dan memberi mereka sumber harian berarti mengubah fungsi SQL
+`crm_refresh_customer_mirror()` — sebuah migrasi bergerbang (T-59).
+
+Yang **ditolak** bukan keputusannya, melainkan pelaksanaannya lebih dulu: melabeli halaman
+"per 03:00" sementara empat kartunya dihitung saat request. Penolakannya bukan preferensi dan bukan
+kehati-hatian umum — ia langsung bertabrakan dengan **K-60**, aturan yang pemilik tetapkan sendiri
+satu putaran sebelumnya: angka di layar dihitung dari data, dan sebuah kalimat kesegaran adalah
+klaim tentang data di bawahnya. Satu cap waktu "03:00" di atas empat angka berumur dua detik adalah
+persis kelas kesalahan yang K-60 dibuat untuk mengakhiri — hanya saja kali ini dilakukan sengaja.
+
+Pemilik menerima penolakan itu dan meminta migrasinya dikerjakan sebagai gantinya. Dicatat di sini
+supaya jelas bahwa aturan sistem mengikat instruksi juga, bukan hanya kode — dan bahwa cara
+menolak yang benar adalah menunjukkan aturan mana yang dilanggar, bukan menyatakan keberatan.
+
+
+## K-62 · Kartu "Boleh dihubungi · layanan" dihapus dari layar segmen — datanya tetap
+
+**Keputusan pemilik, 7 Sep 2026**, menutup T-58. Yang dihapus adalah **tampilannya**, bukan datanya.
+Baris consent `transactional` tetap utuh di basis data — ia nyata, dan akan bermakna kalau kelak ada
+jalur kirim transaksional dengan aturannya sendiri.
+
+**Alasannya bukan "labelnya salah", melainkan kartunya tidak bisa membawa informasi.** Diukur di
+produksi 7 Sep 2026:
+
+```
+marketing aktif (orang)                  : 82.253
+transactional aktif (orang)              : 82.253
+punya marketing TAPI tidak transactional :      0
+punya transactional TAPI tidak marketing :      0
+```
+
+Nol di **kedua** arah — bukan sekadar jumlah yang kebetulan sama, tapi **himpunan orang yang sama
+persis**. Backfill Migrasi 11 menulis kedua purpose untuk setiap orang. Karena kedua kartu menyaring
+populasi identik dengan kriteria identik dan suppression identik, kartu kedua **tidak akan pernah**
+menunjukkan angka berbeda dari kartu pertama, untuk kriteria apa pun. Ia bukan angka kedua; ia gema
+yang menyiratkan audiens kedua.
+
+Ditambah lagi, "layanan" tak pernah punya rujukan di kosakata sistem: `crm_consent_purpose_check`
+hanya menerima `marketing` dan `transactional`. Label itu tafsir seseorang yang tak pernah
+dituliskan sebagai keputusan.
+
+**Yang berubah, empat lapisan:** `lib/crm/segment-read.ts` (`SegmentCounts` kehilangan
+`contactableService`; hanya purpose `marketing` yang dihitung — satu query PostgREST lebih sedikit
+per hitung), `app/api/segments/route.ts` (respons, metadata audit, dan ringkasan audit), 
+`components/segments/segment-builder.tsx` (kartu ketiga dihapus, diganti komentar yang menjelaskan
+kenapa), dan kedua berkas i18n (lima kunci: `countSvcLabel`, `countSvcSub`, `svcZeroA/B/C`).
+
+Baris audit ikut dibersihkan dengan sengaja: audit mencatat **apa yang dilihat operator**. Mencatat
+angka yang tak pernah ditampilkan adalah mencatat sesuatu yang tak terjadi.
+
+**SYARAT PEMBALIKAN — baca ini sebelum menghidupkannya lagi.** Kartu ini boleh kembali **kalau, dan
+hanya kalau, jalur kirim transaksional benar-benar dibangun** — dan saat itu ia wajib **menyaring
+dengan aturan yang benar-benar berbeda**, bukan aturan yang sama dengan label lain. Uji kelayakannya
+satu kalimat: *apakah ada kriteria, apa pun itu, yang membuat angka ini berbeda dari angka
+marketing?* Kalau jawabannya tidak, kartunya belum layak kembali betapa pun masuk akal namanya.
+
+`countContactableForPurpose` sengaja **tetap menerima parameter purpose** dan tidak diubah, supaya
+jalur transaksional kelak memanggilnya tanpa menulis aturan kedua (K-03: satu aturan, satu
+implementasi).
+
+## K-63 · Cap waktu layar BOD berasal dari `refreshed_at` blob, TIDAK PERNAH dari `now()`
+
+**Syarat pemilik saat menyetujui migrasi potret harian, 7 Sep 2026.** Halaman BOD memikul satu cap
+waktu, dan cap waktu itu **wajib** dibaca dari `crm_mirror_meta.refreshed_at` — bukan dari jam saat
+halaman dirender.
+
+**Alasannya bukan kerapian, melainkan bentuk kegagalannya.** Fungsi harian kini membaca belasan
+tabel milik divisi lain (`arena_*`, `gym_*`, `clinic_patients`, `my20fit_profile`,
+`cf_hyrox_participants`). Kalau salah satu tim mengganti nama kolom, refresh malam itu melempar
+galat dan blob-nya **tetap memuat isi kemarin**.
+
+- Cap waktu dari `now()` → angka kemarin, tanggal hari ini, tanpa batas waktu. Kegagalan itu
+  **tak terlihat**, di layar yang dipakai direksi mengambil keputusan.
+- Cap waktu dari `refreshed_at` → jamnya **berhenti bergerak**. Jam yang berhenti di halaman
+  bertanggal adalah alarm.
+
+**Halaman yang gagal dengan berisik lebih baik daripada halaman yang berbohong dengan tenang.**
+
+Ditambah spanduk merah kalau `refreshed_at` lebih tua dari **26 jam** — bukan 24, supaya cron yang
+mulai telat beberapa menit tidak disebut gagal; 26 jam lewat satu siklus dan jauh dari dua, jadi
+satu malam yang terlewat terlihat keesokan paginya. Jam yang berhenti diubah menjadi **kalimat**,
+karena tak ada yang membaca layar direksi dengan cara memeriksa apakah sebuah tanggal sudah dua hari
+lampau.
+
+**Dikunci oleh uji, bukan oleh niat** (`lib/crm/bod-snapshot.test.ts`, 16 pengujian): `measuredAt`
+diteruskan apa adanya dari baris blob; `parseBodSnapshot` murni sehingga tak punya akses ke jam sama
+sekali; pemindaian sumber memastikan komponen halaman tak memuat `new Date()` maupun `Date.now()`
+(komentar dikupas lebih dulu — aturannya tentang apa yang **dilakukan** kode, dan berkas itu memang
+menjelaskan aturannya dalam prosa yang menyebut panggilan terlarang itu); dan blob yang kehilangan
+satu kunci **melempar galat**, bukan menampilkan nol — termasuk blob enam-kunci yang persis akan
+ditinggalkan oleh rollback. Terbukti menggigit: cap waktu diganti `new Date()` → merah, dipulihkan
+→ hijau.
+
+**Satu ongkos, disebut di kartunya sendiri.** Potret harian memuat lima unit ekosistem; **`shop`
+tidak termasuk** (`lib/crm/mirror.ts` memang selalu menyatakannya — sebelumnya dihitung langsung).
+Menghitungnya langsung di sini akan memberi halaman ini cap waktu kedua, yaitu justru hal yang
+seluruh rancangan ini tolak. Jadi `shop` dikeluarkan dan kartunya **menyebutkannya**, alih-alih
+diam-diam mengecilkan total. Memasukkannya ke potret harian adalah perubahan satu baris pada fungsi
+malam — migrasi bergerbang tersendiri, bukan sekarang.

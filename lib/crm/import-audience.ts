@@ -1,4 +1,5 @@
 import { normalizeEmail, normalizePhoneID } from "./normalize";
+import { parseTagCell } from "./tags";
 
 /**
  * PURE planning core for the CSV audience import (Fase 1). No I/O, no DB, no writes — it takes the
@@ -11,11 +12,15 @@ import { normalizeEmail, normalizePhoneID } from "./normalize";
  *  - Rows are DIRECTLY CONTACTABLE (K-36: consent is not a gate; unsubscribe/suppression is). The
  *    import just moves data whose consent was given at the collection point. The mandatory
  *    "collection source" is stored as EVIDENCE (in crm_consent), not as a gate.
- *  - Dedup is SKIP-ONLY: a row matching an existing person (by normalized email OR phone) is skipped,
- *    never merged, never overwritten. Master stays authoritative.
- *  - Suppression is untouched and still wins: a NET-NEW person whose identity is suppressed is still
- *    imported (they are a real new person) but is counted separately so the operator sees how many of
- *    the imported rows will never receive a send.
+ *  - Dedup is EMAIL-PRIMARY, SKIP-ONLY (K-57): an EMAIL match with an existing person is skipped; a
+ *    phone-only match is INSERTED and flagged (a shared number must not drop a distinct person), with
+ *    the colliding phone nulled at write. Never merged, never overwritten. Master stays authoritative.
+ *  - Suppression still wins. A NET-NEW person whose EMAIL is suppressed is imported (a real new person)
+ *    but counted separately — their email is written intact, so send-time suppression still catches them.
+ *    A person whose SHARED phone (one already in master) is suppressed is NOT imported at all (opsi d):
+ *    that phone is nulled at write, which would blind phone-suppression, so we refuse to create a
+ *    contactable identity for a number whose owner opted out. This closes the gap for suppressions that
+ *    exist at import time; the after-import residual is opsi (b), deferred (see K-57).
  */
 
 /** Hard cap for Fase 1 — small on purpose to shrink the blast radius of a first write-to-production
@@ -24,7 +29,7 @@ export const MAX_IMPORT_ROWS = 20_000;
 
 /** Safe columns only (Fase 0 honored, same class as the activity ingest). DOB / gender / NIK / health
  *  are deliberately NOT importable here — they need their own legal basis. */
-export const IMPORT_TARGET_FIELDS = ["full_name", "email", "phone", "city", "ignore"] as const;
+export const IMPORT_TARGET_FIELDS = ["full_name", "email", "phone", "city", "tags", "ignore"] as const;
 export type ImportField = (typeof IMPORT_TARGET_FIELDS)[number];
 
 /** Maps a CSV header (verbatim) to the destination field it fills, or "ignore". */
@@ -33,6 +38,7 @@ export type ColumnMapping = Record<string, ImportField>;
 /** Header-name heuristics for the auto-guess. Operator can always override in the UI. */
 const GUESS: { field: Exclude<ImportField, "ignore">; re: RegExp }[] = [
   { field: "email", re: /\b(e-?mail|surel|alamat\s*e-?mail)\b/i },
+  { field: "tags", re: /\b(tags?|label|penanda)\b/i },
   { field: "phone", re: /\b(phone|telp|telepon|hp|no\.?\s*hp|nomor|whatsapp|wa|mobile)\b/i },
   { field: "full_name", re: /\b(full[_\s]*name|nama\s*lengkap|nama|name)\b/i },
   { field: "city", re: /\b(city|kota|domisili)\b/i },
@@ -61,6 +67,23 @@ export interface NormalizedRow {
   emailNormalized: string | null; // canonical, for dedup + suppression match
   phoneNormalized: string | null; // canonical 62… (no +), for dedup + suppression match
   city: string | null;
+  /** True when the raw phone was mangled by Excel into scientific notation (e.g. "6,28129E+12") — the
+   *  original digits are GONE and unrecoverable, so the phone is dropped (never guessed-fixed) and the
+   *  operator is told, not left in the dark. The row can still import on its email. */
+  phoneExcelBroken: boolean;
+  /** Valid operator tags from this row's `tags` cell, normalized + deduplicated (TUGAS E). */
+  tags: string[];
+  /** Tags this row supplied that the canon refuses — reported per row, never dropped in silence. */
+  invalidTags: string[];
+}
+
+/** Excel silently rewrites a long number (a phone!) as scientific notation when a column isn't Text:
+ *  "6.28129E+12" / "6,28129E+12" / "6E+12". The digits are lost for good. We DETECT and REJECT — never
+ *  "repair" — because there is nothing left to repair. Fix at source: format the column as Text. */
+const EXCEL_SCI_NOTATION = /^\d([.,]\d+)?e[+-]?\d+$/i;
+
+export function isExcelBrokenPhone(raw: string | null | undefined): boolean {
+  return raw != null && EXCEL_SCI_NOTATION.test(raw.trim());
 }
 
 /** Apply a mapping to one raw CSV record and normalize the contact identities through the ONE canon
@@ -70,6 +93,7 @@ export function normalizeMappedRow(raw: Record<string, string>, mapping: ColumnM
   let email: string | null = null;
   let phone: string | null = null;
   let city: string | null = null;
+  let tagCell: string | null = null;
   for (const [header, field] of Object.entries(mapping)) {
     const v = (raw[header] ?? "").trim();
     if (v === "") continue;
@@ -77,20 +101,44 @@ export function normalizeMappedRow(raw: Record<string, string>, mapping: ColumnM
     else if (field === "email") email = v;
     else if (field === "phone") phone = v;
     else if (field === "city") city = v;
+    else if (field === "tags") tagCell = v;
   }
+  const phoneExcelBroken = isExcelBrokenPhone(phone);
+  const parsed = parseTagCell(tagCell);
   return {
     fullName: fullName || null,
     email: email || null,
     emailNormalized: normalizeEmail(email),
-    phoneNormalized: normalizePhoneID(phone),
+    // A phone Excel mangled into scientific notation has lost its digits — it is dropped (never
+    // guessed-fixed). normalizePhoneID would return null for it anyway, but we short-circuit so the
+    // intent is explicit and the row carries the flag the operator is shown.
+    phoneNormalized: phoneExcelBroken ? null : normalizePhoneID(phone),
     city: city || null,
+    phoneExcelBroken,
+    // TUGAS E: the CSV `tags` column, `|`-separated, validated against the canon (lib/crm/tags.ts).
+    // Rejected values are reported per row rather than dropped in silence.
+    tags: parsed.tags,
+    invalidTags: parsed.invalid,
   };
 }
 
 export type RowStatus =
   | "insert"
   | "insert_suppressed" // will be inserted, but is suppressed → will never receive a send
-  | "skip_duplicate_existing" // matches a person already in master (email or phone)
+  | "insert_shared_phone" // NEW email, but the phone matches an existing contact — INSERTED (email is the
+  //                         identity key) and flagged; the shared phone is nulled at write (master's phone
+  //                         is unique), so a distinct person is never dropped just for sharing a number.
+  | "skip_shared_phone_suppressed" // (K-57, opsi d) shared phone that is CURRENTLY suppressed → NOT imported.
+  //                         The shared phone would be nulled at write, so a phone-keyed suppression on it
+  //                         would be invisible at send. We refuse to create a contactable identity for a
+  //                         number whose owner asked to stop — the row is skipped, closing the gap for
+  //                         suppressions that exist at import time.
+  | "skip_duplicate_email" // email matches a person already in master → skipped (identity is unambiguous)
+  | "skip_merged" // (T-55) email matches ONLY rows whose `merged_into` is set — a merged row moved its
+  //                         data elsewhere, so the ingest function's `upd` deliberately refuses to tag it.
+  //                         Neither inserted (the SQL anti-join sees the merged row and skips) nor tagged.
+  //                         Given its OWN class, and its own count, so the reduction is VISIBLE. The number
+  //                         may go down; it may not go down in silence.
   | "skip_duplicate_in_batch" // same email appeared earlier in this file
   | "skip_invalid"; // no usable email (email is required in Fase 1)
 
@@ -98,27 +146,74 @@ export interface RowOutcome {
   index: number; // 0-based row index within the data rows
   status: RowStatus;
   email: string | null;
+  /** Tags this row supplied that the canon refuses (TUGAS E). Carried on EVERY outcome, including a
+   *  clean `insert`: a row can import perfectly and still have had a tag thrown away, and that is
+   *  exactly the kind of thing this system has been losing in silence. The row still imports with
+   *  its valid tags — one mistyped tag should not reject a whole file — but the operator sees which
+   *  ones were refused, per row, before confirming. */
+  invalidTags: string[];
 }
 
 export interface ImportSummary {
   read: number; // total data rows read
   validEmail: number; // rows with a usable (normalizable) email
-  duplicatesExisting: number;
+  duplicatesEmail: number; // skipped: email matches an existing person (dedup is email-primary)
   duplicatesInBatch: number;
   invalid: number; // no valid email
+  phoneExcelBroken: number; // rows whose phone was Excel-mangled to scientific notation — phone dropped,
+  //                           row still counts under its email disposition; surfaced so the operator
+  //                           knows to re-export the source column as Text. Independent of every other
+  //                           figure (a broken phone can accompany a valid email that inserts, a
+  //                           duplicate, etc.).
+  sharedPhone: number; // INSERTED, but the phone matches an existing contact (shared number) — surfaced
+  //                      as its own figure so the operator sees it before confirming, not hidden.
+  sharedPhoneSuppressed: number; // SKIPPED (opsi d): shared phone that is currently suppressed. Not
+  //                      imported — a contactable identity is never created for a number whose owner
+  //                      opted out. Counted so the operator sees the guard fired. Usually 0.
+  sharedPhoneInBatch: number; // INSERTED, but the phone appears on MORE THAN ONE row of this same file
+  //                      — so the write nulls it on every one of them. Kept apart from sharedPhone
+  //                      because the follow-up differs: sharedPhone means "this number belongs to
+  //                      another customer", sharedPhoneInBatch means "your file lists this number
+  //                      twice". Same distinction as duplicatesEmail vs duplicatesInBatch.
+  rowsWithInvalidTags: number; // rows that supplied at least one tag the canon refuses — shown so a
+  //                      dropped tag is never silent, even on a row that otherwise imports cleanly.
+  taggedExisting: number; // NOT imported (email already in master) but TAGGED with this batch's tags.
+  //                      The population the tag work exists for: Hyrox participants who are already
+  //                      20FIT customers. Marked `tagged:<batch>`, never `batch:<batch>` — see the
+  //                      migration header — and their row is touched on the tags column only.
+  skippedMerged: number; // (T-55, owner decision 7 Sep 2026 = options 1+3 together) rows whose email
+  //                      matches ONLY already-merged people. The planner now filters them, so its
+  //                      taggedExisting equals the `tagged_existing` the SQL returns — and this count
+  //                      is what makes that filtering visible instead of a quiet shortfall between the
+  //                      dry-run screen and the report screen. Zero today: production carries 0 rows
+  //                      with `merged_into` set (measured 7 Sep 2026). Following the person to their
+  //                      successor row is a SEPARATE behavioural decision, deliberately deferred.
   suppressed: number; // net-new rows that are suppressed (inserted, but will never receive)
-  netInsert: number; // total rows that will be inserted (INCLUDING suppressed)
+  netInsert: number; // total rows that will be inserted (INCLUDING suppressed and shared-phone)
   netContactable: number; // netInsert − suppressed (the count that can actually be sent to)
 }
 
 export interface ImportPlan {
   summary: ImportSummary;
   insertRows: NormalizedRow[]; // exactly the rows to hand to the ingest function
+  /** People ALREADY in master that this batch TAGS instead of importing (K-58), each with the tags
+   *  from THEIR row — tags differ per row even inside one event file. Decided here, never re-derived
+   *  in SQL: the planner is the single decision point, so the dry-run count and the write act on the
+   *  same list. A phone-only match is NOT here — that is a different person, who is inserted (K-57). */
+  tagTargets: { email: string; tags: string[] }[];
   outcomes: RowOutcome[]; // per-row disposition, for the post-run report
 }
 
 export interface ImportKeys {
-  existingEmails: ReadonlySet<string>; // normalized emails already in master_customer
+  existingEmails: ReadonlySet<string>; // normalized emails already in master_customer (INCLUDING merged
+  //                      rows — this set decides INSERT-vs-not, and it must match the ingest function's
+  //                      anti-join, which also sees merged rows. Narrowing it would classify a row as
+  //                      `insert` that the SQL then refuses to insert: the same silence, mirrored.)
+  taggableEmails: ReadonlySet<string>; // (T-55) the subset of existingEmails with at least one row whose
+  //                      `merged_into` IS NULL — i.e. the people the ingest function's `upd` will
+  //                      actually tag. An email present in existingEmails but absent here matches only
+  //                      merged rows: skip_merged. Two sets, not one, because "already in the pool" and
+  //                      "taggable" stopped being the same question the moment merging existed.
   existingPhones: ReadonlySet<string>; // normalized phones already in master_customer
   suppressedEmails: ReadonlySet<string>; // active-suppression email identities (normalized)
   suppressedPhones: ReadonlySet<string>; // active-suppression phone identities (normalized)
@@ -133,13 +228,22 @@ export function planImport(
 ): ImportPlan {
   const outcomes: RowOutcome[] = [];
   const insertRows: NormalizedRow[] = [];
+  const tagTargets: { email: string; tags: string[] }[] = [];
   const seenEmails = new Set<string>(); // emails already accepted from THIS file
+  const taggedSeen = new Set<string>(); // emails already queued for tagging from THIS file
   const s: ImportSummary = {
     read: rows.length,
     validEmail: 0,
-    duplicatesExisting: 0,
+    duplicatesEmail: 0,
     duplicatesInBatch: 0,
     invalid: 0,
+    phoneExcelBroken: 0,
+    sharedPhone: 0,
+    sharedPhoneInBatch: 0,
+    rowsWithInvalidTags: 0,
+    taggedExisting: 0,
+    skippedMerged: 0,
+    sharedPhoneSuppressed: 0,
     suppressed: 0,
     netInsert: 0,
     netContactable: 0,
@@ -149,40 +253,133 @@ export function planImport(
     const n = normalizeMappedRow(raw, mapping);
     const email = n.emailNormalized;
 
+    // Count a mangled phone once, independent of what happens to the row below (its email may be valid
+    // and insert, or invalid and skip) — the operator is told either way, never silently.
+    if (n.phoneExcelBroken) s.phoneExcelBroken++;
+    if (n.invalidTags.length > 0) s.rowsWithInvalidTags++;
+
     if (email === null) {
       s.invalid++;
-      outcomes.push({ index, status: "skip_invalid", email: null });
+      outcomes.push({ index, status: "skip_invalid", email: null, invalidTags: n.invalidTags });
       return;
     }
     s.validEmail++;
 
-    const dupExisting =
-      keys.existingEmails.has(email) || (n.phoneNormalized !== null && keys.existingPhones.has(n.phoneNormalized));
-    if (dupExisting) {
-      s.duplicatesExisting++;
-      outcomes.push({ index, status: "skip_duplicate_existing", email });
+    // Dedup is EMAIL-PRIMARY (K-57): email is a personal identity, so an email match is an unambiguous
+    // duplicate → skip. A phone is a SHARED identifier (household, a parent registering children, an
+    // office line), so a phone-only match must NOT drop a distinct person — it is inserted and flagged
+    // instead. Suppression stays keyed on both (below); being in the pool never means being contactable.
+    if (keys.existingEmails.has(email)) {
+      s.duplicatesEmail++;
+      // (T-55) An email that matches ONLY merged rows is neither inserted nor tagged: the SQL
+      // anti-join sees the merged row so no insert happens, and `upd` filters `merged_into is null`
+      // so no tag happens. Before this branch existed the planner still counted it under
+      // taggedExisting, so the dry-run screen promised a tag that the write never applied and the
+      // report screen simply showed a smaller number with nothing to explain it. Now it is its own
+      // class with its own count — the figure may shrink, but not quietly.
+      if (!keys.taggableEmails.has(email)) {
+        s.skippedMerged++;
+        outcomes.push({ index, status: "skip_merged", email, invalidTags: n.invalidTags });
+        return;
+      }
+      // Not imported — but TAGGED (K-58). A tag is not a gate: tagging contacts nobody, and
+      // suppression still bites at send, so an email that matches a currently-suppressed person is
+      // tagged too. Deduplicated because the same email can appear twice in one file.
+      if (!taggedSeen.has(email)) {
+        taggedSeen.add(email);
+        tagTargets.push({ email, tags: n.tags });
+        s.taggedExisting++;
+      }
+      outcomes.push({ index, status: "skip_duplicate_email", email, invalidTags: n.invalidTags });
       return;
     }
 
     if (seenEmails.has(email)) {
       s.duplicatesInBatch++;
-      outcomes.push({ index, status: "skip_duplicate_in_batch", email });
+      outcomes.push({ index, status: "skip_duplicate_in_batch", email, invalidTags: n.invalidTags });
       return;
     }
     seenEmails.add(email);
 
-    const suppressed =
-      keys.suppressedEmails.has(email) || (n.phoneNormalized !== null && keys.suppressedPhones.has(n.phoneNormalized));
+    const sharedPhone = n.phoneNormalized !== null && keys.existingPhones.has(n.phoneNormalized);
+    const suppressedByEmail = keys.suppressedEmails.has(email);
+    const suppressedByPhone = n.phoneNormalized !== null && keys.suppressedPhones.has(n.phoneNormalized);
+
+    // (d) SUPPRESSION CARVE-OUT (K-57). A shared phone is nulled at write (master's phone is unique), so
+    // a phone-keyed suppression on that number is invisible to send-time suppression (fetchSuppressedCustomerIds
+    // resolves phones via phone_normalized, which is now NULL for this row). If the colliding phone is
+    // CURRENTLY suppressed, we must NOT create a contactable identity for it — skip the row entirely. This
+    // closes the gap FULLY for suppressions that exist at import time. The residual (a phone opt-out recorded
+    // AFTER import on the nulled number) is only closed by relaxing the phone unique index (opsi b, deferred);
+    // measured empty today (0 phone-keyed suppressions ever, verified 2026-09-03). Email suppression is NOT
+    // carved out here: an email is written intact, so it stays matchable at send — those rows insert-as-suppressed.
+    if (sharedPhone && suppressedByPhone) {
+      s.sharedPhoneSuppressed++;
+      outcomes.push({ index, status: "skip_shared_phone_suppressed", email, invalidTags: n.invalidTags });
+      return;
+    }
+
+    const suppressed = suppressedByEmail || suppressedByPhone;
     insertRows.push(n);
     s.netInsert++;
+    if (sharedPhone) s.sharedPhone++; // counted independently — a row can be both shared-phone and suppressed
+    // Per-row label priority: suppressed (won't ever send) dominates the shared-phone flag on screen,
+    // but both are reflected in the summary figures above.
     if (suppressed) {
       s.suppressed++;
-      outcomes.push({ index, status: "insert_suppressed", email });
+      outcomes.push({ index, status: "insert_suppressed", email, invalidTags: n.invalidTags });
+    } else if (sharedPhone) {
+      outcomes.push({ index, status: "insert_shared_phone", email, invalidTags: n.invalidTags });
     } else {
-      outcomes.push({ index, status: "insert", email });
+      outcomes.push({ index, status: "insert", email, invalidTags: n.invalidTags });
     }
   });
 
+  // A phone shared BETWEEN rows of this file can only be known once every row is placed, so it is a
+  // second pass. The write nulls the phone on EVERY row of a colliding group (not just the extras),
+  // so every one of them is counted — a number used twice costs two phones, not one.
+  const phoneUses = new Map<string, number>();
+  for (const r of insertRows) {
+    if (r.phoneNormalized) phoneUses.set(r.phoneNormalized, (phoneUses.get(r.phoneNormalized) ?? 0) + 1);
+  }
+  for (const r of insertRows) {
+    if (r.phoneNormalized && (phoneUses.get(r.phoneNormalized) ?? 0) > 1) s.sharedPhoneInBatch++;
+  }
+
   s.netContactable = s.netInsert - s.suppressed;
-  return { summary: s, insertRows, outcomes };
+  return { summary: s, insertRows, tagTargets, outcomes };
+}
+
+/**
+ * The operator-facing message for a FAILED import write, from the database's error code alone
+ * (T-49). Pure, so it is testable and so it can never accidentally be handed anything but a code.
+ *
+ * WHAT THIS REPLACES. The route used to answer every failure with "Gagal memproses impor. Coba lagi."
+ * — which hid the cause AND advised an action that could not work: when the RPC does not exist, or
+ * the value violates a CHECK, retrying is guaranteed to fail again. It also fed the raw Postgres
+ * message into a field typed as a code; Postgres messages are not ours to trust with PII.
+ *
+ * So the class is named, and each message says plainly whether retrying can help. `code` is already
+ * shape-guarded (safeCode) before it reaches here — never prose, never a row value.
+ */
+export function importFailureMessage(code: string | null): string {
+  switch (code) {
+    case "PGRST202":
+    case "42883":
+      return `Jalur tulis impor belum ada di database (kode ${code}). Migrasi crm_ingest_csv_people belum diterapkan — mengulang tidak akan berhasil sampai migrasi itu dijalankan.`;
+    case "23514":
+      return "Database menolak nilai yang ditulis impor (pelanggaran aturan kolom, kode 23514). Ini cacat konfigurasi impor, bukan masalah berkas Anda — mengulang tidak akan berhasil. Laporkan kodenya.";
+    case "23505":
+      return "Ada baris yang bentrok dengan data yang sudah ada (kode 23505). Pra-cek meloloskannya, jadi ini perlu ditinjau — mengulang berkas yang sama kemungkinan besar gagal lagi.";
+    case "23503":
+      return "Baris impor merujuk data yang tidak ada (kode 23503). Perlu ditinjau — mengulang tidak akan berhasil.";
+    case "42501":
+      return "Peran yang dipakai tidak berwenang menjalankan impor (kode 42501). Ini soal hak akses, bukan berkas Anda.";
+    case "57014":
+      return "Database membatalkan operasi karena berjalan terlalu lama (kode 57014). Coba lagi dengan berkas yang lebih kecil.";
+    case null:
+      return "Impor gagal dan database tidak memberi kode. Laporkan kejadian ini — jangan diulang berkali-kali tanpa penjelasan.";
+    default:
+      return `Impor gagal (kode ${code}). Laporkan kode ini — mengulang tanpa ada yang berubah kemungkinan besar gagal lagi.`;
+  }
 }

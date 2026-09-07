@@ -44,6 +44,9 @@ export interface Paged<T> {
 export interface ApiResult {
   consent: Paged<ConsentRow>;
   suppression: Paged<SuppressionRow>;
+  /** Rows per legal basis, counted live (T-60). The archive must describe what the table HOLDS,
+   *  not what it held when the banner was written. */
+  basisCounts?: { legacy: number; explicitOptIn: number; other: number };
 }
 
 /** Fetch /api/consent for the given page cursors; re-fetches on change; abortable. Returns the

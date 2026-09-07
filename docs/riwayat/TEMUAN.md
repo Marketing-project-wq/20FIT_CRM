@@ -1169,6 +1169,9 @@ di sprint ini.**
 
 ## T-45 — Bounce keras tak pernah di-auto-suppress: nol suppression aktif — 3 Sep 2026
 
+> **DIKOREKSI SEBAGIAN — lihat T-50.** Kalimat "nol suppression aktif" adalah potret satu momen
+> (benar saat diukur), bukan keadaan permanen. Bagian bounce-tak-pernah-di-auto-suppress tetap berlaku.
+
 **Terukur:** `crm_suppression` berisi **1 baris**, berstatus **`lifted`** → **nol suppression aktif**
 di seluruh sistem. Kelima hard bounce dari run 3 Sep di-join ke `crm_suppression`: **0** baris
 suppression, **0** aktif. Kelima orang itu masih sepenuhnya kontaktabel dan akan menerima kampanye
@@ -1346,6 +1349,645 @@ berkas `.sql` di `supabase/migrations/` **bukan** tindakan yang membuat migrasi 
    pernah per rentang versi (T-20).
 
 Sampai keempatnya beres, jalurnya tetap `apply_migration` satu per satu.
+
+## T-48 — Migrasi 37 menulis `basis='opt_in'`, nilai yang tak pernah ada di skema — 3 Sep 2026
+
+**Tertangkap di tinjauan, sebelum diterapkan. Nol baris data terpengaruh.**
+
+Migrasi `20260902050000_crm_ingest_csv_people` menyisipkan baris `crm_consent` dengan
+`basis = 'opt_in'`. CHECK yang hidup menerima **dua** nilai saja:
+
+```
+crm_consent_basis_check
+  CHECK ((basis = ANY (ARRAY['legacy_import_unverified'::text, 'explicit_opt_in'::text])))
+crm_consent : 408.119 baris   ← CHECK-nya nyata, bukan rencana
+```
+
+Nilai yang benar adalah **`explicit_opt_in`**; komentar migrasinya sendiri sudah menyatakan
+maksudnya ("it does NOT land as `legacy_import_unverified`"), penulisnya hanya memakai nama pendek
+yang tidak ada di skema.
+
+### (i) `CREATE FUNCTION` yang sukses BUKAN bukti fungsi itu jalan
+
+Ini inti temuannya. PL/pgSQL **tidak** menyelesaikan nama tabel/kolom dan **tidak** memvalidasi
+nilai terhadap constraint saat `CREATE` — badan fungsi hanya di-parse. Jadi kalau migrasi ini
+diterapkan apa adanya:
+
+1. `apply_migration` **berhasil**;
+2. verifikasi katalog (`pg_proc`, tanda tangan, grant) **semuanya hijau**;
+3. impor pertama gagal `23514`, transaksi rollback, nol baris masuk;
+4. pemilik melihat pesan galat yang sama persis seperti sebelumnya.
+
+Satu siklus gerbang penuh terbuang untuk kembali ke titik yang sama. **Konsekuensi prosedural:**
+verifikasi pasca-apply untuk sebuah fungsi wajib menyertakan **panggilan sungguhan** — satu baris
+sintetis di dalam transaksi yang di-`rollback` — bukan hanya pembacaan katalog. Membaca katalog
+membuktikan fungsi itu **ada**, bukan bahwa ia **jalan**.
+
+### (ii) Tidak ada preseden yang pernah jalan untuk disalin
+
+Header migrasi 37 berkata ia "mirrors `crm_ingest_activity_people` (migrasi 28)". Diperiksa di
+katalog: `position('crm_consent' in pg_get_functiondef(...))` untuk fungsi itu = **false** — migrasi
+28 **sama sekali tidak menyentuh `crm_consent`**. Yang dicerminkan hanyalah pola `SECURITY DEFINER`
++ insert `master_customer`; bagian consent-nya **baru**, tanpa contoh yang pernah berhasil.
+
+Itu penjelasan paling meyakinkan kenapa nilai salah bisa lolos: penulisnya tidak punya baris kerja
+untuk disalin, dan tak ada apa pun di jalur itu yang memvalidasi tebakannya.
+
+### (iii) Gerbang consent dilewati sepenuhnya oleh jalur tulis SQL
+
+`lib/crm/consent-policy.ts` menyebut `purposePermittedForBasis` sebagai *"the **ONE gate** a write
+path must call before recording a consent row… **fail-closed** on unknown input"*. Migrasi 37
+menulis barisnya **di dalam SQL** — tak satu baris TypeScript pun berjalan, gerbang itu tak pernah
+dipanggil. Kalau ia dipanggil, `isConsentBasis('opt_in')` mengembalikan `false` dan kesalahannya
+muncul saat menulis kode, bukan di produksi.
+
+Gerbang itu tak bisa dipanggil dari SQL. Penutupnya: **`lib/crm/consent-vocabulary.parity.test.ts`**
+— membaca SQL sebagai teks dan menerapkan kanon yang sama padanya. Tiga lapis: (A) kanon TS ==
+CHECK yang direkam live 3 Sep 2026; (B) kanon TS == CHECK yang didefinisikan berkas migrasi
+(otomatis merah kalau migrasi mendatang mengubah CHECK tanpa TS ikut); (C) setiap literal
+`basis`/`purpose`/`status`/`channel` yang ditulis SQL ke `crm_consent` harus ada di kanon, dan tiap
+pasangan `(basis, purpose)` harus lolos `purposePermittedForBasis` — gerbangnya sendiri. Ketiganya
+**fail-closed**: parser yang tak paham sebuah CHECK atau sebuah insert akan GAGAL, bukan melewatinya.
+Dibuktikan menggigit pada kedua arah (kembalikan `'opt_in'` → 2 test merah; ubah CHECK di migrasi
+tanpa mengubah TS → lapis B merah).
+
+**Perbaikan:** `'opt_in'` → `'explicit_opt_in'` di enam tempat (migrasi 37 baris 13 + 114, `README.md`
+ledger #37, `RENCANA-ingest-ticket.md`, `RENCANA-impor-audiens.md`, `KEPUTUSAN.md`). **Nol perubahan
+kode aplikasi** — jalur impor TypeScript tak pernah menyebut `basis`; nilainya diputuskan seluruhnya
+di dalam fungsi SQL. CHECK **tidak** dilebarkan: dua nama untuk satu hal adalah pola yang sudah
+berkali-kali menggigit proyek ini.
+
+## T-49 — Pesan galat impor menelan penyebab, dan membocorkan prosa Postgres ke field kode — 3 Sep 2026
+
+Instans **ketujuh** (hitungan pemilik) dari pola kegagalan senyap di `RANGKUMAN.md` §5 + T-41.
+
+`app/api/audience/import/route.ts` menjawab **setiap** kegagalan impor dengan satu kalimat:
+
+```ts
+logApiFailure("/audience/import", "import_failed", { code: e.message.slice(0, 60) });
+return NextResponse.json({ error: "import_failed", message: "Gagal memproses impor. Coba lagi." });
+```
+
+**Dua cacat, dan yang kedua lebih serius.**
+
+1. *"Coba lagi"* adalah saran yang **tidak akan pernah berhasil** untuk sebagian besar penyebabnya.
+   Kalau RPC-nya tidak ada (`PGRST202`), atau nilainya melanggar CHECK (`23514`), mengulang dijamin
+   gagal lagi. Pemilik menekan tombol itu berkali-kali karena sistem menyuruhnya.
+2. Field `ctx.code` di `logApiFailure` **bertipe kode**, tapi yang dijejalkan ke sana adalah **pesan
+   Postgres bebas, dipotong 60 karakter**. Isi pesan itu bukan milik kita: sebagian mengutip baris
+   yang bermasalah (`Key (email_normalized)=(…) already exists`). Jadi ini **jalur kebocoran PII**,
+   bukan sekadar pesan yang buruk — dan pemotongan tidak menolong: kebocoran yang lebih pendek tetap
+   kebocoran, sekaligus merusak kodenya.
+
+**Perbaikan.** Kode saja, disaring bentuk. Aturan bentuknya dipindah ke satu kanon bersama,
+`lib/crm/safe-code.ts` (`^[A-Za-z0-9_.-]{1,40}$`), dipakai oleh **dua** jalur tulis: `sendFailureCode`
+(T-41) dan rute impor — karena "aturan yang ditulis dua kali akan menyimpang" sudah terbukti di
+proyek ini. Nilai diambil **utuh atau tidak sama sekali**; prosa dijatuhkan, tak pernah dipotong.
+`importFailureMessage(code)` (murni, teruji) menamai kelasnya dan menyatakan terus terang apakah
+mengulang bisa menolong — dan *"Coba lagi"* kini hanya muncul untuk `57014` (timeout), satu-satunya
+kelas di mana itu saran yang nyata.
+
+## T-50 — Koreksi T-45: potret satu momen disajikan sebagai keadaan permanen — 3 Sep 2026
+
+T-45 menulis: *"`crm_suppression` berisi 1 baris berstatus `lifted` → nol suppression aktif"*. Beberapa
+jam kemudian query dengan bentuk yang sama mengembalikan `active`, baris yang sama (id dan
+`created_at` identik). Saat itu saya tidak bisa memastikan mana yang salah.
+
+**Audit log menjawabnya, dan pengukuran saya waktu itu BENAR:**
+
+| Waktu (UTC) | Aksi |
+|---|---|
+| 31 Agu 04:37:19 | `suppression.added` — klik pertama |
+| 31 Agu 04:39:52 | `suppression.lifted` — dicabut 2,5 menit kemudian (uji coba) |
+| 3 Sep 13:38:44 | `suppression.added` — klik uji pemilik |
+
+Jadi pada saat T-45 ditulis, barisnya memang `lifted`. Yang salah bukan pengukurannya melainkan
+**klaimnya**: T-45 menyajikan potret satu momen ("nol suppression aktif") sebagai sifat sistem.
+Suppression adalah keadaan yang hidup — orang bisa berhenti berlangganan kapan saja — jadi angkanya
+hanya sah dengan cap waktunya. **Aturan yang diambil:** setiap angka dari tabel yang berubah karena
+tindakan pengguna ditulis dengan cap waktu pengukuran, dan jangan pernah dinyatakan sebagai keadaan
+permanen.
+
+Bagian T-45 yang lain **tetap berlaku**, diverifikasi ulang 3 Sep: kelima penerima hard-bounce run
+`5f5f3a57` punya **0** baris suppression, **0** aktif. Bounce keras masih tidak pernah di-auto-suppress.
+
+**Temuan turunan — `created_at` tidak menjawab "kapan orang ini minta berhenti".** RPC unsubscribe
+**mengaktifkan ulang baris lama** alih-alih menyisipkan yang baru, jadi `created_at` baris itu masih
+tertulis **31 Agustus** padahal permintaan terakhirnya 3 September. Rantai lengkapnya hanya ada di
+`crm_audit_log`. Untuk pertanyaan kepatuhan ("kapan persisnya orang ini menarik consent?") tabel
+`crm_suppression` **bukan** sumber yang benar — audit log yang benar. Dicatat, **tidak diubah**:
+memperbaikinya butuh keputusan (kolom `reactivated_at`, atau baris baru per permintaan) dan sebuah
+migrasi.
+
+## T-51 — Pola tag menolak 7 dari 22 tag yang dihasilkan pemiliknya sendiri — 4 Sep 2026
+
+**Tertangkap di gerbang, sebelum satu baris kode pun ditulis. Nol data terpengaruh.**
+
+Pola yang diusulkan untuk kanon tag, `^[a-z][a-z0-9-]*:[a-z0-9][a-z0-9-]*$`, diuji terhadap kosakata
+nyata dari berkas pemilik (3.371 baris, 22 tag berbeda, 22.974 penempelan):
+
+| Ditolak | penempelan | sebab |
+|---|---:|---|
+| `format-single` / `format-double` / `format-relay` | 549 | tanpa namespace |
+| `kategori-laki-laki` / `kategori-perempuan` | 450 | tanpa namespace |
+| **`nilai:<300k`** | **1.227** | mengandung `<` |
+| **`nilai:>=1jt`** | **319** | mengandung `>` dan `=` |
+
+Dua yang terakhir yang berbahaya: keduanya **bernamespace** dan terlihat benar sekilas, jadi tak
+seorang pun mengantisipasinya. Karena tag tak sah **menggagalkan panggilan** (aturan yang benar), 1.546
+penempelan itu akan membuat impor pertama gagal seluruhnya.
+
+**Kelasnya sama persis dengan T-48:** aturan ditulis di satu tempat, nilai dihasilkan di tempat lain,
+tak ada yang mempertemukan keduanya sampai produksi. Bedanya kali ini pertemuannya terjadi di gerbang,
+karena polanya diuji terhadap data sebelum dipakai — itu satu-satunya perbedaan yang penting.
+
+**Penyelesaian.** Pemilik menormalisasi datanya, bukan melonggarkan polanya: `format:`/`kategori:`
+dinamespace, dan `nilai:` diganti nama jadi `di-bawah-300k` / `300k-1jt` / `1jt-ke-atas`. Alasannya
+dicatat karena akan digoda untuk dibalik: `<`, `>`, `=` akan menggigit di URL, CSV, HTML, dan filter
+UI mana pun — tag adalah nilai yang berkeliling ke semua tempat itu. Melonggarkan pola berarti
+memasang karakter berbahaya ke kosakata permanen demi menghemat satu kali penulisan ulang.
+
+Konsekuensi yang **sengaja tidak diselesaikan**: ketiga `nilai:` tak terurut alfabet sesuai
+tingkatannya. **Jangan** menambahkan awalan urutan (`t1-`, `1-`) ke dalam tag; urutan tampilan
+ditangani `NILAI_TAG_ORDER` di UI. Ditulis di sini supaya tak "diperbaiki" kelak oleh orang yang tak
+tahu.
+
+`status-bayar:lunas` juga dibuang — 3.180 penempelan, dan `sumber:mayar` juga tepat 3.180: konstan di
+seluruh populasinya, nol daya pembeda. **Aturan yang layak diingat: tag yang tidak pernah bervariasi
+di dalam populasinya bukan tag, melainkan nama lain untuk populasi itu.**
+
+Kanon sekarang di `lib/crm/tags.ts`, dijaga `tags.parity.test.ts` — termasuk bukti bahwa ia **tidak**
+menolak 577 baris `activity_ingest` yang sudah hidup di produksi. Kanon yang menyatakan produksi tidak
+sah lebih buruk daripada tak ada kanon.
+
+## T-52 — `batch:` pada orang yang sudah ada akan menghapus pelanggan asli, dengan seluruh penjaga utuh — 4 Sep 2026
+
+**Tertangkap di tinjauan desain. Nol data terpengaruh.**
+
+Rollback impor per-batch adalah:
+
+```sql
+delete from public.master_customer
+ where source='csv_import' and tags @> array['batch:<BATCH_UUID>'] and merged_into is null;
+```
+
+Argumen awal untuk memakai penanda berbeda (`tagged:`) bagi orang yang sudah ada adalah "kalau
+kedua populasi berbagi bentuk penanda, satu-satunya yang mencegah pelanggan asli terhapus adalah
+kondisi `source` — dan kondisi itu bisa hilang saat query disalin". Benar, tapi butuh manusia yang
+menyalin dengan buruk.
+
+**Ada skenario yang tidak butuh kesalahan siapa pun:**
+
+| langkah | keadaan |
+|---|---|
+| 1 | Orang P diimpor batch **B1** → `source='csv_import'`, `tags=['csv_import','batch:B1']` |
+| 2 | Batch **B2** memuat P lagi → dedup melewatinya (email cocok) → P ditandai |
+| 3 | Kalau penandanya `batch:B2`, `tags` P kini memuat **B1 dan B2** |
+| 4 | Rollback B2 → `where source='csv_import' and tags @> array['batch:B2']` → **P TERHAPUS** |
+| 5 | P milik B1. Rollback B2 tak pernah dimaksudkan menyentuhnya. |
+
+Setiap penjaga bekerja persis seperti rancangannya. `source` cocok — karena P memang diimpor CSV.
+Tak ada query yang disalin salah. **Penanda `tagged:` membuat ini mustahil karena BENTUKNYA**, bukan
+karena seseorang ingat menambahkan klausa WHERE.
+
+**Pelajaran yang lebih luas:** ketika dua populasi berbagi tabel dan salah satunya bisa dihapus
+massal, yang membedakan keduanya harus **tak mungkin tertukar**, bukan sekadar "berbeda kalau
+querynya benar". Penanda yang bentuknya sama adalah bom waktu yang menunggu populasi kedua tumpang
+tindih dengan yang pertama.
+
+## T-53 — Nomor keputusan bertabrakan antar-branch paralel (K-55 ganda) — 4 Sep 2026
+
+PR #29 (sesi lain) menomori keputusan dedup email-primernya **K-55**. Di saat yang sama PR #32 (sesi
+ini) memakai **K-55** untuk status run `partial`/`failed`, dan sudah merge ke `main` lebih dulu.
+Keduanya benar secara lokal; keduanya membaca `KEPUTUSAN.md` saat nomor itu masih kosong.
+
+Diselesaikan dengan menomori ulang #29 → **K-57** (11 rujukan di 5 berkas: `KEPUTUSAN.md`,
+`RENCANA-impor-audiens.md`, `import-audience.ts`, `import-audience.test.ts`, dan
+`components/audience/import-wizard.tsx` — berkas terakhir hampir terlewat karena sapuan pertama hanya
+mencakup `lib/`, `app/`, dan `docs/`).
+
+**Konsekuensi yang diterima sadar:** kalau #29 di-merge sebelum commit penomoran ulang, `main` memuat
+dua K-55 selama beberapa menit. Nol kode bergantung pada nomor itu secara semantik — ia hanya rujukan
+dokumen — jadi jendela itu tak berbahaya, hanya membingungkan. Di branch ini penomoran ulang menjadi
+bagian dari commit merge-nya sendiri, sehingga `main` tak pernah melihatnya lewat jalur ini.
+
+**Cara menghindarinya lain kali:** nomor keputusan diambil dari `main`, bukan dari branch. Dua branch
+paralel yang sama-sama menambah keputusan akan selalu menebak nomor yang sama. Yang murah: sebelum
+menulis `## K-nn`, `git fetch` lalu baca `KEPUTUSAN.md` **di `origin/main`**, dan kalau ada branch
+lain yang sedang terbuka, ambil nomor setelah yang tertinggi di antara keduanya. Yang lebih baik lagi:
+sebutkan nomor yang dipakai di deskripsi PR, supaya tabrakan terlihat saat tinjauan, bukan saat merge.
+
+## T-54 — Migrasi 37 tidak pernah diurai Postgres sampai gerbang dibuka: satu koma hilang — 7 Sep 2026
+
+**Apa yang terjadi.** `apply_migration` untuk migrasi 37 ditolak pada percobaan pertama:
+
+```
+ERROR: 42601: syntax error at or near "tag_targets"
+```
+
+Penyebabnya satu karakter. CTE `ins` ditutup di baris 175 dengan `  )` tanpa koma, lalu — dipisahkan
+enam baris komentar — CTE berikutnya `tag_targets as (` dimulai. Berkas itu **tidak pernah bisa
+dibuat**, dalam bentuk apa pun, di basis data mana pun.
+
+**Mengapa tidak ada yang menangkapnya.** Ini satu lapis LEBIH AWAL dari T-48. T-48 berkata: `CREATE
+FUNCTION` yang berhasil hanya membuktikan fungsi itu ADA, bukan bahwa ia BERJALAN. Yang ini berkata:
+berkas migrasi di repo tidak pernah dibuktikan bahkan **bisa diurai**. Yang menjaga berkas ini adalah
+`tags.parity.test.ts`, `consent-vocabulary.parity.test.ts` dan `dedup.parity.test.ts` — 31 pengujian,
+dan **ketiga-tiganya lulus dengan koma yang hilang masih di tempatnya** (dijalankan sebelum dan
+sesudah perbaikan: 31 lulus, 31 lulus). Itu bukan kegagalan pengujian-pengujian tersebut: mereka
+memindai *teks sumber* untuk memastikan aturan yang sama muncul di TypeScript dan di SQL. Tidak ada
+satu pun yang berpura-pura menjadi pengurai SQL.
+
+Koma itu hilang saat `tag_targets`/`upd` disisipkan setelah CTE `ins` (pekerjaan TUGAS B). Kelas
+kesalahan yang sama persis dengan `row_tags` yang tak pernah sampai ke INSERT: **menyisipkan CTE ke
+tengah rantai `with` tidak diperiksa oleh apa pun kecuali Postgres sendiri.**
+
+**Biayanya, dan mengapa kecil.** Nol. Kegagalan terjadi pada waktu urai, sebelum DDL apa pun berlaku,
+dan `apply_migration` tidak menyetempel ledger untuk migrasi yang gagal. Keenam angka LANGKAH 1 diukur
+ulang setelah penolakan dan **identik** (04:06:51 → 04:10:51 UTC): `pg_proc` 0, stempel 0,
+`master_customer` 82.830, `crm_consent` 408.119, run draft/sending 0, kiriman terjadwal 0. Yang hilang
+hanya satu siklus gerbang pemilik.
+
+**Cara menghindarinya lain kali — dan koreksi atas usulan pertama saya.** Usulan awal saya adalah
+`initdb` sebuah Postgres sekali pakai di CI. Itu bekerja (begitulah komanya diisolasi), tapi pemilik
+menunjukkan yang lebih murah: **`libpg-query`**, tata bahasa Postgres sendiri dikompilasi jadi pustaka.
+Tanpa server, tanpa keputusan CI, milidetik.
+
+Tapi pemilik juga menemukan jebakannya, dan itu bagian terpentingnya. Ada **dua** API, dan yang jelas
+namanya adalah yang salah:
+
+```
+parse_sql      versi rusak      -> OK      <- BUTA
+parse_sql      versi diperbaiki -> OK
+parse_plpgsql  versi rusak      -> MERAH: syntax error at or near "tag_targets"
+parse_plpgsql  versi diperbaiki -> OK
+```
+
+Badan PL/pgSQL adalah **literal berkutip dolar**; tata bahasa SQL luar tak pernah melihat ke dalamnya.
+Berhenti di `parse_sql` lalu melaporkan "terverifikasi" akan menjadi instans kesekian dari pola yang
+sama — sebuah pemeriksaan yang hijau karena tak melihat, bukan karena tak ada yang salah.
+
+Dikonfirmasi ulang secara mandiri lewat paket npm (`libpg-query@18.1.4`, yang memang mengekspos
+`parsePlPgSQL`/`parsePlPgSQLSync`; versi 17.x **tidak**): kedua baris di atas terulang persis, dan
+pesannya identik karakter-per-karakter dengan yang dikembalikan produksi.
+
+**Pagar keenam dibangun di putaran ini**: `lib/crm/migration-parse-guard.test.ts` mengurai ke-47 berkas
+migrasi dengan **kedua** pengurai, dan memuat dua kasus yang membuktikan ia **menggigit** — koma
+antar-CTE yang hilang (ditolak `parse_plpgsql`, lolos `parse_sql`) dan statement rusak di luar badan
+fungsi (ditolak `parse_sql`). Usulan `initdb` **dibatalkan**, bukan diparkir: ia tak lagi diperlukan.
+
+Yang pagar ini **tidak** buktikan tetap sama: bahwa nama tabel/kolomnya ada. Itu T-48, dan hanya
+panggilan sungguhan terhadap skema sungguhan yang menunjukkannya.
+
+**Yang BELUM dibuktikan oleh pengurai.** Bahwa nama tabel dan kolomnya benar. Itu diperiksa terpisah
+(lihat catatan uji coba lokal di bawah), bukan oleh `CREATE` yang berhasil.
+
+## T-55 — Orang yang sudah digabung (`merged_into`) dihitung "akan ditandai" oleh perencana, tapi dilewati oleh SQL — 7 Sep 2026
+
+**Statusnya: laten, belum menggigit.** Diukur 7 Sep 2026: `merged_into is not null` = **0** baris,
+`is_merged = true` = **0** baris di `master_customer`. Jadi ini tidak memengaruhi impor yang sedang
+digerbangi. Dicatat karena ia akan menggigit diam-diam pada penggabungan pertama.
+
+**Ketidakcocokannya.** `app/api/audience/import/route.ts:97` mengisi `existingEmails` dengan:
+
+```ts
+await admin.from("master_customer").select("email_normalized").in("email_normalized", emails)
+```
+
+— tanpa saringan `merged_into is null`. Maka baris yang sudah digabung ikut masuk. Perencana lalu
+memasukkan email itu ke `tagTargets` dan menaikkan `summary.taggedExisting`, sehingga layar Ringkasan
+menghitungnya sebagai "Akan ditandai (sudah ada)". Tetapi CTE `upd` di migrasi 37 menyaring
+`m.merged_into is null` — sengaja, karena baris yang digabung sudah memindahkan datanya ke tempat
+lain. Hasilnya orang itu **tidak disisipkan dan tidak ditandai**, dan `tagged_existing` yang
+dikembalikan lebih kecil daripada angka uji-kering, tanpa satu baris pun yang menjelaskan selisihnya.
+
+**Dibuktikan, bukan dinalar.** Dalam uji coba lokal (skema disalin dari produksi, di luar produksi),
+dua baris `p_tag_rows` diberikan — satu orang biasa, satu orang dengan `merged_into` terisi — dan
+fungsi mengembalikan `tagged_existing: 1`. Selisihnya senyap.
+
+**Keputusan pemilik (7 Sep 2026): opsi (a) DAN (c) bersama, bukan salah satu.** Perencana ikut
+menyaring, **dan** mengembalikan hitungan terpisah supaya penyaringan itu terlihat. Kalimat
+pemiliknya: *"Angka boleh berkurang; tidak boleh berkurang diam-diam."* Opsi (b) — mengikuti orang itu
+ke baris penerusnya — **ditunda**: keputusan perilaku tersendiri, dan `merged_into` masih nol.
+
+**Cara menerapkannya, dan jebakan yang hampir saya masuki.** Godaan pertama adalah menyaring
+`merged_into is null` langsung di query `existingEmails`. Itu **salah dan mencerminkan cacatnya**:
+`existingEmails` memutuskan SISIP-atau-tidak dan harus setara dengan anti-join fungsi ingest, yang
+**ikut** melihat baris tergabung. Sempitkan set itu dan barisnya diklasifikasikan `insert`, lalu SQL
+menolak menyisipkannya — kesenyapan yang sama, hanya terbalik arah.
+
+Jadi dua set, bukan satu: `existingEmails` (semua, cermin anti-join) dan `taggableEmails` (yang punya
+setidaknya satu baris `merged_into is null`, cermin filter `upd`). Email yang ada di set pertama tapi
+tidak di kedua → kelas `skip_merged`, dengan hitungan `skippedMerged` sendiri dan kartunya sendiri di
+layar. Tiga pengujian menguncinya, termasuk kasus orang yang punya baris tergabung **dan** baris hidup
+sekaligus (indeks unik email bersifat parsial, jadi itu mungkin) — di situ yang hidup menang.
+
+
+## T-56 — Empat caption dashboard menyatakan hal yang tidak lagi benar, dan satu menamai kategori yang tak pernah ada — 7 Sep 2026
+
+**Yang tertulis di layar versus yang terukur** (semua diukur ulang 7 Sep 2026):
+
+| Caption | Menyatakan | Kenyataan terukur |
+|---|---|---|
+| `workflowActiveHint` | "belum ada tabel workflow" | `crm_workflow` ada sejak 27 Agu 2026, **1** baris, **36** enrollment `queued` |
+| `lastProfileHint` | "2 muatan: 20 Apr & 31 Jul" | **tiga** muatan: 81.178 · 1.075 · 577 |
+| `liveNote` | "muatan terakhir 31 Jul 2026" | muatan terakhir **27 Agu 2026** |
+| `poolLayerC` | "nol profil baru sejak 1 Agustus" | **577** profil masuk 27 Agustus |
+| `importDobHint` | "~99,5% cocok (diukur manual · 24 Agu)" | belum terbukti salah — tapi menua tanpa ada yang tahu |
+
+**Kartu "Contactable" bukan sekadar usang — ia mengarang kategori.** Kartu itu menampilkan dua
+angka, "Bisa dihubungi · marketing" dan "Bisa dihubungi · layanan", dari
+`crm_contactable_counts()`. Keduanya **82.253**, dan itu bukan kebetulan: backfill Migrasi 11
+menulis baris consent `marketing` DAN `transactional` untuk orang yang sama, jadi kartu itu
+mencetak satu fakta dua kali. Lebih buruk lagi, label "layanan" memetakan `transactional`, dan
+`crm_consent_purpose_check` hanya menerima **`marketing`** dan **`transactional`** — nol baris
+memakai nilai lain (dihitung 7 Sep 2026). Tidak ada purpose bernama `service` di sistem ini. Kartu
+itu memberi nama pada kategori yang tidak ada.
+
+Penggantinya menjawab pertanyaan yang sebenarnya ditanyakan orang, dan ketiganya terukur:
+
+- **Bisa dikirimi email — 82.213** (punya `email_normalized`, tidak ter-suppress aktif)
+- **Bisa dihubungi WhatsApp — 81.679** (punya `phone_normalized`, tidak ter-suppress aktif)
+- **Total profil — 82.830**
+
+Selisih 534 antara kedua saluran itu nyata: orang yang punya email tanpa nomor, dan sebaliknya.
+Dilebur jadi satu angka, informasinya hilang.
+
+**Mekanismenya, dan kenapa menambal keempatnya saja tidak cukup.** Tak satu pun caption itu ditulis
+untuk menyesatkan. Semuanya benar pada hari diketik. Yang rusak adalah **tempat faktanya disimpan**:
+sebuah angka yang diletakkan di berkas terjemahan — lapisan yang tak pernah diperiksa ulang oleh
+apa pun, tidak oleh pengujian, tidak oleh pagar, tidak oleh manusia. Memperbaiki teksnya hanya
+menyetel ulang jamnya. Karena itu keputusannya adalah **K-60**: angka di layar dihitung dari data;
+kalau benar-benar tak bisa dihitung, ia wajib membawa tanggal pengukuran DAN tanda visual manual.
+Satu angka di layar sekarang memenuhi pengecualian itu (`importDobHint`) dan memikul lencana
+"ANGKA MANUAL" — supaya ia menua di depan mata, bukan diam-diam.
+
+## T-57 — `identity_kind` menyiratkan penghentian per-saluran; kodenya memblokir seluruh orang — 7 Sep 2026
+
+**Dicatat, tidak diubah.** Perubahan perilaku suppression tidak termasuk lingkup putaran ini, dan
+ini keputusan kebijakan, bukan cacat mekanis.
+
+Ditemukan dari selisih satu orang. Angka WhatsApp saya 81.679; angka pemilik 81.680. Yang benar
+81.679, dan sebabnya menjelaskan sesuatu yang lebih besar daripada satu baris:
+
+- `master_customer` punya **82.214** baris dengan email dan **81.680** dengan telepon.
+- Ada **1** baris suppression aktif.
+- Baris itu mengurangi **keduanya** → 82.213 dan 81.679.
+
+`fetchSuppressedCustomerIds` memetakan suppression ke **`customer_id`**, bukan ke saluran. Jadi
+seseorang yang menekan "berhenti berlangganan" di sebuah email juga berhenti bisa dihubungi lewat
+WhatsApp. Sementara itu `crm_suppression` menyimpan kolom **`identity_kind`**, yang secara jelas
+menyiratkan penghentian dibedakan per identitas/saluran.
+
+**Kolom itu dekoratif pada saat dibaca.** Dua bagian sistem menyiratkan dua kebijakan berbeda, dan
+tak ada dokumen yang memutuskan mana yang berlaku.
+
+Kebijakan yang berlaku sekarang mungkin justru yang benar — memperlakukan "stop" sebagai permintaan
+orang, bukan permintaan per-saluran, adalah tafsir yang lebih aman dan bisa dibela. Yang menjadi
+temuan bukan pilihannya, melainkan bahwa pilihan itu **tidak pernah diambil secara sadar**: ia
+adalah akibat sampingan dari bentuk sebuah query. Dengan 1 baris suppression, taruhannya nol hari
+ini. Dengan pipeline harian (`docs/USULAN-pipeline-harian.md` §4a) taruhannya tidak lagi nol.
+
+**Yang harus diputuskan, bukan ditebak:** apakah "berhenti berlangganan" berlaku untuk orangnya,
+atau untuk salurannya. Lalu buat kode dan skema mengatakan hal yang sama — entah dengan menghormati
+`identity_kind` saat menyaring, atau dengan menghapus kolom yang menjanjikan sesuatu yang tak
+dilakukan sistem.
+
+**Catatan kecil dari pengukuran yang sama:** dari 126 orang yang pesannya pernah diterima penyedia,
+**125** masih ada di `master_customer` — satu baris log menunjuk `customer_id` yang tak lagi ada di
+sana. Tidak diselidiki putaran ini; disebut supaya rasio "126 dari 82.830" dibaca apa adanya.
+
+
+## T-58 — Kategori karangan yang sama (`layanan`) masih hidup di segment builder, dan di sana kedua angkanya SELALU sama — 7 Sep 2026
+
+**Dicatat, sengaja tidak diperbaiki.** Pemilik meminta ini didokumentasikan lengkap dengan lokasinya
+supaya tidak ditemukan ulang dari nol beberapa minggu lagi.
+
+T-56 memperbaiki kartu "Contactable · marketing / layanan" di dashboard. **Kategori yang sama masih
+hidup di layar segmen**, dan sekarang ia satu-satunya tempat tersisa:
+
+| Lapisan | Berkas | Baris |
+|---|---|---|
+| Baca | `lib/crm/segment-read.ts` | 35 (`contactableService`), 256–261 (`countContactableForPurpose(admin, 'transactional', …)`) |
+| API | `app/api/segments/route.ts` | 117 (teks audit "layanan"), 148 (`contactable_service`), 175 |
+| UI | `components/segments/segment-builder.tsx` | 22–23, 88, 221–226, 444–460 (kartu ketiga) |
+| Teks | `lib/i18n/messages/id.ts` | 548 `countSvcLabel: "Boleh dihubungi · layanan"`, 549 `countSvcSub`, 682–684 `warn.svcZero*` |
+
+**Yang lebih buruk dari sekadar nama, dan ini terukur.** Di dashboard, kedua angka kebetulan sama
+besar. Di sini saya periksa apakah keduanya menghitung **orang yang sama**, dan jawabannya ya —
+mutlak (diukur 7 Sep 2026):
+
+```
+marketing aktif (orang)                  : 82.253
+transactional aktif (orang)              : 82.253
+punya marketing TAPI tidak transactional :      0
+punya transactional TAPI tidak marketing :      0
+irisan                                   : 82.253
+```
+
+Nol di **kedua** arah. Kedua populasi itu identik, bukan sekadar sama besar. Karena kedua kartu
+menyaring populasi identik dengan kriteria yang sama dan suppression yang sama, **kartu kedua tidak
+akan pernah menampilkan angka berbeda dari kartu pertama, untuk kriteria apa pun.** Ia bukan angka;
+ia gema. Operator yang melihat dua angka besar berdampingan wajar menyimpulkan ada dua populasi.
+
+Penyebabnya sudah diketahui: backfill Migrasi 11 menulis baris `marketing` DAN `transactional` untuk
+setiap orang. Rincian per saluran memperlihatkan mekanismenya — `marketing/email=81.637`,
+`transactional/email=81.637` (angka yang sama persis), plus `transactional/phone_call=81.615` yang
+tidak punya pasangan marketing. Dan **seluruh 408.119 baris consent berbasis
+`legacy_import_unverified`**; nol `explicit_opt_in` sampai impor CSV pertama menulisnya.
+
+**Pertanyaan yang HARUS dijawab sebelum ini dikerjakan** — dan ini pertanyaan produk, bukan teknis:
+
+**Apa sebenarnya yang dimaksud kriteria "layanan" itu?** Ia tidak pernah punya rujukan di kosakata
+consent: `crm_consent_purpose_check` hanya menerima `marketing` dan `transactional`, dan nol baris
+memakai nilai lain. Label "layanan" adalah tafsir seseorang atas `transactional` yang tak pernah
+dituliskan. Tiga kemungkinan, dan pilihannya mengubah apa yang harus dibangun:
+
+1. **Ia memang berarti `transactional`** — pesan operasional (konfirmasi booking, pengingat jadwal).
+   Maka labelnya diperbaiki menjadi "transaksional", dan pertanyaan berikutnya: kenapa layar SEGMEN
+   (alat untuk menyusun kampanye) menampilkannya sama sekali? Segmen dipakai untuk mengirim
+   kampanye pemasaran; hitungan transaksional tidak memandu keputusan itu.
+2. **Ia dimaksudkan sebagai "boleh dihubungi CS"** — sebuah izin operasional yang tidak dimodelkan
+   di mana pun. Maka ia butuh nilai `purpose` sendiri, backfill sendiri, dan keputusan hukum
+   sendiri. Itu pekerjaan besar, bukan penggantian label.
+3. **Ia tidak dimaksudkan apa-apa** — sekadar warisan backfill Migrasi 11 yang naik ke UI karena
+   RPC-nya mengembalikan dua kunci. Maka kartunya dihapus, dan layar segmen menampilkan satu angka
+   jangkauan yang benar.
+
+Berdasarkan bukti di atas, **(3) yang paling mungkin** — tapi itu dugaan saya, bukan hasil
+pengukuran, dan menghapus sebuah kartu dari layar operator adalah keputusan pemilik. Yang saya
+ukur hanyalah bahwa kartu kedua tidak bisa berbeda dari kartu pertama.
+
+## T-59 — Potret harian menyeluruh untuk layar BOD butuh migrasi; empat dari lima kartu belum punya sumber harian — 7 Sep 2026
+
+Konteks: K-61 memutuskan seluruh halaman BOD menjadi potret harian dengan satu cap waktu. Temuan
+ini mencatat ongkos yang belum terlihat saat keputusan itu diambil — pemilik menyebutnya
+"nol RPC, nol migrasi", dan bagian "nol migrasi" tidak benar. Diverifikasi 7 Sep 2026.
+
+**Bagaimana potret harian ditulis hari ini.** Cron `crm-refresh-customer-mirror`, jadwal
+`0 20 * * *` (20:00 UTC = 03:00 WIB), perintahnya `select public.crm_refresh_customer_mirror();` —
+sebuah **fungsi SQL**, bukan rute aplikasi. Hasilnya mendarat di `crm_mirror_meta.dashboard_stats`,
+yang hari ini memuat tepat enam kunci: `engagement`, `rfm`, `fitco`, `ecosystem`, `candidates`,
+`sources`. Terbaca 7 Sep 2026: `refreshed_at = 2026-09-06 20:00:00 UTC`, `row_count = 82.830`.
+
+**Per kartu:**
+
+| Kartu | Bisa potret harian? | Kenapa |
+|---|---|---|
+| 3 · Unit bisnis | **Sudah** | `dashboard_stats.engagement`. Angkanya cocok orang-per-orang dengan hitungan langsung. |
+| 1 · Jangkauan | Belum ada sumbernya | Butuh `emailable`/`whatsappable`/`everContacted` masuk blob → ubah fungsi → migrasi |
+| 2 · Pertumbuhan | Belum ada sumbernya | idem |
+| 4 · Kesehatan kirim | Belum ada sumbernya | idem |
+| 5 · Celah CRM | Belum ada sumbernya | idem. Blob punya `candidates`, TAPI itu populasi berbeda — lihat di bawah |
+
+**Tak satu pun kartu mustahil secara prinsip.** Keempatnya terhalang fakta praktis yang sama: tak
+ada sumber hariannya, dan membuatnya berarti mengubah `crm_refresh_customer_mirror()`.
+
+**Satu jebakan yang hampir memakan saya.** Blob sudah punya kunci `candidates`, dan menggodanya
+dipakai untuk kartu 5 tanpa migrasi apa pun. **Itu populasi yang berbeda.** Kartu "Candidates not
+yet in the pool" milik dashboard operasional menghitung 2.799 dengan rincian sumber yang memuat
+`event_transaction` (1.887), `rc_ticket_invites`, `uob_users` — tabel yang **tidak ada sama sekali**
+di daftar lima sumber yang dipakai kartu BOD (1.374). Memakai `candidates` untuk kartu 5 akan
+mengganti arti angkanya tanpa mengganti judulnya. Itulah kenapa caption "apa yang dihitung" pada
+kartu 5 (butir 1 putaran ini) bukan hiasan.
+
+**Satu kartu yang layak dipertanyakan lagi saat gerbang dibuka: jangkauan (kartu 1).** Angka
+jangkauan mengurangi suppression, dan komentar di `lib/crm/dashboard.ts` menyatakan angka itu
+"never precomputed: a stale reach figure would say a person can be reached who has just asked to
+stop". Untuk layar BOD keberatan itu **lebih lemah dari kedengarannya**: layar ini tidak mengirim
+apa pun, dan jalur kirim memeriksa suppression secara langsung. Jadi jangkauan berumur 24 jam tak
+membuat siapa pun terkontak keliru. Tapi aturannya ditulis untuk alasan yang baik, dan mengendurkan
+sebagiannya harus disebut, bukan diselundupkan lewat.
+
+**Yang TIDAK dilakukan, dan kenapa.** Halaman tidak diubah untuk menyatakan "per 03:00" sementara
+empat kartunya dihitung saat request. Itu akan menjadi satu kalimat yang benar-benar salah tentang
+data di bawahnya — kelas kesalahan yang sama persis dengan keempat caption di T-56, dibuat
+sengaja kali ini. Halaman tetap apa adanya sampai gerbang migrasi dibuka.
+
+
+## T-60 — Pemeriksaan basis-ganda sebelum impor: satu dari empat akan pecah — 7 Sep 2026
+
+Seluruh 408.119 baris `crm_consent` hari ini berbasis `legacy_import_unverified`, dari satu
+`source` (`20fit_data_import`), atas 82.253 orang — diverifikasi 7 Sep 2026, satu kelompok
+homogen. Impor CSV pertama akan menulis `explicit_opt_in` dan menjadikan tabel ini **memuat dua
+dasar untuk pertama kalinya dalam sejarah sistem**. Apa pun yang diam-diam mengandaikan dasarnya
+seragam belum pernah diuji. Empat pemeriksaan, satu pecah.
+
+### 1. Layar Arsip Consent — **AKAN PECAH**, diperbaiki
+
+`consent-archive-panel.tsx` memilih spanduk dengan `consent.total > 0 ? BackfilledMeaning :
+ZeroMeaning`. `BackfilledMeaning` menyatakan, tanpa syarat, bahwa tabel ini **adalah** backfill
+legacy berbasis `legacy_import_unverified`, dan menutup dengan: *"Ini reversibel: nol trigger, dan
+menghapus baris membatalkannya bersih."*
+
+Hari ini kedua klaim itu benar, karena 408.119 dari 408.119 baris memang begitu. Sesudah impor,
+keduanya salah — dan kalimat terakhirnya berubah dari benar menjadi **berbahaya**: menghapus baris
+`explicit_opt_in` bukan membatalkan backfill, melainkan menghapus bukti persetujuan orang per
+orang. Spanduk itu akan terus mengatakannya, karena syaratnya hanya "ada baris".
+
+**Diperbaiki** (satu-satunya yang diperbaiki putaran ini, karena hanya ini yang pecah): tiga
+keadaan, bukan dua. Nol baris → `ZeroMeaning`. Semua legacy → `BackfilledMeaning`, tak berubah.
+Campuran → `MixedBasisMeaning`, yang menyebut jumlah **per dasar dari data** dan sengaja **tidak**
+membawa kalimat "hapus untuk membatalkan": cara membatalkan tiap jalur tulis ada di berkas
+migrasinya sendiri, disaring lewat `source`. Ditambah hitungan `other` — total dikurangi kedua
+dasar yang dikenal — supaya dasar di luar kosakata tak bisa bersembunyi di dalam total.
+
+### 2. Query `crm_consent` yang tak menyaring `basis` — aman, dengan satu catatan
+
+Dua jalur baca menyentuh tabel ini:
+
+- `fetchConsentScreen` (arsip) — tak menyaring dasar, dan memang tidak boleh: ia arsip.
+- `countProfilesWithConsent` — menyaring `purpose` + `status`, bukan `basis`. Itu benar menurut
+  **K-36**: consent adalah bukti, suppression adalah gerbang. Dan `BASIS_ALLOWED_PURPOSES` memberi
+  izin `marketing` pada **kedua** dasar, jadi menyaring dasar pun tak akan mengubah angkanya.
+
+**Catatannya, dan ini temuan tersendiri:** `purposePermittedForBasis` di `consent-policy.ts`
+menyebut dirinya *"the ONE gate a write path must call before recording a consent row"*. Dipindai
+7 Sep 2026: **tak ada satu pun kode produksi yang memanggilnya** — hanya pengujiannya sendiri.
+Migrasi 37 tidak memanggilnya (ia SQL, dan menuliskan `'explicit_opt_in'` sebagai literal; itulah
+sebabnya `consent-vocabulary.parity.test.ts` ada sebagai penggantinya). Jadi kalau
+`LEGACY_IMPORT_ALLOWS_MARKETING` kelak dibalik ke `false`, **tak ada** jalur baca maupun tulis yang
+akan menghormatinya — angka "bisa dihubungi" tidak berubah sedikit pun. Bendera itu hari ini
+dokumentasi, bukan gerbang. Dicatat, tidak diubah.
+
+### 3. Angka "contactable" — per ORANG, dan sudah terbukti tahan banyak-baris
+
+Kekhawatiran yang tepat, tapi kasusnya **sudah hidup hari ini** — lewat saluran, bukan dasar.
+Untuk `purpose='marketing'` yang aktif: **163.252 baris** atas **82.253 orang** (email + whatsapp
+per orang). Kalau hitungannya per-baris, layar sudah lama menampilkan 163.252 — angka yang lebih
+besar dari seluruh pool 82.830.
+
+Yang membuatnya per-orang: `countProfilesWithConsent` menghitung `master_customer` dengan **inner
+embed** `crm_consent!inner`, jadi `count` jatuh pada baris INDUK, satu per orang. Ini pernah
+diverifikasi silang terhadap `count(distinct customer_id)` langsung — keduanya 82.253, sementara
+tafsir baris-datar memberi 163.252 (dicatat di `contactability-read.ts`, 12 Agu 2026).
+
+Dan penjaga strukturalnya lebih kuat lagi: `crm_consent` unik pada **(customer_id, channel,
+purpose)** — dasar **bukan** bagian dari kunci itu. Jadi satu orang tak akan pernah bisa memiliki
+dua baris untuk saluran+purpose yang sama betapa pun banyak dasar yang ada. Dasar kedua tidak
+menambah bentuk baru apa pun bagi jalur hitung ini. **Tidak akan pecah.**
+
+### 4. Retensi / purge — tidak ada aturan per-dasar, karena tidak menyentuh tabel ini
+
+Kekhawatiran terbesar pemilik, dan ternyata paling kosong. `retention-policy.ts` beserta fungsi
+purge-nya beroperasi **hanya atas `crm_audit_log`**, menyaring berdasarkan **nama aksi audit**.
+Entri `{ kind: "prefix", value: "consent." }` di `COMPLIANCE_RULES` adalah aksi audit bernama
+`consent.*` — bukan baris `crm_consent`. Dipindai: **nol** aturan retensi apa pun atas baris
+`crm_consent`, dan nol penyebutan `basis` di seluruh jalur retensi/purge. Kedua dasar diperlakukan
+sama karena retensi tak pernah membacanya.
+
+**Sifat struktural yang menguntungkan, ditemukan saat memeriksa ini:** kedua resep rollback
+disaring lewat **`source`**, bukan `basis` — backfill Migrasi 11 memakai
+`where source = '20fit_data_import'`, impor CSV memakai `where source='csv_import' and
+evidence->>'batch' = …`. Keduanya saling lepas. Rollback impor tak mungkin menyentuh baris legacy,
+dan sebaliknya. Itulah alasan `MixedBasisMeaning` menunjuk ke `source`, bukan menawarkan satu
+instruksi hapus menyeluruh.
+
+
+## T-61 — Fungsi cermin CRM kini bergantung pada skema divisi lain, dan kegagalan cron-nya tak diawasi siapa pun — 7 Sep 2026
+
+**Dicatat, tidak diperbaiki** — atas permintaan pemilik. Ini bukan cacat yang bisa ditambal; ia
+konsekuensi arsitektural yang lahir hari ini dan pantas dilihat sebelum menggigit.
+
+**Apa yang berubah.** Sampai 7 Sep 2026, `crm_refresh_customer_mirror()` hanya membaca tabel
+`crm_*`, matview cermin, dan satu tabel staging — semuanya milik proyek ini. Migrasi
+`crm_mirror_bod_daily_stats` menambahkan kartu "belum masuk CRM", dan celah itu **secara definisi**
+adalah sumber-dikurangi-pool: cermin hanya memuat baris pool, jadi flag `has_*`-nya hanya bisa
+menyatakan siapa yang **cocok**, tak pernah siapa yang **hilang**. Maka fungsi malam itu kini
+membaca sepuluh tabel milik tim lain:
+
+`my20fit_profile` · `cf_hyrox_participants` · `arena_class_bookings` · `arena_bookings` ·
+`arena_package_orders` · `arena_members` · `gym_class_bookings` · `gym_memberships` ·
+`gym_membership_orders` · `clinic_patients`
+
+Kalau salah satu tim itu mengganti nama kolom `email` atau `phone`, refresh malam itu melempar galat
+dan seluruh blob — termasuk keenam kunci lama yang tak ada hubungannya dengan sumber — berhenti
+diperbarui. Satu perubahan skema di divisi lain membekukan seluruh layar direksi.
+
+**Dan tak ada yang mengawasinya.** `cron.job_run_details` mencatat setiap jalannya. Diukur 7 Sep
+2026:
+
+| job | jalan tercatat | sukses | gagal | sejak |
+|---|---|---|---|---|
+| `crm-refresh-customer-mirror` (jobid 9) | 19 | **19** | 0 | 19 Agu 2026 |
+| `crm-refresh-customer-activity` (jobid 17) | 11 | **11** | 0 | 27 Agu 2026 |
+
+Riwayatnya bersih — dan itu justru sebabnya ini belum pernah terasa. **Nol kode membaca tabel itu.**
+Dipindai: tak ada rute, tak ada layar, tak ada peringatan, tak ada apa pun di repo ini yang menyentuh
+`cron.job_run_details`. Kegagalan pertama akan diketahui ketika seseorang kebetulan memperhatikan
+sebuah angka terlihat aneh.
+
+**Yang sudah dipasang sebagai penggantinya, dan batasnya.** K-63 membuat cap waktu halaman berasal
+dari `refreshed_at` blob, jadi refresh yang gagal membuat jamnya **berhenti** alih-alih maju di atas
+angka basi, dan spanduk >26 jam mengubahnya jadi kalimat. Itu mengubah kegagalan senyap menjadi
+kegagalan terlihat — **di satu layar**. Ia tidak memberi tahu siapa pun yang tidak sedang membuka
+layar itu, dan ia tidak menyebutkan cron yang mana atau galatnya apa.
+
+**Yang sebenarnya dibutuhkan, kalau kelak diputuskan:** pembacaan `cron.job_run_details` yang
+memeriksa apakah setiap job `crm-*` sukses dalam 26 jam terakhir, dan berbunyi ke seseorang — bukan
+ke sebuah halaman yang mungkin tak dibuka. Itu keputusan pemilik: ia butuh saluran pemberitahuan,
+dan proyek ini belum punya satu pun yang dipakai untuk peringatan operasional.
+
 
 ## Catatan — rekonsiliasi Mailchimp belum bisa diturunkan
 

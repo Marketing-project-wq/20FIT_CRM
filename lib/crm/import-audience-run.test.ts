@@ -4,6 +4,7 @@ import type { ImportKeys } from "./import-audience";
 
 const emptyKeys: ImportKeys = {
   existingEmails: new Set(),
+  taggableEmails: new Set(),
   existingPhones: new Set(),
   suppressedEmails: new Set(),
   suppressedPhones: new Set(),
@@ -12,7 +13,7 @@ const emptyKeys: ImportKeys = {
 function makeDeps(over: Partial<ImportDeps> = {}) {
   return {
     loadKeys: vi.fn(async () => emptyKeys),
-    commit: vi.fn(async () => ({ inserted: 0 })),
+    commit: vi.fn(async () => ({ inserted: 0, taggedExisting: 0, sharedPhoneInBatch: 0 })),
     audit: vi.fn(async () => {}),
     ...over,
   } satisfies ImportDeps;
@@ -47,7 +48,7 @@ describe("runImportRequest — dry-run writes NOTHING", () => {
 
   it("execute DOES commit + audit exactly once, with the collection source", async () => {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars -- params typed only so mock.calls[0][1] is indexable
-    const commit = vi.fn(async (_rows: unknown, _meta: { collectionSource: string; filename: string | null }) => ({ inserted: 2 }));
+    const commit = vi.fn(async (_rows: unknown, _meta: unknown) => ({ inserted: 2, taggedExisting: 0, sharedPhoneInBatch: 0 }));
     const audit = vi.fn(async () => {});
     const res = await runImportRequest(
       { phase: "execute", headers, rows, collectionSource: "Pendaftaran Sportfest 2 — formulir cetak", filename: "peserta.csv" },

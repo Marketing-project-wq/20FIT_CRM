@@ -5,7 +5,7 @@ import { getCurrentUserRole } from "@/lib/auth/current-role";
 import { canViewProfileList, resolveGrant } from "@/lib/auth/roles";
 import {
   fetchImmediateBlock,
-  fetchContactableBlock,
+  fetchReachBlock,
   fetchMirrorBlock,
   fetchEventsBlock,
   fetchSourcesBlock,
@@ -31,7 +31,7 @@ export const dynamic = "force-dynamic";
  */
 const BLOCKS: Record<DashboardBlockName, (admin: SupabaseClient) => Promise<unknown>> = {
   immediate: fetchImmediateBlock,
-  contactable: fetchContactableBlock,
+  reach: fetchReachBlock,
   mirror: fetchMirrorBlock,
   events: fetchEventsBlock,
   sources: fetchSourcesBlock,

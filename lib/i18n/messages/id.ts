@@ -37,6 +37,7 @@ export const id = {
 
   nav: {
     dashboard: "Dashboard",
+    bod: "Ringkasan Direksi",
     audience: "Audience",
     segments: "Segments",
     workflows: "Workflows",
@@ -103,18 +104,24 @@ export const id = {
     blockRetry: "Coba lagi",
     audienceSize: "Ukuran audiens",
     audienceSizeHint: "data audiens 20FIT (baca saja)",
-    contactableMarketing: "Bisa dihubungi · marketing",
-    contactableMarketingHint: "seluruh pool − yang berhenti berlangganan",
-    contactableService: "Bisa dihubungi · layanan",
-    contactableServiceHint: "seluruh pool − yang berhenti berlangganan (untuk CS/operasional)",
-    workflowActive: "Workflow aktif",
-    workflowActiveHint: "belum ada tabel workflow",
+    reachEmail: "Bisa dikirimi email",
+    reachEmailHint: "punya alamat email dan tidak sedang berhenti berlangganan",
+    reachWhatsapp: "Bisa dihubungi WhatsApp",
+    reachWhatsappHint: "punya nomor telepon dan tidak sedang berhenti berlangganan",
+    reachGapNote:
+      "Selisih keduanya nyata: sebagian orang punya email tanpa nomor, sebagian sebaliknya. Jangan dilebur jadi satu angka.",
+    workflowActive: "Workflow",
+    // {count} = enrollment yang masih mengantre. Angkanya DIISI dari data, tak pernah ditulis di sini (K-60).
+    workflowActiveHint: "{count} orang menunggu giliran dikirimi di dalam workflow",
+    workflowActiveHintEmpty: "belum ada orang yang menunggu di dalam workflow",
     lastProfile: "Profil terakhir bertambah",
-    lastProfileHint:
-      "tanggal muatan batch terakhir (2 muatan: 20 Apr & 31 Jul 2026) — bukan feed berkelanjutan",
+    // {n} = jumlah muatan, {dates} = daftar tanggalnya — keduanya dihitung dari created_at.
+    lastProfileHint: "{n} muatan sejauh ini ({dates}) — bukan feed berkelanjutan",
+    lastProfileHintTruncated: "lebih dari {n} muatan — daftar ini belum lengkap",
+    manualBadge: "ANGKA MANUAL",
     importDob: "Tanggal lahir · data impor",
     importDobHint:
-      "baris data impor 20FIT punya tanggal lahir yang belum ada di pool utama · ~99,5% cocok ke profil (diukur manual · 24 Agu 2026)",
+      "baris data impor 20FIT punya tanggal lahir yang belum ada di pool utama · ~99,5% cocok ke profil. Angka kecocokan ini TIDAK dihitung dari data — diukur manual 24 Agu 2026 dan belum diukur ulang sejak itu.",
     rfmTitle: "Sebaran tingkat pelanggan · data impor 20FIT",
     // The RFM note keeps the "− = no bucket, not empty" nuance and the "spelling kept" rule.
     rfmNote:
@@ -122,10 +129,11 @@ export const id = {
     rfmNoBucket: "− (tanpa kelompok)",
     // Dashboard Visual sprint — tiga lapis, visualisasi, kesegaran.
     liveTitle: "Sumber hidup versus pool beku",
-    liveNote: "Pool CRM adalah snapshot beku — muatan terakhir 31 Jul 2026, dan tak ada pipeline yang menyalurkan pendaftar baru ke dalamnya. Sumber di bawah dihitung langsung tiap request, jadi selisih “belum di pool” naik sendiri saat ada pendaftar baru — itu jawaban jujur untuk “terupdate otomatis”.",
+    liveNote: "Pool CRM hanya bertambah lewat muatan manual — tak ada pipeline yang menyalurkan pendaftar baru ke dalamnya. Sumber di bawah dihitung langsung tiap request, jadi selisih “belum di pool” naik sendiri saat ada pendaftar baru — itu jawaban jujur untuk “terupdate otomatis”.",
     poolLayerA: "Pool CRM: ",
     poolLayerB: " profil, muatan terakhir ",
-    poolLayerC: " · nol profil baru sejak 1 Agustus (bukan hitungan berjalan).",
+    // {n} muatan, {date} tanggal muatan terakhir — keduanya dihitung dari created_at (K-60).
+    poolLayerC: " · {n} muatan manual sejauh ini, terakhir {date}. Tak ada yang bertambah di antara muatan.",
     srcMy20fit: "my20fit",
     srcHyrox: "Hyrox",
     srcArena: "Arena",
@@ -385,6 +393,11 @@ export const id = {
       // Backfilled banner. Nuance at risk: the backfill is REVERSIBLE and honestly labelled
       // "unverified per person"; suppression still WINS. Dropping "reversible"/"suppression wins"
       // would overstate the strength of a legacy consent basis.
+      mixedTitle: "Tabel ini kini memuat DUA dasar consent",
+      mixedBody: "Sampai impor CSV pertama, seluruh baris di sini berasal dari satu backfill dengan satu dasar. Sekarang tidak lagi. Baca setiap baris menurut dasarnya sendiri — dan JANGAN memperlakukan tabel ini sebagai satu blok yang bisa dihapus untuk membatalkan backfill: menghapus baris opt-in eksplisit bukan membatalkan backfill, melainkan menghapus bukti persetujuan orang per orang. Cara membatalkan tiap jalur tulis ada di berkas migrasinya masing-masing, disaring lewat `source`, bukan lewat dasar.",
+      mixedRows: "baris",
+      mixedOtherLabel: "dasar di luar kosakata",
+      mixedOtherNote: "ini seharusnya nol — laporkan, jangan diabaikan",
       backfilledTitleA: "Consent legacy sudah dibackfill — basis ",
       backfilledBodyA: "Backfill mencatat consent aktif untuk impor lama atas keputusan pemilik produk (12 Agu 2026): marketing + transactional, dengan basis ",
       backfilledBodyB: " yang jujur menandai “belum diverifikasi per orang”. Suppression tetap menang atas consent. Ini reversibel: ",
@@ -537,8 +550,6 @@ export const id = {
     countMatchedSub: "orang memenuhi definisi ini",
     countMktLabel: "Boleh dihubungi · marketing",
     countMktSub: "consent marketing aktif & tidak disuppress",
-    countSvcLabel: "Boleh dihubungi · layanan",
-    countSvcSub: "consent layanan (transactional) aktif & tidak disuppress — untuk CS/operasional",
     mirrorFreshA: "Filter sumber (Hyrox, arena, dll.) dibaca dari cermin data — disegarkan ",
     mirrorFreshB: ".",
     openConsent: "Buka Consent",
@@ -671,9 +682,6 @@ export const id = {
       mktZeroA: "Nol dari ",
       mktZeroB: ". Tak ada consent ",
       mktZeroC: " aktif (atau suppression menang). ",
-      svcZeroA: "Nol dari ",
-      svcZeroB: ". Tak ada consent ",
-      svcZeroC: " aktif (atau suppression menang).",
       // Read-only footer. Nuance at risk: nothing is saved/exported/sent because the FLOW isn't built
       // yet — "a button that refuses is worse than no button" — not because the role lacks permission.
       footer: "Menghitung berapa orang yang cocok — tidak menampilkan daftarnya · menyimpan kriteria butuh izin sesuai peran · tiap perhitungan tercatat.",
@@ -1797,6 +1805,78 @@ export const id = {
   },
 
 
+  // ── Layar BOD (Ringkasan Direksi) ─────────────────────────────────────────────────────────
+  // ATURAN LAYAR INI: tak ada satu pun ANGKA di dalam string mana pun di blok ini. Yang ada hanya
+  // placeholder ({date}, {failed}). Itulah K-60, dan blok inilah yang paling gampang melanggarnya.
+  // Juga: tanpa istilah internal — tak ada "pool", "cermin", "RFM", "ingest", "beku".
+  bod: {
+    title: "Ringkasan Direksi",
+    subtitle: "Lima hal, satu halaman, satu waktu pengukuran.",
+    measuredAt: "Data per",
+    tz: "WIB",
+    // {hours} diisi dari data. Peringatan ini menyalakan jam yang berhenti menjadi kalimat —
+    // tanpanya pembaca harus sadar sendiri bahwa sebuah tanggal sudah dua hari lampau (K-63).
+    staleWarning:
+      "Angka di halaman ini sudah {hours} jam tidak diperbarui. Perhitungan malam terakhir kemungkinan gagal — jangan pakai halaman ini untuk keputusan sampai cap waktu di atas bergerak lagi.",
+    staleNever:
+      "Halaman ini belum pernah punya perhitungan sama sekali. Jangan pakai angkanya.",
+    // BUKAN "belum tersedia": ini keadaan galat saat halaman dibuka, bukan janji fitur. Frasa
+    // berbentuk janji akan ditangkap stale-phrase-scan, dan benar demikian — kalimat ini harus
+    // menyatakan apa yang terjadi sekarang, bukan apa yang akan datang.
+    snapshotMissing:
+      "Perhitungan harian tidak bisa dibaca, jadi tak ada satu angka pun yang ditampilkan. Ini BUKAN berarti angkanya nol — berarti angkanya tidak terbaca. Perhitungan berjalan setiap hari pukul 03:00 WIB; kalau ini bertahan sampai besok, ada yang rusak.",
+    freshnessNote:
+      "Perhitungan di halaman ini diperbarui setiap hari pukul 03:00 WIB. Profil baru TIDAK masuk otomatis — orang hanya bertambah lewat muatan manual, dan muatan terakhir adalah {date}. Jadwal harian itu menyegarkan hitungan, bukan menambah orang.",
+    freshnessNoteNoLoad:
+      "Perhitungan di halaman ini diperbarui setiap hari pukul 03:00 WIB. Profil baru TIDAK masuk otomatis — dan sejauh ini belum ada muatan sama sekali.",
+
+    reachTitle: "Jangkauan",
+    reachEmail: "Bisa dikirimi email",
+    reachWhatsapp: "Bisa dihubungi WhatsApp",
+    reachTotal: "Total profil",
+    reachEverContacted: "Sudah pernah dikirimi",
+    reachNote:
+      "Dua saluran dihitung terpisah dan tidak dilebur: sebagian orang punya email tanpa nomor, sebagian sebaliknya. “Sudah pernah dikirimi” berarti penyedia email pernah menerima setidaknya satu pesan untuk orang itu — pesan yang memantul ikut dihitung, karena penyedianya tetap menerimanya.",
+
+    growthTitle: "Pertumbuhan audiens",
+    growthNote:
+      "Setiap batang adalah satu muatan manual. Di antara muatan, tidak ada yang bertambah — itu sebabnya batangnya sedikit dan berjauhan, bukan karena datanya kurang.",
+    growthTruncated:
+      "Daftar ini belum lengkap — jumlah muatan melampaui batas penelusuran. Angka di layar adalah muatan-muatan paling awal saja.",
+    growthEmpty: "Belum ada muatan.",
+
+    unitsTitle: "Di unit bisnis mana",
+    unitsNote:
+      "Satu orang bisa masuk lebih dari satu unit, jadi angka-angka ini TIDAK boleh dijumlahkan menjadi total. Bagian ini dihitung sekali sehari, bukan saat halaman dibuka.",
+    unitsShopExcluded:
+      "Unit Toko tidak termasuk di sini: ia belum ikut dihitung dalam perhitungan harian, dan menghitungnya terpisah akan membuat halaman ini punya dua waktu yang berbeda. Jumlahnya kecil, tapi disebut supaya angkanya tidak terlihat berkurang tanpa sebab.",
+    units: {
+      membership: "Keanggotaan",
+      event: "Event",
+      arena: "Arena",
+      clinic: "Klinik",
+      gym: "Gym",
+      shop: "Toko",
+    },
+
+    healthTitle: "Kesehatan pengiriman",
+    healthDelivered: "Sampai",
+    healthBounced: "Memantul",
+    healthUnsubscribed: "Berhenti berlangganan",
+    healthQueued: "Menunggu di workflow",
+    healthNote:
+      "Selain itu ada {failed} percobaan kirim yang TIDAK pernah diterima penyedia email. Angka itu sengaja ditampilkan: sebelumnya sebuah pengiriman yang gagal puluhan ribu kali tercatat sebagai “terkirim”, dan menyembunyikannya lagi akan mengulang kesalahan yang sama.",
+
+    gapTitle: "Belum masuk CRM",
+    gapLabel: "orang di sistem lain yang belum punya profil di CRM",
+    // Satu baris yang menyatakan apa yang dihitung, DI ATAS angkanya, bukan di catatan kaki.
+    // Ini bukan hiasan: tanpa baris ini seorang pembaca menjumlahkan sendiri angka per-sumber di
+    // layar operasional dan mendapat angka lain — itu sudah terjadi sekali.
+    gapWhatItCounts:
+      "Orang berbeda, sudah dikurangi tumpang tindih antar-sistem. BUKAN penjumlahan angka per-sumber.",
+    gapNote:
+      "Orang yang sudah dikenal sistem 20FIT lain tapi belum ada di CRM. Menjumlahkan angka per-sumber di layar operasional memberi angka yang LEBIH BESAR dan salah, karena satu orang bisa ada di dua sistem dan akan terhitung dua kali; angka di sini sudah dikurangi tumpang tindihnya. Cakupannya lima sistem sumber (my20fit, Arena, Gym, Hyrox, Klinik) — kartu lain di CRM yang menghitung “kandidat” memakai daftar sumber yang berbeda dan karenanya angkanya berbeda; keduanya tidak bisa dibandingkan langsung. Angka ini naik sendiri setiap hari selama belum ada penyaluran otomatis; itulah yang diukurnya.",
+  },
   ai: {
     // Reasons the assistant returns for requests it cannot express — surfaced in the user's
     // language. The model is instructed to answer in this language.

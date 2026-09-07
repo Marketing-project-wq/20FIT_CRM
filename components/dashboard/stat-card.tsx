@@ -19,6 +19,7 @@ export function StatCard({
   errorLabel,
   computingLabel,
   icon,
+  badge,
 }: {
   label: string;
   value?: string;
@@ -29,6 +30,10 @@ export function StatCard({
   computingLabel?: string;
   /** Small decorative glyph shown top-right (lucide icon). Purely cosmetic. */
   icon?: React.ReactNode;
+  /** A short marker for a figure this system did NOT compute — a number measured by hand. It is
+   *  NOT cosmetic: K-60 permits a hand-measured number on screen only if it carries its date AND
+   *  a visible sign that it is manual, because such a figure ages without anything noticing. */
+  badge?: string;
 }) {
   return (
     <div className={cn("card relative p-5", className)}>
@@ -36,6 +41,11 @@ export function StatCard({
       {/* Label is a caption: uppercase + tracking already marks it, so it stays semibold and the
           numeral is the one heavier thing in the card (redesign: lighter numeral weight). */}
       <p className="font-display text-[12px] font-semibold uppercase tracking-wide text-ink-soft">{label}</p>
+      {badge && (
+        <span className="tint-amber mt-1 inline-block rounded-sm px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wide">
+          {badge}
+        </span>
+      )}
       {loading ? (
         // Height matches the numeral line so the card does not resize when the value lands.
         <Skeleton className="mt-2 h-[26px] w-2/3" label={computingLabel} />

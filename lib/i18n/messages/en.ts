@@ -27,6 +27,7 @@ export const en: Messages = {
 
   nav: {
     dashboard: "Dashboard",
+    bod: "Board summary",
     audience: "Audience",
     segments: "Segments",
     workflows: "Workflows",
@@ -89,27 +90,34 @@ export const en: Messages = {
     blockRetry: "Retry",
     audienceSize: "Audience size",
     audienceSizeHint: "20FIT audience data (read-only)",
-    contactableMarketing: "Contactable · marketing",
-    contactableMarketingHint: "whole pool − those who unsubscribed",
-    contactableService: "Contactable · service",
-    contactableServiceHint: "whole pool − those who unsubscribed (for CS/ops)",
-    workflowActive: "Active workflows",
-    workflowActiveHint: "no workflow table yet",
+    reachEmail: "Reachable by email",
+    reachEmailHint: "has an email address and is not currently unsubscribed",
+    reachWhatsapp: "Reachable on WhatsApp",
+    reachWhatsappHint: "has a phone number and is not currently unsubscribed",
+    reachGapNote:
+      "The gap between them is real: some people have an email and no number, some the other way round. Do not merge them into one figure.",
+    workflowActive: "Workflows",
+    // {count} = enrolments still queued. Filled FROM data, never written here (K-60).
+    workflowActiveHint: "{count} people waiting their turn inside a workflow",
+    workflowActiveHintEmpty: "nobody is waiting inside a workflow",
     lastProfile: "Profiles last added",
-    lastProfileHint:
-      "date of the last batch load (2 loads: 20 Apr & 31 Jul 2026) — not a continuous feed",
+    // {n} = number of loads, {dates} = their dates — both computed from created_at.
+    lastProfileHint: "{n} loads so far ({dates}) — not a continuous feed",
+    lastProfileHintTruncated: "more than {n} loads — this list is not complete",
+    manualBadge: "MANUAL FIGURE",
     importDob: "Date of birth · import data",
     importDobHint:
-      "20FIT import rows have a birth date not yet in the main pool · ~99.5% matched to a profile (measured manually · 24 Aug 2026)",
+      "20FIT import rows have a birth date not yet in the main pool · ~99.5% matched to a profile. That match rate is NOT computed from data — it was measured by hand on 24 Aug 2026 and has not been re-measured since.",
     rfmTitle: "Customer tier spread · 20FIT import data",
     rfmNote:
       'Customer tier (originally “RFM”: how recent, how frequent, and how large the transactions) — it comes from the imported data, not recent activity, so it is not yet fit to base a campaign on. “−” = no tier (not empty). Every tier always shows (0 = measured, not missing). Stored spelling kept as-is.',
     rfmNoBucket: "− (no tier)",
     liveTitle: "Live sources vs the frozen pool",
-    liveNote: "The CRM pool is a frozen snapshot — its last load was 31 Jul 2026, and no pipeline feeds new registrants into it. The sources below are counted live per request, so the “not yet in pool” gap rises on its own as people register — the honest answer to “does it update automatically”.",
+    liveNote: "The CRM pool only grows through manual loads — no pipeline feeds new registrants into it. The sources below are counted live per request, so the “not yet in pool” gap rises on its own as people register — the honest answer to “does it update automatically”.",
     poolLayerA: "CRM pool: ",
     poolLayerB: " profiles, last loaded ",
-    poolLayerC: " · zero new profiles since 1 August (not a running count).",
+    // {n} loads, {date} the last load date — both computed from created_at (K-60).
+    poolLayerC: " · {n} manual loads so far, most recently {date}. Nothing arrives between loads.",
     srcMy20fit: "my20fit",
     srcHyrox: "Hyrox",
     srcArena: "Arena",
@@ -337,6 +345,11 @@ export const en: Messages = {
       zeroBodyB: " ",
       zeroBodyC: " is only an unsubscribe. The dashboard's “Contactable” card counts the whole pool minus those who unsubscribed — the result is a measured figure, not one written by hand.",
       // Nuance kept: reversible + honestly "unverified per person" + suppression still wins.
+      mixedTitle: "This table now holds TWO consent bases",
+      mixedBody: "Until the first CSV import, every row here came from one backfill under one basis. That is no longer true. Read each row by its own basis — and do NOT treat this table as a single block that can be deleted to undo the backfill: deleting explicit opt-in rows does not revert a backfill, it destroys the evidence of a person's actual consent. How to undo each write path lives in that path's own migration file, filtered on `source`, not on basis.",
+      mixedRows: "rows",
+      mixedOtherLabel: "basis outside the vocabulary",
+      mixedOtherNote: "this should be zero — report it, do not ignore it",
       backfilledTitleA: "Legacy consent has been backfilled — basis ",
       backfilledBodyA: "Backfill recorded active consent for the legacy import on the product owner's decision (12 Aug 2026): marketing + transactional, with basis ",
       backfilledBodyB: " that honestly marks it “not verified per person”. Suppression still wins over consent. This is reversible: ",
@@ -479,8 +492,6 @@ export const en: Messages = {
     countMatchedSub: "people meet this definition",
     countMktLabel: "Contactable · marketing",
     countMktSub: "active marketing consent & not suppressed",
-    countSvcLabel: "Contactable · service",
-    countSvcSub: "active service (transactional) consent & not suppressed — for CS/ops",
     mirrorFreshA: "Source filters (Hyrox, arena, etc.) are read from the data mirror — refreshed ",
     mirrorFreshB: ".",
     openConsent: "Open Consent",
@@ -605,9 +616,6 @@ export const en: Messages = {
       mktZeroA: "Zero of ",
       mktZeroB: ". No active ",
       mktZeroC: " consent (or suppression wins). ",
-      svcZeroA: "Zero of ",
-      svcZeroB: ". No active ",
-      svcZeroC: " consent (or suppression wins).",
       // Nuance kept: nothing is saved/exported/sent because the FLOW isn't built yet — "a button that
       // refuses is worse than no button" — not because the role lacks permission.
       footer: "Counts how many people match — it does not list them · saving criteria needs role permission · every computation is recorded.",
@@ -1677,6 +1685,74 @@ export const en: Messages = {
     themeLight: "Light mode",
   },
 
+  bod: {
+    title: "Board summary",
+    subtitle: "Five things, one page, one measurement time.",
+    measuredAt: "Data as of",
+    tz: "WIB",
+    // {hours} is filled from data. This turns a stopped clock into a sentence — without it the
+    // reader has to notice for themselves that a date is two days old (K-63).
+    staleWarning:
+      "The figures on this page have not been updated for {hours} hours. Last night's calculation probably failed — do not use this page for a decision until the timestamp above moves again.",
+    staleNever:
+      "This page has never had a calculation at all. Do not use these figures.",
+    // NOT "not available yet": this is a runtime error state, not a feature promise. A promise-
+    // shaped phrase would be caught by stale-phrase-scan, and rightly so — this sentence must say
+    // what is happening now, not what is coming.
+    snapshotMissing:
+      "The daily calculation could not be read, so no figure is shown. This does NOT mean the figures are zero — it means they could not be read. The calculation runs every day at 03:00 WIB; if this persists into tomorrow, something is broken.",
+    freshnessNote:
+      "The calculations on this page refresh every day at 03:00 WIB. New profiles do NOT arrive automatically — people are only added by a manual load, and the most recent load was {date}. That daily schedule refreshes the counting, it does not add anyone.",
+    freshnessNoteNoLoad:
+      "The calculations on this page refresh every day at 03:00 WIB. New profiles do NOT arrive automatically — and so far there has been no load at all.",
+
+    reachTitle: "Reach",
+    reachEmail: "Reachable by email",
+    reachWhatsapp: "Reachable on WhatsApp",
+    reachTotal: "Total profiles",
+    reachEverContacted: "Ever messaged",
+    reachNote:
+      "The two channels are counted separately and never merged: some people have an email and no number, some the other way round. “Ever messaged” means the email provider accepted at least one message for that person — a message that bounced still counts, because the provider did accept it.",
+
+    growthTitle: "Audience growth",
+    growthNote:
+      "Each bar is one manual load. Nothing is added between loads — that is why the bars are few and far apart, not because data is missing.",
+    growthTruncated:
+      "This list is incomplete — the number of loads exceeded the discovery limit. What is shown is the earliest loads only.",
+    growthEmpty: "No loads yet.",
+
+    unitsTitle: "Which business unit",
+    unitsNote:
+      "One person can belong to more than one unit, so these figures must NOT be added into a total. This section is calculated once a day, not when the page is opened.",
+    unitsShopExcluded:
+      "The Shop unit is not included here: it is not yet part of the daily calculation, and counting it separately would give this page two different times. It is small, but it is named so the figures do not appear to shrink for no reason.",
+    units: {
+      membership: "Membership",
+      event: "Events",
+      arena: "Arena",
+      clinic: "Clinic",
+      gym: "Gym",
+      shop: "Shop",
+    },
+
+    healthTitle: "Delivery health",
+    healthDelivered: "Delivered",
+    healthBounced: "Bounced",
+    healthUnsubscribed: "Unsubscribed",
+    healthQueued: "Waiting in a workflow",
+    healthNote:
+      "Beyond these, {failed} send attempts were NEVER accepted by the email provider. That figure is shown deliberately: a send that failed tens of thousands of times was once recorded as “sent”, and hiding it again would repeat exactly that mistake.",
+
+    gapTitle: "Not in the CRM yet",
+    gapLabel: "people in other systems with no CRM profile",
+    // One line saying what is counted, ABOVE the number rather than in a footnote. Not decoration:
+    // without it a reader adds up the per-source figures on the operational screen and arrives at a
+    // different number — which has already happened once.
+    gapWhatItCounts:
+      "Distinct people, overlap between systems already removed. NOT a sum of the per-source figures.",
+    gapNote:
+      "People other 20FIT systems already know, who have no profile here. Adding up the per-source figures on the operational screen gives a LARGER and wrong number, because someone in two systems is counted twice; the figure here has that overlap removed. Its scope is five source systems (my20fit, Arena, Gym, Hyrox, Clinic) — another card in the CRM counting “candidates” uses a different list of sources and therefore reports a different number; the two are not directly comparable. This number rises on its own every day for as long as nothing feeds them in automatically; that is what it measures.",
+  },
   ai: {
     replyLanguageName: "English",
     timeUnexpressible:

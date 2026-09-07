@@ -5,12 +5,14 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUserRole } from "@/lib/auth/current-role";
 import { canImportAudience } from "@/lib/auth/roles";
 import { logApiFailure } from "@/lib/crm/failure-log";
+import { safeCode } from "@/lib/crm/safe-code";
 import {
   runImportRequest,
   type ImportDeps,
   type ImportInput,
   type ImportPhase,
 } from "@/lib/crm/import-audience-run";
+import { importFailureMessage } from "@/lib/crm/import-audience";
 import type { ImportKeys, ImportPlan, NormalizedRow } from "@/lib/crm/import-audience";
 
 export const dynamic = "force-dynamic";
@@ -76,6 +78,10 @@ export async function POST(request: NextRequest) {
   const parsed = Papa.parse<Record<string, string>>(csvText, { header: true, skipEmptyLines: "greedy" });
   const headers = (parsed.meta.fields ?? []).map((h) => h.trim());
   const rows = (parsed.data ?? []).filter((r) => r && typeof r === "object");
+  // papaparse auto-detects the delimiter (it tries , \t | ; and picks the one giving the most consistent
+  // column count). We surface its choice so the operator can catch the rare misdetection — e.g. a `;`
+  // file where every value landed in one column would show delimiter="," here and a single header.
+  const delimiter = parsed.meta.delimiter || ",";
 
   const admin = createAdminClient();
   const batchId = crypto.randomUUID();
@@ -83,13 +89,27 @@ export async function POST(request: NextRequest) {
   const deps: ImportDeps = {
     async loadKeys(emails, phones): Promise<ImportKeys> {
       const existingEmails = new Set<string>();
+      // (T-55) Taggable = at least one row for this email whose `merged_into` IS NULL. Kept apart from
+      // existingEmails on purpose: existingEmails decides INSERT-or-not and must mirror the ingest
+      // function's anti-join (which counts merged rows too), while THIS set decides TAG-or-not and must
+      // mirror its `upd` filter (which does not). One set could only satisfy one of the two, and the
+      // half it got wrong would be wrong in silence.
+      const taggableEmails = new Set<string>();
       const existingPhones = new Set<string>();
       const suppressedEmails = new Set<string>();
       const suppressedPhones = new Set<string>();
       // Which of THIS batch's emails/phones already exist in master (bounded by the batch, not 82k).
       if (emails.length > 0) {
-        const { data } = await admin.from("master_customer").select("email_normalized").in("email_normalized", emails);
-        for (const r of data ?? []) if (r.email_normalized) existingEmails.add(r.email_normalized as string);
+        const { data } = await admin
+          .from("master_customer")
+          .select("email_normalized, merged_into")
+          .in("email_normalized", emails);
+        for (const r of data ?? []) {
+          const e = r.email_normalized as string | null;
+          if (!e) continue;
+          existingEmails.add(e);
+          if (r.merged_into === null) taggableEmails.add(e);
+        }
       }
       if (phones.length > 0) {
         const { data } = await admin.from("master_customer").select("phone_normalized").in("phone_normalized", phones);
@@ -104,7 +124,7 @@ export async function POST(request: NextRequest) {
         if (s.identity_kind === "email") suppressedEmails.add(s.identity_key as string);
         else if (s.identity_kind === "phone") suppressedPhones.add(s.identity_key as string);
       }
-      return { existingEmails, existingPhones, suppressedEmails, suppressedPhones };
+      return { existingEmails, taggableEmails, existingPhones, suppressedEmails, suppressedPhones };
     },
     async commit(insertRows: NormalizedRow[], meta) {
       const payload = insertRows.map((r) => ({
@@ -113,16 +133,27 @@ export async function POST(request: NextRequest) {
         email_normalized: r.emailNormalized,
         phone_normalized: r.phoneNormalized,
         city: r.city,
+        tags: r.tags, // per row — even one event file carries different format:/kategori:/nilai: tags
       }));
       const { data, error } = await admin.rpc("crm_ingest_csv_people", {
         p_rows: payload,
         p_batch_id: batchId,
         p_collection_source: meta.collectionSource,
         p_uploaded_by: userId,
+        // Decided by the planner, never re-derived in SQL — the dry-run count and the write act on
+        // the SAME list (K-58). Phone-only matches are NOT here: they are different people, inserted.
+        p_tag_rows: meta.tagTargets,
       });
-      if (error) throw new Error(error.message);
-      const inserted = typeof (data as { inserted?: number })?.inserted === "number" ? (data as { inserted: number }).inserted : 0;
-      return { inserted };
+      // PII-FREE: carry the database's CODE, never its message. A Postgres error message can quote
+      // the offending row ("Key (email_normalized)=(…) already exists") — see safeCode.
+      if (error) throw rpcFailure(error.code);
+      const r = (data ?? {}) as { inserted?: number; tagged_existing?: number; shared_phone_in_batch?: number };
+      const num = (v: unknown) => (typeof v === "number" ? v : 0);
+      return {
+        inserted: num(r.inserted),
+        taggedExisting: num(r.tagged_existing),
+        sharedPhoneInBatch: num(r.shared_phone_in_batch),
+      };
     },
     async audit(plan: ImportPlan, meta) {
       // PII-FREE: counts + provenance only, never the imported rows themselves.
@@ -131,7 +162,7 @@ export async function POST(request: NextRequest) {
         actor_email: userEmail,
         action: "audience.imported",
         target_table: "master_customer",
-        summary: `Impor CSV audiens: ${meta.inserted} masuk (${plan.summary.suppressed} kena suppression), ${plan.summary.duplicatesExisting + plan.summary.duplicatesInBatch} duplikat, ${plan.summary.invalid} tak valid.`,
+        summary: `Impor CSV audiens: ${meta.inserted} masuk, ${plan.summary.taggedExisting} ditandai (sudah ada) — (${plan.summary.suppressed} kena suppression, ${plan.summary.sharedPhone} telepon bersama, ${plan.summary.sharedPhoneInBatch} telepon ganda dalam berkas), ${plan.summary.duplicatesInBatch} duplikat dalam berkas, ${plan.summary.sharedPhoneSuppressed} dilewati telepon ter-suppress, ${plan.summary.invalid} tak valid.`,
         metadata: {
           view: "audience_csv_import",
           batch: batchId,
@@ -157,8 +188,14 @@ export async function POST(request: NextRequest) {
   try {
     result = await runImportRequest(input, deps);
   } catch (e) {
-    logApiFailure("/audience/import", "import_failed", { code: e instanceof Error ? e.message.slice(0, 60) : null });
-    return NextResponse.json({ error: "import_failed", message: "Gagal memproses impor. Coba lagi." }, { status: 500 });
+    // The code, shape-guarded. NOT e.message: this used to be `e.message.slice(0, 60)`, which fed
+    // free Postgres prose into a field typed as a code — a PII leak, not just a bad message (T-49).
+    const code = safeCode((e as { code?: unknown } | null)?.code);
+    logApiFailure("/audience/import", "import_failed", { code });
+    return NextResponse.json(
+      { error: "import_failed", code, message: importFailureMessage(code) },
+      { status: 500 },
+    );
   }
 
   if (!result.ok) {
@@ -168,7 +205,9 @@ export async function POST(request: NextRequest) {
 
   // Trim the plan before returning: the client needs summary + per-row outcomes, NOT insertRows (that
   // is the bulk of the payload and carries the imported emails the browser already has from its upload).
-  const trimmed = result.plan ? { ...result, plan: { summary: result.plan.summary, outcomes: result.plan.outcomes } } : result;
+  const trimmed = result.plan
+    ? { ...result, plan: { summary: result.plan.summary, outcomes: result.plan.outcomes }, delimiter }
+    : { ...result, delimiter };
 
   // A successful execute added people — refresh the read mirror so they appear in the pool/segments.
   if (result.phase === "execute" && result.committed) {
@@ -182,6 +221,14 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json(trimmed, { headers: { "Cache-Control": "no-store" } });
+}
+
+/** A failed RPC as a PII-free Error: the database's code as a property, a fixed message. Mirrors
+ *  MailtrapSendError (T-41) — the code travels as data, never inside prose. */
+function rpcFailure(code: string | null | undefined): Error & { code: string | null } {
+  const err = new Error("crm_ingest_csv_people failed") as Error & { code: string | null };
+  err.code = safeCode(code);
+  return err;
 }
 
 function errorMessage(code: string): string {
