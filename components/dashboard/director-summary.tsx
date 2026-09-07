@@ -72,7 +72,7 @@ export function DirectorSummary({
     <div className="space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="font-display text-[30px] font-extrabold leading-none text-ink">{b.title}</h1>
+          <h2 className="font-display text-[24px] font-extrabold leading-none text-ink">{b.title}</h2>
           <p className="mt-2 font-body text-[14px] text-ink-soft">{b.subtitle}</p>
         </div>
         {/* ONE timestamp for THIS SECTION, and it is the SNAPSHOT'S OWN — never the clock. The
