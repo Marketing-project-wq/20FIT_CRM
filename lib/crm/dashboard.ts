@@ -1,5 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { fetchReach, fetchLoadHistory, type Reach, type Load } from "./bod";
 import { fetchStagingImportDob } from "./staging";
 import { STAGING_RFM_VALUES } from "./staging-constants";
 import {
@@ -60,27 +61,34 @@ export function rfmFromPrecompute(rfm: MirrorDashboardStats["rfm"]): { value: st
  * layer cannot source is absent from the type. Both contactable counts are MEASURED, not
  * hardcoded literals.
  *
- * TWO contactable counts, deliberately separate (Migrasi 11): marketing contact and service
- * (transactional) contact are DIFFERENT permissions — CS phones customers for service, which
- * is not marketing. Collapsing them would hide exactly the distinction the backfill records.
+ * REACH REPLACED THE TWO CONSENT COUNTS (7 Sep 2026). The dashboard used to show
+ * "Contactable · marketing" and "Contactable · service" from crm_contactable_counts(). Both were
+ * 82,253 — not by coincidence but by construction: migration 11 backfilled a marketing AND a
+ * transactional consent row for the same people, so the card printed one fact twice. Worse, the
+ * "service" label named a purpose the schema does not have: crm_consent_purpose_check admits
+ * `marketing` and `transactional` only, and zero rows carry anything else (verified 7 Sep 2026).
+ * What the screen now answers instead is the question actually being asked — how many people can
+ * we reach, and on which channel — measured from the identities and the suppression list.
  *
- * DASHBOARD USES THE RPC, SEGMENT USES THE EMBED — do not merge the two paths:
- *   - Dashboard (here): no criteria → calls crm_contactable_counts() (Migrasi 13). That RPC
- *     does DISTINCT-then-anti-join with a per-transaction work_mem, ~2.9s embed → ~0.5-1.3s.
- *     It cannot narrow by criteria; it is the unrestricted count only.
- *   - Segment builder (lib/crm/segment-read.ts): criteria live on master_customer, so it MUST
- *     join (the inner embed). The RPC can't express criteria. Different queries, on purpose.
- * Suppression is subtracted INSIDE the RPC (K-03/K-26, per-identity → whole profile, all
- * purposes), matching isContactableForPurpose — so the two never diverge.
+ * The SEGMENT BUILDER still uses the consent-purpose counts (lib/crm/segment-read.ts): there the
+ * criteria live on master_customer so it must join, and the two purposes are a real distinction
+ * for a per-segment permission question. Different screen, different question, left alone.
  */
 export interface DashboardStats {
   /** Rows in master_customer. Real, sourced. */
   audienceSize: number;
-  /** Contactable-for-MARKETING: distinct profiles with an active marketing consent AND not
-   *  suppressed. From crm_contactable_counts() (Migrasi 13). */
-  contactableMarketing: number;
-  /** Contactable-for-SERVICE (transactional): same rule, purpose='transactional'. */
-  contactableService: number;
+  /** Workflow rows, and how many enrolments are still queued behind them. */
+  workflowCount: number;
+  workflowQueued: number;
+  /** Every load, discovered from created_at (see fetchLoadHistory for why not first_seen_at). */
+  loads: Load[];
+  loadsTruncated: boolean;
+  /** Profiles with an email that no active suppression covers. */
+  emailable: number;
+  /** Profiles with a phone that no active suppression covers. */
+  whatsappable: number;
+  /** DISTINCT people the provider has ever accepted a message for. */
+  everContacted: number;
   /** Most recent created_at, or null if the table is empty. Data FRESHNESS, not a growth
    *  signal — master_customer arrived as batch loads, not a live feed. */
   lastProfileAt: string | null;
@@ -106,19 +114,15 @@ export interface DashboardStats {
   mirror: { refreshedAt: string | null; rowCount: number | null };
 }
 
-interface ContactableCounts {
-  marketing?: number;
-  transactional?: number;
-}
-
 /**
  * PROGRESSIVE LOADING (Dashboard progressive-load sprint). The dashboard is split into blocks by
- * COST so the cheap figures paint in ~250ms instead of waiting on the ~2.9s contactable RPC and
- * the ~20-page event tally. Each block is an independent fetch (its own loading boundary + its own
- * failure state on screen). The blocks are:
- *   - IMMEDIATE: pool size, last-load date, contact coverage, import DOB — all head:true counts.
- *   - CONTACTABLE: the live RPC — kept live (never precomputed: a stale "contactable" would say a
- *     person can be reached who has just asked to stop).
+ * COST so the cheap figures paint in ~250ms instead of waiting on the expensive blocks. Each block
+ * is an independent fetch (its own loading boundary + its own failure state on screen). The blocks:
+ *   - IMMEDIATE: pool size, contact coverage, import DOB, the workflow figures, and the LOAD
+ *     HISTORY — the last one because three captions used to state the number of loads and their
+ *     dates as literal text, and every one of them had gone out of date (K-60).
+ *   - REACH: live counts — never precomputed: a stale reach figure would say a person can be
+ *     reached who has just asked to stop.
  *   - MIRROR (snapshot): unit spread + RFM + mirror refreshed_at — the block carries its freshness.
  *   - EVENTS: the live per-product registration tally.
  *   - SOURCES: the per-source live gap vs the frozen pool.
@@ -130,11 +134,26 @@ export interface ImmediateBlock {
   lastProfileAt: string | null;
   contactCoverage: ContactCoverage;
   importDob: number;
+  /** Rows in crm_workflow. The card used to be a hard `—` with the hint "no workflow table yet";
+   *  the table has existed since 27 Aug 2026 and holds a workflow with people waiting in it. */
+  workflowCount: number;
+  /** Enrolments sitting in `queued` — people a workflow has lined up but not yet sent to. */
+  workflowQueued: number;
+  /** Every load, discovered from created_at. The caption that said "2 loads: 20 Apr & 31 Jul"
+   *  is now rendered FROM this array, so it cannot go stale again. */
+  loads: Load[];
+  /** The discovery walk hit its cap — `loads` is a prefix, and the screen must say so. */
+  loadsTruncated: boolean;
 }
-export interface ContactableBlock {
-  contactableMarketing: number;
-  contactableService: number;
-}
+/**
+ * REACH — replaces the old "Contactable · marketing" / "Contactable · service" pair, which was
+ * wrong twice over (see lib/crm/bod.ts for the full account): the two numbers were identical by
+ * construction because migration 11 backfilled both purposes for the same people, and "service"
+ * is not a value crm_consent's purpose CHECK admits at all — the card named a category the system
+ * does not have. Email and WhatsApp reach are counted separately and never merged; the gap between
+ * them is real people with one identity and not the other.
+ */
+export type ReachBlock = Reach;
 export interface MirrorBlock {
   unitSpread: UnitCount[];
   importRfm: { value: string; count: number }[];
@@ -153,12 +172,12 @@ export interface SourcesBlock {
   liveSources: SourceGap[];
 }
 
-export type DashboardBlockName = "immediate" | "contactable" | "mirror" | "events" | "sources";
+export type DashboardBlockName = "immediate" | "reach" | "mirror" | "events" | "sources";
 
 /** IMMEDIATE — the cheap head:true counts, all in parallel. Throws on error so the block shows a
  *  failure state; these are the most reliable queries on the page. */
 export async function fetchImmediateBlock(admin: SupabaseClient): Promise<ImmediateBlock> {
-  const [size, fresh, contactCoverage, importDob] = await Promise.all([
+  const [size, fresh, contactCoverage, importDob, wf, wfQueued, history] = await Promise.all([
     admin.from("master_customer").select("*", { count: "exact", head: true }),
     admin
       .from("master_customer")
@@ -168,23 +187,30 @@ export async function fetchImmediateBlock(admin: SupabaseClient): Promise<Immedi
       .maybeSingle(),
     fetchContactCoverage(admin),
     fetchStagingImportDob(admin),
+    admin.from("crm_workflow").select("*", { count: "exact", head: true }),
+    admin.from("crm_workflow_enrollment").select("*", { count: "exact", head: true }).eq("status", "queued"),
+    fetchLoadHistory(admin),
   ]);
   if (size.error) throw size.error;
   if (fresh.error) throw fresh.error;
+  if (wf.error) throw wf.error;
+  if (wfQueued.error) throw wfQueued.error;
   return {
     audienceSize: size.count ?? 0,
     lastProfileAt: (fresh.data as { created_at: string | null } | null)?.created_at ?? null,
     contactCoverage,
     importDob,
+    workflowCount: wf.count ?? 0,
+    workflowQueued: wfQueued.count ?? 0,
+    loads: history.loads,
+    loadsTruncated: history.truncated,
   };
 }
 
-/** CONTACTABLE — the live RPC (Migrasi 13). ALWAYS returns both keys (0 = measured zero, K-08). */
-export async function fetchContactableBlock(admin: SupabaseClient): Promise<ContactableBlock> {
-  const { data, error } = await admin.rpc("crm_contactable_counts");
-  if (error) throw error;
-  const c = (data ?? {}) as ContactableCounts;
-  return { contactableMarketing: c.marketing ?? 0, contactableService: c.transactional ?? 0 };
+/** REACH — live, never precomputed: a stale reach figure would say a person can be reached who has
+ *  just asked to stop. Each number is counted here and now (K-60). */
+export async function fetchReachBlock(admin: SupabaseClient): Promise<ReachBlock> {
+  return fetchReach(admin);
 }
 
 /**
@@ -232,19 +258,24 @@ export async function fetchSourcesBlock(admin: SupabaseClient): Promise<SourcesB
 
 /** All blocks composed — the fixture type + any caller that wants the whole thing at once. */
 export async function fetchDashboardStats(admin: SupabaseClient): Promise<DashboardStats> {
-  const [immediate, contactable, mirror, events, sources] = await Promise.all([
+  const [immediate, reach, mirror, events, sources] = await Promise.all([
     fetchImmediateBlock(admin),
-    fetchContactableBlock(admin),
+    fetchReachBlock(admin),
     fetchMirrorBlock(admin),
     fetchEventsBlock(admin),
     fetchSourcesBlock(admin),
   ]);
   return {
     audienceSize: immediate.audienceSize,
-    contactableMarketing: contactable.contactableMarketing,
-    contactableService: contactable.contactableService,
+    emailable: reach.emailable,
+    whatsappable: reach.whatsappable,
+    everContacted: reach.everContacted,
     lastProfileAt: immediate.lastProfileAt,
     importDob: immediate.importDob,
+    workflowCount: immediate.workflowCount,
+    workflowQueued: immediate.workflowQueued,
+    loads: immediate.loads,
+    loadsTruncated: immediate.loadsTruncated,
     importRfm: mirror.importRfm,
     contactCoverage: immediate.contactCoverage,
     unitSpread: mirror.unitSpread,

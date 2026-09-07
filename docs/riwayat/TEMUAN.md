@@ -1683,6 +1683,81 @@ layar. Tiga pengujian menguncinya, termasuk kasus orang yang punya baris tergabu
 sekaligus (indeks unik email bersifat parsial, jadi itu mungkin) — di situ yang hidup menang.
 
 
+## T-56 — Empat caption dashboard menyatakan hal yang tidak lagi benar, dan satu menamai kategori yang tak pernah ada — 7 Sep 2026
+
+**Yang tertulis di layar versus yang terukur** (semua diukur ulang 7 Sep 2026):
+
+| Caption | Menyatakan | Kenyataan terukur |
+|---|---|---|
+| `workflowActiveHint` | "belum ada tabel workflow" | `crm_workflow` ada sejak 27 Agu 2026, **1** baris, **36** enrollment `queued` |
+| `lastProfileHint` | "2 muatan: 20 Apr & 31 Jul" | **tiga** muatan: 81.178 · 1.075 · 577 |
+| `liveNote` | "muatan terakhir 31 Jul 2026" | muatan terakhir **27 Agu 2026** |
+| `poolLayerC` | "nol profil baru sejak 1 Agustus" | **577** profil masuk 27 Agustus |
+| `importDobHint` | "~99,5% cocok (diukur manual · 24 Agu)" | belum terbukti salah — tapi menua tanpa ada yang tahu |
+
+**Kartu "Contactable" bukan sekadar usang — ia mengarang kategori.** Kartu itu menampilkan dua
+angka, "Bisa dihubungi · marketing" dan "Bisa dihubungi · layanan", dari
+`crm_contactable_counts()`. Keduanya **82.253**, dan itu bukan kebetulan: backfill Migrasi 11
+menulis baris consent `marketing` DAN `transactional` untuk orang yang sama, jadi kartu itu
+mencetak satu fakta dua kali. Lebih buruk lagi, label "layanan" memetakan `transactional`, dan
+`crm_consent_purpose_check` hanya menerima **`marketing`** dan **`transactional`** — nol baris
+memakai nilai lain (dihitung 7 Sep 2026). Tidak ada purpose bernama `service` di sistem ini. Kartu
+itu memberi nama pada kategori yang tidak ada.
+
+Penggantinya menjawab pertanyaan yang sebenarnya ditanyakan orang, dan ketiganya terukur:
+
+- **Bisa dikirimi email — 82.213** (punya `email_normalized`, tidak ter-suppress aktif)
+- **Bisa dihubungi WhatsApp — 81.679** (punya `phone_normalized`, tidak ter-suppress aktif)
+- **Total profil — 82.830**
+
+Selisih 534 antara kedua saluran itu nyata: orang yang punya email tanpa nomor, dan sebaliknya.
+Dilebur jadi satu angka, informasinya hilang.
+
+**Mekanismenya, dan kenapa menambal keempatnya saja tidak cukup.** Tak satu pun caption itu ditulis
+untuk menyesatkan. Semuanya benar pada hari diketik. Yang rusak adalah **tempat faktanya disimpan**:
+sebuah angka yang diletakkan di berkas terjemahan — lapisan yang tak pernah diperiksa ulang oleh
+apa pun, tidak oleh pengujian, tidak oleh pagar, tidak oleh manusia. Memperbaiki teksnya hanya
+menyetel ulang jamnya. Karena itu keputusannya adalah **K-60**: angka di layar dihitung dari data;
+kalau benar-benar tak bisa dihitung, ia wajib membawa tanggal pengukuran DAN tanda visual manual.
+Satu angka di layar sekarang memenuhi pengecualian itu (`importDobHint`) dan memikul lencana
+"ANGKA MANUAL" — supaya ia menua di depan mata, bukan diam-diam.
+
+## T-57 — `identity_kind` menyiratkan penghentian per-saluran; kodenya memblokir seluruh orang — 7 Sep 2026
+
+**Dicatat, tidak diubah.** Perubahan perilaku suppression tidak termasuk lingkup putaran ini, dan
+ini keputusan kebijakan, bukan cacat mekanis.
+
+Ditemukan dari selisih satu orang. Angka WhatsApp saya 81.679; angka pemilik 81.680. Yang benar
+81.679, dan sebabnya menjelaskan sesuatu yang lebih besar daripada satu baris:
+
+- `master_customer` punya **82.214** baris dengan email dan **81.680** dengan telepon.
+- Ada **1** baris suppression aktif.
+- Baris itu mengurangi **keduanya** → 82.213 dan 81.679.
+
+`fetchSuppressedCustomerIds` memetakan suppression ke **`customer_id`**, bukan ke saluran. Jadi
+seseorang yang menekan "berhenti berlangganan" di sebuah email juga berhenti bisa dihubungi lewat
+WhatsApp. Sementara itu `crm_suppression` menyimpan kolom **`identity_kind`**, yang secara jelas
+menyiratkan penghentian dibedakan per identitas/saluran.
+
+**Kolom itu dekoratif pada saat dibaca.** Dua bagian sistem menyiratkan dua kebijakan berbeda, dan
+tak ada dokumen yang memutuskan mana yang berlaku.
+
+Kebijakan yang berlaku sekarang mungkin justru yang benar — memperlakukan "stop" sebagai permintaan
+orang, bukan permintaan per-saluran, adalah tafsir yang lebih aman dan bisa dibela. Yang menjadi
+temuan bukan pilihannya, melainkan bahwa pilihan itu **tidak pernah diambil secara sadar**: ia
+adalah akibat sampingan dari bentuk sebuah query. Dengan 1 baris suppression, taruhannya nol hari
+ini. Dengan pipeline harian (`docs/USULAN-pipeline-harian.md` §4a) taruhannya tidak lagi nol.
+
+**Yang harus diputuskan, bukan ditebak:** apakah "berhenti berlangganan" berlaku untuk orangnya,
+atau untuk salurannya. Lalu buat kode dan skema mengatakan hal yang sama — entah dengan menghormati
+`identity_kind` saat menyaring, atau dengan menghapus kolom yang menjanjikan sesuatu yang tak
+dilakukan sistem.
+
+**Catatan kecil dari pengukuran yang sama:** dari 126 orang yang pesannya pernah diterima penyedia,
+**125** masih ada di `master_customer` — satu baris log menunjuk `customer_id` yang tak lagi ada di
+sana. Tidak diselidiki putaran ini; disebut supaya rasio "126 dari 82.830" dibaca apa adanya.
+
+
 ## Catatan — rekonsiliasi Mailchimp belum bisa diturunkan
 
 Angka irisan Mailchimp ∩ CRM dari laporan 3 Sep **tidak dicatat di sini sebagai angka**: laporan itu

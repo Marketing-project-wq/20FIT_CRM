@@ -18,16 +18,17 @@ interface Candidates { total: number; bySource: { source: string; count: number 
 interface Fitco { matched: number; unmatched: number }
 
 // The blocks the dashboard loads independently (mirror lib/crm/dashboard.ts server shapes).
-interface ImmediateBlock { audienceSize: number; lastProfileAt: string | null; contactCoverage: ContactCoverage; importDob: number }
-interface ContactableBlock { contactableMarketing: number; contactableService: number }
+interface ImmediateBlock { audienceSize: number; lastProfileAt: string | null; contactCoverage: ContactCoverage; importDob: number; workflowCount: number; workflowQueued: number; loads: Load[]; loadsTruncated: boolean }
+interface ReachBlock { emailable: number; whatsappable: number; poolTotal: number; everContacted: number }
+interface Load { at: string; count: number }
 interface MirrorBlock { unitSpread: UnitCount[]; importRfm: { value: string; count: number }[]; candidates: Candidates; fitco: Fitco; mirror: MirrorMeta }
 interface EventsBlock { eventRegistrations: ProductCount[] }
 interface SourcesBlock { liveSources: SourceGap[] }
 
 /** The whole-page fixture shape (dev preview) — the union of every block. */
-export interface DashboardStats extends ImmediateBlock, ContactableBlock, MirrorBlock, EventsBlock, SourcesBlock {}
+export interface DashboardStats extends ImmediateBlock, ReachBlock, MirrorBlock, EventsBlock, SourcesBlock {}
 
-type BlockName = "immediate" | "contactable" | "mirror" | "events" | "sources";
+type BlockName = "immediate" | "reach" | "mirror" | "events" | "sources";
 type Status = "loading" | "ready" | "error" | "denied";
 interface Block<T> { status: Status; data: T | null }
 
@@ -54,8 +55,8 @@ function srcLabel(t: ReturnType<typeof useI18n>["t"], key: string): string {
 /** Split a full fixture into the five blocks (dev preview all-ready path). */
 function blocksFromStats(s: DashboardStats) {
   return {
-    immediate: { audienceSize: s.audienceSize, lastProfileAt: s.lastProfileAt, contactCoverage: s.contactCoverage, importDob: s.importDob } as ImmediateBlock,
-    contactable: { contactableMarketing: s.contactableMarketing, contactableService: s.contactableService } as ContactableBlock,
+    immediate: { audienceSize: s.audienceSize, lastProfileAt: s.lastProfileAt, contactCoverage: s.contactCoverage, importDob: s.importDob, workflowCount: s.workflowCount, workflowQueued: s.workflowQueued, loads: s.loads, loadsTruncated: s.loadsTruncated } as ImmediateBlock,
+    reach: { emailable: s.emailable, whatsappable: s.whatsappable, poolTotal: s.poolTotal, everContacted: s.everContacted } as ReachBlock,
     mirror: { unitSpread: s.unitSpread, importRfm: s.importRfm, candidates: s.candidates, fitco: s.fitco, mirror: s.mirror } as MirrorBlock,
     events: { eventRegistrations: s.eventRegistrations } as EventsBlock,
     sources: { liveSources: s.liveSources } as SourcesBlock,
@@ -107,11 +108,15 @@ type Lang = ReturnType<typeof useI18n>["lang"];
 function PoolReachCard({
   imm, con, immStatus, conStatus, t, lang,
 }: {
-  imm: ImmediateBlock | null; con: ContactableBlock | null;
+  imm: ImmediateBlock | null; con: ReachBlock | null;
   immStatus: Status; conStatus: Status; t: Dict; lang: Lang;
 }) {
+  // "Everyone is reachable" is true only when BOTH channels cover the whole pool — which is a much
+  // stronger claim than the old one, and today it is false: 82,830 profiles, 82,213 with an email,
+  // 81,679 with a phone. The old card could reach this branch whenever two identical consent counts
+  // matched the pool size, which said nothing about whether anyone could actually be contacted.
   const allEqual = imm != null && con != null &&
-    imm.audienceSize === con.contactableMarketing && con.contactableMarketing === con.contactableService;
+    imm.audienceSize === con.emailable && con.emailable === con.whatsappable;
   return (
     <div className="card p-5 sm:col-span-2">
       <p className="font-display text-[12px] font-semibold uppercase tracking-wide text-ink-soft">{t.dashboard.summaryTitle}</p>
@@ -134,13 +139,14 @@ function PoolReachCard({
         ) : (
           <div className="space-y-1.5">
             <div className="flex items-baseline justify-between gap-2">
-              <span className="font-body text-[12px] text-ink-soft">{t.dashboard.contactableMarketing}</span>
-              <span className="font-display text-[15px] font-bold tabular-nums text-ink">{con ? formatCount(con.contactableMarketing, lang) : DASH}</span>
+              <span className="font-body text-[12px] text-ink-soft">{t.dashboard.reachEmail}</span>
+              <span className="font-display text-[15px] font-bold tabular-nums text-ink">{con ? formatCount(con.emailable, lang) : DASH}</span>
             </div>
             <div className="flex items-baseline justify-between gap-2">
-              <span className="font-body text-[12px] text-ink-soft">{t.dashboard.contactableService}</span>
-              <span className="font-display text-[15px] font-bold tabular-nums text-ink">{con ? formatCount(con.contactableService, lang) : DASH}</span>
+              <span className="font-body text-[12px] text-ink-soft">{t.dashboard.reachWhatsapp}</span>
+              <span className="font-display text-[15px] font-bold tabular-nums text-ink">{con ? formatCount(con.whatsappable, lang) : DASH}</span>
             </div>
+            <p className="pt-1 font-body text-[11px] leading-snug text-ink-faint">{t.dashboard.reachGapNote}</p>
           </div>
         )}
       </div>
@@ -242,7 +248,7 @@ export function DashboardContent(
     };
     return {
       immediate: mk<ImmediateBlock>("immediate", derived?.immediate ?? null),
-      contactable: mk<ContactableBlock>("contactable", derived?.contactable ?? null),
+      reach: mk<ReachBlock>("reach", derived?.reach ?? null),
       mirror: mk<MirrorBlock>("mirror", derived?.mirror ?? null),
       events: mk<EventsBlock>("events", derived?.events ?? null),
       sources: mk<SourcesBlock>("sources", derived?.sources ?? null),
@@ -250,7 +256,7 @@ export function DashboardContent(
   };
 
   const [immediate, setImmediate] = useState<Block<ImmediateBlock>>(() => initBlocks().immediate);
-  const [contactable, setContactable] = useState<Block<ContactableBlock>>(() => initBlocks().contactable);
+  const [reach, setReach] = useState<Block<ReachBlock>>(() => initBlocks().reach);
   const [mirrorB, setMirrorB] = useState<Block<MirrorBlock>>(() => initBlocks().mirror);
   const [events, setEvents] = useState<Block<EventsBlock>>(() => initBlocks().events);
   const [sources, setSources] = useState<Block<SourcesBlock>>(() => initBlocks().sources);
@@ -259,7 +265,7 @@ export function DashboardContent(
 
   const setters: Record<BlockName, (b: Block<unknown>) => void> = {
     immediate: setImmediate as (b: Block<unknown>) => void,
-    contactable: setContactable as (b: Block<unknown>) => void,
+    reach: setReach as (b: Block<unknown>) => void,
     mirror: setMirrorB as (b: Block<unknown>) => void,
     events: setEvents as (b: Block<unknown>) => void,
     sources: setSources as (b: Block<unknown>) => void,
@@ -283,7 +289,7 @@ export function DashboardContent(
   useEffect(() => {
     if (isPreview) return; // dev preview renders fixture/status directly — no fetch (/dev/* is 404 in prod)
     const ac = new AbortController();
-    (["immediate", "contactable", "mirror", "events", "sources"] as BlockName[]).forEach((n) => loadBlock(n, ac.signal));
+    (["immediate", "reach", "mirror", "events", "sources"] as BlockName[]).forEach((n) => loadBlock(n, ac.signal));
     return () => ac.abort();
   }, [isPreview, loadBlock]);
 
@@ -296,7 +302,26 @@ export function DashboardContent(
 
   // KPI value/state helpers, per source block.
   const imm = immediate.data;
-  const con = contactable.data;
+  const con = reach.data;
+  // ── Captions rendered FROM DATA (K-60) ────────────────────────────────────────────────────
+  // Every one of these used to be a sentence in the translation file stating a fact: "no workflow
+  // table yet", "2 loads: 20 Apr & 31 Jul", "zero new since 1 August". All three were true when
+  // written and false by the time anyone read them again. A translation file is not a place to
+  // keep a fact — nothing re-checks it.
+  const loadDates = (imm?.loads ?? []).map((l) => formatDate(l.at, lang)).join(" · ");
+  const loadsHint = imm == null
+    ? undefined
+    : imm.loadsTruncated
+      ? t.dashboard.lastProfileHintTruncated.replace("{n}", formatCount(imm.loads.length, lang))
+      : t.dashboard.lastProfileHint
+          .replace("{n}", formatCount(imm.loads.length, lang))
+          .replace("{dates}", loadDates);
+  const workflowHint = imm == null
+    ? undefined
+    : imm.workflowQueued > 0
+      ? t.dashboard.workflowActiveHint.replace("{count}", formatCount(imm.workflowQueued, lang))
+      : t.dashboard.workflowActiveHintEmpty;
+
   const kpi = (blockStatus: Status, value: string) => ({
     value,
     loading: !denied && blockStatus === "loading",
@@ -347,10 +372,27 @@ export function DashboardContent(
           value that must stay visibly distinct from the pulsing skeletons around it (K-08). */}
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <PoolReachCard imm={denied ? null : imm} con={denied ? null : con}
-          immStatus={denied ? "ready" : immediate.status} conStatus={denied ? "ready" : contactable.status} t={t} lang={lang} />
-        <StatCard label={t.dashboard.lastProfile} {...freshKpi} hint={t.dashboard.lastProfileHint} computingLabel={t.dashboard.computing} icon={<Clock className="h-4 w-4" />} />
-        <StatCard label={t.dashboard.workflowActive} value={DASH} hint={t.dashboard.workflowActiveHint} icon={<GitBranch className="h-4 w-4" />} />
-        <StatCard label={t.dashboard.importDob} {...dobKpi} hint={t.dashboard.importDobHint} computingLabel={t.dashboard.computing} icon={<Cake className="h-4 w-4" />} />
+          immStatus={denied ? "ready" : immediate.status} conStatus={denied ? "ready" : reach.status} t={t} lang={lang} />
+        <StatCard label={t.dashboard.lastProfile} {...freshKpi} hint={loadsHint} computingLabel={t.dashboard.computing} icon={<Clock className="h-4 w-4" />} />
+        {/* Was a hard `—` with the hint "no workflow table yet". crm_workflow has existed since
+            27 Aug 2026 and holds people waiting in it — both figures are now counted (K-60). */}
+        <StatCard
+          label={t.dashboard.workflowActive}
+          {...kpi(immediate.status, imm ? formatCount(imm.workflowCount, lang) : DASH)}
+          hint={workflowHint}
+          computingLabel={t.dashboard.computing}
+          icon={<GitBranch className="h-4 w-4" />}
+        />
+        {/* The one figure on this screen that is NOT computed. It keeps its measurement date AND
+            carries a visible manual badge, which is the condition K-60 puts on such a number. */}
+        <StatCard
+          label={t.dashboard.importDob}
+          {...dobKpi}
+          hint={t.dashboard.importDobHint}
+          badge={t.dashboard.manualBadge}
+          computingLabel={t.dashboard.computing}
+          icon={<Cake className="h-4 w-4" />}
+        />
       </section>
 
       {/* ── Frozen pool vs live sources vs gap. Pool line = IMMEDIATE; per-source cards = SOURCES. ── */}
@@ -371,7 +413,9 @@ export function DashboardContent(
                 <span className="font-display text-[15px] font-bold text-ink">{formatCount(imm.audienceSize, lang)}</span>
                 {t.dashboard.poolLayerB}
                 <span className="font-semibold text-ink">{formatDate(imm.lastProfileAt, lang)}</span>
-                {t.dashboard.poolLayerC}
+                {t.dashboard.poolLayerC
+                  .replace("{n}", formatCount(imm.loads.length, lang))
+                  .replace("{date}", formatDate(imm.loads.length > 0 ? imm.loads[imm.loads.length - 1].at : null, lang))}
               </p>
             ) : immediate.status === "error" ? (
               <BlockFail t={t} onRetry={isPreview ? undefined : () => loadBlock("immediate")} />

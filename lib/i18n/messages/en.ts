@@ -27,6 +27,7 @@ export const en: Messages = {
 
   nav: {
     dashboard: "Dashboard",
+    bod: "Board summary",
     audience: "Audience",
     segments: "Segments",
     workflows: "Workflows",
@@ -89,27 +90,34 @@ export const en: Messages = {
     blockRetry: "Retry",
     audienceSize: "Audience size",
     audienceSizeHint: "20FIT audience data (read-only)",
-    contactableMarketing: "Contactable · marketing",
-    contactableMarketingHint: "whole pool − those who unsubscribed",
-    contactableService: "Contactable · service",
-    contactableServiceHint: "whole pool − those who unsubscribed (for CS/ops)",
-    workflowActive: "Active workflows",
-    workflowActiveHint: "no workflow table yet",
+    reachEmail: "Reachable by email",
+    reachEmailHint: "has an email address and is not currently unsubscribed",
+    reachWhatsapp: "Reachable on WhatsApp",
+    reachWhatsappHint: "has a phone number and is not currently unsubscribed",
+    reachGapNote:
+      "The gap between them is real: some people have an email and no number, some the other way round. Do not merge them into one figure.",
+    workflowActive: "Workflows",
+    // {count} = enrolments still queued. Filled FROM data, never written here (K-60).
+    workflowActiveHint: "{count} people waiting their turn inside a workflow",
+    workflowActiveHintEmpty: "nobody is waiting inside a workflow",
     lastProfile: "Profiles last added",
-    lastProfileHint:
-      "date of the last batch load (2 loads: 20 Apr & 31 Jul 2026) — not a continuous feed",
+    // {n} = number of loads, {dates} = their dates — both computed from created_at.
+    lastProfileHint: "{n} loads so far ({dates}) — not a continuous feed",
+    lastProfileHintTruncated: "more than {n} loads — this list is not complete",
+    manualBadge: "MANUAL FIGURE",
     importDob: "Date of birth · import data",
     importDobHint:
-      "20FIT import rows have a birth date not yet in the main pool · ~99.5% matched to a profile (measured manually · 24 Aug 2026)",
+      "20FIT import rows have a birth date not yet in the main pool · ~99.5% matched to a profile. That match rate is NOT computed from data — it was measured by hand on 24 Aug 2026 and has not been re-measured since.",
     rfmTitle: "Customer tier spread · 20FIT import data",
     rfmNote:
       'Customer tier (originally “RFM”: how recent, how frequent, and how large the transactions) — it comes from the imported data, not recent activity, so it is not yet fit to base a campaign on. “−” = no tier (not empty). Every tier always shows (0 = measured, not missing). Stored spelling kept as-is.',
     rfmNoBucket: "− (no tier)",
     liveTitle: "Live sources vs the frozen pool",
-    liveNote: "The CRM pool is a frozen snapshot — its last load was 31 Jul 2026, and no pipeline feeds new registrants into it. The sources below are counted live per request, so the “not yet in pool” gap rises on its own as people register — the honest answer to “does it update automatically”.",
+    liveNote: "The CRM pool only grows through manual loads — no pipeline feeds new registrants into it. The sources below are counted live per request, so the “not yet in pool” gap rises on its own as people register — the honest answer to “does it update automatically”.",
     poolLayerA: "CRM pool: ",
     poolLayerB: " profiles, last loaded ",
-    poolLayerC: " · zero new profiles since 1 August (not a running count).",
+    // {n} loads, {date} the last load date — both computed from created_at (K-60).
+    poolLayerC: " · {n} manual loads so far, most recently {date}. Nothing arrives between loads.",
     srcMy20fit: "my20fit",
     srcHyrox: "Hyrox",
     srcArena: "Arena",
@@ -1677,6 +1685,57 @@ export const en: Messages = {
     themeLight: "Light mode",
   },
 
+  bod: {
+    title: "Board summary",
+    subtitle: "Five things, one page, one measurement time.",
+    measuredAt: "Measured",
+    tz: "WIB",
+    freshnessNote:
+      "The calculations on this page refresh every day at 03:00 WIB. New profiles do NOT arrive automatically — people are only added by a manual load, and the most recent load was {date}. That daily schedule refreshes the counting, it does not add anyone.",
+    freshnessNoteNoLoad:
+      "The calculations on this page refresh every day at 03:00 WIB. New profiles do NOT arrive automatically — and so far there has been no load at all.",
+
+    reachTitle: "Reach",
+    reachEmail: "Reachable by email",
+    reachWhatsapp: "Reachable on WhatsApp",
+    reachTotal: "Total profiles",
+    reachEverContacted: "Ever messaged",
+    reachNote:
+      "The two channels are counted separately and never merged: some people have an email and no number, some the other way round. “Ever messaged” means the email provider accepted at least one message for that person — a message that bounced still counts, because the provider did accept it.",
+
+    growthTitle: "Audience growth",
+    growthNote:
+      "Each bar is one manual load. Nothing is added between loads — that is why the bars are few and far apart, not because data is missing.",
+    growthTruncated:
+      "This list is incomplete — the number of loads exceeded the discovery limit. What is shown is the earliest loads only.",
+    growthEmpty: "No loads yet.",
+
+    unitsTitle: "Which business unit",
+    unitsNote:
+      "One person can belong to more than one unit, so these figures must NOT be added into a total. This section is calculated once a day, not when the page is opened.",
+    unitsMeasuredAt: "calculated",
+    units: {
+      membership: "Membership",
+      event: "Events",
+      arena: "Arena",
+      clinic: "Clinic",
+      gym: "Gym",
+      shop: "Shop",
+    },
+
+    healthTitle: "Delivery health",
+    healthDelivered: "Delivered",
+    healthBounced: "Bounced",
+    healthUnsubscribed: "Unsubscribed",
+    healthQueued: "Waiting in a workflow",
+    healthNote:
+      "Beyond these, {failed} send attempts were NEVER accepted by the email provider. That figure is shown deliberately: a send that failed tens of thousands of times was once recorded as “sent”, and hiding it again would repeat exactly that mistake.",
+
+    gapTitle: "Not in the CRM yet",
+    gapLabel: "people in other systems with no CRM profile",
+    gapNote:
+      "People other 20FIT systems already know, who have no profile here. Counted as DISTINCT PEOPLE — the per-system figures are not added up, because one person can be in two systems at once. This number rises on its own every day for as long as nothing feeds them in automatically; that is what it measures.",
+  },
   ai: {
     replyLanguageName: "English",
     timeUnexpressible:

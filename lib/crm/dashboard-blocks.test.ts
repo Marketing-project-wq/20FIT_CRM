@@ -5,7 +5,7 @@ vi.mock("server-only", () => ({}));
 
 import {
   fetchImmediateBlock,
-  fetchContactableBlock,
+  fetchReachBlock,
   fetchMirrorBlock,
   fetchEventsBlock,
   fetchSourcesBlock,
@@ -81,19 +81,22 @@ describe("dashboard block cost boundaries (progressive-load)", () => {
     expect(tables.has("crm_mirror_meta")).toBe(false);
   });
 
-  it("CONTACTABLE block comes ONLY from crm_contactable_counts — passed through, never recomputed", async () => {
+  it("REACH block counts identities + suppression — and never calls crm_contactable_counts", async () => {
     const { admin, tables, rpcs } = recordingFake();
-    const out = await fetchContactableBlock(admin);
-    // The dashboard's contactable numbers have ONE source: the RPC. This guards against a second
-    // calculation path (the "one rule, two implementations" pattern that bit phone canon, the
-    // retention list, and the export's phone vs phone_normalized). The segment BUILDER computes its
-    // own contactable via the consent embed (segment-read.ts) — that is a different screen, with
-    // criteria, and must never leak into the dashboard block.
-    expect(rpcs.has("crm_contactable_counts")).toBe(true);
-    expect(rpcs.size).toBe(1); // exactly the RPC — no other RPC
-    expect(tables.size).toBe(0); // NO table read → nothing is recomputed from consent/suppression here
-    // The RPC's output is returned verbatim (marketing→marketing, transactional→service).
-    expect(out).toEqual({ contactableMarketing: 42, contactableService: 43 });
+    const out = await fetchReachBlock(admin);
+    // What this replaced: crm_contactable_counts() returned {marketing, transactional}, the screen
+    // relabelled `transactional` as "service", and both numbers were 82,253 because migration 11
+    // backfilled BOTH purposes for the same people. One fact, printed twice, under a category name
+    // (`service`) that crm_consent_purpose_check does not admit. Reach asks a different question —
+    // who has an email / a phone, minus who asked to stop — so the RPC must not creep back in.
+    expect(rpcs.size).toBe(0);
+    expect(rpcs.has("crm_contactable_counts")).toBe(false);
+    expect(tables.has("master_customer")).toBe(true);
+    expect(tables.has("crm_suppression")).toBe(true);
+    expect(tables.has("crm_message_log")).toBe(true);
+    // Consent is NOT a reach gate (K-36) — suppression is. So the block must not read consent.
+    expect(tables.has("crm_consent")).toBe(false);
+    expect(Object.keys(out).sort()).toEqual(["emailable", "everContacted", "poolTotal", "whatsappable"]);
   });
 
   it("EVENTS block does the event tally on customer_engagement (and the RPC does not)", async () => {

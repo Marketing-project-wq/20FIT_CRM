@@ -19,14 +19,25 @@ export const dynamic = "force-dynamic";
 const STALE_REFRESHED_AT = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
 
 const FIXTURE = {
-  audienceSize: 82253,
-  // Real crm_contactable_counts() output (verified 2026-08-24): pool == marketing == service ==
-  // 82,253, suppression 0. Equal on all three, so the summary card shows its collapsed phrase — the
-  // ACTUAL production state. (The earlier 82,089 / 81,760 here were stale hand-made fixture values,
-  // never produced by any calculation; they made the preview exercise the wrong card branch.)
-  contactableMarketing: 82253,
-  contactableService: 82253,
-  lastProfileAt: "2026-07-31T00:00:00.000Z",
+  // All measured on production 7 Sep 2026. The fixture mirrors the REAL state so the preview
+  // exercises the branch production is actually in — the reason the earlier hand-made 82,089 /
+  // 81,760 values were removed. Reach is deliberately UNEQUAL to the pool here, because it is:
+  // 82,830 profiles, 82,213 with a usable email, 81,679 with a usable phone.
+  audienceSize: 82830,
+  emailable: 82213,
+  whatsappable: 81679,
+  poolTotal: 82830,
+  everContacted: 126,
+  workflowCount: 1,
+  workflowQueued: 36,
+  // THREE loads, each one bulk insert (every row of a load shares the microsecond).
+  loads: [
+    { at: "2026-04-20T11:28:33.232369Z", count: 81178 },
+    { at: "2026-07-31T12:27:24.795538Z", count: 1075 },
+    { at: "2026-08-27T13:39:03.523856Z", count: 577 },
+  ],
+  loadsTruncated: false,
+  lastProfileAt: "2026-08-27T13:39:03.523856Z",
   importDob: 5467,
   // Cermin RFM (dashboard_stats.rfm) expanded against the closed vocabulary — the real production
   // shape: "Campion user" is 0 (1 in staging, 0 matched into the mirror) and MUST still appear.
@@ -115,7 +126,7 @@ export default function DevDashboardPreview() {
           title="Muat — skeleton penuh"
           note="Semua blok masih menghitung. Skeleton berbentuk seperti isinya (balok angka, batang). 'Workflow aktif' tetap '—' (nilai nyata, K-08), tak ikut berkedip."
         >
-          <DashboardContent previewStatus={{ immediate: "loading", contactable: "loading", mirror: "loading", events: "loading", sources: "loading" }} />
+          <DashboardContent previewStatus={{ immediate: "loading", reach: "loading", mirror: "loading", events: "loading", sources: "loading" }} />
         </Case>
 
         <Case
@@ -123,7 +134,7 @@ export default function DevDashboardPreview() {
           title="Muat — sebagian sudah terisi"
           note="Blok murah (ukuran pool, kesegaran, cakupan, tgl lahir) sudah tampil; 'bisa dihubungi' (RPC), unit, event, dan sumber masih menyusul di tempatnya sendiri — halaman tak melompat."
         >
-          <DashboardContent previewStats={FIXTURE} previewStatus={{ immediate: "ready", contactable: "loading", mirror: "loading", events: "loading", sources: "loading" }} />
+          <DashboardContent previewStats={FIXTURE} previewStatus={{ immediate: "ready", reach: "loading", mirror: "loading", events: "loading", sources: "loading" }} />
         </Case>
 
         <Case
@@ -131,7 +142,7 @@ export default function DevDashboardPreview() {
           title="Muat — satu bagian gagal (blok snapshot / precompute)"
           note="Blok mirror (precompute) gagal — mis. blok dashboard_stats absen, pembaca fail-hard melempar. Ia tertangkap di batas blok: sebaran unit, RFM, dan kartu kandidat masing-masing menampilkan keadaan gagalnya sendiri + tombol coba lagi; pool, bisa dihubungi, cakupan, event tetap tampil normal. BUKAN halaman kosong, BUKAN nol palsu."
         >
-          <DashboardContent previewStats={FIXTURE} previewStatus={{ immediate: "ready", contactable: "ready", mirror: "error", events: "ready", sources: "ready" }} />
+          <DashboardContent previewStats={FIXTURE} previewStatus={{ immediate: "ready", reach: "ready", mirror: "error", events: "ready", sources: "ready" }} />
         </Case>
       </div>
 

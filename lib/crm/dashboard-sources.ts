@@ -127,3 +127,87 @@ export async function fetchLiveSourceGaps(admin: SupabaseClient): Promise<Source
     .filter((s): s is PromiseFulfilledResult<SourceGap> => s.status === "fulfilled")
     .map((s) => s.value);
 }
+
+/**
+ * "Not in the CRM yet" — the BOD card. ONE number on screen, and the reason for choosing it.
+ *
+ * There are two defensible ways to count this, and they answer different questions. Both are
+ * computed here so the choice is visible in the data rather than argued from memory (measured
+ * 7 Sep 2026: 1,424 and 1,374).
+ *
+ *   perSourceSum   — add up each source's own gap. This DOUBLE-COUNTS anyone present in two
+ *                    source systems, so it is not a headcount; it is "gap-instances".
+ *   distinctPeople — the identities, de-duplicated across sources. A headcount.
+ *
+ * The BOD screen shows `distinctPeople`. Two reasons, and the second is the stronger one:
+ *   1. A board hears "1,424 people" and it is not 1,424 people. The per-source figures are a
+ *      diagnostic ("where is the gap"), not a total.
+ *   2. This repo ALREADY decided that. The operational dashboard's own caption says the per-source
+ *      figures are NOT summed, because cross-source dedup by different key types is unreliable.
+ *      Putting the sum on the board would contradict a rule this codebase states out loud.
+ *
+ * Both numbers RISE ON THEIR OWN as people register in the source systems, and that is the point
+ * of the card: it measures the cost of having no ingest pipeline. Expect it to differ between two
+ * measurements taken minutes apart — a changing number here is the signal, not an error.
+ *
+ * DEDUP IS IMPERFECT AND SAYING SO IS PART OF THE FIGURE. Email-keyed sources dedup on email;
+ * clinic is phone-first. A clinic person whose email also appears in an email source is counted
+ * once (that overlap IS resolved); a clinic person known only by phone, who is the same human as
+ * an email in another source, is counted twice because nothing links them. So `distinctPeople` is
+ * an upper bound on distinct humans, and it is the tighter of the two bounds available.
+ */
+export interface NotInCrm {
+  distinctPeople: number;
+  perSourceSum: number;
+  bySource: SourceGap[];
+}
+
+export async function fetchNotInCrm(admin: SupabaseClient): Promise<NotInCrm> {
+  const bySource = await fetchLiveSourceGaps(admin);
+  const perSourceSum = bySource.reduce((n, s) => n + s.gap, 0);
+
+  // Re-derive the gap IDENTITIES (not just counts) so they can be unioned. The email sources share
+  // one key space, so a plain Set collapses cross-source duplicates. Clinic people are added only
+  // when their email is not already accounted for above.
+  const emailTables: string[] = [
+    "my20fit_profile",
+    "cf_hyrox_participants",
+    ...ARENA_TABLES,
+    ...GYM_TABLES,
+  ];
+  const emails = new Set<string>();
+  for (const t of emailTables) {
+    for (const raw of await pullColumn(admin, t, "email")) {
+      const e = normalizeEmail(raw);
+      if (e) emails.add(e);
+    }
+  }
+  const emailList = Array.from(emails);
+  const emailInPool = await poolHas(admin, "email_normalized", emailList);
+  const emailGap = new Set(emailList.filter((e) => !emailInPool.has(e)));
+
+  const phones = await pullColumn(admin, "clinic_patients", "phone");
+  const cEmails = await pullColumn(admin, "clinic_patients", "email");
+  const seen = new Set<string>();
+  const people: { p: string | null; e: string | null }[] = [];
+  const n = Math.max(phones.length, cEmails.length);
+  for (let i = 0; i < n; i++) {
+    const p = normalizePhoneID(phones[i] ?? null);
+    const e = normalizeEmail(cEmails[i] ?? null);
+    const key = `${p ?? ""}|${e ?? ""}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    people.push({ p, e });
+  }
+  const poolP = await poolHas(admin, "phone_normalized", people.map((x) => x.p).filter((x): x is string => !!x));
+  const poolE = await poolHas(admin, "email_normalized", people.map((x) => x.e).filter((x): x is string => !!x));
+  let clinicExtra = 0;
+  for (const { p, e } of people) {
+    const inPool = (p && poolP.has(p)) || (e && poolE.has(e));
+    if (inPool) continue;
+    if (e && emailGap.has(e)) continue; // already counted on the email side
+    clinicExtra++;
+  }
+
+  return { distinctPeople: emailGap.size + clinicExtra, perSourceSum, bySource };
+}
