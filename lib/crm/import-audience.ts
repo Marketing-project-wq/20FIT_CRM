@@ -141,6 +141,12 @@ export interface RowOutcome {
   index: number; // 0-based row index within the data rows
   status: RowStatus;
   email: string | null;
+  /** Tags this row supplied that the canon refuses (TUGAS E). Carried on EVERY outcome, including a
+   *  clean `insert`: a row can import perfectly and still have had a tag thrown away, and that is
+   *  exactly the kind of thing this system has been losing in silence. The row still imports with
+   *  its valid tags — one mistyped tag should not reject a whole file — but the operator sees which
+   *  ones were refused, per row, before confirming. */
+  invalidTags: string[];
 }
 
 export interface ImportSummary {
@@ -164,6 +170,8 @@ export interface ImportSummary {
   //                      because the follow-up differs: sharedPhone means "this number belongs to
   //                      another customer", sharedPhoneInBatch means "your file lists this number
   //                      twice". Same distinction as duplicatesEmail vs duplicatesInBatch.
+  rowsWithInvalidTags: number; // rows that supplied at least one tag the canon refuses — shown so a
+  //                      dropped tag is never silent, even on a row that otherwise imports cleanly.
   taggedExisting: number; // NOT imported (email already in master) but TAGGED with this batch's tags.
   //                      The population the tag work exists for: Hyrox participants who are already
   //                      20FIT customers. Marked `tagged:<batch>`, never `batch:<batch>` — see the
@@ -212,6 +220,7 @@ export function planImport(
     phoneExcelBroken: 0,
     sharedPhone: 0,
     sharedPhoneInBatch: 0,
+    rowsWithInvalidTags: 0,
     taggedExisting: 0,
     sharedPhoneSuppressed: 0,
     suppressed: 0,
@@ -226,10 +235,11 @@ export function planImport(
     // Count a mangled phone once, independent of what happens to the row below (its email may be valid
     // and insert, or invalid and skip) — the operator is told either way, never silently.
     if (n.phoneExcelBroken) s.phoneExcelBroken++;
+    if (n.invalidTags.length > 0) s.rowsWithInvalidTags++;
 
     if (email === null) {
       s.invalid++;
-      outcomes.push({ index, status: "skip_invalid", email: null });
+      outcomes.push({ index, status: "skip_invalid", email: null, invalidTags: n.invalidTags });
       return;
     }
     s.validEmail++;
@@ -248,13 +258,13 @@ export function planImport(
         tagTargets.push({ email, tags: n.tags });
         s.taggedExisting++;
       }
-      outcomes.push({ index, status: "skip_duplicate_email", email });
+      outcomes.push({ index, status: "skip_duplicate_email", email, invalidTags: n.invalidTags });
       return;
     }
 
     if (seenEmails.has(email)) {
       s.duplicatesInBatch++;
-      outcomes.push({ index, status: "skip_duplicate_in_batch", email });
+      outcomes.push({ index, status: "skip_duplicate_in_batch", email, invalidTags: n.invalidTags });
       return;
     }
     seenEmails.add(email);
@@ -273,7 +283,7 @@ export function planImport(
     // carved out here: an email is written intact, so it stays matchable at send — those rows insert-as-suppressed.
     if (sharedPhone && suppressedByPhone) {
       s.sharedPhoneSuppressed++;
-      outcomes.push({ index, status: "skip_shared_phone_suppressed", email });
+      outcomes.push({ index, status: "skip_shared_phone_suppressed", email, invalidTags: n.invalidTags });
       return;
     }
 
@@ -285,11 +295,11 @@ export function planImport(
     // but both are reflected in the summary figures above.
     if (suppressed) {
       s.suppressed++;
-      outcomes.push({ index, status: "insert_suppressed", email });
+      outcomes.push({ index, status: "insert_suppressed", email, invalidTags: n.invalidTags });
     } else if (sharedPhone) {
-      outcomes.push({ index, status: "insert_shared_phone", email });
+      outcomes.push({ index, status: "insert_shared_phone", email, invalidTags: n.invalidTags });
     } else {
-      outcomes.push({ index, status: "insert", email });
+      outcomes.push({ index, status: "insert", email, invalidTags: n.invalidTags });
     }
   });
 

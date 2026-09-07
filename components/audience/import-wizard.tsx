@@ -55,11 +55,18 @@ interface DryRunResponse {
   preview: Record<string, string>[];
   plan: { summary: ImportSummary; outcomes: { index: number; status: string; email: string | null }[] };
 }
+interface RowOutcomeView {
+  index: number;
+  status: string;
+  email: string | null;
+  invalidTags?: string[];
+}
+
 interface ExecuteResponse {
   ok: true;
   phase: "execute";
-  plan: { summary: ImportSummary; outcomes: { index: number; status: string; email: string | null }[] };
-  committed: { inserted: number };
+  plan: { summary: ImportSummary; outcomes: RowOutcomeView[] };
+  committed: { inserted: number; taggedExisting: number; sharedPhoneInBatch: number };
   batch: string;
   mirrorRefreshed: boolean;
 }
@@ -73,7 +80,7 @@ export function ImportWizard() {
   const [preview, setPreview] = useState<Record<string, string>[]>([]);
   const [delimiter, setDelimiter] = useState<string>(",");
   const [summary, setSummary] = useState<ImportSummary | null>(null);
-  const [dryOutcomes, setDryOutcomes] = useState<{ index: number; status: string; email: string | null }[]>([]);
+  const [dryOutcomes, setDryOutcomes] = useState<RowOutcomeView[]>([]);
   const [collectionSource, setCollectionSource] = useState("");
   const [report, setReport] = useState<ExecuteResponse | null>(null);
   const [busy, setBusy] = useState(false);
@@ -267,9 +274,20 @@ export function ImportWizard() {
             <Stat label="Baris terbaca" value={summary.read} />
             <Stat label="Email valid" value={summary.validEmail} />
             <Stat label="Akan masuk" value={summary.netInsert} tone="green" />
+            {/* The four figures the operator must be able to tell apart BEFORE confirming. "Akan
+                ditandai" is the population the tag work exists for — people already in the pool who
+                get this batch's tags and nothing else — and it is deliberately NOT folded into the
+                skipped count: they are not skipped, something happens to them. */}
+            <Stat
+              label="Akan ditandai (sudah ada)"
+              value={summary.taggedExisting}
+              tone="blue"
+              hint="Sudah ada di pool — tidak diimpor ulang. Hanya tag batch ini yang ditambahkan; kolom lain tak disentuh"
+            />
             <Stat label="Bisa dikirimi" value={summary.netContactable} tone="green" />
             <Stat label="Kena suppression" value={summary.suppressed} tone="amber" hint="Masuk pool, tapi tak akan menerima kiriman" />
-            <Stat label="Telepon bersama" value={summary.sharedPhone} tone="amber" hint="Tetap masuk (email unik), tapi teleponnya sama dengan kontak yang sudah ada" />
+            <Stat label="Telepon bersama (kontak lain)" value={summary.sharedPhone} tone="amber" hint="Tetap masuk (email unik), tapi teleponnya sama dengan kontak yang SUDAH ADA — teleponnya dikosongkan saat ditulis" />
+            <Stat label="Telepon ganda dalam berkas" value={summary.sharedPhoneInBatch} tone="amber" hint="Nomor sama dipakai lebih dari satu baris DI BERKAS INI — telepon dikosongkan di semua baris itu" />
             {summary.sharedPhoneSuppressed > 0 && (
               <Stat
                 label="Dilewati — telepon ter-suppress"
@@ -278,7 +296,15 @@ export function ImportWizard() {
                 hint="Teleponnya sama dengan kontak yang sudah berhenti berlangganan — tidak diimpor demi menepati permintaan stop"
               />
             )}
-            <Stat label="Duplikat email (dilewati)" value={summary.duplicatesEmail + summary.duplicatesInBatch} />
+            <Stat label="Duplikat dalam berkas (dilewati)" value={summary.duplicatesInBatch} hint="Email yang sama muncul lebih dari sekali di berkas ini" />
+            {summary.rowsWithInvalidTags > 0 && (
+              <Stat
+                label="Baris dengan tag ditolak"
+                value={summary.rowsWithInvalidTags}
+                tone="amber"
+                hint="Tag di luar kosakata dibuang; barisnya tetap diproses dengan tag yang sah — lihat daftar di bawah"
+              />
+            )}
             <Stat label="Tak valid (tanpa email)" value={summary.invalid} />
             {summary.phoneExcelBroken > 0 && (
               <Stat
@@ -350,10 +376,14 @@ export function ImportWizard() {
             <span className="font-display text-[15px] font-bold text-ink">Impor selesai</span>
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
+            {/* Reported from what the WRITE did (committed.*), not from the plan: the plan is what we
+                expected, these are what happened. */}
             <Stat label="Berhasil masuk" value={report.committed.inserted} tone="green" />
+            <Stat label="Ditandai (sudah ada)" value={report.committed.taggedExisting} tone="blue" hint="Sudah ada di pool — hanya tag batch ini yang ditambahkan" />
             <Stat label="Kena suppression" value={report.plan.summary.suppressed} tone="amber" hint="Masuk, tapi takkan dikirimi" />
-            <Stat label="Telepon bersama" value={report.plan.summary.sharedPhone} tone="amber" hint="Masuk, teleponnya sama dengan kontak lain" />
-            <Stat label="Dilewati / tak valid" value={report.plan.summary.duplicatesEmail + report.plan.summary.duplicatesInBatch + report.plan.summary.invalid + report.plan.summary.sharedPhoneSuppressed} />
+            <Stat label="Telepon bersama (kontak lain)" value={report.plan.summary.sharedPhone} tone="amber" hint="Masuk, teleponnya sama dengan kontak yang sudah ada" />
+            <Stat label="Telepon ganda dalam berkas" value={report.committed.sharedPhoneInBatch} tone="amber" hint="Nomor dipakai lebih dari satu baris di berkas ini — telepon dikosongkan di semuanya" />
+            <Stat label="Dilewati / tak valid" value={report.plan.summary.duplicatesInBatch + report.plan.summary.invalid + report.plan.summary.sharedPhoneSuppressed} />
             {report.plan.summary.phoneExcelBroken > 0 && (
               <Stat label="Telepon rusak (format Excel)" value={report.plan.summary.phoneExcelBroken} tone="amber" hint="Teleponnya dikosongkan — angkanya hilang" />
             )}
@@ -396,8 +426,10 @@ function Stepper({ step }: { step: Step }) {
   );
 }
 
-function Stat({ label, value, tone, hint }: { label: string; value: number; tone?: "green" | "amber"; hint?: string }) {
-  const color = tone === "green" ? "text-green" : tone === "amber" ? "text-amber" : "text-ink";
+function Stat({ label, value, tone, hint }: { label: string; value: number; tone?: "green" | "amber" | "blue"; hint?: string }) {
+  // Flat token classes only — a `<colour>-<number>` class emits no CSS at all here (README).
+  const color =
+    tone === "green" ? "text-green" : tone === "amber" ? "text-amber" : tone === "blue" ? "text-blue" : "text-ink";
   return (
     <div className="rounded-card border border-glass-border bg-glass p-3">
       <div className={`font-display text-[24px] font-black leading-none ${color}`}>{value.toLocaleString("id-ID")}</div>
@@ -427,11 +459,15 @@ function UnmappedColumns({ headers, mapping }: { headers: string[]; mapping: Col
  *  phone) so the operator can tell an unambiguous email duplicate from a shared-number flag. It never
  *  shows WHO the row collided with — exposing another customer to the uploader is a separate,
  *  audited decision (K-57). Row number is +2: 1 for the header, 1 for 0-based index. */
-function ProblemList({ outcomes }: { outcomes: { index: number; status: string; email: string | null }[] }) {
-  const rows = outcomes.filter((o) => o.status !== "insert");
+function ProblemList({ outcomes }: { outcomes: RowOutcomeView[] }) {
+  // Anything not a clean insert, PLUS any row that had a tag refused: a row can import perfectly and
+  // still have lost a tag, and a dropped tag nobody is told about is the failure class this whole
+  // sprint has been closing.
+  const rows = outcomes.filter((o) => o.status !== "insert" || (o.invalidTags?.length ?? 0) > 0);
   if (rows.length === 0) return null;
   const LABEL: Record<string, string> = {
-    skip_duplicate_email: "Email sudah ada (dilewati)",
+    skip_duplicate_email: "Sudah ada di pool → DITANDAI (tidak diimpor ulang)",
+    insert: "Masuk",
     skip_duplicate_in_batch: "Email dobel di file ini (dilewati)",
     skip_invalid: "Email tidak valid (dilewati)",
     skip_shared_phone_suppressed: "Telepon ter-suppress (dilewati — tak dibuat kontak baru)",
@@ -440,7 +476,15 @@ function ProblemList({ outcomes }: { outcomes: { index: number; status: string; 
   };
   return (
     <details className="mt-4">
-      <summary className="cursor-pointer font-body text-[13px] text-ink-soft">Lihat baris yang dilewati atau ditandai ({rows.length})</summary>
+      <summary className="cursor-pointer font-body text-[13px] text-ink-soft">
+        Lihat baris yang dilewati, ditandai, atau punya tag ditolak ({rows.length})
+      </summary>
+      {rows.some((o) => (o.invalidTags?.length ?? 0) > 0) && (
+        <p className="tint-amber mt-2 rounded-sm px-3 py-2 font-body text-[12px] leading-relaxed">
+          Sebagian baris memuat tag di luar kosakata. Tag itu <strong>dibuang</strong>; barisnya tetap
+          diproses dengan tag yang sah. Perbaiki berkasnya dan unggah ulang kalau tag itu seharusnya ikut.
+        </p>
+      )}
       <div className="mt-2 max-h-64 overflow-y-auto rounded-sm border border-glass-border">
         <table className="w-full border-collapse text-left">
           <tbody>
@@ -449,6 +493,9 @@ function ProblemList({ outcomes }: { outcomes: { index: number; status: string; 
                 <td className="px-3 py-1.5 font-mono text-[12px] text-ink-faint">baris {p.index + 2}</td>
                 <td className="px-3 py-1.5 font-body text-[12px] text-ink">{p.email ?? "—"}</td>
                 <td className="px-3 py-1.5 font-body text-[12px] text-ink-soft">{LABEL[p.status] ?? p.status}</td>
+                <td className="px-3 py-1.5 font-mono text-[11px] text-amber">
+                  {(p.invalidTags?.length ?? 0) > 0 ? `tag ditolak: ${p.invalidTags!.join(", ")}` : ""}
+                </td>
               </tr>
             ))}
           </tbody>

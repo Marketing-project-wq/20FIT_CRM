@@ -239,3 +239,83 @@ describe("safeCode — the shared PII-free shape guard (used by the import route
     expect(safeCode("")).toBeNull();
   });
 });
+
+// ── TUGAS B/E: the tagged population, the two phone figures, and refused tags ─────────────────
+describe("planImport — tags (K-58)", () => {
+  const mapping: ColumnMapping = { name: "full_name", email: "email", phone: "phone", tags: "tags" };
+  const noKeysLocal: ImportKeys = {
+    existingEmails: new Set(),
+    existingPhones: new Set(),
+    suppressedEmails: new Set(),
+    suppressedPhones: new Set(),
+  };
+
+  it("an EMAIL match is TAGGED, not merely skipped — with that row's own tags", () => {
+    const p = planImport(
+      [{ name: "A", email: "a@x.com", phone: "", tags: "event:sportfest-3-2026-05|tipe:gratis" }],
+      mapping,
+      { ...noKeysLocal, existingEmails: new Set(["a@x.com"]) },
+    );
+    expect(p.summary.taggedExisting).toBe(1);
+    expect(p.tagTargets).toEqual([
+      { email: "a@x.com", tags: ["event:sportfest-3-2026-05", "tipe:gratis"] },
+    ]);
+    expect(p.insertRows).toHaveLength(0);
+  });
+
+  it("a PHONE-only match is inserted and the existing phone-owner is NOT tagged (K-57)", () => {
+    const p = planImport(
+      [{ name: "B", email: "b@x.com", phone: "0822", tags: "event:platarox-2026-07" }],
+      mapping,
+      { ...noKeysLocal, existingPhones: new Set(["62822"]) },
+    );
+    expect(p.summary.taggedExisting).toBe(0);
+    expect(p.tagTargets).toEqual([]);
+    expect(p.insertRows).toHaveLength(1);
+    expect(p.insertRows[0].tags).toEqual(["event:platarox-2026-07"]);
+  });
+
+  it("the same existing email twice in one file is tagged ONCE", () => {
+    const p = planImport(
+      [
+        { name: "A", email: "a@x.com", phone: "", tags: "event:hyrox-sim-half" },
+        { name: "A again", email: "a@x.com", phone: "", tags: "event:hyrox-sim-half" },
+      ],
+      mapping,
+      { ...noKeysLocal, existingEmails: new Set(["a@x.com"]) },
+    );
+    expect(p.summary.taggedExisting).toBe(1);
+    expect(p.tagTargets).toHaveLength(1);
+    // Both ROWS are still reported as skipped-because-existing; only the PERSON is tagged once.
+    expect(p.summary.duplicatesEmail).toBe(2);
+  });
+
+  it("sharedPhoneInBatch counts EVERY row of a colliding group, not just the extras", () => {
+    // The write nulls the phone on every row sharing a number, so a number used twice costs two
+    // phones. Computed from the input — never pinned to a fixed number, since importing per event
+    // yields fewer in-file collisions than the combined file.
+    const p = planImport(
+      [
+        { name: "A", email: "a@x.com", phone: "0811", tags: "" },
+        { name: "B", email: "b@x.com", phone: "0811", tags: "" },
+        { name: "C", email: "c@x.com", phone: "0899", tags: "" },
+      ],
+      mapping,
+      noKeysLocal,
+    );
+    expect(p.summary.sharedPhoneInBatch).toBe(2);
+    expect(p.summary.sharedPhone).toBe(0); // none of them collide with MASTER — a different figure
+  });
+
+  it("a refused tag is reported per row and never silently dropped — the row still imports", () => {
+    const p = planImport(
+      [{ name: "A", email: "a@x.com", phone: "", tags: "event:sportfest-3-2026-05|nilai:<300k|batch:abc" }],
+      mapping,
+      noKeysLocal,
+    );
+    expect(p.summary.rowsWithInvalidTags).toBe(1);
+    expect(p.outcomes[0].invalidTags).toEqual(["nilai:<300k", "batch:abc"]);
+    expect(p.outcomes[0].status).toBe("insert"); // one bad tag does not reject the row
+    expect(p.insertRows[0].tags).toEqual(["event:sportfest-3-2026-05"]);
+  });
+});
