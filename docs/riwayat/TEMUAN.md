@@ -1479,6 +1479,104 @@ tertulis **31 Agustus** padahal permintaan terakhirnya 3 September. Rantai lengk
 memperbaikinya butuh keputusan (kolom `reactivated_at`, atau baris baru per permintaan) dan sebuah
 migrasi.
 
+## T-51 — Pola tag menolak 7 dari 22 tag yang dihasilkan pemiliknya sendiri — 4 Sep 2026
+
+**Tertangkap di gerbang, sebelum satu baris kode pun ditulis. Nol data terpengaruh.**
+
+Pola yang diusulkan untuk kanon tag, `^[a-z][a-z0-9-]*:[a-z0-9][a-z0-9-]*$`, diuji terhadap kosakata
+nyata dari berkas pemilik (3.371 baris, 22 tag berbeda, 22.974 penempelan):
+
+| Ditolak | penempelan | sebab |
+|---|---:|---|
+| `format-single` / `format-double` / `format-relay` | 549 | tanpa namespace |
+| `kategori-laki-laki` / `kategori-perempuan` | 450 | tanpa namespace |
+| **`nilai:<300k`** | **1.227** | mengandung `<` |
+| **`nilai:>=1jt`** | **319** | mengandung `>` dan `=` |
+
+Dua yang terakhir yang berbahaya: keduanya **bernamespace** dan terlihat benar sekilas, jadi tak
+seorang pun mengantisipasinya. Karena tag tak sah **menggagalkan panggilan** (aturan yang benar), 1.546
+penempelan itu akan membuat impor pertama gagal seluruhnya.
+
+**Kelasnya sama persis dengan T-48:** aturan ditulis di satu tempat, nilai dihasilkan di tempat lain,
+tak ada yang mempertemukan keduanya sampai produksi. Bedanya kali ini pertemuannya terjadi di gerbang,
+karena polanya diuji terhadap data sebelum dipakai — itu satu-satunya perbedaan yang penting.
+
+**Penyelesaian.** Pemilik menormalisasi datanya, bukan melonggarkan polanya: `format:`/`kategori:`
+dinamespace, dan `nilai:` diganti nama jadi `di-bawah-300k` / `300k-1jt` / `1jt-ke-atas`. Alasannya
+dicatat karena akan digoda untuk dibalik: `<`, `>`, `=` akan menggigit di URL, CSV, HTML, dan filter
+UI mana pun — tag adalah nilai yang berkeliling ke semua tempat itu. Melonggarkan pola berarti
+memasang karakter berbahaya ke kosakata permanen demi menghemat satu kali penulisan ulang.
+
+Konsekuensi yang **sengaja tidak diselesaikan**: ketiga `nilai:` tak terurut alfabet sesuai
+tingkatannya. **Jangan** menambahkan awalan urutan (`t1-`, `1-`) ke dalam tag; urutan tampilan
+ditangani `NILAI_TAG_ORDER` di UI. Ditulis di sini supaya tak "diperbaiki" kelak oleh orang yang tak
+tahu.
+
+`status-bayar:lunas` juga dibuang — 3.180 penempelan, dan `sumber:mayar` juga tepat 3.180: konstan di
+seluruh populasinya, nol daya pembeda. **Aturan yang layak diingat: tag yang tidak pernah bervariasi
+di dalam populasinya bukan tag, melainkan nama lain untuk populasi itu.**
+
+Kanon sekarang di `lib/crm/tags.ts`, dijaga `tags.parity.test.ts` — termasuk bukti bahwa ia **tidak**
+menolak 577 baris `activity_ingest` yang sudah hidup di produksi. Kanon yang menyatakan produksi tidak
+sah lebih buruk daripada tak ada kanon.
+
+## T-52 — `batch:` pada orang yang sudah ada akan menghapus pelanggan asli, dengan seluruh penjaga utuh — 4 Sep 2026
+
+**Tertangkap di tinjauan desain. Nol data terpengaruh.**
+
+Rollback impor per-batch adalah:
+
+```sql
+delete from public.master_customer
+ where source='csv_import' and tags @> array['batch:<BATCH_UUID>'] and merged_into is null;
+```
+
+Argumen awal untuk memakai penanda berbeda (`tagged:`) bagi orang yang sudah ada adalah "kalau
+kedua populasi berbagi bentuk penanda, satu-satunya yang mencegah pelanggan asli terhapus adalah
+kondisi `source` — dan kondisi itu bisa hilang saat query disalin". Benar, tapi butuh manusia yang
+menyalin dengan buruk.
+
+**Ada skenario yang tidak butuh kesalahan siapa pun:**
+
+| langkah | keadaan |
+|---|---|
+| 1 | Orang P diimpor batch **B1** → `source='csv_import'`, `tags=['csv_import','batch:B1']` |
+| 2 | Batch **B2** memuat P lagi → dedup melewatinya (email cocok) → P ditandai |
+| 3 | Kalau penandanya `batch:B2`, `tags` P kini memuat **B1 dan B2** |
+| 4 | Rollback B2 → `where source='csv_import' and tags @> array['batch:B2']` → **P TERHAPUS** |
+| 5 | P milik B1. Rollback B2 tak pernah dimaksudkan menyentuhnya. |
+
+Setiap penjaga bekerja persis seperti rancangannya. `source` cocok — karena P memang diimpor CSV.
+Tak ada query yang disalin salah. **Penanda `tagged:` membuat ini mustahil karena BENTUKNYA**, bukan
+karena seseorang ingat menambahkan klausa WHERE.
+
+**Pelajaran yang lebih luas:** ketika dua populasi berbagi tabel dan salah satunya bisa dihapus
+massal, yang membedakan keduanya harus **tak mungkin tertukar**, bukan sekadar "berbeda kalau
+querynya benar". Penanda yang bentuknya sama adalah bom waktu yang menunggu populasi kedua tumpang
+tindih dengan yang pertama.
+
+## T-53 — Nomor keputusan bertabrakan antar-branch paralel (K-55 ganda) — 4 Sep 2026
+
+PR #29 (sesi lain) menomori keputusan dedup email-primernya **K-55**. Di saat yang sama PR #32 (sesi
+ini) memakai **K-55** untuk status run `partial`/`failed`, dan sudah merge ke `main` lebih dulu.
+Keduanya benar secara lokal; keduanya membaca `KEPUTUSAN.md` saat nomor itu masih kosong.
+
+Diselesaikan dengan menomori ulang #29 → **K-57** (11 rujukan di 5 berkas: `KEPUTUSAN.md`,
+`RENCANA-impor-audiens.md`, `import-audience.ts`, `import-audience.test.ts`, dan
+`components/audience/import-wizard.tsx` — berkas terakhir hampir terlewat karena sapuan pertama hanya
+mencakup `lib/`, `app/`, dan `docs/`).
+
+**Konsekuensi yang diterima sadar:** kalau #29 di-merge sebelum commit penomoran ulang, `main` memuat
+dua K-55 selama beberapa menit. Nol kode bergantung pada nomor itu secara semantik — ia hanya rujukan
+dokumen — jadi jendela itu tak berbahaya, hanya membingungkan. Di branch ini penomoran ulang menjadi
+bagian dari commit merge-nya sendiri, sehingga `main` tak pernah melihatnya lewat jalur ini.
+
+**Cara menghindarinya lain kali:** nomor keputusan diambil dari `main`, bukan dari branch. Dua branch
+paralel yang sama-sama menambah keputusan akan selalu menebak nomor yang sama. Yang murah: sebelum
+menulis `## K-nn`, `git fetch` lalu baca `KEPUTUSAN.md` **di `origin/main`**, dan kalau ada branch
+lain yang sedang terbuka, ambil nomor setelah yang tertinggi di antara keduanya. Yang lebih baik lagi:
+sebutkan nomor yang dipakai di deskripsi PR, supaya tabrakan terlihat saat tinjauan, bukan saat merge.
+
 ## Catatan — rekonsiliasi Mailchimp belum bisa diturunkan
 
 Angka irisan Mailchimp ∩ CRM dari laporan 3 Sep **tidak dicatat di sini sebagai angka**: laporan itu

@@ -115,6 +115,51 @@ delete from public.master_customer
 select public.crm_refresh_customer_mirror();
 ```
 
+### Rollback untuk orang yang DITANDAI (`tagged:`) — cabut tag, JANGAN hapus orangnya
+
+> ### ⚠️ JANGAN PERNAH memakai `delete` untuk populasi ini
+>
+> Orang-orang ini **sudah ada di pool sebelum impor**. Impor hanya menempelkan tag pada mereka —
+> tak satu kolom lain pun disentuh, tak ada baris `crm_consent` ditulis. Membatalkannya berarti
+> **mencabut tag**, dan hanya itu. Sebuah `delete` di sini menghapus pelanggan asli yang tidak
+> pernah datang dari impor mana pun.
+>
+> Itulah alasan penandanya berbentuk `tagged:<batch>` dan **bukan** `batch:<batch>`: kalau keduanya
+> berbagi bentuk, perintah `delete` di atas akan menjangkau mereka. Dan itu bukan skenario teoretis —
+> orang yang diimpor batch B1 lalu ditandai lagi oleh B2 akan membawa **kedua** penanda, sehingga
+> rollback B2 menghapusnya walau ia milik B1, **dengan seluruh penjaga bekerja normal**. Lihat T-52.
+
+```sql
+-- Cabut tag batch ini dari orang yang HANYA ditandai. Menghapus penanda `tagged:<uuid>` beserta
+-- tag operator batch itu; tag lain milik orang tersebut dibiarkan utuh.
+update public.master_customer m
+   set tags = array(
+         select t from unnest(m.tags) t
+          where t <> 'tagged:<BATCH_UUID>'
+            and t <> all (array[ /* tag operator batch itu, mis. 'event:sportfest-3-2026-05' */ ]))
+ where m.tags @> array['tagged:<BATCH_UUID>'];
+
+-- Verifikasi: harus nol.
+select count(*) from public.master_customer where tags @> array['tagged:<BATCH_UUID>'];
+```
+
+**Catatan jujur soal batasnya:** kalau seseorang sudah membawa `event:sportfest-3-2026-05` dari
+sumber lain SEBELUM batch ini, perintah di atas ikut mencabutnya — tag tidak menyimpan asal-usulnya.
+Yang selalu aman dicabut adalah penanda `tagged:<uuid>` itu sendiri. Kalau ketepatan per-tag
+diperlukan, cabut penandanya saja dan tinjau tag operatornya manual.
+
+### Kenapa urutan merge #29 → #33 (dan bukan sebaliknya)
+
+Dicatat karena akan dipertanyakan. PR #29 masih membawa `basis='opt_in'` di migrasi 37 — nilai yang
+`crm_consent_basis_check` tolak. PR #33 membawa perbaikannya **beserta** parity test yang menjaganya.
+
+- **#29 lalu #33** (urutan yang dipakai): saat #29 mendarat, parity test belum ada di `main`, jadi
+  tak ada yang merah; #33 lalu membawa perbaikan dan penjaganya sekaligus. Nol jendela merah.
+- **#33 lalu #29** (kebalikannya): parity test sudah di `main`, lalu #29 mengembalikan `'opt_in'` →
+  **`main` merah** sampai seseorang menyadarinya.
+
+Urutan ini juga uji lapangan pertama bahwa parity test-nya benar-benar menjaga sesuatu.
+
 ## Butir menggantung (follow-up, bukan pemblokir Fase 1)
 
 - **Terapkan migrasi** `20260902050000` (BERGATE — tampilkan SQL, konfirmasi, apply, verifikasi,

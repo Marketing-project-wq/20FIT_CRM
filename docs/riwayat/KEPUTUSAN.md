@@ -1251,3 +1251,42 @@ pun.
 - **Pemisah terdeteksi + peringatan 1 kolom.** papaparse auto-detect `, ; \t |` ditampilkan; peringatan
   bila hanya 1 kolom terbaca (gejala klasik file `;`/tab salah-parse).
 - **Kolom tak terpetakan** (mis. "Event") disebut di ringkasan — drop diam-diam adalah cara data hilang.
+
+---
+
+## K-58 · Impor CSV — tag: per baris, `tagged:` untuk yang sudah ada, tanpa baris `crm_consent`
+
+**Keputusan (4 Sep 2026).** Impor CSV membawa kolom `tags` dan menempelkannya ke dua populasi yang
+diperlakukan berbeda.
+
+**1. Tag adalah data PER BARIS, bukan per batch.** Berkas nyata pemilik membuktikannya: satu berkas
+event pun mencampur `format:single` dengan `format:double`, kedua nilai `kategori:`, dan ketiga
+tingkat `nilai:`. Array tingkat-batch tak bisa mewakilinya. Jadi tiap baris `p_rows` membawa `tags`
+sendiri, dan `p_tag_rows` membawa `{email, tags}`.
+
+**2. Yang ditandai hanya kecocokan EMAIL.** Mengikuti K-57: cocok telepon saja = **orang yang
+berbeda** → dimasukkan, dan pemilik telepon lama **tidak** ditandai — ia tak pernah ikut event itu.
+Aturan awal "email atau telepon → tandai" melestarikan premis dedup yang sudah diganti K-57.
+
+**3. Orang yang emailnya cocok tapi sedang ter-suppress TETAP ditandai.** Ini sengaja diputuskan,
+bukan kebetulan. Tag bukan gerbang: menandai tidak menghubungi siapa pun, dan suppression tetap
+menggigit di titik kirim (K-36). Menahan tag dari orang ter-suppress justru merusak data —
+segmentasi "peserta Sportfest 3" akan bolong tanpa alasan yang bisa dijelaskan, dan bolongnya tak
+terlihat. Yang menggerbangi pengiriman tetap satu: `crm_suppression`.
+
+**4. Penanda dibedakan BENTUKNYA:** orang baru `batch:<id>`, orang lama `tagged:<id>`. Alasannya
+bukan kerapian — rollback per-batch **menghapus** pada `batch:`. Kalau keduanya berbagi bentuk, orang
+yang diimpor batch B1 lalu ditandai lagi oleh B2 akan membawa `batch:B1` **dan** `batch:B2`, sehingga
+rollback B2 menghapus orang milik B1 **dengan seluruh penjaga utuh**. Lihat T-52.
+
+**5. Baris `master_customer` yang sudah ada disentuh HANYA pada kolom `tags`.** Bukan `source`, bukan
+`full_name`, bukan `phone_normalized`, bukan `city`, bukan `updated_at`. Master tetap otoritatif
+(keputusan 2 Sep).
+
+**6. TANPA baris `crm_consent` untuk orang yang sudah ada.** Tiga alasan: mereka sudah punya
+provenance sendiri; tag bukan gerbang sehingga kontaktabilitas tak berubah; dan
+`UNIQUE (customer_id, channel, purpose)` akan bertabrakan dengan 408.119 baris yang sudah tercatat.
+
+**Yang membalik keputusan ini:** kalau kelak tag dipakai sebagai gerbang pengiriman (bukan hanya
+segmentasi), butir 3 harus ditinjau ulang — menandai orang ter-suppress akan berarti sesuatu yang
+lain sepenuhnya. Aturannya sekarang aman justru **karena** tag tidak menghubungi siapa pun.
