@@ -37,7 +37,6 @@ export const id = {
 
   nav: {
     dashboard: "Dashboard",
-    bod: "Ringkasan Direksi",
     audience: "Audience",
     segments: "Segments",
     workflows: "Workflows",
@@ -90,6 +89,14 @@ export const id = {
     title: "Dashboard",
     subtitle: "Audience Data & CRM 20FIT",
     tz: "WIB",
+    // Dashboard = dua lapis dengan batas yang dinyatakan (K-64). title/subtitle di atas membingkai
+    // seluruh halaman; opsTitle/opsSubtitle mengepalai lapis OPERASIONAL; layerBoundary adalah
+    // kalimat pada garis pemisah antara Ringkasan Direksi (atas) dan detail operasional (bawah).
+    opsTitle: "Detail operasional",
+    opsSubtitle:
+      "Rincian yang lebih dalam. Kesegarannya campuran — sebagian dihitung saat halaman dibuka, sebagian dari snapshot cermin — dan tiap bagian menyebut waktunya sendiri.",
+    layerBoundary:
+      "Semua yang di bawah garis ini terpisah dari Ringkasan Direksi di atas. Ringkasan itu satu potret harian dengan satu cap waktu; detail operasional di bawah punya kesegaran campuran, jadi tiap bagian menyebut waktunya sendiri alih-alih berbagi satu cap waktu.",
     // Kesegaran per blok — kata-kata SAMA di seluruh layar (satu baris kecil per blok):
     todayLabel: "Hari ini", // memperjelas tanggal di kepala = hari ini, BUKAN kapan data diperbarui
     freshLive: "dihitung saat halaman dibuka",
@@ -1811,7 +1818,7 @@ export const id = {
   // Juga: tanpa istilah internal — tak ada "pool", "cermin", "RFM", "ingest", "beku".
   bod: {
     title: "Ringkasan Direksi",
-    subtitle: "Lima hal, satu halaman, satu waktu pengukuran.",
+    subtitle: "Lima hal, satu bagian, satu waktu pengukuran.",
     measuredAt: "Data per",
     tz: "WIB",
     // {hours} diisi dari data. Peringatan ini menyalakan jam yang berhenti menjadi kalimat —

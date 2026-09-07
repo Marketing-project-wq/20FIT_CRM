@@ -1392,6 +1392,32 @@ Pemilik menerima penolakan itu dan meminta migrasinya dikerjakan sebagai gantiny
 supaya jelas bahwa aturan sistem mengikat instruksi juga, bukan hanya kode — dan bahwa cara
 menolak yang benar adalah menunjukkan aturan mana yang dilanggar, bukan menyatakan keberatan.
 
+## K-61 (tambahan 2) · "Satu cap waktu" berlaku per BAGIAN — Ringkasan Direksi jadi lapisan Dashboard, bukan halaman kedua
+
+**Keputusan pemilik, 7 Sep 2026.** Permintaan "halaman BOD" tadinya diminta tanpa menanyakan
+bagaimana ia berhubungan dengan Dashboard yang sudah ada — dan itu kesalahan arahan. Yang benar:
+Ringkasan Direksi harus **memperbaiki dan memperkaya Dashboard**, bukan menjadi halaman kedua. Maka
+ia menjadi **lapisan atas Dashboard**, di atas detail operasional, dengan **batas yang dinyatakan**
+di antara keduanya; rute `/bod` menjadi redirect permanen. Pelaksanaan penuh ada di **K-64**.
+
+**Baca ini sebelum menafsir ulang K-61.** Bunyi asli K-61 — *"satu cap waktu untuk seluruh halaman"*
+— benar untuk halaman BOD yang berdiri sendiri, **tetapi tidak boleh dibiarkan berdiri sendiri
+sebagai larangan atas bentuk dua-lapis ini.** Dinyatakan ulang dengan benar:
+
+> Janji **"satu waktu pengukuran" berlaku per BAGIAN**, dan **batas antar-bagian harus DINYATAKAN,
+> bukan disiratkan.**
+
+Keadaan lama yang kita perbaiki bukan *"halaman punya lebih dari satu cap waktu"* — melainkan
+*"halaman punya beberapa kesegaran tanpa ada yang mengatakannya"*, yaitu justru kelas kesalahan yang
+K-60 dibuat untuk mengakhiri. Menuang Ringkasan Direksi dan detail operasional jadi satu aliran tanpa
+batas akan mengembalikan persis masalah itu — kali ini dibuat sengaja. Karena itu:
+
+- **Ringkasan Direksi (atas):** lima kartu, satu potret harian, **satu cap waktu = `refreshed_at`
+  blob** (K-63 tetap berlaku utuh), plus spanduk "profil baru tidak masuk otomatis".
+- **Detail operasional (bawah):** judul bagiannya sendiri **dan cap waktunya sendiri**, yang
+  menyatakan bahwa sebagian angka dihitung saat halaman dibuka.
+- **Di antaranya:** garis yang **terlihat** DAN kalimat yang **menyebut** pemisahannya
+  (`dashboard.layerBoundary`), sehingga batasnya dinyatakan, bukan disiratkan.
 
 ## K-62 · Kartu "Boleh dihubungi · layanan" dihapus dari layar segmen — datanya tetap
 
@@ -1477,3 +1503,46 @@ Menghitungnya langsung di sini akan memberi halaman ini cap waktu kedua, yaitu j
 seluruh rancangan ini tolak. Jadi `shop` dikeluarkan dan kartunya **menyebutkannya**, alih-alih
 diam-diam mengecilkan total. Memasukkannya ke potret harian adalah perubahan satu baris pada fungsi
 malam — migrasi bergerbang tersendiri, bukan sekarang.
+
+## K-64 · Ringkasan Direksi masuk ke Dashboard sebagai lapisan atas; `/bod` jadi redirect; pagar cap waktu ikut pindah
+
+**Keputusan pemilik, 7 Sep 2026**, melaksanakan K-61 (tambahan 2). Isi kelima kartu `/bod` sudah
+benar dan diverifikasi; yang salah cuma **tempatnya**. Perbaikannya: satu Dashboard, dua lapis, batas
+yang dinyatakan — bukan halaman kedua.
+
+**Yang tumpang tindih (dipetakan, diverifikasi dengan pemindaian sumber, bukan pembacaan):**
+
+| Kartu ringkasan | Di operasional? | Tindakan |
+|---|---|---|
+| 1 · Jangkauan | Ya, "Pool & jangkauan" | **Hapus dari operasional** (naik ke ringkasan, dibaca dari snapshot) |
+| 2 · Pertumbuhan audiens | Sebagian (operasional = tanggal, ringkasan = batang) | **Gabung; versi batang menang** — batang di ringkasan; kartu tanggal ("Profil terakhir bertambah") dihapus dari operasional, tanggal muat-terakhir tetap ada di baris pool |
+| 3 · Di unit bisnis mana | Ya, "Sebaran unit bisnis" | **Hapus dari operasional** (naik ke ringkasan) |
+| 4 · Kesehatan pengiriman | Tidak ada | **Tambahan nyata — dipertahankan** |
+| 5 · Belum masuk CRM | Versi ringkas lebih baik dari tabel | **Naik ke ringkasan**; tabel per-sumber (+ kandidat 2.799) **tetap** di operasional sebagai rincian |
+
+**Tidak ada angka yang berubah** (isinya sudah benar): 82.213 · 81.679 · 82.830 · 126 · tiga muatan ·
+unit bisnis · 121/5/1/36 · 1.376. Detail operasional **dipindahkan, bukan dihilangkan**: tabel
+sumber, kandidat 2.799, sebaran event, cakupan kontak, tingkat pelanggan, tanggal lahir semuanya
+tetap.
+
+**Berkas pindah, dan pagar cap waktu ikut menunjuk berkas baru.** `components/dashboard/bod-content.tsx`
+→ `director-summary.tsx`; sumber cap waktu (`fetchBodSnapshot` + `nowMs={Date.now()}`) pindah dari
+`app/(app)/bod/page.tsx` → `app/(app)/page.tsx` (halaman Dashboard yang kini merender lapisan atas di
+server). Pagar pemindaian sumber (`lib/crm/bod-snapshot.test.ts`) diarahkan ulang ke **kedua** berkas
+baru itu. Pagar juga **dikeraskan**: pemindaian halaman kini mengupas komentar lebih dulu, sama
+seperti pemindaian komponen — karena docstring halaman menyebut `nowMs={Date.now()}` dan
+`fetchBodSnapshot` dalam prosa, dan pagar yang menghitung sebutan dalam komentar akan **hijau
+selamanya meski prop/panggilan aslinya dihapus**. Itu persis "pagar yang tak memeriksa apa pun" yang
+diperingatkan. **Terbukti menggigit setelah pemindahan** (dihapus sementara, ditunjukkan merah,
+dipulihkan): `nowMs={Date.now()}` → `nowMs={0}` di halaman ⇒ merah; `new Date()` disuntik ke komponen
+ringkasan ⇒ merah; keduanya dipulihkan ⇒ hijau (16/16).
+
+**`/bod` jadi redirect permanen (308) ke `/`.** Tautan yang sudah dibagikan tetap hidup, dan tidak
+ada halaman kedua yang bisa menua sendiri. Menu "Board summary" dicabut dari sidebar (nav 7 → 6);
+`t.nav.bod` dihapus.
+
+**Yang TIDAK dikerjakan (larangan pemilik dihormati):** tidak ada rute baru; **tidak ada halaman
+direksi terpisah** — kalau tautan khusus-direksi (tanpa detail operasional) dinilai bernilai, itu
+**usulan ke pemilik, bukan keputusan sendiri**, karena instruksinya jelas: jangan membuat halaman
+baru. Tidak ada migrasi, tidak ada `supabase db push`, tidak ada kirim/impor, tidak ada merge ke
+`main` tanpa gerbang pemilik.

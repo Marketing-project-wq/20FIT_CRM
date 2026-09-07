@@ -14,8 +14,10 @@ import {
 } from "./bod";
 
 /**
- * GUARD (K-63): the board page's single timestamp comes from the SNAPSHOT, never from the clock —
- * and the page says so out loud once the snapshot goes stale.
+ * GUARD (K-63): the board summary's single timestamp comes from the SNAPSHOT, never from the clock —
+ * and it says so out loud once the snapshot goes stale. The summary is now the TOP LAYER of the
+ * Dashboard rather than its own /bod page (K-64), but the rule is unchanged: one timestamp for that
+ * section, and it is the snapshot's own.
  *
  * WHY THIS EXISTS — read before "fixing" a failure by weakening it. The nightly function that
  * writes the snapshot now reads a dozen tables owned by OTHER divisions (arena_*, gym_*,
@@ -67,12 +69,19 @@ describe("BOD snapshot — the timestamp is the snapshot's, never the clock's", 
     expect(parseBodSnapshot(BLOB, null).measuredAt).toBeNull();
   });
 
-  it("the page component never constructs a date — the value is rendered from data.measuredAt", () => {
+  it("the summary component never constructs a date — the value is rendered from data.measuredAt", () => {
     // Source scan, because this is the one thing a unit test of a pure function cannot see: the
     // component could ignore `measuredAt` and print `new Date()`. It reads the file rather than
     // trusting a comment.
+    //
+    // FILES MOVED WHEN /bod FOLDED INTO THE DASHBOARD (K-64). The summary component is now
+    // components/dashboard/director-summary.tsx (was bod-content.tsx) and the SERVER page that
+    // fetches the snapshot and passes the clock in is app/(app)/page.tsx (was app/(app)/bod/page.tsx,
+    // now a permanent redirect). This guard points at the NEW files ON PURPOSE: a guard left pointing
+    // at a file that no longer exists would go green forever without checking anything — the exact
+    // silent failure this test exists to prevent.
     const ui = stripComments(
-      readFileSync(join(process.cwd(), "components", "dashboard", "bod-content.tsx"), "utf8"),
+      readFileSync(join(process.cwd(), "components", "dashboard", "director-summary.tsx"), "utf8"),
     );
     expect(ui).toContain("data.measuredAt");
     // Comments are stripped first ON PURPOSE: the rule is about what the code DOES, and the file
@@ -82,8 +91,14 @@ describe("BOD snapshot — the timestamp is the snapshot's, never the clock's", 
     expect(ui).not.toMatch(/new Date\(\)/);
     expect(ui).not.toMatch(/Date\.now\(\)/);
 
-    // The page passes the clock in for the STALENESS decision only, never as the stamp.
-    const page = readFileSync(join(process.cwd(), "app", "(app)", "bod", "page.tsx"), "utf8");
+    // The dashboard page passes the clock in for the STALENESS decision only, never as the stamp.
+    // Comments are stripped here TOO (not just for the component above): this page's own docstring
+    // explains the rule and names `nowMs={Date.now()}` and `fetchBodSnapshot` in prose, and a scan
+    // that counted those mentions would stay green even if the real prop/call were deleted — the
+    // toothless guard this test exists to prevent. Stripping first makes the assertion about CODE.
+    const page = stripComments(
+      readFileSync(join(process.cwd(), "app", "(app)", "page.tsx"), "utf8"),
+    );
     expect(page).toContain("nowMs={Date.now()}");
     expect(page).toContain("fetchBodSnapshot");
   });

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Clock, GitBranch, Cake } from "lucide-react";
+import { GitBranch, Cake } from "lucide-react";
 import { StatCard } from "./stat-card";
 import { BarList } from "./bar-list";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -19,6 +19,8 @@ interface Fitco { matched: number; unmatched: number }
 
 // The blocks the dashboard loads independently (mirror lib/crm/dashboard.ts server shapes).
 interface ImmediateBlock { audienceSize: number; lastProfileAt: string | null; contactCoverage: ContactCoverage; importDob: number; workflowCount: number; workflowQueued: number; loads: Load[]; loadsTruncated: boolean }
+// ReachBlock is retained ONLY as part of the DashboardStats fixture shape below; this operational
+// layer no longer fetches or renders reach (it moved to the Director Summary, K-64).
 interface ReachBlock { emailable: number; whatsappable: number; poolTotal: number; everContacted: number }
 interface Load { at: string; count: number }
 interface MirrorBlock { unitSpread: UnitCount[]; importRfm: { value: string; count: number }[]; candidates: Candidates; fitco: Fitco; mirror: MirrorMeta }
@@ -28,15 +30,15 @@ interface SourcesBlock { liveSources: SourceGap[] }
 /** The whole-page fixture shape (dev preview) — the union of every block. */
 export interface DashboardStats extends ImmediateBlock, ReachBlock, MirrorBlock, EventsBlock, SourcesBlock {}
 
-type BlockName = "immediate" | "reach" | "mirror" | "events" | "sources";
+// `reach` (live emailable/whatsappable) is intentionally NOT a block here any more: the reach card
+// was a duplicate of the summary's "Jangkauan" card, so it moved UP to the Director Summary (read
+// from the daily snapshot) and its live block is no longer fetched by this operational layer (K-64).
+type BlockName = "immediate" | "mirror" | "events" | "sources";
 type Status = "loading" | "ready" | "error" | "denied";
 interface Block<T> { status: Status; data: T | null }
 
 const DASH = "—"; // "no source": nothing to measure (K-08). NEVER a loading state.
 const EVENT_TOP = 10;
-/** A mirror snapshot older than this reads as "may be behind" on screen (24h — the manual refresh
- *  cadence vs daily-growing sources; see the Freshness sprint). */
-const STALE_THRESHOLD_HOURS = 24;
 
 function FreshTag({ children }: { children: React.ReactNode }) {
   return <span className="font-mono text-[11px] font-normal text-ink-faint">· {children}</span>;
@@ -52,11 +54,10 @@ function srcLabel(t: ReturnType<typeof useI18n>["t"], key: string): string {
     : key;
 }
 
-/** Split a full fixture into the five blocks (dev preview all-ready path). */
+/** Split a full fixture into the four operational blocks (dev preview all-ready path). */
 function blocksFromStats(s: DashboardStats) {
   return {
     immediate: { audienceSize: s.audienceSize, lastProfileAt: s.lastProfileAt, contactCoverage: s.contactCoverage, importDob: s.importDob, workflowCount: s.workflowCount, workflowQueued: s.workflowQueued, loads: s.loads, loadsTruncated: s.loadsTruncated } as ImmediateBlock,
-    reach: { emailable: s.emailable, whatsappable: s.whatsappable, poolTotal: s.poolTotal, everContacted: s.everContacted } as ReachBlock,
     mirror: { unitSpread: s.unitSpread, importRfm: s.importRfm, candidates: s.candidates, fitco: s.fitco, mirror: s.mirror } as MirrorBlock,
     events: { eventRegistrations: s.eventRegistrations } as EventsBlock,
     sources: { liveSources: s.liveSources } as SourcesBlock,
@@ -98,61 +99,10 @@ function SkelBars({ rows, label }: { rows: number; label: string }) {
 type Dict = ReturnType<typeof useI18n>["t"];
 type Lang = ReturnType<typeof useI18n>["lang"];
 
-/**
- * D2 — the pool + reach SUMMARY card (replaces three near-identical big-number cards). Pool is the
- * headline (from the fast IMMEDIATE block); the two contactable figures are sub-lines (from the
- * slower live RPC), so they carry their own skeleton until it lands. When all three are equal it
- * collapses to one honest phrase ("whole pool contactable · zero suppression") instead of three
- * copies of the same number.
- */
-function PoolReachCard({
-  imm, con, immStatus, conStatus, t, lang,
-}: {
-  imm: ImmediateBlock | null; con: ReachBlock | null;
-  immStatus: Status; conStatus: Status; t: Dict; lang: Lang;
-}) {
-  // "Everyone is reachable" is true only when BOTH channels cover the whole pool — which is a much
-  // stronger claim than the old one, and today it is false: 82,830 profiles, 82,213 with an email,
-  // 81,679 with a phone. The old card could reach this branch whenever two identical consent counts
-  // matched the pool size, which said nothing about whether anyone could actually be contacted.
-  const allEqual = imm != null && con != null &&
-    imm.audienceSize === con.emailable && con.emailable === con.whatsappable;
-  return (
-    <div className="card p-5 sm:col-span-2">
-      <p className="font-display text-[12px] font-semibold uppercase tracking-wide text-ink-soft">{t.dashboard.summaryTitle}</p>
-      {immStatus === "loading" ? (
-        <Skeleton className="mt-2 h-[26px] w-1/2" label={t.dashboard.computing} />
-      ) : immStatus === "error" ? (
-        <p className="mt-2 font-body text-[13px] font-semibold text-red">{t.dashboard.blockFailed}</p>
-      ) : (
-        <p className="mt-2 font-display text-[32px] font-semibold leading-none text-ink">{imm ? formatCount(imm.audienceSize, lang) : DASH}</p>
-      )}
-      <p className="mt-1 font-mono text-[11px] text-ink-faint">{t.dashboard.summaryPoolLabel}</p>
-
-      <div className="mt-4 border-t border-surface-border pt-3">
-        {conStatus === "loading" ? (
-          <div className="space-y-2"><Skeleton className="h-3.5 w-2/3" label={t.dashboard.computing} /><Skeleton className="h-3.5 w-1/2" /></div>
-        ) : conStatus === "error" ? (
-          <p className="font-body text-[12px] font-semibold text-red">{t.dashboard.blockFailed}</p>
-        ) : allEqual ? (
-          <p className="font-body text-[12px] text-ink">{t.dashboard.summaryReachAll}</p>
-        ) : (
-          <div className="space-y-1.5">
-            <div className="flex items-baseline justify-between gap-2">
-              <span className="font-body text-[12px] text-ink-soft">{t.dashboard.reachEmail}</span>
-              <span className="font-display text-[15px] font-bold tabular-nums text-ink">{con ? formatCount(con.emailable, lang) : DASH}</span>
-            </div>
-            <div className="flex items-baseline justify-between gap-2">
-              <span className="font-body text-[12px] text-ink-soft">{t.dashboard.reachWhatsapp}</span>
-              <span className="font-display text-[15px] font-bold tabular-nums text-ink">{con ? formatCount(con.whatsappable, lang) : DASH}</span>
-            </div>
-            <p className="pt-1 font-body text-[11px] leading-snug text-ink-faint">{t.dashboard.reachGapNote}</p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
+// NOTE: the pool + reach SUMMARY card ("Pool & jangkauan") that stood here was the operational
+// duplicate of the Director Summary's "Jangkauan" card. It moved UP to the summary (read from the
+// daily snapshot, alongside "Sudah pernah dikirimi"), so it is gone from this operational layer and
+// no longer rendered twice on the one page (K-64). The `reach` block is no longer fetched here.
 
 /** D2 — the five live-source gaps as ONE compact table instead of five cards. */
 function GapTable({ sources, t, lang }: { sources: SourceGap[]; t: Dict; lang: Lang }) {
@@ -248,7 +198,6 @@ export function DashboardContent(
     };
     return {
       immediate: mk<ImmediateBlock>("immediate", derived?.immediate ?? null),
-      reach: mk<ReachBlock>("reach", derived?.reach ?? null),
       mirror: mk<MirrorBlock>("mirror", derived?.mirror ?? null),
       events: mk<EventsBlock>("events", derived?.events ?? null),
       sources: mk<SourcesBlock>("sources", derived?.sources ?? null),
@@ -256,7 +205,6 @@ export function DashboardContent(
   };
 
   const [immediate, setImmediate] = useState<Block<ImmediateBlock>>(() => initBlocks().immediate);
-  const [reach, setReach] = useState<Block<ReachBlock>>(() => initBlocks().reach);
   const [mirrorB, setMirrorB] = useState<Block<MirrorBlock>>(() => initBlocks().mirror);
   const [events, setEvents] = useState<Block<EventsBlock>>(() => initBlocks().events);
   const [sources, setSources] = useState<Block<SourcesBlock>>(() => initBlocks().sources);
@@ -265,7 +213,6 @@ export function DashboardContent(
 
   const setters: Record<BlockName, (b: Block<unknown>) => void> = {
     immediate: setImmediate as (b: Block<unknown>) => void,
-    reach: setReach as (b: Block<unknown>) => void,
     mirror: setMirrorB as (b: Block<unknown>) => void,
     events: setEvents as (b: Block<unknown>) => void,
     sources: setSources as (b: Block<unknown>) => void,
@@ -289,7 +236,7 @@ export function DashboardContent(
   useEffect(() => {
     if (isPreview) return; // dev preview renders fixture/status directly — no fetch (/dev/* is 404 in prod)
     const ac = new AbortController();
-    (["immediate", "reach", "mirror", "events", "sources"] as BlockName[]).forEach((n) => loadBlock(n, ac.signal));
+    (["immediate", "mirror", "events", "sources"] as BlockName[]).forEach((n) => loadBlock(n, ac.signal));
     return () => ac.abort();
   }, [isPreview, loadBlock]);
 
@@ -302,20 +249,12 @@ export function DashboardContent(
 
   // KPI value/state helpers, per source block.
   const imm = immediate.data;
-  const con = reach.data;
   // ── Captions rendered FROM DATA (K-60) ────────────────────────────────────────────────────
-  // Every one of these used to be a sentence in the translation file stating a fact: "no workflow
-  // table yet", "2 loads: 20 Apr & 31 Jul", "zero new since 1 August". All three were true when
-  // written and false by the time anyone read them again. A translation file is not a place to
-  // keep a fact — nothing re-checks it.
-  const loadDates = (imm?.loads ?? []).map((l) => formatDate(l.at, lang)).join(" · ");
-  const loadsHint = imm == null
-    ? undefined
-    : imm.loadsTruncated
-      ? t.dashboard.lastProfileHintTruncated.replace("{n}", formatCount(imm.loads.length, lang))
-      : t.dashboard.lastProfileHint
-          .replace("{n}", formatCount(imm.loads.length, lang))
-          .replace("{dates}", loadDates);
+  // The workflow caption used to be a sentence in the translation file stating a fact ("no workflow
+  // table yet"); it was true when written and false by the time anyone read it again. A translation
+  // file is not a place to keep a fact — nothing re-checks it, so it is computed here. (The load-
+  // history caption that also lived here went UP with the growth card, which the Director Summary
+  // now owns as bars — K-64.)
   const workflowHint = imm == null
     ? undefined
     : imm.workflowQueued > 0
@@ -328,13 +267,11 @@ export function DashboardContent(
     errorLabel: !denied && blockStatus === "error" ? t.dashboard.blockFailed : undefined,
   });
 
-  const freshKpi = kpi(immediate.status, denied ? DASH : imm ? formatDate(imm.lastProfileAt, lang) : DASH);
   const dobKpi = kpi(immediate.status, denied ? DASH : imm ? formatCount(imm.importDob, lang) : DASH);
 
-  // Mirror snapshot age (unit-spread block).
+  // Mirror snapshot freshness — shown as the timestamp on the snapshot-backed sections (candidate
+  // card + customer-tier spread). The unit-spread block that also read it moved to the summary.
   const mirrorAt = mirrorB.data?.mirror.refreshedAt ?? null;
-  const mirrorAgeHours = mirrorAt ? (Date.now() - new Date(mirrorAt).getTime()) / 3_600_000 : null;
-  const mirrorStale = mirrorAgeHours != null && mirrorAgeHours > STALE_THRESHOLD_HOURS;
 
   const eventList = events.data?.eventRegistrations ?? [];
   const shownEvents = showAllEvents ? eventList : eventList.slice(0, EVENT_TOP);
@@ -355,25 +292,27 @@ export function DashboardContent(
           <span className="font-mono text-[12px] font-bold uppercase tracking-wide">{t.dashboard.previewBanner}</span>
         </div>
       )}
+      {/* Operational layer header — this section's OWN title and OWN timestamp (K-64). The summary
+          above carries one daily snapshot time; here the freshness is MIXED and each part names its
+          own, so this header states that plainly rather than implying one time for the whole thing. */}
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="font-display text-[30px] font-extrabold leading-none text-ink">{t.dashboard.title}</h1>
-          <p className="mt-2 font-body text-[14px] text-ink-soft">{t.dashboard.subtitle}</p>
+          <h2 className="font-display text-[24px] font-extrabold leading-none text-ink">{t.dashboard.opsTitle}</h2>
+          <p className="mt-2 font-body text-[14px] text-ink-soft">{t.dashboard.opsSubtitle}</p>
         </div>
-        {/* Prefixed with "Today" so this reads as the current date, NOT when the data was refreshed. */}
+        {/* Prefixed with "Today" so this reads as the current date — when these figures were
+            computed — NOT the summary's daily snapshot time above. */}
         <p className="font-mono text-[12px] text-ink-faint">{t.dashboard.todayLabel} · {todayLabel} · {t.dashboard.tz}</p>
       </header>
 
       {denied && <p className="font-body text-[13px] text-ink-soft">{t.access.dashboardHidden}</p>}
 
-      {/* KPI row (D2): pool + the two contactable figures are ONE summary card (pool is the
-          headline from the fast IMMEDIATE block; the contactable sub-figures arrive with the live
-          RPC). The remaining cards stay separate. "Workflow aktif" is a hard `—` (no table): a REAL
-          value that must stay visibly distinct from the pulsing skeletons around it (K-08). */}
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <PoolReachCard imm={denied ? null : imm} con={denied ? null : con}
-          immStatus={denied ? "ready" : immediate.status} conStatus={denied ? "ready" : reach.status} t={t} lang={lang} />
-        <StatCard label={t.dashboard.lastProfile} {...freshKpi} hint={loadsHint} computingLabel={t.dashboard.computing} icon={<Clock className="h-4 w-4" />} />
+      {/* KPI row. The pool + reach summary card and the "Profil terakhir bertambah" (load-history)
+          card were operational duplicates of the summary's Jangkauan and Pertumbuhan cards — both
+          moved UP (K-64), so this row now carries only what the summary does NOT: total workflows and
+          the manual date-of-birth figure. "Workflow" holds a REAL value that must stay visibly
+          distinct from the pulsing skeletons around it (K-08). */}
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {/* Was a hard `—` with the hint "no workflow table yet". crm_workflow has existed since
             27 Aug 2026 and holds people waiting in it — both figures are now counted (K-60). */}
         <StatCard
@@ -399,9 +338,9 @@ export function DashboardContent(
       {!denied && (
         <section className="space-y-4">
           <div>
-            <h2 className="font-display text-[16px] font-bold text-ink">
+            <h3 className="font-display text-[16px] font-bold text-ink">
               {t.dashboard.liveTitle} <FreshTag>{t.dashboard.freshLive}</FreshTag>
-            </h2>
+            </h3>
             <p className="mt-1 max-w-3xl font-body text-[13px] leading-relaxed text-ink-soft">{t.dashboard.liveNote}</p>
           </div>
 
@@ -457,42 +396,17 @@ export function DashboardContent(
         </section>
       )}
 
-      {/* ── Unit spread (snapshot / mirror). ───────────────────────────────────────────── */}
-      {!denied && (
-        <section className="space-y-3">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="font-display text-[16px] font-bold text-ink">{t.dashboard.unitTitle}</h2>
-            {mirrorAt && <FreshTag>{t.dashboard.freshSnapshot} · {formatDateTime(mirrorAt, lang)}</FreshTag>}
-          </div>
-          <p className="max-w-3xl font-body text-[12px] leading-relaxed text-ink-faint">{t.dashboard.unitNote}</p>
-          {mirrorStale && (
-            <p className="tint-amber rounded-sm px-3 py-2 font-body text-[12px] leading-relaxed text-ink">
-              {t.dashboard.staleA}{STALE_THRESHOLD_HOURS}{t.dashboard.staleB}
-            </p>
-          )}
-          <div className="card p-5">
-            {mirrorB.status === "ready" && mirrorB.data ? (
-              <>
-                <BarList lang={lang} scale="sqrt" barClass="bg-blue"
-                  items={mirrorB.data.unitSpread.map((u) => ({ label: u.unit, value: u.profiles }))} />
-                {/* D1: the sqrt-scale diagnostic moved behind <Why> — collapsed, not deleted. */}
-                <div className="mt-3"><Why><p className="text-[11px] leading-relaxed text-ink-soft">{t.dashboard.unitScaleNote}</p></Why></div>
-              </>
-            ) : mirrorB.status === "error" ? (
-              <BlockFail t={t} onRetry={isPreview ? undefined : () => loadBlock("mirror")} />
-            ) : (
-              <SkelBars rows={6} label={t.dashboard.computing} />
-            )}
-          </div>
-        </section>
-      )}
+      {/* NOTE: the business-unit spread ("Sebaran unit bisnis") that stood here was the operational
+          duplicate of the Director Summary's "Di unit bisnis mana" card. It moved UP to the summary
+          (K-64) and is no longer rendered on this page, so the two do not appear twice. The mirror
+          block is still fetched for the candidate card + customer-tier spread below. */}
 
       {/* ── Event registrations (live). ───────────────────────────────────────────────── */}
       {!denied && (
         <section className="space-y-3">
-          <h2 className="font-display text-[16px] font-bold text-ink">
+          <h3 className="font-display text-[16px] font-bold text-ink">
             {t.dashboard.eventTitle} <FreshTag>{t.dashboard.freshLive}</FreshTag>
-          </h2>
+          </h3>
           <p className="max-w-3xl font-body text-[12px] leading-relaxed text-ink-faint">{t.dashboard.eventNote}</p>
           <div className="card p-5">
             {events.status === "ready" ? (
@@ -518,9 +432,9 @@ export function DashboardContent(
       {/* ── Contact coverage (live, immediate block). ─────────────────────────────────── */}
       {!denied && (
         <section className="space-y-3">
-          <h2 className="font-display text-[16px] font-bold text-ink">
+          <h3 className="font-display text-[16px] font-bold text-ink">
             {t.dashboard.coverageTitle} <FreshTag>{t.dashboard.freshLive}</FreshTag>
-          </h2>
+          </h3>
           <div className="card p-5">
             {immediate.status === "ready" && cov ? (
               <>
@@ -558,9 +472,9 @@ export function DashboardContent(
           zero (K-08); zero buckets are re-expanded from the closed vocabulary so none vanish. ──── */}
       {!denied && (
         <section className="space-y-2">
-          <h2 className="font-display text-[15px] font-semibold text-ink-soft">
+          <h3 className="font-display text-[15px] font-semibold text-ink-soft">
             {t.dashboard.rfmTitle} <FreshTag>{t.dashboard.freshSnapshot}{mirrorAt ? ` · ${formatDateTime(mirrorAt, lang)}` : ""}</FreshTag>
-          </h2>
+          </h3>
           <p className="max-w-3xl font-body text-[12px] leading-relaxed text-ink-faint">{t.dashboard.rfmNote}</p>
           {mirrorB.status === "ready" && mirrorB.data ? (
             <div className="mt-1 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">

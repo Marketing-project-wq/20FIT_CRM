@@ -15,7 +15,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * beats a page that lies quietly, and the staleness banner below turns the stopped clock into a
  * sentence rather than something the reader has to spot.
  *
- * The whole page is therefore a snapshot, deliberately (K-61). Nothing here is counted at request
+ * The whole summary is therefore a snapshot, deliberately (K-61, amended by K-64: it is now the top
+ * LAYER of the Dashboard, still one section with one freshness). Nothing here is counted at request
  * time; adding one live figure would silently reintroduce the two-freshness problem this replaced.
  */
 
@@ -124,7 +125,7 @@ export function parseBodSnapshot(
       .map((l) => ({ at: String(l.at ?? ""), count: num(l.count) }))
       .filter((l) => l.at !== ""),
     // The five units the snapshot carries. `shop` is NOT among them — see the note in
-    // components/dashboard/bod-content.tsx for why it is named on the card rather than counted
+    // components/dashboard/director-summary.tsx for why it is named on the card rather than counted
     // live, and lib/crm/mirror.ts for the precompute's own statement that shop is absent.
     units: Object.entries(engagementRaw)
       .map(([unit, people]) => ({ unit, people: num(people) }))

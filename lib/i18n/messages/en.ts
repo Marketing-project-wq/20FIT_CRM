@@ -27,7 +27,6 @@ export const en: Messages = {
 
   nav: {
     dashboard: "Dashboard",
-    bod: "Board summary",
     audience: "Audience",
     segments: "Segments",
     workflows: "Workflows",
@@ -79,6 +78,14 @@ export const en: Messages = {
     title: "Dashboard",
     subtitle: "20FIT Audience Data & CRM",
     tz: "WIB",
+    // Dashboard = two layers with a stated boundary (K-64). title/subtitle above frame the whole
+    // page; opsTitle/opsSubtitle head the OPERATIONAL layer; layerBoundary is the sentence on the
+    // divider between the Director Summary (top) and the operational detail (bottom).
+    opsTitle: "Operational detail",
+    opsSubtitle:
+      "The deeper detail. Its freshness is mixed — some figures computed on page load, some from the mirror snapshot — and each part names its own time.",
+    layerBoundary:
+      "Everything below this line is separate from the Director Summary above. The summary is one daily snapshot under one timestamp; the operational detail below has mixed freshness, so each part names its own time instead of sharing a single one.",
     // Per-block freshness — SAME wording across the screen (one small line per block):
     todayLabel: "Today", // clarifies the header date is today, NOT when the data was refreshed
     freshLive: "computed on page load",
@@ -1687,7 +1694,7 @@ export const en: Messages = {
 
   bod: {
     title: "Board summary",
-    subtitle: "Five things, one page, one measurement time.",
+    subtitle: "Five things, one section, one measurement time.",
     measuredAt: "Data as of",
     tz: "WIB",
     // {hours} is filled from data. This turns a stopped clock into a sentence — without it the

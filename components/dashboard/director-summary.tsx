@@ -40,7 +40,7 @@ function Note({ children }: { children: React.ReactNode }) {
   return <p className="mt-4 font-body text-[12px] leading-relaxed text-ink-faint">{children}</p>;
 }
 
-export function BodContent({
+export function DirectorSummary({
   data,
   t,
   lang,
@@ -75,8 +75,11 @@ export function BodContent({
           <h1 className="font-display text-[30px] font-extrabold leading-none text-ink">{b.title}</h1>
           <p className="mt-2 font-body text-[14px] text-ink-soft">{b.subtitle}</p>
         </div>
-        {/* ONE timestamp for the whole page, and it is the SNAPSHOT'S OWN — never the clock.
-            If tonight's refresh fails, this stops moving instead of advancing over stale numbers
+        {/* ONE timestamp for THIS SECTION, and it is the SNAPSHOT'S OWN — never the clock. The
+            "one measurement time" promise is per-section now, not per-page (K-61 amended, K-64):
+            this summary is the top layer of the Dashboard, the operational detail below carries its
+            own separate freshness, and the boundary between them is stated, not implied. If
+            tonight's refresh fails, this stamp stops moving instead of advancing over stale numbers
             (K-63). That is why the value comes from data.measuredAt and there is no `new Date()`
             anywhere in this component. */}
         <p className="font-mono text-[12px] text-ink-faint">
@@ -128,10 +131,10 @@ export function BodContent({
 
         <Card n={3} title={b.unitsTitle}>
           <BarList items={unitBars} lang={lang} />
-          {/* No per-card timestamp any more: the whole page shares the header's one (K-61/K-63).
+          {/* No per-card timestamp: the whole section shares the header's one (K-61/K-63/K-64).
               What the card DOES have to say is which unit is missing — `shop` is not in the daily
-              snapshot, and counting it live would have handed this page a second freshness. Naming
-              it is honest; dropping it silently would shrink a total nobody could reconcile. */}
+              snapshot, and counting it live would have handed this section a second freshness.
+              Naming it is honest; dropping it silently would shrink a total nobody could reconcile. */}
           <Note>{b.unitsNote} {b.unitsShopExcluded}</Note>
         </Card>
 

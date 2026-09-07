@@ -8,13 +8,15 @@ import { PROFILE_FIXTURES } from "./profile-fixtures";
 export const dynamic = "force-dynamic";
 
 /**
- * Dev-only VISUAL preview of the dashboard with FIXTURE data — no Supabase, no auth, no PII.
- * /dev/* is 404 in production (app/dev/layout.tsx). The fixture uses the real verified figures
- * (82,253 pool; unit spread 67,828 → 2; contact 80,999/638/616/0) so the render is realistic,
- * INCLUDING the hard cases this sprint is meant to expose visually:
- *   - gym = 2 profiles (does the sqrt-scale bar still make it visible?)
+ * Dev-only VISUAL preview of the OPERATIONAL dashboard layer with FIXTURE data — no Supabase, no
+ * auth, no PII. /dev/* is 404 in production (app/dev/layout.tsx). This renders DashboardContent (the
+ * bottom layer) only; the Director Summary top layer is server-rendered from the daily snapshot and
+ * is not part of this fixture preview (K-64). The fixture uses the real verified figures so the
+ * render is realistic, INCLUDING the hard cases this exposes visually:
  *   - "neither" contact = 0 (measured zero shown, not dropped)
- *   - a mirror snapshot 3 days old (does the 24h staleness warning stand out?)
+ *   - a mirror snapshot 3 days old (does the snapshot FreshTag read as old on the candidate/RFM rows?)
+ * Reach and the business-unit spread moved UP to the summary (K-64); the fixture still carries their
+ * fields but this operational preview no longer renders them.
  */
 const STALE_REFRESHED_AT = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -126,23 +128,23 @@ export default function DevDashboardPreview() {
           title="Muat — skeleton penuh"
           note="Semua blok masih menghitung. Skeleton berbentuk seperti isinya (balok angka, batang). 'Workflow aktif' tetap '—' (nilai nyata, K-08), tak ikut berkedip."
         >
-          <DashboardContent previewStatus={{ immediate: "loading", reach: "loading", mirror: "loading", events: "loading", sources: "loading" }} />
+          <DashboardContent previewStatus={{ immediate: "loading", mirror: "loading", events: "loading", sources: "loading" }} />
         </Case>
 
         <Case
           id="shot-partial"
           title="Muat — sebagian sudah terisi"
-          note="Blok murah (ukuran pool, kesegaran, cakupan, tgl lahir) sudah tampil; 'bisa dihubungi' (RPC), unit, event, dan sumber masih menyusul di tempatnya sendiri — halaman tak melompat."
+          note="Blok murah (ukuran pool, kesegaran, cakupan, tgl lahir) sudah tampil; event dan sumber masih menyusul di tempatnya sendiri — halaman tak melompat. (Jangkauan dan sebaran unit kini di Ringkasan Direksi, bukan di lapis operasional ini.)"
         >
-          <DashboardContent previewStats={FIXTURE} previewStatus={{ immediate: "ready", reach: "loading", mirror: "loading", events: "loading", sources: "loading" }} />
+          <DashboardContent previewStats={FIXTURE} previewStatus={{ immediate: "ready", mirror: "loading", events: "loading", sources: "loading" }} />
         </Case>
 
         <Case
           id="shot-failed"
           title="Muat — satu bagian gagal (blok snapshot / precompute)"
-          note="Blok mirror (precompute) gagal — mis. blok dashboard_stats absen, pembaca fail-hard melempar. Ia tertangkap di batas blok: sebaran unit, RFM, dan kartu kandidat masing-masing menampilkan keadaan gagalnya sendiri + tombol coba lagi; pool, bisa dihubungi, cakupan, event tetap tampil normal. BUKAN halaman kosong, BUKAN nol palsu."
+          note="Blok mirror (precompute) gagal — mis. blok dashboard_stats absen, pembaca fail-hard melempar. Ia tertangkap di batas blok: RFM dan kartu kandidat masing-masing menampilkan keadaan gagalnya sendiri + tombol coba lagi; pool, cakupan, event tetap tampil normal. BUKAN halaman kosong, BUKAN nol palsu."
         >
-          <DashboardContent previewStats={FIXTURE} previewStatus={{ immediate: "ready", reach: "ready", mirror: "error", events: "ready", sources: "ready" }} />
+          <DashboardContent previewStats={FIXTURE} previewStatus={{ immediate: "ready", mirror: "error", events: "ready", sources: "ready" }} />
         </Case>
       </div>
 
