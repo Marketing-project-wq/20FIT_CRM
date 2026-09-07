@@ -36,15 +36,24 @@ export interface ImportInput {
 export interface CommitMeta {
   collectionSource: string;
   filename: string | null;
+  /** People already in master that this batch TAGS instead of importing, with THEIR row's tags
+   *  (K-58). Tags are per row, not per batch — see the migration header. */
+  tagTargets: { email: string; tags: string[] }[];
 }
 
 export interface ImportDeps {
   /** Read: which of these normalized emails/phones already exist in master, and which are suppressed. */
   loadKeys: (emails: string[], phones: string[]) => Promise<ImportKeys>;
   /** WRITE: insert the net-new people + their consent-evidence rows; returns how many were inserted. */
-  commit: (rows: NormalizedRow[], meta: CommitMeta) => Promise<{ inserted: number }>;
+  commit: (
+    rows: NormalizedRow[],
+    meta: CommitMeta,
+  ) => Promise<{ inserted: number; taggedExisting: number; sharedPhoneInBatch: number }>;
   /** WRITE: record the import in the audit log (PII-free counts + provenance). */
-  audit: (plan: ImportPlan, meta: CommitMeta & { inserted: number }) => Promise<void>;
+  audit: (
+    plan: ImportPlan,
+    meta: CommitMeta & { inserted: number; taggedExisting: number; sharedPhoneInBatch: number },
+  ) => Promise<void>;
 }
 
 const PREVIEW_ROWS = 5;
@@ -100,8 +109,13 @@ export async function runImportRequest(input: ImportInput, deps: ImportDeps): Pr
   if (collectionSource === "") return { ok: false, error: "collection_source_required" };
   if (plan.insertRows.length === 0) return { ok: false, error: "nothing_to_import" };
 
-  const meta: CommitMeta = { collectionSource, filename: input.filename?.trim() || null };
+  const meta: CommitMeta = {
+    collectionSource,
+    filename: input.filename?.trim() || null,
+    // The planner decided this list; the write acts on exactly it (K-58).
+    tagTargets: plan.tagTargets,
+  };
   const committed = await deps.commit(plan.insertRows, meta);
-  await deps.audit(plan, { ...meta, inserted: committed.inserted });
+  await deps.audit(plan, { ...meta, ...committed });
   return { ok: true, phase: "execute", mapping, preview, plan, committed };
 }

@@ -119,18 +119,27 @@ export async function POST(request: NextRequest) {
         email_normalized: r.emailNormalized,
         phone_normalized: r.phoneNormalized,
         city: r.city,
+        tags: r.tags, // per row — even one event file carries different format:/kategori:/nilai: tags
       }));
       const { data, error } = await admin.rpc("crm_ingest_csv_people", {
         p_rows: payload,
         p_batch_id: batchId,
         p_collection_source: meta.collectionSource,
         p_uploaded_by: userId,
+        // Decided by the planner, never re-derived in SQL — the dry-run count and the write act on
+        // the SAME list (K-58). Phone-only matches are NOT here: they are different people, inserted.
+        p_tag_rows: meta.tagTargets,
       });
       // PII-FREE: carry the database's CODE, never its message. A Postgres error message can quote
       // the offending row ("Key (email_normalized)=(…) already exists") — see safeCode.
       if (error) throw rpcFailure(error.code);
-      const inserted = typeof (data as { inserted?: number })?.inserted === "number" ? (data as { inserted: number }).inserted : 0;
-      return { inserted };
+      const r = (data ?? {}) as { inserted?: number; tagged_existing?: number; shared_phone_in_batch?: number };
+      const num = (v: unknown) => (typeof v === "number" ? v : 0);
+      return {
+        inserted: num(r.inserted),
+        taggedExisting: num(r.tagged_existing),
+        sharedPhoneInBatch: num(r.shared_phone_in_batch),
+      };
     },
     async audit(plan: ImportPlan, meta) {
       // PII-FREE: counts + provenance only, never the imported rows themselves.
@@ -139,7 +148,7 @@ export async function POST(request: NextRequest) {
         actor_email: userEmail,
         action: "audience.imported",
         target_table: "master_customer",
-        summary: `Impor CSV audiens: ${meta.inserted} masuk (${plan.summary.suppressed} kena suppression, ${plan.summary.sharedPhone} telepon bersama), ${plan.summary.duplicatesEmail + plan.summary.duplicatesInBatch} duplikat email, ${plan.summary.sharedPhoneSuppressed} dilewati telepon ter-suppress, ${plan.summary.invalid} tak valid.`,
+        summary: `Impor CSV audiens: ${meta.inserted} masuk, ${plan.summary.taggedExisting} ditandai (sudah ada) — (${plan.summary.suppressed} kena suppression, ${plan.summary.sharedPhone} telepon bersama, ${plan.summary.sharedPhoneInBatch} telepon ganda dalam berkas), ${plan.summary.duplicatesInBatch} duplikat dalam berkas, ${plan.summary.sharedPhoneSuppressed} dilewati telepon ter-suppress, ${plan.summary.invalid} tak valid.`,
         metadata: {
           view: "audience_csv_import",
           batch: batchId,

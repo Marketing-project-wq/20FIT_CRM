@@ -1,4 +1,5 @@
 import { normalizeEmail, normalizePhoneID } from "./normalize";
+import { parseTagCell } from "./tags";
 
 /**
  * PURE planning core for the CSV audience import (Fase 1). No I/O, no DB, no writes — it takes the
@@ -28,7 +29,7 @@ export const MAX_IMPORT_ROWS = 20_000;
 
 /** Safe columns only (Fase 0 honored, same class as the activity ingest). DOB / gender / NIK / health
  *  are deliberately NOT importable here — they need their own legal basis. */
-export const IMPORT_TARGET_FIELDS = ["full_name", "email", "phone", "city", "ignore"] as const;
+export const IMPORT_TARGET_FIELDS = ["full_name", "email", "phone", "city", "tags", "ignore"] as const;
 export type ImportField = (typeof IMPORT_TARGET_FIELDS)[number];
 
 /** Maps a CSV header (verbatim) to the destination field it fills, or "ignore". */
@@ -37,6 +38,7 @@ export type ColumnMapping = Record<string, ImportField>;
 /** Header-name heuristics for the auto-guess. Operator can always override in the UI. */
 const GUESS: { field: Exclude<ImportField, "ignore">; re: RegExp }[] = [
   { field: "email", re: /\b(e-?mail|surel|alamat\s*e-?mail)\b/i },
+  { field: "tags", re: /\b(tags?|label|penanda)\b/i },
   { field: "phone", re: /\b(phone|telp|telepon|hp|no\.?\s*hp|nomor|whatsapp|wa|mobile)\b/i },
   { field: "full_name", re: /\b(full[_\s]*name|nama\s*lengkap|nama|name)\b/i },
   { field: "city", re: /\b(city|kota|domisili)\b/i },
@@ -69,6 +71,10 @@ export interface NormalizedRow {
    *  original digits are GONE and unrecoverable, so the phone is dropped (never guessed-fixed) and the
    *  operator is told, not left in the dark. The row can still import on its email. */
   phoneExcelBroken: boolean;
+  /** Valid operator tags from this row's `tags` cell, normalized + deduplicated (TUGAS E). */
+  tags: string[];
+  /** Tags this row supplied that the canon refuses — reported per row, never dropped in silence. */
+  invalidTags: string[];
 }
 
 /** Excel silently rewrites a long number (a phone!) as scientific notation when a column isn't Text:
@@ -87,6 +93,7 @@ export function normalizeMappedRow(raw: Record<string, string>, mapping: ColumnM
   let email: string | null = null;
   let phone: string | null = null;
   let city: string | null = null;
+  let tagCell: string | null = null;
   for (const [header, field] of Object.entries(mapping)) {
     const v = (raw[header] ?? "").trim();
     if (v === "") continue;
@@ -94,8 +101,10 @@ export function normalizeMappedRow(raw: Record<string, string>, mapping: ColumnM
     else if (field === "email") email = v;
     else if (field === "phone") phone = v;
     else if (field === "city") city = v;
+    else if (field === "tags") tagCell = v;
   }
   const phoneExcelBroken = isExcelBrokenPhone(phone);
+  const parsed = parseTagCell(tagCell);
   return {
     fullName: fullName || null,
     email: email || null,
@@ -106,6 +115,10 @@ export function normalizeMappedRow(raw: Record<string, string>, mapping: ColumnM
     phoneNormalized: phoneExcelBroken ? null : normalizePhoneID(phone),
     city: city || null,
     phoneExcelBroken,
+    // TUGAS E: the CSV `tags` column, `|`-separated, validated against the canon (lib/crm/tags.ts).
+    // Rejected values are reported per row rather than dropped in silence.
+    tags: parsed.tags,
+    invalidTags: parsed.invalid,
   };
 }
 
@@ -146,6 +159,15 @@ export interface ImportSummary {
   sharedPhoneSuppressed: number; // SKIPPED (opsi d): shared phone that is currently suppressed. Not
   //                      imported — a contactable identity is never created for a number whose owner
   //                      opted out. Counted so the operator sees the guard fired. Usually 0.
+  sharedPhoneInBatch: number; // INSERTED, but the phone appears on MORE THAN ONE row of this same file
+  //                      — so the write nulls it on every one of them. Kept apart from sharedPhone
+  //                      because the follow-up differs: sharedPhone means "this number belongs to
+  //                      another customer", sharedPhoneInBatch means "your file lists this number
+  //                      twice". Same distinction as duplicatesEmail vs duplicatesInBatch.
+  taggedExisting: number; // NOT imported (email already in master) but TAGGED with this batch's tags.
+  //                      The population the tag work exists for: Hyrox participants who are already
+  //                      20FIT customers. Marked `tagged:<batch>`, never `batch:<batch>` — see the
+  //                      migration header — and their row is touched on the tags column only.
   suppressed: number; // net-new rows that are suppressed (inserted, but will never receive)
   netInsert: number; // total rows that will be inserted (INCLUDING suppressed and shared-phone)
   netContactable: number; // netInsert − suppressed (the count that can actually be sent to)
@@ -154,6 +176,11 @@ export interface ImportSummary {
 export interface ImportPlan {
   summary: ImportSummary;
   insertRows: NormalizedRow[]; // exactly the rows to hand to the ingest function
+  /** People ALREADY in master that this batch TAGS instead of importing (K-58), each with the tags
+   *  from THEIR row — tags differ per row even inside one event file. Decided here, never re-derived
+   *  in SQL: the planner is the single decision point, so the dry-run count and the write act on the
+   *  same list. A phone-only match is NOT here — that is a different person, who is inserted (K-57). */
+  tagTargets: { email: string; tags: string[] }[];
   outcomes: RowOutcome[]; // per-row disposition, for the post-run report
 }
 
@@ -173,7 +200,9 @@ export function planImport(
 ): ImportPlan {
   const outcomes: RowOutcome[] = [];
   const insertRows: NormalizedRow[] = [];
+  const tagTargets: { email: string; tags: string[] }[] = [];
   const seenEmails = new Set<string>(); // emails already accepted from THIS file
+  const taggedSeen = new Set<string>(); // emails already queued for tagging from THIS file
   const s: ImportSummary = {
     read: rows.length,
     validEmail: 0,
@@ -182,6 +211,8 @@ export function planImport(
     invalid: 0,
     phoneExcelBroken: 0,
     sharedPhone: 0,
+    sharedPhoneInBatch: 0,
+    taggedExisting: 0,
     sharedPhoneSuppressed: 0,
     suppressed: 0,
     netInsert: 0,
@@ -209,6 +240,14 @@ export function planImport(
     // instead. Suppression stays keyed on both (below); being in the pool never means being contactable.
     if (keys.existingEmails.has(email)) {
       s.duplicatesEmail++;
+      // Not imported — but TAGGED (K-58). A tag is not a gate: tagging contacts nobody, and
+      // suppression still bites at send, so an email that matches a currently-suppressed person is
+      // tagged too. Deduplicated because the same email can appear twice in one file.
+      if (!taggedSeen.has(email)) {
+        taggedSeen.add(email);
+        tagTargets.push({ email, tags: n.tags });
+        s.taggedExisting++;
+      }
       outcomes.push({ index, status: "skip_duplicate_email", email });
       return;
     }
@@ -254,8 +293,19 @@ export function planImport(
     }
   });
 
+  // A phone shared BETWEEN rows of this file can only be known once every row is placed, so it is a
+  // second pass. The write nulls the phone on EVERY row of a colliding group (not just the extras),
+  // so every one of them is counted — a number used twice costs two phones, not one.
+  const phoneUses = new Map<string, number>();
+  for (const r of insertRows) {
+    if (r.phoneNormalized) phoneUses.set(r.phoneNormalized, (phoneUses.get(r.phoneNormalized) ?? 0) + 1);
+  }
+  for (const r of insertRows) {
+    if (r.phoneNormalized && (phoneUses.get(r.phoneNormalized) ?? 0) > 1) s.sharedPhoneInBatch++;
+  }
+
   s.netContactable = s.netInsert - s.suppressed;
-  return { summary: s, insertRows, outcomes };
+  return { summary: s, insertRows, tagTargets, outcomes };
 }
 
 /**

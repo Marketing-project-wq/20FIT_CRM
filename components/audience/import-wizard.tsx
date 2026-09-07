@@ -25,6 +25,7 @@ const FIELD_LABEL: Record<ImportField, string> = {
   email: "Email",
   phone: "Telepon",
   city: "Kota",
+  tags: "Tag",
   ignore: "— abaikan —",
 };
 
