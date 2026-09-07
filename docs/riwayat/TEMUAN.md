@@ -1989,6 +1989,111 @@ ke sebuah halaman yang mungkin tak dibuka. Itu keputusan pemilik: ia butuh salur
 dan proyek ini belum punya satu pun yang dipakai untuk peringatan operasional.
 
 
+## T-62 — Indikator deploy yang saya usulkan tidak memeriksa apa pun: setiap rute mengembalikan 200 — 7 Sep 2026
+
+Setelah merge #33 saya tak bisa menjangkau `crm.20fit.id` (kebijakan egress lingkungan agen
+memblokirnya, `CONNECT` 403). Saya mengusulkan indikator pengganti: *"`/bod` adalah rute baru —
+kalau ia tayang, kode barunya hidup."* Pemilik mengujinya:
+
+```
+/bod                       HTTP 200 → halaman login
+/audience/import           HTTP 200 → halaman login
+/rute-yang-tidak-ada-xyz   HTTP 200 → halaman login
+```
+
+**Rute yang jelas tidak ada pun hijau.** Indikator itu tidak memeriksa apa pun.
+
+**Mekanismenya, diverifikasi dari kode (bukan dari situsnya, yang tetap tak bisa saya buka).**
+`middleware.ts` memasang matcher atas **setiap** path kecuali internal Next dan berkas statis:
+
+```
+"/((?!_next/static|_next/image|favicon.ico|icon.svg|brand/|.*\\.(?:png|jpg|…)$).*)"
+```
+
+`updateSession` lalu memanggil `redirectToLogin` untuk permintaan tanpa sesi. Middleware berjalan
+**sebelum** routing, jadi rute yang tidak ada tak pernah sampai ke penanganan 404 Next — ia sudah
+dialihkan ke `/login` lebih dulu, dan `/login` menjawab 200. Repo ini juga tak punya
+`app/not-found.tsx`, jadi tak ada apa pun yang akan membedakannya.
+
+**Kenapa ini pantas jadi temuan, bukan sekadar kekeliruan kecil.** Ia adalah kelas yang sedang
+diberantas sepanjang sprint ini — **tanda centang hijau yang tidak memeriksa apa pun** — dan kali
+ini ia muncul di dalam *saran verifikasi saya sendiri*. Sebuah pemeriksaan yang lulus untuk rute
+karangan bukan pemeriksaan yang lemah; ia bukan pemeriksaan.
+
+**Konsekuensi yang belum terpecahkan:** tanpa sesi, **tidak ada** cara mengetahui commit mana yang
+ter-deploy. `/health` diizinkan lewat tanpa sesi tapi hanya mengembalikan
+`{ok, timestamp, env, supabase}` — nol informasi build (dipindai: nol rujukan ke
+`RAILWAY_GIT_COMMIT_SHA` di seluruh repo). Yang membuktikan deploy 7 Sep 2026 adalah **tangkapan
+layar pemilik** yang sudah masuk ke aplikasi, bukan probe otomatis mana pun.
+
+**Usulan, bukan perubahan:** tambahkan satu field build (mis. tujuh karakter commit) ke `/health`.
+Itu mengubah endpoint publik, jadi ia keputusan pemilik — sebuah commit sha di endpoint terbuka
+adalah kebocoran informasi kecil, dan sebagian organisasi menolaknya.
+
+## T-63 — Runbook yang benar pada waktunya berhenti benar tiga hari kemudian, dan saya mempercayainya — 7 Sep 2026
+
+**Yang saya laporkan** (6 Sep–7 Sep 2026): uji kirim internal lewat composer mustahil karena
+`master_customer` memuat **nol** alamat `@20fit.id`, mengutip
+`docs/RUNBOOK-kirim-internal-pertama.md` yang menyebutnya "DEADLOCK terverifikasi 24 Agu 2026".
+
+**Yang benar**, diukur 7 Sep 2026 06:49 UTC:
+
+```
+@20fit.id di master_customer : 13
+Masuk                        : 27 Agustus 2026, source='activity_ingest' (bagian muatan 577)
+Ter-suppress: 0 · merged_into: 0 · punya email: 13 · pernah dikirimi: 0 · punya consent: 0
+```
+
+Runbook itu memverifikasinya **24 Agustus** — **tiga hari sebelum** ketiga belas alamat itu masuk.
+Ia benar saat ditulis dan diam-diam berhenti benar.
+
+**Ini T-50 persis, dan saya yang menulis T-50.** Potret satu momen diperlakukan sebagai sifat tetap.
+Bedanya: di T-50 saya yang membuat klaimnya; di sini saya yang **tertipu olehnya** — dengan
+mempercayai temuan terdokumentasi tanpa mengukur ulang.
+
+**Dan mempercayai register adalah perilaku yang benar.** Kalau setiap catatan harus diukur ulang
+sebelum boleh dipakai, register itu tak punya nilai sama sekali. Justru karena register memang
+harus dipercaya, **register yang menua adalah bahaya** — bukan kelalaian pembacanya. Yang salah
+bukan "saya percaya dokumen", melainkan "dokumen itu tidak membawa tanggal pengukuran di tempat
+yang memaksa pembacanya berpikir tentang umurnya".
+
+**Yang berubah karenanya:**
+1. Runbook diperbarui dengan angka 7 Sep 2026 **beserta jam pengukurannya**, dan catatan 24 Agu
+   **dipertahankan** sebagai bukti mekanismenya — bukan dihapus.
+2. Aturan yang dinyatakan di sana: setiap klaim terukur membawa tanggal pengukurannya, dan klaim
+   tanpa tanggal harus diukur ulang sebelum dipakai mengambil keputusan.
+
+**Konsekuensi yang lebih besar bagi keputusan uji kirim:** deadlocknya terbuka, jadi
+`SEND_TEST_INTERNAL_ADDRESS` dan redeploy tidak diperlukan. Nol baris consent pada ketiga belas
+orang itu **tidak** menghalangi: `previewCampaign` menghitung `sendable = withEmail − suppressed`
+lewat resolusi yang sama persis dengan jalur kirim, dan consent tidak ikut menyaring (K-36).
+
+### Berapa dokumen lain membawa klaim terukur tanpa tanggal?
+
+Dipindai 7 Sep 2026 dan diverifikasi terhadap produksi hari ini. Yang **terbukti sudah salah**:
+
+| Klaim di dokumen | Nilai dikutip | Nilai 7 Sep 2026 | Jumlah dokumen |
+|---|---|---|---|
+| Ukuran pool `master_customer` | 82.253 | **82.830** | **17** |
+| `my20fit_profile` | 886 | **1.337** | 3 |
+| `arena_class_bookings` | 2.731 | **3.250** | 1 |
+| `my20fit_user_activity` | 193 | **206** | ≥1 |
+
+Ketujuh belas dokumen yang mengutip 82.253 sebagai ukuran pool: `CEKLIS-verifikasi-live.md`,
+`ESKALASI-paparan-data-sensitif.md`, `KEBUTUHAN-SISTEM.md`, `KOLOM-WAKTU.md`, `KOREKSI-DEPLOY.md`,
+`PETA-JALAN-menghubungi.md`, `PR-11-PANDUAN-TINJAU.md`, `PR-sprint-3r.md`,
+`RENCANA-batas-kirim.md`, `RENCANA-ingest-ticket.md`, `RENCANA-message-log.md`,
+`RENCANA-render-data-nyata.md`, `RENCANA-template-simpan.md`, `RINGKASAN-keputusan-merge.md`,
+`RISIKO-masking-bypass.md`, `SIGNOFF-legal-consent.md`, `SUMBER-AKTIVITAS.md`.
+
+**Tidak diperbaiki** (permintaan pemilik: laporkan daftarnya, jangan perbaiki semuanya). Catatan
+jujur soal daftar ini: sebagian besar dokumen itu adalah **catatan sprint bertanggal** — laporan
+tentang apa yang terjadi saat itu, dan angka lama di dalamnya justru benar sebagai riwayat. Yang
+berbahaya adalah dokumen **operasional** yang dibaca untuk mengambil keputusan hari ini; dalam
+daftar di atas itu terutama `CEKLIS-verifikasi-live.md` (dipakai untuk memverifikasi deploy) dan
+`KEBUTUHAN-SISTEM.md`. Membedakan keduanya adalah keputusan pemilik, bukan sapuan otomatis.
+
+
 ## Catatan — rekonsiliasi Mailchimp belum bisa diturunkan
 
 Angka irisan Mailchimp ∩ CRM dari laporan 3 Sep **tidak dicatat di sini sebagai angka**: laporan itu
