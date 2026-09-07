@@ -89,13 +89,27 @@ export async function POST(request: NextRequest) {
   const deps: ImportDeps = {
     async loadKeys(emails, phones): Promise<ImportKeys> {
       const existingEmails = new Set<string>();
+      // (T-55) Taggable = at least one row for this email whose `merged_into` IS NULL. Kept apart from
+      // existingEmails on purpose: existingEmails decides INSERT-or-not and must mirror the ingest
+      // function's anti-join (which counts merged rows too), while THIS set decides TAG-or-not and must
+      // mirror its `upd` filter (which does not). One set could only satisfy one of the two, and the
+      // half it got wrong would be wrong in silence.
+      const taggableEmails = new Set<string>();
       const existingPhones = new Set<string>();
       const suppressedEmails = new Set<string>();
       const suppressedPhones = new Set<string>();
       // Which of THIS batch's emails/phones already exist in master (bounded by the batch, not 82k).
       if (emails.length > 0) {
-        const { data } = await admin.from("master_customer").select("email_normalized").in("email_normalized", emails);
-        for (const r of data ?? []) if (r.email_normalized) existingEmails.add(r.email_normalized as string);
+        const { data } = await admin
+          .from("master_customer")
+          .select("email_normalized, merged_into")
+          .in("email_normalized", emails);
+        for (const r of data ?? []) {
+          const e = r.email_normalized as string | null;
+          if (!e) continue;
+          existingEmails.add(e);
+          if (r.merged_into === null) taggableEmails.add(e);
+        }
       }
       if (phones.length > 0) {
         const { data } = await admin.from("master_customer").select("phone_normalized").in("phone_normalized", phones);
@@ -110,7 +124,7 @@ export async function POST(request: NextRequest) {
         if (s.identity_kind === "email") suppressedEmails.add(s.identity_key as string);
         else if (s.identity_kind === "phone") suppressedPhones.add(s.identity_key as string);
       }
-      return { existingEmails, existingPhones, suppressedEmails, suppressedPhones };
+      return { existingEmails, taggableEmails, existingPhones, suppressedEmails, suppressedPhones };
     },
     async commit(insertRows: NormalizedRow[], meta) {
       const payload = insertRows.map((r) => ({

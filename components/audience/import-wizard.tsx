@@ -296,6 +296,17 @@ export function ImportWizard() {
                 hint="Teleponnya sama dengan kontak yang sudah berhenti berlangganan — tidak diimpor demi menepati permintaan stop"
               />
             )}
+            {/* T-55. Shown only when it fires, but NEVER folded into another figure when it does: the
+                whole point of counting it is that "Akan ditandai" going down must have a visible
+                reason. A person who was merged is not tagged — their data moved to another profile. */}
+            {summary.skippedMerged > 0 && (
+              <Stat
+                label="Dilewati — profil sudah digabung"
+                value={summary.skippedMerged}
+                tone="amber"
+                hint="Emailnya hanya cocok dengan profil yang sudah digabung ke profil lain. Tidak diimpor dan tidak ditandai — datanya sudah pindah"
+              />
+            )}
             <Stat label="Duplikat dalam berkas (dilewati)" value={summary.duplicatesInBatch} hint="Email yang sama muncul lebih dari sekali di berkas ini" />
             {summary.rowsWithInvalidTags > 0 && (
               <Stat
@@ -383,6 +394,14 @@ export function ImportWizard() {
             <Stat label="Kena suppression" value={report.plan.summary.suppressed} tone="amber" hint="Masuk, tapi takkan dikirimi" />
             <Stat label="Telepon bersama (kontak lain)" value={report.plan.summary.sharedPhone} tone="amber" hint="Masuk, teleponnya sama dengan kontak yang sudah ada" />
             <Stat label="Telepon ganda dalam berkas" value={report.committed.sharedPhoneInBatch} tone="amber" hint="Nomor dipakai lebih dari satu baris di berkas ini — telepon dikosongkan di semuanya" />
+            {report.plan.summary.skippedMerged > 0 && (
+              <Stat
+                label="Dilewati — profil sudah digabung"
+                value={report.plan.summary.skippedMerged}
+                tone="amber"
+                hint="Emailnya hanya cocok dengan profil yang sudah digabung — tidak diimpor dan tidak ditandai"
+              />
+            )}
             <Stat label="Dilewati / tak valid" value={report.plan.summary.duplicatesInBatch + report.plan.summary.invalid + report.plan.summary.sharedPhoneSuppressed} />
             {report.plan.summary.phoneExcelBroken > 0 && (
               <Stat label="Telepon rusak (format Excel)" value={report.plan.summary.phoneExcelBroken} tone="amber" hint="Teleponnya dikosongkan — angkanya hilang" />
@@ -467,6 +486,7 @@ function ProblemList({ outcomes }: { outcomes: RowOutcomeView[] }) {
   if (rows.length === 0) return null;
   const LABEL: Record<string, string> = {
     skip_duplicate_email: "Sudah ada di pool → DITANDAI (tidak diimpor ulang)",
+    skip_merged: "Profil sudah digabung → tidak diimpor, tidak ditandai",
     insert: "Masuk",
     skip_duplicate_in_batch: "Email dobel di file ini (dilewati)",
     skip_invalid: "Email tidak valid (dilewati)",

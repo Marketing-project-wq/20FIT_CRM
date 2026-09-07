@@ -25,6 +25,7 @@ const MAPPING: ColumnMapping = { nama: "full_name", email: "email", telepon: "ph
 function keys(partial: Partial<ImportKeys> = {}): ImportKeys {
   return {
     existingEmails: new Set<string>(),
+    taggableEmails: new Set<string>(),
     existingPhones: new Set<string>(),
     suppressedEmails: new Set<string>(),
     suppressedPhones: new Set<string>(),
@@ -37,7 +38,10 @@ describe("dedup parity — the planner side", () => {
     const plan = planImport(
       [{ nama: "A", email: "ada@contoh.invalid", telepon: "" }],
       MAPPING,
-      keys({ existingEmails: new Set(["ada@contoh.invalid"]) }),
+      keys({
+        existingEmails: new Set(["ada@contoh.invalid"]),
+        taggableEmails: new Set(["ada@contoh.invalid"]),
+      }),
     );
     expect(plan.outcomes[0].status).toBe("skip_duplicate_email");
     expect(plan.insertRows).toHaveLength(0);

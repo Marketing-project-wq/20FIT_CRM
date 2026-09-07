@@ -134,6 +134,11 @@ export type RowStatus =
   //                         number whose owner asked to stop — the row is skipped, closing the gap for
   //                         suppressions that exist at import time.
   | "skip_duplicate_email" // email matches a person already in master → skipped (identity is unambiguous)
+  | "skip_merged" // (T-55) email matches ONLY rows whose `merged_into` is set — a merged row moved its
+  //                         data elsewhere, so the ingest function's `upd` deliberately refuses to tag it.
+  //                         Neither inserted (the SQL anti-join sees the merged row and skips) nor tagged.
+  //                         Given its OWN class, and its own count, so the reduction is VISIBLE. The number
+  //                         may go down; it may not go down in silence.
   | "skip_duplicate_in_batch" // same email appeared earlier in this file
   | "skip_invalid"; // no usable email (email is required in Fase 1)
 
@@ -176,6 +181,13 @@ export interface ImportSummary {
   //                      The population the tag work exists for: Hyrox participants who are already
   //                      20FIT customers. Marked `tagged:<batch>`, never `batch:<batch>` — see the
   //                      migration header — and their row is touched on the tags column only.
+  skippedMerged: number; // (T-55, owner decision 7 Sep 2026 = options 1+3 together) rows whose email
+  //                      matches ONLY already-merged people. The planner now filters them, so its
+  //                      taggedExisting equals the `tagged_existing` the SQL returns — and this count
+  //                      is what makes that filtering visible instead of a quiet shortfall between the
+  //                      dry-run screen and the report screen. Zero today: production carries 0 rows
+  //                      with `merged_into` set (measured 7 Sep 2026). Following the person to their
+  //                      successor row is a SEPARATE behavioural decision, deliberately deferred.
   suppressed: number; // net-new rows that are suppressed (inserted, but will never receive)
   netInsert: number; // total rows that will be inserted (INCLUDING suppressed and shared-phone)
   netContactable: number; // netInsert − suppressed (the count that can actually be sent to)
@@ -193,7 +205,15 @@ export interface ImportPlan {
 }
 
 export interface ImportKeys {
-  existingEmails: ReadonlySet<string>; // normalized emails already in master_customer
+  existingEmails: ReadonlySet<string>; // normalized emails already in master_customer (INCLUDING merged
+  //                      rows — this set decides INSERT-vs-not, and it must match the ingest function's
+  //                      anti-join, which also sees merged rows. Narrowing it would classify a row as
+  //                      `insert` that the SQL then refuses to insert: the same silence, mirrored.)
+  taggableEmails: ReadonlySet<string>; // (T-55) the subset of existingEmails with at least one row whose
+  //                      `merged_into` IS NULL — i.e. the people the ingest function's `upd` will
+  //                      actually tag. An email present in existingEmails but absent here matches only
+  //                      merged rows: skip_merged. Two sets, not one, because "already in the pool" and
+  //                      "taggable" stopped being the same question the moment merging existed.
   existingPhones: ReadonlySet<string>; // normalized phones already in master_customer
   suppressedEmails: ReadonlySet<string>; // active-suppression email identities (normalized)
   suppressedPhones: ReadonlySet<string>; // active-suppression phone identities (normalized)
@@ -222,6 +242,7 @@ export function planImport(
     sharedPhoneInBatch: 0,
     rowsWithInvalidTags: 0,
     taggedExisting: 0,
+    skippedMerged: 0,
     sharedPhoneSuppressed: 0,
     suppressed: 0,
     netInsert: 0,
@@ -250,6 +271,17 @@ export function planImport(
     // instead. Suppression stays keyed on both (below); being in the pool never means being contactable.
     if (keys.existingEmails.has(email)) {
       s.duplicatesEmail++;
+      // (T-55) An email that matches ONLY merged rows is neither inserted nor tagged: the SQL
+      // anti-join sees the merged row so no insert happens, and `upd` filters `merged_into is null`
+      // so no tag happens. Before this branch existed the planner still counted it under
+      // taggedExisting, so the dry-run screen promised a tag that the write never applied and the
+      // report screen simply showed a smaller number with nothing to explain it. Now it is its own
+      // class with its own count — the figure may shrink, but not quietly.
+      if (!keys.taggableEmails.has(email)) {
+        s.skippedMerged++;
+        outcomes.push({ index, status: "skip_merged", email, invalidTags: n.invalidTags });
+        return;
+      }
       // Not imported — but TAGGED (K-58). A tag is not a gate: tagging contacts nobody, and
       // suppression still bites at send, so an email that matches a currently-suppressed person is
       // tagged too. Deduplicated because the same email can appear twice in one file.

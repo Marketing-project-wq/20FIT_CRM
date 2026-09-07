@@ -13,6 +13,7 @@ import {
 
 const noKeys: ImportKeys = {
   existingEmails: new Set(),
+  taggableEmails: new Set(),
   existingPhones: new Set(),
   suppressedEmails: new Set(),
   suppressedPhones: new Set(),
@@ -95,7 +96,7 @@ describe("planImport", () => {
   });
 
   it("EMAIL-PRIMARY dedup (K-57): skips an email match, but INSERTS a phone-only match with a shared-phone flag", () => {
-    const keys: ImportKeys = { ...noKeys, existingEmails: new Set(["a@x.com"]), existingPhones: new Set(["62822"]) };
+    const keys: ImportKeys = { ...noKeys, existingEmails: new Set(["a@x.com"]), taggableEmails: new Set(["a@x.com"]), existingPhones: new Set(["62822"]) };
     const rows = [
       { name: "A", email: "a@x.com", phone: "" }, // email exists → SKIP (unambiguous same identity)
       { name: "B", email: "b@x.com", phone: "0822" }, // NEW email, phone 62822 exists → INSERT + shared-phone flag
@@ -245,6 +246,7 @@ describe("planImport — tags (K-58)", () => {
   const mapping: ColumnMapping = { name: "full_name", email: "email", phone: "phone", tags: "tags" };
   const noKeysLocal: ImportKeys = {
     existingEmails: new Set(),
+    taggableEmails: new Set(),
     existingPhones: new Set(),
     suppressedEmails: new Set(),
     suppressedPhones: new Set(),
@@ -254,13 +256,65 @@ describe("planImport — tags (K-58)", () => {
     const p = planImport(
       [{ name: "A", email: "a@x.com", phone: "", tags: "event:sportfest-3-2026-05|tipe:gratis" }],
       mapping,
-      { ...noKeysLocal, existingEmails: new Set(["a@x.com"]) },
+      { ...noKeysLocal, existingEmails: new Set(["a@x.com"]), taggableEmails: new Set(["a@x.com"]) },
     );
     expect(p.summary.taggedExisting).toBe(1);
     expect(p.tagTargets).toEqual([
       { email: "a@x.com", tags: ["event:sportfest-3-2026-05", "tipe:gratis"] },
     ]);
     expect(p.insertRows).toHaveLength(0);
+  });
+
+  // ── T-55 (keputusan pemilik 7 Sep 2026: opsi 1 + 3 bersama) ────────────────────────────────
+  it("an email matching ONLY a merged person is skip_merged — not inserted, not tagged", () => {
+    const p = planImport(
+      [{ name: "A", email: "a@x.com", phone: "", tags: "event:hyrox-sim-half" }],
+      mapping,
+      // In the pool (so the ingest anti-join will refuse to insert), but every row carrying that
+      // email has `merged_into` set (so the ingest `upd` will refuse to tag).
+      { ...noKeysLocal, existingEmails: new Set(["a@x.com"]), taggableEmails: new Set() },
+    );
+    expect(p.summary.skippedMerged).toBe(1);
+    expect(p.summary.taggedExisting).toBe(0);
+    expect(p.tagTargets).toEqual([]);
+    expect(p.insertRows).toHaveLength(0);
+    expect(p.outcomes[0].status).toBe("skip_merged");
+  });
+
+  it("the dry-run tag count now EQUALS what the write applies, merged rows included", () => {
+    // The defect this locks: before T-55 the planner counted a merged person under taggedExisting,
+    // the SQL `upd` skipped them, and the report screen simply showed a smaller number. Here two
+    // emails exist in the pool; only one is taggable.
+    const p = planImport(
+      [
+        { name: "A", email: "a@x.com", phone: "", tags: "event:hyrox-sim-half" },
+        { name: "B", email: "b@x.com", phone: "", tags: "event:hyrox-sim-half" },
+      ],
+      mapping,
+      {
+        ...noKeysLocal,
+        existingEmails: new Set(["a@x.com", "b@x.com"]),
+        taggableEmails: new Set(["a@x.com"]),
+      },
+    );
+    // tagTargets is exactly what is handed to p_tag_rows, and `upd` will match every one of them.
+    expect(p.tagTargets).toEqual([{ email: "a@x.com", tags: ["event:hyrox-sim-half"] }]);
+    expect(p.summary.taggedExisting).toBe(1);
+    expect(p.summary.skippedMerged).toBe(1);
+    // Both rows are still reported as already-in-pool; the split is in HOW they were handled.
+    expect(p.summary.duplicatesEmail).toBe(2);
+  });
+
+  it("a person present on BOTH a merged row and a live row is still tagged", () => {
+    // The partial unique index excludes merged rows, so one email can sit on a merged row AND a
+    // live one. Taggable wins: the live row is what `upd` will update.
+    const p = planImport(
+      [{ name: "A", email: "a@x.com", phone: "", tags: "peran:peserta" }],
+      mapping,
+      { ...noKeysLocal, existingEmails: new Set(["a@x.com"]), taggableEmails: new Set(["a@x.com"]) },
+    );
+    expect(p.summary.skippedMerged).toBe(0);
+    expect(p.summary.taggedExisting).toBe(1);
   });
 
   it("a PHONE-only match is inserted and the existing phone-owner is NOT tagged (K-57)", () => {
@@ -282,7 +336,7 @@ describe("planImport — tags (K-58)", () => {
         { name: "A again", email: "a@x.com", phone: "", tags: "event:hyrox-sim-half" },
       ],
       mapping,
-      { ...noKeysLocal, existingEmails: new Set(["a@x.com"]) },
+      { ...noKeysLocal, existingEmails: new Set(["a@x.com"]), taggableEmails: new Set(["a@x.com"]) },
     );
     expect(p.summary.taggedExisting).toBe(1);
     expect(p.tagTargets).toHaveLength(1);

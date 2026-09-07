@@ -4,6 +4,7 @@ import type { ImportKeys } from "./import-audience";
 
 const emptyKeys: ImportKeys = {
   existingEmails: new Set(),
+  taggableEmails: new Set(),
   existingPhones: new Set(),
   suppressedEmails: new Set(),
   suppressedPhones: new Set(),

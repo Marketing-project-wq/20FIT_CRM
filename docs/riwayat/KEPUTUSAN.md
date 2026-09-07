@@ -1290,3 +1290,45 @@ provenance sendiri; tag bukan gerbang sehingga kontaktabilitas tak berubah; dan
 **Yang membalik keputusan ini:** kalau kelak tag dipakai sebagai gerbang pengiriman (bukan hanya
 segmentasi), butir 3 harus ditinjau ulang — menandai orang ter-suppress akan berarti sesuatu yang
 lain sepenuhnya. Aturannya sekarang aman justru **karena** tag tidak menghubungi siapa pun.
+
+## K-59 · Orang yang sudah digabung: disaring perencana, **dan** dihitung terpisah
+
+**Keputusan pemilik, 7 Sep 2026.** Baris impor yang emailnya hanya cocok dengan profil
+`merged_into is not null` tidak disisipkan dan tidak ditandai — dan itu **muncul sebagai angkanya
+sendiri** (`skippedMerged`, kelas baris `skip_merged`, kartu "Dilewati — profil sudah digabung"),
+bukan lenyap ke dalam "Akan ditandai" yang mengecil tanpa sebab.
+
+Kalimat pemilik yang menjadi aturannya: **"Angka boleh berkurang; tidak boleh berkurang diam-diam."**
+
+Kenapa dua-duanya, bukan salah satu. Menyaring saja membuat uji-kering cocok dengan yang ditulis,
+tapi selisihnya tetap tak terjelaskan bagi operator. Menghitung saja membiarkan uji-kering
+menjanjikan tag yang tak pernah menempel. Bersama-sama, layar uji-kering dan layar laporan
+mengatakan hal yang sama, dan alasan setiap pengurangan ada di layar.
+
+**Yang TIDAK diputuskan:** mengikuti orang itu ke profil penerusnya lalu menandai baris penerus.
+Itu keputusan perilaku tersendiri ("apa arti menandai orang yang sudah digabung?") dan ditunda.
+Hari ini `merged_into is not null` = 0 di produksi, jadi tak ada yang mendesak.
+
+Rinciannya, termasuk jebakan "sempitkan saja `existingEmails`" yang justru mencerminkan cacatnya
+secara terbalik, ada di **T-55**.
+
+## K-60 · Angka di layar dihitung dari data, tidak pernah ditulis di string i18n
+
+**Keputusan pemilik, 7 Sep 2026**, lahir dari caption dashboard yang menyatakan hal-hal yang tidak
+benar lagi (lihat T-56): "no workflow table yet" padahal `crm_workflow` ada dengan 36 enrollment
+menunggu; "2 loads: 20 Apr & 31 Jul" padahal muatannya **tiga**; "zero new since 1 August" padahal
+577 orang masuk 27 Agustus.
+
+**Aturannya:** setiap angka yang muncul di layar **dihitung dari data pada waktu render**. Angka
+tidak pernah ditulis sebagai literal di dalam string terjemahan. Sebuah string i18n boleh memuat
+placeholder; ia tidak boleh memuat fakta.
+
+**Satu pengecualian, dengan syarat.** Kalau sebuah angka benar-benar tak bisa dihitung dari basis
+data ini, ia boleh ditulis — tapi **wajib** membawa (1) tanggal pengukurannya dan (2) tanda visual
+bahwa ia manual. Angka manual tanpa tanggal adalah klaim yang menua diam-diam, dan itu persis
+mekanisme yang membuat caption-caption di atas jadi bohong tanpa ada yang berbohong.
+
+**Kenapa ini keputusan dan bukan sekadar tambalan:** caption yang salah tadi tidak ditulis dengan
+niat menyesatkan. Semuanya benar pada hari ditulis. Yang rusak adalah **tempat penyimpanannya** —
+sebuah fakta yang disimpan di lapisan yang tak pernah diperiksa ulang. Menambal keempatnya tanpa
+memindahkan angkanya ke data hanya menyetel ulang jamnya.

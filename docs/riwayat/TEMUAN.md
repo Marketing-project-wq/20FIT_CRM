@@ -1608,12 +1608,36 @@ ulang setelah penolakan dan **identik** (04:06:51 → 04:10:51 UTC): `pg_proc` 0
 `master_customer` 82.830, `crm_consent` 408.119, run draft/sending 0, kiriman terjadwal 0. Yang hilang
 hanya satu siklus gerbang pemilik.
 
-**Cara menghindarinya lain kali.** Urai berkas migrasi terhadap Postgres asli **sebelum** meminta
-gerbang, bukan sesudah. Ini murah dan tidak menyentuh produksi: `initdb` sebuah instans sekali pakai,
-`psql -v ON_ERROR_STOP=1 -f <berkas>`. PL/pgSQL tidak me-resolve nama tabel pada waktu `CREATE`
-(justru itulah T-48), jadi pengurai lokal tidak butuh satu pun tabel produksi untuk membuktikan
-sintaksis. Pemeriksaan itu dijalankan setelah kegagalan ini dan mengulang galat yang sama persis
-secara lokal, lalu membuktikan koma tersebut adalah satu-satunya galat sintaksis di berkas.
+**Cara menghindarinya lain kali — dan koreksi atas usulan pertama saya.** Usulan awal saya adalah
+`initdb` sebuah Postgres sekali pakai di CI. Itu bekerja (begitulah komanya diisolasi), tapi pemilik
+menunjukkan yang lebih murah: **`libpg-query`**, tata bahasa Postgres sendiri dikompilasi jadi pustaka.
+Tanpa server, tanpa keputusan CI, milidetik.
+
+Tapi pemilik juga menemukan jebakannya, dan itu bagian terpentingnya. Ada **dua** API, dan yang jelas
+namanya adalah yang salah:
+
+```
+parse_sql      versi rusak      -> OK      <- BUTA
+parse_sql      versi diperbaiki -> OK
+parse_plpgsql  versi rusak      -> MERAH: syntax error at or near "tag_targets"
+parse_plpgsql  versi diperbaiki -> OK
+```
+
+Badan PL/pgSQL adalah **literal berkutip dolar**; tata bahasa SQL luar tak pernah melihat ke dalamnya.
+Berhenti di `parse_sql` lalu melaporkan "terverifikasi" akan menjadi instans kesekian dari pola yang
+sama — sebuah pemeriksaan yang hijau karena tak melihat, bukan karena tak ada yang salah.
+
+Dikonfirmasi ulang secara mandiri lewat paket npm (`libpg-query@18.1.4`, yang memang mengekspos
+`parsePlPgSQL`/`parsePlPgSQLSync`; versi 17.x **tidak**): kedua baris di atas terulang persis, dan
+pesannya identik karakter-per-karakter dengan yang dikembalikan produksi.
+
+**Pagar keenam dibangun di putaran ini**: `lib/crm/migration-parse-guard.test.ts` mengurai ke-47 berkas
+migrasi dengan **kedua** pengurai, dan memuat dua kasus yang membuktikan ia **menggigit** — koma
+antar-CTE yang hilang (ditolak `parse_plpgsql`, lolos `parse_sql`) dan statement rusak di luar badan
+fungsi (ditolak `parse_sql`). Usulan `initdb` **dibatalkan**, bukan diparkir: ia tak lagi diperlukan.
+
+Yang pagar ini **tidak** buktikan tetap sama: bahwa nama tabel/kolomnya ada. Itu T-48, dan hanya
+panggilan sungguhan terhadap skema sungguhan yang menunjukkannya.
 
 **Yang BELUM dibuktikan oleh pengurai.** Bahwa nama tabel dan kolomnya benar. Itu diperiksa terpisah
 (lihat catatan uji coba lokal di bawah), bukan oleh `CREATE` yang berhasil.
@@ -1641,12 +1665,22 @@ dikembalikan lebih kecil daripada angka uji-kering, tanpa satu baris pun yang me
 dua baris `p_tag_rows` diberikan — satu orang biasa, satu orang dengan `merged_into` terisi — dan
 fungsi mengembalikan `tagged_existing: 1`. Selisihnya senyap.
 
-**Ini keputusan, bukan perbaikan mekanis**, jadi tidak dikerjakan sendiri. Setidaknya tiga jalan
-masuk akal: (a) perencana ikut menyaring baris tergabung, dan barisnya dilaporkan sebagai kelas
-sendiri di layar; (b) SQL mengikuti orang itu ke `merged_into`-nya dan menandai baris penerusnya;
-(c) SQL mengembalikan angka "dilewati karena tergabung" terpisah supaya selisihnya terlihat, bukan
-tersembunyi. Ketiganya menjawab pertanyaan berbeda tentang apa arti "menandai orang yang sudah
-digabung", dan itu milik pemilik.
+**Keputusan pemilik (7 Sep 2026): opsi (a) DAN (c) bersama, bukan salah satu.** Perencana ikut
+menyaring, **dan** mengembalikan hitungan terpisah supaya penyaringan itu terlihat. Kalimat
+pemiliknya: *"Angka boleh berkurang; tidak boleh berkurang diam-diam."* Opsi (b) — mengikuti orang itu
+ke baris penerusnya — **ditunda**: keputusan perilaku tersendiri, dan `merged_into` masih nol.
+
+**Cara menerapkannya, dan jebakan yang hampir saya masuki.** Godaan pertama adalah menyaring
+`merged_into is null` langsung di query `existingEmails`. Itu **salah dan mencerminkan cacatnya**:
+`existingEmails` memutuskan SISIP-atau-tidak dan harus setara dengan anti-join fungsi ingest, yang
+**ikut** melihat baris tergabung. Sempitkan set itu dan barisnya diklasifikasikan `insert`, lalu SQL
+menolak menyisipkannya — kesenyapan yang sama, hanya terbalik arah.
+
+Jadi dua set, bukan satu: `existingEmails` (semua, cermin anti-join) dan `taggableEmails` (yang punya
+setidaknya satu baris `merged_into is null`, cermin filter `upd`). Email yang ada di set pertama tapi
+tidak di kedua → kelas `skip_merged`, dengan hitungan `skippedMerged` sendiri dan kartunya sendiri di
+layar. Tiga pengujian menguncinya, termasuk kasus orang yang punya baris tergabung **dan** baris hidup
+sekaligus (indeks unik email bersifat parsial, jadi itu mungkin) — di situ yang hidup menang.
 
 
 ## Catatan — rekonsiliasi Mailchimp belum bisa diturunkan
