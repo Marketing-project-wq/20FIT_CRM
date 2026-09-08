@@ -2304,3 +2304,71 @@ pencarian **email**" (anti-join) — **salah**. Pengukuran per-tahap menemukan p
 **membaca definisi indeks** (dua indeks parsial → "pasti seq scan") tetap harus **diukur per tahap**
 sebelum diputuskan — kalau saya menuruti diagnosis email, saya akan menambah indeks email yang tak
 berguna dan membiarkan penyebab telepon tetap ada. Ukur dulu, baru simpulkan.
+
+## T-69 — Impor besar melapor "selesai" tapi separuh: `.in(email)` > ~24 KB URL → HTTP 400 ditelan → kunci dedup kosong — ⏱ DIUKUR 8 Sep 2026
+
+Pemilik mengimpor beberapa berkas besar setelah perbaikan indeks (T-68). Layar berbunyi **"Impor
+selesai" ✓** padahal data tidak lengkap. Kegagalan indeks kemarin gagal-keras (57014); ini
+gagal-separuh dengan centang hijau — lebih berbahaya.
+
+**Penyebab (TERBUKTI, bukan dugaan).** `loadKeys` menaruh SELURUH daftar email di URL query PostgREST
+(`admin.from('master_customer').select(...).in('email_normalized', emails)`). Di atas batas URL
+gateway (~24–25 KB), request ditolak **HTTP 400**. supabase-js mengembalikan `{ data: null, error }`,
+tapi kode menulis `const { data } =` — **`error` dibuang**. `data` null → `existingEmails`/
+`taggableEmails` **kosong** → `planImport` anggap semua baris baru → `insertRows`=semua, `tagTargets`=[]
+→ anti-join RPC menyisipkan yang benar-benar baru dan **diam-diam melewati** yang sudah ada → **insert
+separuh + nol tag**, dilaporkan sukses.
+
+**Bukti terukur:**
+- Audit `audience.imported` — tiga batch bercap-jari bug (`duplicatesEmail=0`, `netInsert=read`,
+  `inserted<netInsert`): `34e865c0` sportfest-2 (read 1.432, inserted 857, dilewati 575),
+  `b825228e` sportfest-3 (read 1.561, inserted 659, dilewati 902), `742e874c` hyrox-sim-half (read
+  591, inserted 11, dilewati 580). Berkas ≤490 baris lolos (dup>0, tagged>0).
+- Reproduksi URL (SELECT, read-only): email 37-char → 490 (20,2 KB)=**200**, 591 (24,3 KB)=**400**,
+  1.432 (58,8 KB)=**520**. Worst-case 54-char (maks tabel; p99=32) → 450 (23,4 KB)=**200**, 500
+  (26 KB)=**400**. Konfirmasi silang: berkas 591-baris punya `sharedPhone=180` — query TELEPON `.in()`
+  (nilai lebih pendek, URL ~8 KB) berhasil sementara query EMAIL gagal. Ukuran URL yang menentukan,
+  bukan jumlah baris.
+- Anggaran 8 detik TIDAK terlibat: impor selesai (audit tertulis); 400 seketika, bukan timeout.
+
+**KOREKSI angka (dicatat atas permintaan pemilik agar tak diwarisi).** Framing "1.118 orang hilang"
+**salah**. Tidak ada orang hilang dari CRM — profil mereka utuh; anti-join memang benar melewati yang
+sudah ada. Yang tidak terjadi adalah **penandaan event**. Kerusakan lebih sempit: riwayat event tak
+lengkap. sportfest-2 **395 tak bertag** (1.037 dari 1.432), sportfest-3 **723 tak bertag** (838 dari
+1.561), hyrox-sim-half ~580 tak bertag. RPC jujur soal insert: dikembalikan = ditulis (857/659/11
+persis, diverifikasi dari `batch:` tag di master).
+
+**Perbaikan (ronde ini):**
+- **TUGAS 1 — gagal keras.** Tiap baca di `loadKeys` jadi `const { data, error } =` dan melempar bila
+  error. Impor yang tak bisa membaca kunci dedup gagal keras, bukan sukses berbohong. Karena loadKeys
+  panggilan dep pertama, lemparan membatalkan sebelum tulisan apa pun (TUGAS 4, atomik keras — nol
+  tulis sebagian, dibuktikan uji).
+- **Pagar sumber (pagar keenam):** `supabase-read-guard.test.ts` memindai lib+app untuk
+  `const { data } =` dari query `.from().<verb>()` yang membuang error. **19 situs warisan** (jalur
+  campaign/send/workflow yang toleran baca-null) dibekukan di `KNOWN_UNCHECKED_READS` — daftar HANYA
+  BOLEH MENGECIL; pola baru gagal-test. (Bukan diperbaiki ronde ini, hanya dibekukan + dicatat.)
+- **TUGAS 2 — potong `.in()`.** Ukuran 300 = konvensi repo (enrichment/multisource/clinic-source) DAN
+  terukur aman (300 email 54-char ≈ 15,6 KB < 24 KB). Reader diekstrak ke `lib/crm/import-keys.ts`
+  agar teruji dengan klien palsu — versi inline lama tak bisa diuji, dan begitulah swallow bersembunyi.
+- **TUGAS 3 — laporan jujur.** `reconcileImport(plan, hasil)`: bila `inserted≠netInsert` atau
+  `tagged≠taggedExisting`, layar menampilkan peringatan MERAH "Impor TIDAK lengkap" dengan angka, bukan
+  centang hijau; server mencatat `import_reconcile_mismatch`. Invarian `inserted+tagged == email unik
+  valid − merged − suppressed-dilewati` (= `netInsert+taggedExisting`).
+- **TUGAS 6 — impor ulang aman (dibuktikan, transaksi rollback, TIDAK dijalankan pada berkas nyata):**
+  skenario A (5 sudah-ada + 3 baru, alur planner terperbaiki): inserted=3, tagged=5, inserted+tagged=8
+  (invarian), **0 duplikat**, tag event e1 muncul **1×** (menyatu via `distinct` di `upd`, tidak
+  ganda), 8 orang bertag event. Skenario B (robustness: 8 email dikirim ke p_rows termasuk 5 yang
+  sudah ada): inserted=3, total 8 baris (bukan 13), **0 duplikat** — anti-join mencegah duplikat
+  bahkan bila planner salah kirim. Nol kebocoran (diverifikasi dari katalog setelah rollback).
+
+**Jawaban benar jangka panjang (ii) — dicatat, BUKAN dibangun ronde ini (butuh migrasi bergerbang).**
+Hari ini planner (TypeScript) dan anti-join (SQL) masing-masing memutuskan "siapa yang baru" — **dua
+sumber kebenaran atas satu pertanyaan**, kelas yang sudah menggigit proyek ini berkali-kali (kanon
+telepon, kosakata consent, kosakata tag, nomor keputusan, gerbang consent). Meruntuhkannya jadi satu:
+kirim daftar email sebagai BODY ke fungsi SQL yang melakukan lookup + anti-join di satu tempat — tanpa
+batas URL sekalian. Ronde tersendiri.
+
+**Pertanyaan terbuka (jangan diblokir olehnya).** 180 orang membawa tag `event:sportfest-2-2026-02` di
+luar 857 yang disisipkan batch `34e865c0` (1.037 − 857). Asalnya belum tertelusuri dari penanda batch
+saja. Tidak menghalangi perbaikan — impor ulang setelah ronde ini akan membuat angkanya benar apa pun
+asalnya.
