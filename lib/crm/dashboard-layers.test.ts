@@ -81,11 +81,17 @@ describe("Dashboard — the boundary between the two layers is stated, not impli
     expect(DASH_CODE).toContain("opsNote");
   });
 
-  it("the summary renders as a titled section, not as loose cards merged into the page", () => {
+  it("the summary is a bounded section with its own timestamp — boundary survives the title removal", () => {
     expect(SUMMARY_CODE).toContain("<section");
-    expect(SUMMARY_CODE).toContain("b.title");
+    // The section TITLE was removed 8 Sep 2026; the BOUNDARY that separated the two layers must not
+    // go with it. It now lives in the thick top rule. If a future edit drops this, the summary and
+    // the operational layer merge back into one unlabelled stream — the K-61 bug, on purpose.
+    expect(SUMMARY_CODE, "the inter-layer boundary (top rule) must remain after the title was removed")
+      .toContain("border-t-2 border-ink");
     // A section that lost its own timestamp would be indistinguishable from the layer below it.
     expect(SUMMARY_CODE).toContain("b.measuredAt");
+    // …and the subtitle stays as the section's opening line (the owner kept it explicitly).
+    expect(SUMMARY_CODE).toContain("b.subtitle");
   });
 
   it("both layer labels exist in BOTH languages — a boundary nobody can read is not stated", () => {

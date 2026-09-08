@@ -1642,7 +1642,31 @@ export const id = {
     impPrograms: "Program yang diikuti",
     // footer
     footer:
-      "Baca saja · tak ada tombol ubah, hapus, atau gabung · membuka profil ini tercatat sekali — pindah tab bukan pembacaan baru · kontak & data sensitif ditahan bagi peran tanpa izin (tab hanya tata letak).",
+      "Kontak & atribut inti bisa diedit oleh peran berwenang (perubahan tercatat di audit) · gabung & hapus tak tersedia · email tak bisa diedit (kunci dedup) · membuka profil ini tercatat sekali — pindah tab bukan pembacaan baru · data sensitif ditahan bagi peran tanpa izin (tab hanya tata letak).",
+    editCore: {
+      edit: "Edit",
+      title: "Edit kontak & atribut",
+      fName: "Nama",
+      fPhone: "Telepon",
+      fCity: "Kota",
+      fFirstUnit: "Unit pertama",
+      fSegment: "Segmen",
+      fLtv: "Lifetime value",
+      pick: "pilih",
+      empty: "belum terisi",
+      save: "Simpan",
+      saving: "Menyimpan…",
+      cancel: "Batal",
+      ltvHandFilled: "diisi tangan",
+      noteBlankKeeps: "Field yang dikosongkan tidak diubah. Versi ini belum bisa mengosongkan kembali field yang sudah terisi — hanya menggantinya dengan nilai lain.",
+      noteEmailLocked: "Email tidak bisa diedit di sini — ia kunci dedup (K-57).",
+      noteFirstUnitOrigin: "“Unit pertama” tidak menawarkan 20fit_data (penanda asal muatan, bukan unit bisnis) — sekali diubah, nilai itu tak bisa dipulihkan dari sini.",
+      errNoChange: "Tidak ada perubahan untuk disimpan.",
+      errPhoneTaken: "Nomor telepon ini sudah dipakai kontak lain.",
+      errRowMerged: "Profil ini sudah digabung ke profil lain — datanya sudah pindah.",
+      errForbidden: "Peran Anda tidak berwenang mengubah field ini.",
+      errGeneric: "Gagal menyimpan. Coba lagi.",
+    },
 
     warn: {
       // "belum terisi" ≠ "empty" (a measured zero); guarded.

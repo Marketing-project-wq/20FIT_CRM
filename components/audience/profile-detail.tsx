@@ -18,6 +18,7 @@ import {
   type GenderSource,
 } from "@/lib/crm/demographic-pick";
 import { Why } from "@/components/ui/why";
+import { EditCoreDialog } from "@/components/audience/edit-core-dialog";
 import { useI18n } from "@/components/i18n/lang-provider";
 import type { Dict } from "@/lib/i18n";
 
@@ -199,6 +200,8 @@ export interface ApiResult {
    *  drives PRESENTATION only — a live-matched source always renders its block regardless. */
   mirror: MirrorPresenceT | null;
   mirrorRefreshedAt: string | null;
+  /** B5: lifetime_value was set by hand (a profile.core_updated audit row names it). Badges it. */
+  ltvHandFilled?: boolean;
 }
 
 const idr = new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 });
@@ -248,6 +251,7 @@ function Section({
   icon,
   open = true,
   span2 = false,
+  action,
   children,
 }: {
   title: string;
@@ -255,6 +259,9 @@ function Section({
   icon?: React.ReactNode;
   open?: boolean;
   span2?: boolean;
+  /** Optional control rendered in the header (e.g. an Edit button). Its click is kept from toggling
+   *  the <details> via preventDefault on the wrapper. */
+  action?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
@@ -265,7 +272,13 @@ function Section({
           <span className="font-display text-[16px] font-extrabold uppercase tracking-wide text-ink">{title}</span>
           {count != null && <CountBadge n={count} />}
         </span>
-        <ChevronDown className="h-4 w-4 shrink-0 text-ink-soft transition-transform group-open:rotate-180" aria-hidden />
+        <span className="flex items-center gap-2">
+          {action && (
+            // eslint-disable-next-line jsx-a11y/no-static-element-interactions
+            <span onClick={(e) => e.preventDefault()}>{action}</span>
+          )}
+          <ChevronDown className="h-4 w-4 shrink-0 text-ink-soft transition-transform group-open:rotate-180" aria-hidden />
+        </span>
       </summary>
       <div className="px-6 pb-6">{children}</div>
     </details>
@@ -733,6 +746,8 @@ function OtherSourcesSection({
   canViewHealth: boolean;
   mirror: MirrorPresenceT | null;
   mirrorRefreshedAt: string | null;
+  /** B5: lifetime_value was set by hand (a profile.core_updated audit row names it). Badges it. */
+  ltvHandFilled?: boolean;
 }) {
   const { t } = useI18n();
   const P = t.profile;
@@ -1268,10 +1283,14 @@ export function ProfileDetail({
   id,
   canEditConsent,
   canEditDemographic = false,
+  canEditCore = false,
   previewData,
 }: {
   id: string;
   canEditConsent: boolean;
+  /** Whether this role may CORRECT core master_customer fields (profile.edit_core). The API re-checks
+   *  server-side; this only gates whether the Edit button renders. */
+  canEditCore?: boolean;
   /** Whether this role may fill EMPTY demographic fields (profile.edit_demographic, K-32). The API
    *  re-checks server-side; this only gates whether the fill form renders. */
   canEditDemographic?: boolean;
@@ -1284,6 +1303,7 @@ export function ProfileDetail({
     previewData ? "ready" : "loading",
   );
   const [suppressOpen, setSuppressOpen] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const [tab, setTab] = useProfileTab(!!previewData);
 
   useEffect(() => {
@@ -1308,7 +1328,7 @@ export function ProfileDetail({
       }
     })();
     return () => ac.abort();
-  }, [id, previewData]);
+  }, [id, previewData, reloadKey]);
 
   const { t } = useI18n();
   const P = t.profile;
@@ -1356,6 +1376,15 @@ export function ProfileDetail({
   }
 
   const p = data.profile;
+  // Current core values handed to the edit dialog (it sends only what the operator changes).
+  const coreCurrent = {
+    full_name: p.full_name,
+    phone: p.phone,
+    city: p.city,
+    first_unit: p.first_unit,
+    segment: p.segment,
+    lifetime_value: p.lifetime_value,
+  };
   const emailTypo = detectEmailTypo(p.masked ? null : p.email);
 
   // Counts for the tab labels + collapsible titles. Perilaku's count is the whole-profile-empty
@@ -1440,7 +1469,12 @@ export function ProfileDetail({
         perilakuCount={perilakuCount}
         demografi={
           <>
-            <Section title={P.secContact} count={contactFilled} icon={<User className="h-4 w-4 text-ink-soft" aria-hidden />}>
+            <Section
+              title={P.secContact}
+              count={contactFilled}
+              icon={<User className="h-4 w-4 text-ink-soft" aria-hidden />}
+              action={canEditCore ? <EditCoreDialog customerId={p.customer_id} current={coreCurrent} onSaved={() => setReloadKey((k) => k + 1)} /> : undefined}
+            >
               <Field label={P.fPhone} mono>{p.phone ? p.phone : <Empty />}</Field>
               <Field label={P.fEmail} mono>
                 {p.email ? p.email : <Empty />}
@@ -1461,13 +1495,23 @@ export function ProfileDetail({
               <Field label={P.fCity}>{p.city ? p.city : <Empty />}</Field>
             </Section>
 
-            <Section title={P.secAttr} count={attrFilled} icon={<User className="h-4 w-4 text-ink-soft" aria-hidden />}>
+            <Section
+              title={P.secAttr}
+              count={attrFilled}
+              icon={<User className="h-4 w-4 text-ink-soft" aria-hidden />}
+              action={canEditCore ? <EditCoreDialog customerId={p.customer_id} current={coreCurrent} onSaved={() => setReloadKey((k) => k + 1)} /> : undefined}
+            >
               <Field label={P.fFirstUnit}>{p.first_unit ? p.first_unit : <Empty />}</Field>
               <Field label={P.fSegment}>
                 {p.segment ? <Badge tone="neutral">{p.segment}</Badge> : <span className="font-body text-[13px] italic text-ink-faint">{P.noSegment}</span>}
               </Field>
               <Field label={P.fLtv} mono>
                 {p.lifetime_value != null ? (p.lifetime_value > 0 ? idr.format(p.lifetime_value) : <span className="text-ink-faint">Rp 0</span>) : <Empty />}
+                {/* B5: a hand-entered LTV must be visibly distinct from a computed one — read from the
+                    audit trail (no new column). */}
+                {data.ltvHandFilled && (
+                  <Badge tone="amber" className="ml-2">{P.editCore.ltvHandFilled}</Badge>
+                )}
               </Field>
               <Field label={P.fSource} mono>{p.source ? p.source : <Empty />}</Field>
             </Section>

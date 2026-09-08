@@ -127,7 +127,7 @@ export const PRD_ACTIONS = [
  *     ONLY for Fase 1 — smallest blast radius for a first write-to-production entry path; may widen to
  *     crm_manager later. Pending Jeff approval. canImportAudience() is the one predicate that gates it.
  */
-export const EXTENSION_ACTIONS = ["profile.edit_demographic", "role.granted", "audience.import"] as const;
+export const EXTENSION_ACTIONS = ["profile.edit_demographic", "role.granted", "audience.import", "profile.edit_core"] as const;
 
 export const ACTIONS = [...PRD_ACTIONS, ...EXTENSION_ACTIONS] as const;
 
@@ -151,6 +151,7 @@ export type Grant =
 const MATRIX: Record<Role, Record<Action, Grant>> = {
   super_admin: {
     "profile.edit_demographic": "allow", // EXTENSION (not PRD 17.2) — see EXTENSION_ACTIONS / K-32
+    "profile.edit_core": "allow", // EXTENSION (T-B, 8 Sep 2026) — koreksi kontak+atribut master_customer; super_admin+crm_manager+data_steward
     "role.granted": "allow", // EXTENSION — the ONLY role that may hand out roles (K-43)
     "audience.import": "allow", // EXTENSION — super-admin ONLY (Fase 1); highest-authority write
     "profile.view_list": "allow",
@@ -171,6 +172,7 @@ const MATRIX: Record<Role, Record<Action, Grant>> = {
   },
   crm_manager: {
     "profile.edit_demographic": "allow", // EXTENSION (not PRD 17.2) — see EXTENSION_ACTIONS / K-32
+    "profile.edit_core": "allow", // EXTENSION (T-B, 8 Sep 2026) — koreksi kontak+atribut master_customer; super_admin+crm_manager+data_steward
     "role.granted": "deny", // K-43 — CRM Manager may NOT add/change roles (super-admin exclusive)
     "audience.import": "deny", // EXTENSION — super-admin only in Fase 1 (may widen to crm_manager later)
     "profile.view_list": "allow",
@@ -194,6 +196,7 @@ const MATRIX: Record<Role, Record<Action, Grant>> = {
     // on the call who actually obtains a birth date from the customer; excluding them makes the
     // feature rarely usable, and the write is fill-empty-only + audited (lowest-authority write).
     "profile.edit_demographic": "allow",
+    "profile.edit_core": "deny", // EXTENSION (T-B, 8 Sep 2026) — koreksi kontak+atribut master_customer; super_admin+crm_manager+data_steward
     "role.granted": "deny", // K-43 — super-admin exclusive
     "audience.import": "deny", // EXTENSION — super-admin only (Fase 1)
     "profile.view_list": "allow",
@@ -220,6 +223,7 @@ const MATRIX: Record<Role, Record<Action, Grant>> = {
     // "own unit" everywhere the PRD grants scoped access. scopeRequired -> until a
     // unit scope exists, resolveGrant turns every own_unit into needs_scope = DENY.
     "profile.edit_demographic": "own_unit", // EXTENSION (not PRD 17.2) — fail-closed until scope exists
+    "profile.edit_core": "deny", // EXTENSION (T-B, 8 Sep 2026) — koreksi kontak+atribut master_customer; super_admin+crm_manager+data_steward
     "role.granted": "deny", // K-43 — super-admin exclusive
     "audience.import": "deny", // EXTENSION — super-admin only (Fase 1)
     "profile.view_list": "own_unit",
@@ -240,6 +244,7 @@ const MATRIX: Record<Role, Record<Action, Grant>> = {
   },
   analyst: {
     "profile.edit_demographic": "deny", // EXTENSION (not PRD 17.2) — analyst has no contact/write access
+    "profile.edit_core": "deny", // EXTENSION (T-B, 8 Sep 2026) — koreksi kontak+atribut master_customer; super_admin+crm_manager+data_steward
     "role.granted": "deny", // K-43 — super-admin exclusive
     "audience.import": "deny", // EXTENSION — super-admin only (Fase 1)
     "profile.view_list": "masked", // sees the list; phone/email masked server-side
@@ -260,6 +265,7 @@ const MATRIX: Record<Role, Record<Action, Grant>> = {
   },
   data_steward: {
     "profile.edit_demographic": "allow", // EXTENSION (not PRD 17.2) — the data-curation role; NIK/DOB dedup
+    "profile.edit_core": "allow", // EXTENSION (T-B, 8 Sep 2026) — koreksi kontak+atribut master_customer; super_admin+crm_manager+data_steward
     "role.granted": "deny", // K-43 — super-admin exclusive
     "audience.import": "deny", // EXTENSION — super-admin only (Fase 1)
     "profile.view_list": "allow",
@@ -289,6 +295,7 @@ const MATRIX: Record<Role, Record<Action, Grant>> = {
   // NARROW contact-only gate (a deliberate proposal), not handing Viewer the whole identity gate.
   viewer: {
     "profile.edit_demographic": "deny",
+    "profile.edit_core": "deny", // EXTENSION (T-B, 8 Sep 2026) — koreksi kontak+atribut master_customer; super_admin+crm_manager+data_steward
     "role.granted": "deny", // K-43 — super-admin exclusive (the WAJIB: Viewer must never touch this)
     "audience.import": "deny", // EXTENSION — Viewer is view-only; never writes, never imports
     "profile.view_list": "masked",
@@ -443,6 +450,16 @@ export function canManageRoles(role: unknown, ctx: AccessContext = {}): boolean 
  */
 export function canImportAudience(role: unknown, ctx: AccessContext = {}): boolean {
   return isPermitted(role, "audience.import", ctx);
+}
+
+/**
+ * May this role CORRECT the core master_customer fields (name / phone / city / first_unit / segment /
+ * LTV) via the profile edit button? EXTENSION (T-B, 8 Sep 2026). Narrower than edit_demographic
+ * because it can OVERWRITE existing values and touch business fields (segment/LTV): super_admin +
+ * crm_manager + data_steward only. The RPC additionally refuses any call with no actor.
+ */
+export function canEditCore(role: unknown, ctx: AccessContext = {}): boolean {
+  return isPermitted(role, "profile.edit_core", ctx);
 }
 
 /**

@@ -76,13 +76,16 @@ export function BodSummary({
 
   return (
     <section className="space-y-4">
-      {/* A stated boundary, not an implied one. The old failure was never "the page has more than
-          one freshness" — it was "the page has several freshnesses and nothing says so". Two
-          labelled layers is the fix; one unlabelled stream would be the old bug on purpose. */}
+      {/* A stated boundary, not an implied one. The section TITLE was removed 8 Sep 2026 (owner
+          request), but the boundary it used to carry MUST NOT go with it: the whole honesty of this
+          page is that the summary layer and the operational layer below are visibly separate (K-61).
+          So the boundary now lives in the `border-t-2 border-ink` top rule — a thick line, not a
+          heading — plus the subtitle and the section's own timestamp. Remove the border and the two
+          layers melt back into one unlabelled stream, which is exactly the bug this sprint closed.
+          dashboard-layers.test.ts pins the border so a future edit cannot drop it silently. */}
       <header className="flex flex-wrap items-end justify-between gap-4 border-t-2 border-ink pt-4">
         <div>
-          <h2 className="font-display text-[22px] font-extrabold leading-none text-ink">{b.title}</h2>
-          <p className="mt-1.5 font-body text-[13px] text-ink-soft">{b.subtitle}</p>
+          <p className="font-body text-[13px] text-ink-soft">{b.subtitle}</p>
         </div>
         {/* ONE timestamp for the whole page, and it is the SNAPSHOT'S OWN — never the clock.
             If tonight's refresh fails, this stops moving instead of advancing over stale numbers

@@ -9,6 +9,8 @@ import {
   type ColumnMapping,
   type ImportKeys,
   importFailureMessage,
+  importActionableTotal,
+  canRunImport,
 } from "./import-audience";
 
 const noKeys: ImportKeys = {
@@ -371,5 +373,30 @@ describe("planImport — tags (K-58)", () => {
     expect(p.outcomes[0].invalidTags).toEqual(["nilai:<300k", "batch:abc"]);
     expect(p.outcomes[0].status).toBe("insert"); // one bad tag does not reject the row
     expect(p.insertRows[0].tags).toEqual(["event:sportfest-3-2026-05"]);
+  });
+});
+
+
+describe("import confirm gate (T-67) — tag-only runs must be runnable", () => {
+  const S = (netInsert: number, taggedExisting: number) =>
+    ({ netInsert, taggedExisting }) as Parameters<typeof importActionableTotal>[0];
+
+  it("THE BUG: every row already in the pool → 0 insert, 2 tag → actionable, button enabled", () => {
+    expect(importActionableTotal(S(0, 2))).toBe(2);
+    expect(canRunImport(S(0, 2), "Formulir cetak")).toBe(true);
+  });
+
+  it("nothing to do → 0 insert, 0 tag → NOT runnable (button stays disabled)", () => {
+    expect(importActionableTotal(S(0, 0))).toBe(0);
+    expect(canRunImport(S(0, 0), "Formulir cetak")).toBe(false);
+  });
+
+  it("inserts alone are still runnable (the old happy path is unchanged)", () => {
+    expect(canRunImport(S(5, 0), "Formulir cetak")).toBe(true);
+  });
+
+  it("a missing collection source blocks it even when there is work to do", () => {
+    expect(canRunImport(S(0, 2), "")).toBe(false);
+    expect(canRunImport(S(0, 2), "   ")).toBe(false);
   });
 });
