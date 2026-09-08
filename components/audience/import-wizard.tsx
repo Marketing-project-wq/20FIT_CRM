@@ -72,6 +72,15 @@ interface ExecuteResponse {
   committed: { inserted: number; taggedExisting: number; sharedPhoneInBatch: number };
   batch: string;
   mirrorRefreshed: boolean;
+  // Honest report (T-69): did the write match the plan? When ok is false the header is a WARNING, not
+  // a green check — people were dropped between plan and write and the operator must see it.
+  reconciliation: {
+    ok: boolean;
+    expectedInserted: number;
+    actualInserted: number;
+    expectedTagged: number;
+    actualTagged: number;
+  };
 }
 
 export function ImportWizard() {
@@ -409,10 +418,33 @@ export function ImportWizard() {
 
       {step === "report" && report && (
         <div className="glass rounded-card p-6">
-          <div className="mb-4 flex items-center gap-2">
-            <CheckCircle2 className="h-5 w-5 text-green" aria-hidden />
-            <span className="font-display text-[15px] font-bold text-ink">Impor selesai</span>
-          </div>
+          {report.reconciliation.ok ? (
+            <div className="mb-4 flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-green" aria-hidden />
+              <span className="font-display text-[15px] font-bold text-ink">Impor selesai</span>
+            </div>
+          ) : (
+            /* Rencana ≠ hasil: orang menguap di antara rencana dan tulisan. JANGAN centang hijau —
+               inilah kelas bug 8 Sep (857 dari 1.432 dilaporkan "selesai"). Sebutkan angkanya. */
+            <div className="mb-4 tint-red rounded-sm px-4 py-3" role="alert">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 shrink-0 text-red" aria-hidden />
+                <span className="font-display text-[15px] font-bold text-ink">Impor TIDAK lengkap — perlu ditinjau</span>
+              </div>
+              <p className="mt-2 font-body text-[13px] leading-relaxed text-ink">
+                Yang direncanakan tidak sama dengan yang ditulis database. Sebagian orang mungkin tidak
+                masuk atau tidak ditandai — jangan anggap ini selesai; laporkan.
+                {report.reconciliation.actualInserted !== report.reconciliation.expectedInserted && (
+                  <> {" "}Masuk: <strong>{report.reconciliation.actualInserted}</strong> dari{" "}
+                  <strong>{report.reconciliation.expectedInserted}</strong> yang direncanakan.</>
+                )}
+                {report.reconciliation.actualTagged !== report.reconciliation.expectedTagged && (
+                  <> {" "}Ditandai: <strong>{report.reconciliation.actualTagged}</strong> dari{" "}
+                  <strong>{report.reconciliation.expectedTagged}</strong> yang direncanakan.</>
+                )}
+              </p>
+            </div>
+          )}
           <div className="grid gap-3 sm:grid-cols-3">
             {/* Reported from what the WRITE did (committed.*), not from the plan: the plan is what we
                 expected, these are what happened. */}

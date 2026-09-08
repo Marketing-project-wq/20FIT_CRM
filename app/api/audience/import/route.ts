@@ -12,7 +12,8 @@ import {
   type ImportInput,
   type ImportPhase,
 } from "@/lib/crm/import-audience-run";
-import { importFailureMessage, MAX_IMPORT_ROWS } from "@/lib/crm/import-audience";
+import { importFailureMessage, MAX_IMPORT_ROWS, reconcileImport } from "@/lib/crm/import-audience";
+import { loadImportKeys, type ImportReadClient } from "@/lib/crm/import-keys";
 import type { ImportKeys, ImportPlan, NormalizedRow } from "@/lib/crm/import-audience";
 
 export const dynamic = "force-dynamic";
@@ -87,44 +88,12 @@ export async function POST(request: NextRequest) {
   const batchId = crypto.randomUUID();
 
   const deps: ImportDeps = {
+    // Reads which of this batch's emails/phones already exist (+ suppressions). CHUNKED and FAIL-LOUD
+    // (loadImportKeys, T-69): a single `.in()` over 1.432 emails built a ~58 KB URL the gateway rejected
+    // with HTTP 400, and the old inline reader discarded that error — the swallow that shipped a half
+    // import as success. Extracted to lib so it is unit-testable with a fake client.
     async loadKeys(emails, phones): Promise<ImportKeys> {
-      const existingEmails = new Set<string>();
-      // (T-55) Taggable = at least one row for this email whose `merged_into` IS NULL. Kept apart from
-      // existingEmails on purpose: existingEmails decides INSERT-or-not and must mirror the ingest
-      // function's anti-join (which counts merged rows too), while THIS set decides TAG-or-not and must
-      // mirror its `upd` filter (which does not). One set could only satisfy one of the two, and the
-      // half it got wrong would be wrong in silence.
-      const taggableEmails = new Set<string>();
-      const existingPhones = new Set<string>();
-      const suppressedEmails = new Set<string>();
-      const suppressedPhones = new Set<string>();
-      // Which of THIS batch's emails/phones already exist in master (bounded by the batch, not 82k).
-      if (emails.length > 0) {
-        const { data } = await admin
-          .from("master_customer")
-          .select("email_normalized, merged_into")
-          .in("email_normalized", emails);
-        for (const r of data ?? []) {
-          const e = r.email_normalized as string | null;
-          if (!e) continue;
-          existingEmails.add(e);
-          if (r.merged_into === null) taggableEmails.add(e);
-        }
-      }
-      if (phones.length > 0) {
-        const { data } = await admin.from("master_customer").select("phone_normalized").in("phone_normalized", phones);
-        for (const r of data ?? []) if (r.phone_normalized) existingPhones.add(r.phone_normalized as string);
-      }
-      // Active suppressions (small) — keyed by normalized identity.
-      const { data: sup } = await admin
-        .from("crm_suppression")
-        .select("identity_kind, identity_key")
-        .eq("status", "active");
-      for (const s of sup ?? []) {
-        if (s.identity_kind === "email") suppressedEmails.add(s.identity_key as string);
-        else if (s.identity_kind === "phone") suppressedPhones.add(s.identity_key as string);
-      }
-      return { existingEmails, taggableEmails, existingPhones, suppressedEmails, suppressedPhones };
+      return loadImportKeys(admin as unknown as ImportReadClient, emails, phones);
     },
     async commit(insertRows: NormalizedRow[], meta) {
       const payload = insertRows.map((r) => ({
@@ -210,12 +179,21 @@ export async function POST(request: NextRequest) {
     : { ...result, delimiter };
 
   // A successful execute added people — refresh the read mirror so they appear in the pool/segments.
-  if (result.phase === "execute" && result.committed) {
+  if (result.phase === "execute" && result.committed && result.plan) {
+    // HONEST REPORT (T-69): reconcile what the plan promised against what the RPC actually wrote. If
+    // they diverge, people were silently dropped between plan and write — the screen must warn, never
+    // show a green "selesai". Logged server-side too, so a mismatch is never invisible even if unseen.
+    const reconciliation = reconcileImport(result.plan.summary, result.committed);
+    if (!reconciliation.ok) {
+      logApiFailure("/audience/import", "import_reconcile_mismatch", {
+        code: `${reconciliation.actualInserted}/${reconciliation.expectedInserted}_${reconciliation.actualTagged}/${reconciliation.expectedTagged}`,
+      });
+    }
     const { error: refreshErr } = await admin.rpc("crm_refresh_customer_mirror");
     if (refreshErr) logApiFailure("/audience/import", "mirror_refresh_failed", { code: refreshErr.code });
     // Not fatal to the import — the people are in; the mirror can be refreshed again. Report either way.
     return NextResponse.json(
-      { ...trimmed, batch: batchId, mirrorRefreshed: !refreshErr },
+      { ...trimmed, batch: batchId, mirrorRefreshed: !refreshErr, reconciliation },
       { headers: { "Cache-Control": "no-store" } },
     );
   }
