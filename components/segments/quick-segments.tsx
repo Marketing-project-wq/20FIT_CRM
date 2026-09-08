@@ -1,10 +1,15 @@
 "use client";
 
+import { useState } from "react";
 import { Users, Mail, Phone, Zap, Trophy, Dumbbell, Calendar, Heart, Star } from "lucide-react";
 import type { SegmentCriteria } from "@/lib/crm/segment";
 import { EMPTY_CRITERIA } from "@/lib/crm/segment";
 import { useI18n } from "@/components/i18n/lang-provider";
 import { formatCount } from "@/lib/i18n";
+
+/** How many quick cards show before "see all". The rest are folded (kept, not removed — there is no
+ *  per-card usage data in the audit trail to justify dropping any, verified 8 Sep 2026). */
+const QUICK_VISIBLE = 3;
 
 interface QuickSegmentDef {
   id: string;
@@ -50,14 +55,27 @@ export function QuickSegments({
   canViewHealth: boolean;
 }) {
   const { lang, t } = useI18n();
+  const [expanded, setExpanded] = useState(false);
   const labels = segLabels(t);
-  const visible = QUICK_SEGMENTS.filter((s) => !s.clinical || canViewHealth);
+  const all = QUICK_SEGMENTS.filter((s) => !s.clinical || canViewHealth);
+  const visible = expanded ? all : all.slice(0, QUICK_VISIBLE);
 
   return (
     <div className="flex flex-col gap-2">
-      <p className="font-display text-[11px] font-bold uppercase tracking-wider text-ink-faint">
-        {t.segments.quickStart}
-      </p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="font-display text-[11px] font-bold uppercase tracking-wider text-ink-faint">
+          {t.segments.quickStart}
+        </p>
+        {all.length > QUICK_VISIBLE && (
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="font-body text-[12px] text-ink-soft underline-offset-2 hover:text-ink hover:underline"
+          >
+            {expanded ? t.segments.quickSeeLess : `${t.segments.quickSeeAll} (${all.length})`}
+          </button>
+        )}
+      </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         {visible.map((seg) => {
           const desc = seg.count != null

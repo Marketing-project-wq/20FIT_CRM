@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { sanitizeAssistOutput, describeProposal, proposalIsEmpty } from "./segment-ai-shared";
+import { sanitizeAssistOutput, describeProposal, proposalIsEmpty, buildAiExamples } from "./segment-ai-shared";
+import { isOperatorTag, tagValueLabel } from "./tags";
 
 describe("sanitizeAssistOutput — the AI security boundary", () => {
   it("keeps valid closed-list conditions and drops unknown fields/values", () => {
@@ -153,5 +154,38 @@ describe("sanitizeAssistOutput — tag vocabulary + preserved refusal", () => {
       { canViewHealth: true, allowedTags: POOL },
     );
     expect(p.criteria.tagsAny).toEqual(["event:sportfest-2-2026-02"]);
+  });
+});
+
+// ── TUGAS 4: AI example prompts are generated from REAL pool tags (never a fake that maps to zero) ──
+describe("buildAiExamples — examples reference only tags that exist in the pool", () => {
+  const entries = [
+    { tag: "event:sportfest-3-2026-05", people: 1561 },
+    { tag: "event:sportfest-2-2026-02", people: 1432 },
+    { tag: "peran:pendaftar", people: 673 }, // not an event → must not seed an example
+  ];
+
+  it("names the top events by count, in words the model can map to real tags", () => {
+    const ex = buildAiExamples(entries, "id");
+    expect(ex.length).toBeGreaterThan(0);
+    // Every event label that appears MUST come from a real event tag in the pool.
+    const eventLabels = entries.filter((e) => e.tag.startsWith("event:")).map((e) => tagValueLabel(e.tag, "id"));
+    // The top event (by people) is sportfest-3; it must appear in an example.
+    expect(ex.join(" ")).toContain(tagValueLabel("event:sportfest-3-2026-05", "id"));
+    // No example may mention a string that isn't a real event label (guard against invented events).
+    for (const e of ex) {
+      const mentionsReal = eventLabels.some((l) => e.includes(l));
+      expect(mentionsReal, e).toBe(true);
+    }
+  });
+
+  it("returns nothing when the pool has no event tags (never invents one)", () => {
+    expect(buildAiExamples([{ tag: "peran:pendaftar", people: 5 }], "id")).toEqual([]);
+    expect(buildAiExamples([], "en")).toEqual([]);
+  });
+
+  it("every referenced event tag is a valid operator tag", () => {
+    // Sanity: the tags we build labels from are real operator tags.
+    for (const e of entries.filter((x) => x.tag.startsWith("event:"))) expect(isOperatorTag(e.tag)).toBe(true);
   });
 });

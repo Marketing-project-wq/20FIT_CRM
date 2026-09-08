@@ -2439,3 +2439,57 @@ lain, itu ronde migrasi tersendiri — tapi TUGAS D tak membutuhkannya.
 
 **BELUM dikerjakan (ronde tersendiri, seperti diizinkan prompt):** Bagian B (impor→segmen emailList)
 dan Bagian C (impor isi-kolom-kosong — melonggarkan K-58, butuh migrasi bergerbang + entri KEPUTUSAN).
+
+## T-72 — Segment builder ringkas/berangka/AI-di-depan; tabrakan kosakata "hybrid race" (display fix, bukan data) — ⏱ DIUKUR 8 Sep 2026
+
+Pemilik: "filtering segment jadi panjang & membingungkan — buat lengkap tapi ringkas; syarat rumit
+harusnya dibantu AI." Masalah bukan terlalu banyak fitur, tapi semua ditampilkan setara sekaligus:
+8 namespace terbuka penuh (~28 kotak), blok pengecualian menggandakan seluruh daftar (~28 lagi), nol
+angka, dan AI terkubur berlabel "opsional".
+
+**TUGAS 0 — tabrakan kosakata (terukur atas 28 tag operator distinct).** Hanya SATU tabrakan nilai
+lintas-namespace yang eksak: **`hybrid-race`** muncul di **produk** (3.371) DAN **peran** (109) → di
+chip (tanpa header namespace) terbaca identik. Ditambah keluarga tiga-arah "hybrid race" yang dibuat
+pihak #2 di dua sesi penyiapan berkas terpisah:
+- `produk:hybrid-race` (3.371) — produk race nasional (berkas Hyrox/Sportfest)
+- `produk:jakarta-hybrid-race` (322) — produk ISS (Jakarta)
+- `peran:hybrid-race` (109) — PERAN di dalam ISS
+Tak ada tabrakan nilai lintas-namespace lain (diperiksa seluruh 28 tag).
+
+**Usulan penamaan (operasi DATA — TIDAK dijalankan ronde ini; 3.371 baris terdampak, gerbang
+tersendiri):** bedakan makna dengan namespace+nilai eksplisit —
+`produk:hybrid-race` → tetap produk race nasional (atau `produk:hyrox-hybrid-race`);
+`produk:jakarta-hybrid-race` → `produk:iss-hybrid-race` (tandai event ISS);
+`peran:hybrid-race` → `peran:atlet-hybrid-race` (tandai ini PERAN, bukan produk).
+Keputusan + eksekusi = ronde data tersendiri.
+
+**Perbaikan tampilan (bukan data, ronde ini):** `disambiguateTagLabel` memberi prefiks namespace
+HANYA saat nilai ambigu — "Produk · Hybrid Race" vs "Peran · Hybrid Race" — di chip & kalimat
+terbaca; mengomposisi `namespaceLabel`+`tagValueLabel` (bukan daftar label kedua).
+
+**TUGAS 1 — angka di tiap tag.** Jumlah orang per tag, diurut menurun. Biaya: satu agregat DB
+(`unnest+group by` atas 84.904 baris) ~92 ms hangat tapi butuh seq scan penuh (GIN tak melayani
+group-by-semua-tag), jadi dihitung SEKALI saat layar dibuka — di memori atas ~3.781 baris ber-tag yang
+sudah dibaca `fetchPoolTagCounts` (nol kueri per-tag, nol migrasi).
+
+**TUGAS 2 — pengecualian jadi chip.** Satu daftar, tiap tag chip dengan sakelar sertakan⇄kecualikan.
+Blok "kecualikan yang bertag" (menggandakan 28 kotak) DIHAPUS. Pengecualian non-tag tetap.
+
+**TUGAS 3 — tag dilipat + pencarian.** Namespace tertutup default (header: nama · {dipilih}/{jumlah
+nilai}), buka saat klik/ada pilihan/cocok pencarian. Satu kotak cari menyaring lintas namespace.
+
+**TUGAS 4 — AI ke depan.** Dari `<details>` "opsional" jadi kartu terbuka menonjol di bawah kartu
+pintasan, sebelum filter mentah; label "cara tercepat untuk syarat rumit"; contoh klik diambil dari
+tag pool NYATA (`buildAiExamples` — event teratas per jumlah), tak pernah contoh yang tak ada.
+Penolakan (`sanitizeAssistOutput` validasi vs vocab pool) TETAP — tak dilonggarkan. Usulan tetap
+mengisi filter di bawah untuk ditinjau.
+
+**TUGAS 5 — kartu pintasan.** Data pemakaian per-kartu TIDAK ADA di `crm_audit_log` (0 penanda quick;
+kartu tak mencatat mana yang dipakai — hanya 21 compute builder & 10 pakai AI total). Sesuai aturan:
+pertahankan semua, ringkas jadi 3 terlihat + "Lihat semua ({n})".
+
+**Panjang halaman (metrik terhitung dari kode + 28-tag vocab; BUKAN piksel — piksel butuh sesi
+browser ter-autentikasi berdata pool yang tak bisa saya tegakkan andal di sini):**
+- Baris nilai-tag selalu-terlihat: **56 → 0** (8 header namespace terlipat).
+- Daftar pengecualian-tag duplikat: **28 baris → 0** (dihapus, jadi chip).
+- Kartu pintasan terlihat: **9 → 3** (+ "lihat semua").

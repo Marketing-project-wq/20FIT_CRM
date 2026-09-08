@@ -9,14 +9,16 @@ import { EMPTY_CRITERIA, type SegmentCriteria } from "@/lib/crm/segment";
 import { describePresence } from "@/lib/crm/segment-describe";
 import { rowsToTree, type Row } from "@/components/segments/filter-tree-builder";
 import { UnifiedFilterBuilder } from "@/components/segments/unified-filter-builder";
-import { describeProposal, proposalIsEmpty, type AssistProposal } from "@/lib/crm/segment-ai-shared";
+import { describeProposal, proposalIsEmpty, buildAiExamples, type AssistProposal } from "@/lib/crm/segment-ai-shared";
+import { ambiguousTagValueLabels, disambiguateTagLabel } from "@/lib/crm/tags";
+import type { TagCountEntry } from "@/lib/crm/tag-vocab";
 import { saveSegmentAction } from "@/app/(app)/segments/actions";
 import { CAMPAIGN_COMPOSE_TAB, composeUrlWithNewSegment } from "@/lib/crm/campaign-nav";
 import { Why } from "@/components/ui/why";
 import { useI18n } from "@/components/i18n/lang-provider";
 import { formatCount, formatPct, formatDateTime } from "@/lib/i18n";
 import { QuickSegments } from "@/components/segments/quick-segments";
-import { TagCheckboxGroups } from "@/components/segments/tag-picker";
+import { TagFilter } from "@/components/segments/tag-picker";
 
 interface Counts {
   matched: number;
@@ -85,7 +87,7 @@ function TimeCriteria({
   );
 }
 
-export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, availableTags = [], embedded = false, onComputed, returnTo }: { cityFillPct: number; cityFilled: number; total: number; canViewHealth: boolean; availableTags?: string[]; embedded?: boolean; onComputed?: (counts: { matched: number; contactableMarketing: number } | null) => void; returnTo?: string | null }) {
+export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, tagCounts = [], embedded = false, onComputed, returnTo }: { cityFillPct: number; cityFilled: number; total: number; canViewHealth: boolean; tagCounts?: TagCountEntry[]; embedded?: boolean; onComputed?: (counts: { matched: number; contactableMarketing: number } | null) => void; returnTo?: string | null }) {
   const { lang, t } = useI18n();
   const router = useRouter();
   const [c, setC] = useState<SegmentCriteria>(EMPTY_CRITERIA);
@@ -136,25 +138,26 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
     setCounts(null);
   }
 
-  // TAG picker (TUGAS D). One positive selection with a mode: "any" → tagsAny (overlap), "all" →
-  // tagsAll (contains). Kept in one bucket at a time so the two array operators never AND into a
-  // confusing double-filter. Exclude tags are a separate array (exclude.tagsAny).
+  // TAG filter (TUGAS D redesign). INCLUDE selection lives in one bucket at a time by mode: "any" →
+  // tagsAny (overlap), "all" → tagsAll (contains). EXCLUDE selection is exclude.tagsAny. The chip UI
+  // (TagFilter) moves tags between the two; here we just expose the active include bucket + setters.
   const positiveTags = tagMode === "all" ? c.tagsAll : c.tagsAny;
-  function togglePositiveTag(tag: string) {
-    const key = tagMode === "all" ? "tagsAll" : "tagsAny";
-    const cur = c[key];
-    set(key, cur.includes(tag) ? cur.filter((x) => x !== tag) : [...cur, tag]);
-  }
+  const setIncludedTags = (next: string[]) => set(tagMode === "all" ? "tagsAll" : "tagsAny", next);
+  const setExcludedTags = (next: string[]) => setEx("tagsAny", next);
   function changeTagMode(mode: "any" | "all") {
     setTagMode(mode);
     // Move the current selection into the chosen bucket and clear the other.
     setC((prev) => ({ ...prev, tagsAny: mode === "any" ? positiveTags : [], tagsAll: mode === "all" ? positiveTags : [] }));
     setCounts(null);
   }
-  function toggleExcludeTag(tag: string) {
-    const cur = c.exclude.tagsAny;
-    setEx("tagsAny", cur.includes(tag) ? cur.filter((x) => x !== tag) : [...cur, tag]);
-  }
+
+  // Derived tag data. availableTags is the flat vocab (for describe disambiguation); aiExamples come
+  // from the REAL pool (never a fake example); ambiguous = value-labels that clash across namespaces
+  // (T0), so the readable sentence and chips can prefix the namespace only where needed.
+  const availableTags = tagCounts.map((e) => e.tag);
+  const aiExamples = buildAiExamples(tagCounts, lang);
+  const ambiguousTagLabels = ambiguousTagValueLabels(availableTags, lang);
+  const labelTag = (tag: string) => disambiguateTagLabel(tag, lang, ambiguousTagLabels);
 
   function setRowsAndClear(r: Row[]) {
     setRows(r);
@@ -281,13 +284,16 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
         }}
       />
 
-      {/* AI assistant — describe the segment in words; the server proposes criteria (re-validated). */}
-      <details className="glass rounded-card p-4">
-        <summary className="flex cursor-pointer select-none items-center gap-2">
-          <Sparkles className="h-4 w-4 text-ink-soft" aria-hidden />
-          <span className="font-display text-[13px] font-bold uppercase tracking-wide text-ink">{t.segments.aiTitle}</span>
-          <span className="font-body text-[12px] text-ink-faint">· {t.segments.aiOptional}</span>
-        </summary>
+      {/* AI assistant (TUGAS 4) — the PRIMARY way to build a complex condition, so it sits open and
+          prominent right under the quick cards and before the raw filters, not buried as "optional".
+          It describes → the server proposes criteria (re-validated) → the proposal FILLS the manual
+          controls below for review. Examples come from the real pool vocabulary (never a fake tag). */}
+      <section className="glass rounded-card p-5">
+        <div className="flex flex-wrap items-center gap-2">
+          <Sparkles className="h-4 w-4 text-red" aria-hidden />
+          <h3 className="font-display text-[14px] font-bold uppercase tracking-wide text-ink">{t.segments.aiTitle}</h3>
+          <span className="font-body text-[12px] text-ink-soft">· {t.segments.aiPrimary}</span>
+        </div>
         <div className="mt-3">
           <p className="max-w-3xl font-body text-[12px] leading-relaxed text-ink-soft">{t.segments.aiDescA}</p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -299,10 +305,25 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
               maxLength={500}
               onKeyDown={(e) => e.key === "Enter" && aiText.trim() && !aiLoading && aiPropose()}
             />
-            <Button variant="outline" onClick={aiPropose} disabled={aiLoading || aiText.trim() === ""}>
+            <Button onClick={aiPropose} disabled={aiLoading || aiText.trim() === ""}>
               {aiLoading ? t.segments.aiProposing : t.segments.aiPropose}
             </Button>
           </div>
+          {aiExamples.length > 0 && (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <span className="font-body text-[12px] text-ink-faint">{t.segments.aiExamplesLabel}</span>
+              {aiExamples.map((ex) => (
+                <button
+                  key={ex}
+                  type="button"
+                  onClick={() => setAiText(ex)}
+                  className="rounded-full border border-glass-border bg-glass px-2.5 py-0.5 font-body text-[12px] text-ink-soft hover:border-red hover:text-ink"
+                >
+                  {ex}
+                </button>
+              ))}
+            </div>
+          )}
           {aiError && <p className="mt-2 font-body text-[13px] text-red">{aiError}</p>}
           {aiProposal && (
             <div className="tint-neutral mt-3 rounded-sm px-3 py-3">
@@ -338,7 +359,7 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
             </div>
           )}
         </div>
-      </details>
+      </section>
 
         {/* Time criteria (Fase 2) — now available, resolved against real activity timestamps. */}
         <TimeCriteria
@@ -363,27 +384,26 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
             canViewHealth={canViewHealth}
           />
 
-        {/* TAG criteria (TUGAS D) — segment by the tags imports write (event, role, wave, …). Filters
-            master_customer.tags directly, so a just-imported tag is usable IMMEDIATELY (no wait for the
-            nightly mirror refresh). Hidden entirely when the pool carries no operator tags yet. */}
-        {availableTags.length > 0 && (
+        {/* TAG filter (TUGAS D redesign) — segment by the tags imports write. Folded + searchable +
+            counted, with selected tags as include/exclude chips (one list, two states — no second
+            duplicate list). Filters master_customer.tags directly, so a just-imported tag is usable
+            IMMEDIATELY. Hidden when the pool carries no operator tags yet. */}
+        {tagCounts.length > 0 && (
           <div className="tint-neutral mt-4 rounded-card p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h4 className="font-display text-[13px] font-bold uppercase tracking-wide text-ink">{t.segments.tags.title}</h4>
-              <div className="flex items-center gap-3 font-body text-[12px] text-ink-soft">
-                <label className="flex items-center gap-1.5">
-                  <input type="radio" name="tagmode" checked={tagMode === "any"} onChange={() => changeTagMode("any")} className="accent-red" />
-                  {t.segments.tags.any}
-                </label>
-                <label className="flex items-center gap-1.5">
-                  <input type="radio" name="tagmode" checked={tagMode === "all"} onChange={() => changeTagMode("all")} className="accent-red" />
-                  {t.segments.tags.all}
-                </label>
-              </div>
-            </div>
+            <h4 className="font-display text-[13px] font-bold uppercase tracking-wide text-ink">{t.segments.tags.title}</h4>
             <p className="mt-1 font-body text-[12px] leading-relaxed text-ink-faint">{t.segments.tags.immediate}</p>
             <div className="mt-3">
-              <TagCheckboxGroups available={availableTags} selected={positiveTags} onToggle={togglePositiveTag} lang={lang} />
+              <TagFilter
+                entries={tagCounts}
+                included={positiveTags}
+                excluded={c.exclude.tagsAny}
+                mode={tagMode}
+                onSetIncluded={setIncludedTags}
+                onSetExcluded={setExcludedTags}
+                onModeChange={changeTagMode}
+                lang={lang}
+                w={t.segments.tags}
+              />
             </div>
           </div>
         )}
@@ -407,23 +427,16 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
               </label>
             ))}
           </div>
-          {/* Exclude by tag (TUGAS D) — "…but NOT anyone tagged X". Same grouped picker, writing to
-              exclude.tagsAny (a negated overlap on master_customer.tags). */}
-          {availableTags.length > 0 && (
-            <div className="mt-3 border-t border-glass-border pt-3">
-              <p className="font-display text-[12px] font-bold text-ink">{t.segments.tags.excludeTitle}</p>
-              <div className="mt-2">
-                <TagCheckboxGroups available={availableTags} selected={c.exclude.tagsAny} onToggle={toggleExcludeTag} lang={lang} />
-              </div>
-            </div>
-          )}
+          {/* Tag exclusions now live as include/exclude chips in the Tag filter above (T2) — no second
+              duplicate tag list here. This block keeps only the non-tag presence exclusions. */}
         </div>
 
-        {/* Filter terbaca — the readable presence sentence, exclusions stated in plain words. */}
-        {describePresence(c, lang) && (
+        {/* Filter terbaca — the readable presence sentence, exclusions stated in plain words. Tag
+            labels are disambiguated (T-72) where a value clashes across namespaces. */}
+        {describePresence(c, lang, labelTag) && (
           <p className="mt-3 font-body text-[13px] text-ink">
             <span className="font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">{t.segments.filterReadable}</span>
-            {describePresence(c, lang)}
+            {describePresence(c, lang, labelTag)}
           </p>
         )}
 

@@ -166,6 +166,44 @@ export function tagValueLabel(tag: string, lang: "id" | "en"): string {
   return value.replace(/-/g, " ");
 }
 
+/**
+ * Which value-labels are AMBIGUOUS in a vocabulary: the same human value-label produced by tags in
+ * MORE THAN ONE namespace. Today (T-72): "hybrid race" is produced by both `produk:hybrid-race` and
+ * `peran:hybrid-race`, so on a chip (no namespace header) they read identically. This finds such
+ * clashes so the caller can prefix the namespace only where it is genuinely needed. Case-folded.
+ */
+export function ambiguousTagValueLabels(tags: readonly string[], lang: "id" | "en"): Set<string> {
+  const byLabel = new Map<string, Set<string>>();
+  for (const t of tags) {
+    if (!isOperatorTag(t)) continue;
+    const label = tagValueLabel(t, lang).toLowerCase();
+    const ns = t.slice(0, t.indexOf(":"));
+    const set = byLabel.get(label) ?? new Set<string>();
+    set.add(ns);
+    byLabel.set(label, set);
+  }
+  const out = new Set<string>();
+  byLabel.forEach((namespaces, label) => {
+    if (namespaces.size > 1) out.add(label);
+  });
+  return out;
+}
+
+/**
+ * A tag's display label, prefixed with its namespace ONLY when the plain value-label is ambiguous
+ * across namespaces ("Produk · Hybrid Race" vs "Peran · Hybrid Race") — otherwise the plain value.
+ * COMPOSES the existing namespaceLabel + tagValueLabel; it is NOT a second label list (T-72). Pass the
+ * set from ambiguousTagValueLabels; omit it to always show the plain value-label.
+ */
+export function disambiguateTagLabel(tag: string, lang: "id" | "en", ambiguous?: ReadonlySet<string>): string {
+  const value = tagValueLabel(tag, lang);
+  if (ambiguous && ambiguous.has(value.toLowerCase())) {
+    const ns = tag.slice(0, tag.indexOf(":"));
+    return `${namespaceLabel(ns, lang)} · ${value}`;
+  }
+  return value;
+}
+
 export interface GroupedTags {
   /** Operator tags grouped by namespace, namespaces in TAG_NAMESPACES order. A person can carry MORE
    *  THAN ONE value in a namespace (two `event:` tags) — ALL are kept, never just the first. */

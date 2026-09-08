@@ -11,6 +11,7 @@ import { CAMPAIGN_COMPOSE_TAB, composeUrl, composeUrlWithNewSegment } from "@/li
 import { useI18n } from "@/components/i18n/lang-provider";
 import { formatDateTime } from "@/lib/i18n";
 import type { SavedSegmentMeta } from "@/lib/crm/segment-store";
+import type { TagCountEntry } from "@/lib/crm/tag-vocab";
 
 /**
  * Tab Segmen di halaman Campaigns. SegmentBuilder untuk membangun dan menyimpan segmen baru,
@@ -23,7 +24,7 @@ export function SegmentsTab({
   total,
   canViewHealth,
   canBuild,
-  availableTags = [],
+  tagCounts = [],
   returnTo,
 }: {
   segments: SavedSegmentMeta[];
@@ -32,7 +33,7 @@ export function SegmentsTab({
   total: number;
   canViewHealth: boolean;
   canBuild: boolean;
-  availableTags?: string[];
+  tagCounts?: TagCountEntry[];
   returnTo?: string | null;
 }) {
   const { lang, t } = useI18n();
@@ -147,7 +148,7 @@ export function SegmentsTab({
                 cityFilled={cityFilled}
                 total={total}
                 canViewHealth={canViewHealth}
-                availableTags={availableTags}
+                tagCounts={tagCounts}
                 returnTo={returnTo}
               />
             </>
