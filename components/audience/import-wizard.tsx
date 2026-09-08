@@ -12,6 +12,7 @@ import {
   type ImportField,
   type ImportSummary,
 } from "@/lib/crm/import-audience";
+import { parseTagCell, groupTags, namespaceLabel, tagValueLabel } from "@/lib/crm/tags";
 
 /**
  * CSV import wizard (Fase 1) — upload → map columns → review summary → confirm → report. It NEVER
@@ -252,7 +253,11 @@ export function ImportWizard() {
                         ))}
                       </select>
                     </td>
-                    <td className="py-2 font-body text-[12px] text-ink-soft">{preview[0]?.[h] ?? ""}</td>
+                    <td className="py-2 font-body text-[12px] text-ink-soft">
+                      {mapping[h] === "tags"
+                        ? <TagSample raw={preview[0]?.[h] ?? ""} />
+                        : (preview[0]?.[h] ?? "")}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -473,6 +478,40 @@ function Stat({ label, value, tone, hint }: { label: string; value: number; tone
 /** Which uploaded columns were NOT imported (mapped to "ignore"). Surfaced so the operator sees, e.g.,
  *  that an "Event" column was left out — a silent drop is how data quietly goes missing. Names only,
  *  no values. */
+/**
+ * Bagian 1: a mapped `tags` column previewed as FIELDS grouped per namespace — the owner's direct
+ * complaint was the raw `event:…|format:…|…` block. Invalid tags (outside the vocabulary, or a system
+ * marker a CSV must never inject) are shown apart, amber, never silently hidden. Indonesian only, to
+ * match the rest of this wizard; the label vocabulary itself is bilingual + parity-guarded.
+ */
+function TagSample({ raw }: { raw: string }) {
+  const { tags, invalid } = parseTagCell(raw);
+  const grouped = groupTags(tags);
+  if (grouped.operator.length === 0 && invalid.length === 0) {
+    return <span className="text-ink-faint">{raw || "—"}</span>;
+  }
+  return (
+    <div className="space-y-1">
+      {grouped.operator.map(({ namespace, tags: vals }) => (
+        <div key={namespace} className="flex flex-wrap items-baseline gap-1.5">
+          <span className="font-display text-[10px] font-bold uppercase tracking-wide text-ink-faint">{namespaceLabel(namespace, "id")}:</span>
+          {vals.map((tag) => (
+            <span key={tag} className="rounded-sm bg-glass px-1.5 py-0.5 font-body text-[11px] text-ink">{tagValueLabel(tag, "id")}</span>
+          ))}
+        </div>
+      ))}
+      {invalid.length > 0 && (
+        <div className="flex flex-wrap items-baseline gap-1.5">
+          <span className="font-display text-[10px] font-bold uppercase tracking-wide text-amber">ditolak:</span>
+          {invalid.map((t) => (
+            <span key={t} className="rounded-sm bg-glass px-1.5 py-0.5 font-mono text-[11px] text-amber">{t}</span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function UnmappedColumns({ headers, mapping }: { headers: string[]; mapping: ColumnMapping }) {
   const ignored = headers.filter((h) => (mapping[h] ?? "ignore") === "ignore" && h.trim() !== "");
   if (ignored.length === 0) return null;
