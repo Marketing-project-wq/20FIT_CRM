@@ -1435,6 +1435,13 @@ export const en: Messages = {
     tabsAria: "Profile sections",
     secContact: "Contact",
     secAttr: "Attributes",
+    tagAttr: {
+      title: "Attributes from tags",
+      subtitle: "Derived from namespaced tags — one row per attribute kind. A person may hold more than one value.",
+      none: "No tag-derived attributes yet",
+      systemLabel: "System trace",
+      systemHint: "Technical markers (import, batch, activity) — not business attributes",
+    },
     secIdentity: "Identity",
     secTrail: "Time trail",
     secCuration: "Curation & duplicates",

@@ -1529,6 +1529,13 @@ export const id = {
     // section titles
     secContact: "Kontak",
     secAttr: "Atribut",
+    tagAttr: {
+      title: "Atribut dari tag",
+      subtitle: "Diturunkan dari tag bernamespace — tiap baris satu jenis atribut. Satu orang bisa punya lebih dari satu nilai.",
+      none: "Belum ada atribut dari tag",
+      systemLabel: "Jejak sistem",
+      systemHint: "Penanda teknis (impor, batch, aktivitas) — bukan atribut bisnis",
+    },
     secIdentity: "Identitas",
     secTrail: "Jejak waktu",
     secCuration: "Kurasi & duplikat",

@@ -5,9 +5,15 @@ import {
   TAG_NAMESPACES,
   OPERATOR_TAG_REGEX_SOURCE,
   SYSTEM_BARE_TAGS,
+  NILAI_TAG_ORDER,
+  TAG_NAMESPACE_LABELS,
+  TAG_VALUE_LABELS,
   isOperatorTag,
   isStoredTag,
   parseTagCell,
+  groupTags,
+  namespaceLabel,
+  tagValueLabel,
 } from "./tags";
 
 /**
@@ -168,5 +174,54 @@ describe("(C) migration 37 still carries all three changes after any merge", () 
       );
     }
     expect(stmt, "merged rows are skipped").toContain("merged_into is null");
+  });
+});
+
+
+// ── (D) the NINTH vocabulary — display labels — cannot drift from the tag vocabulary it labels ────
+describe("(D) tag DISPLAY labels are guarded against the tag vocabulary (Bagian 1)", () => {
+  it("every namespace has a label, and there is no label for a namespace that does not exist", () => {
+    expect(Object.keys(TAG_NAMESPACE_LABELS).sort()).toEqual([...TAG_NAMESPACES].sort());
+    for (const ns of TAG_NAMESPACES) {
+      expect(TAG_NAMESPACE_LABELS[ns].id.length, `${ns}: id label`).toBeGreaterThan(0);
+      expect(TAG_NAMESPACE_LABELS[ns].en.length, `${ns}: en label`).toBeGreaterThan(0);
+    }
+  });
+
+  it("every VALUE label points at a REAL operator tag — an unknown key fails here", () => {
+    // This is the bite: a label for `bogus:x` (not a namespace) or a typo tag turns this red.
+    for (const key of Object.keys(TAG_VALUE_LABELS)) {
+      expect(isOperatorTag(key), `${key} is not a valid operator tag — remove or fix its label`).toBe(true);
+      expect(TAG_VALUE_LABELS[key].id.length).toBeGreaterThan(0);
+      expect(TAG_VALUE_LABELS[key].en.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("every `nilai:` band has a value label — a money band must never render raw", () => {
+    for (const band of NILAI_TAG_ORDER) {
+      expect(TAG_VALUE_LABELS[band], `${band} has no display label`).toBeTruthy();
+    }
+  });
+
+  it("tagValueLabel formats the money ladder, and falls back to a prettified value otherwise", () => {
+    expect(tagValueLabel("nilai:300k-1jt", "id")).toBe("Rp 300rb–1jt");
+    expect(tagValueLabel("nilai:300k-1jt", "en")).toBe("Rp 300k–1M");
+    // no specific label → dashes become spaces, nothing invented
+    expect(tagValueLabel("event:hyrox-sim-full", "id")).toBe("hyrox sim full");
+    expect(namespaceLabel("nilai", "id")).toBe("Nilai transaksi");
+  });
+
+  it("groupTags splits operator namespaces from system tags and keeps MULTIPLE values per namespace", () => {
+    const g = groupTags([
+      "event:hyrox-sim-full", "event:hyrox-sim-half", "format:single",
+      "csv_import", "batch:abc123", "tagged:def456", "activity_ingest",
+    ]);
+    expect(g.operator.find((o) => o.namespace === "event")?.tags).toEqual([
+      "event:hyrox-sim-full", "event:hyrox-sim-half",
+    ]);
+    expect(g.operator.find((o) => o.namespace === "format")?.tags).toEqual(["format:single"]);
+    expect(g.system.sort()).toEqual(["activity_ingest", "batch:abc123", "csv_import", "tagged:def456"]);
+    // namespaces come in canon order
+    expect(g.operator.map((o) => o.namespace)).toEqual(["event", "format"]);
   });
 });

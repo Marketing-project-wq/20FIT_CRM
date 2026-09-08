@@ -122,3 +122,77 @@ export function tagsForNewPerson(batchId: string, operatorTags: readonly string[
 export function tagsForExistingPerson(batchId: string, operatorTags: readonly string[]): string[] {
   return Array.from(new Set([`tagged:${batchId}`, ...operatorTags])).sort();
 }
+
+// ── DISPLAY (Bagian 1, 8 Sep 2026) — tags are already key:value pairs; show them as fields. ────────
+
+/**
+ * THE NINTH VOCABULARY: human-readable labels for tags. Kept HERE, beside the tag canon, on purpose —
+ * a label list that lives apart from the vocabulary it labels drifts from it (the exact reason the
+ * consent and tag parity tests exist, T-51). tags.parity.test.ts guards both maps: every namespace
+ * has a label, every value label points at a REAL tag, and every `nilai:` band has one. Bilingual.
+ */
+export const TAG_NAMESPACE_LABELS: Record<(typeof TAG_NAMESPACES)[number], { id: string; en: string }> = {
+  event: { id: "Acara", en: "Event" },
+  format: { id: "Format", en: "Format" },
+  kategori: { id: "Kategori", en: "Category" },
+  nilai: { id: "Nilai transaksi", en: "Transaction value" },
+  peran: { id: "Peran", en: "Role" },
+  produk: { id: "Produk", en: "Product" },
+  sumber: { id: "Sumber", en: "Source" },
+  tipe: { id: "Tipe", en: "Type" },
+};
+
+/** Specific VALUE labels where the raw value is not self-explanatory — the `nilai:` money ladder
+ *  especially (`nilai:300k-1jt` → "Rp 300rb–1jt"). Keys are FULL tags. Everything not listed here
+ *  falls back to a prettified value (dashes → spaces): a format, never invented meaning. */
+export const TAG_VALUE_LABELS: Record<string, { id: string; en: string }> = {
+  "nilai:di-bawah-300k": { id: "Rp di bawah 300rb", en: "Under Rp 300k" },
+  "nilai:300k-1jt": { id: "Rp 300rb–1jt", en: "Rp 300k–1M" },
+  "nilai:1jt-ke-atas": { id: "Rp 1jt ke atas", en: "Rp 1M and up" },
+};
+
+/** Human label for a namespace (falls back to the raw namespace if somehow unlabeled). */
+export function namespaceLabel(ns: string, lang: "id" | "en"): string {
+  const l = TAG_NAMESPACE_LABELS[ns as keyof typeof TAG_NAMESPACE_LABELS];
+  return l ? l[lang] : ns;
+}
+
+/** Human label for one operator tag's VALUE part. Specific label if we have one, else the value with
+ *  dashes turned to spaces. Never guesses meaning — only formats what is already there. */
+export function tagValueLabel(tag: string, lang: "id" | "en"): string {
+  const specific = TAG_VALUE_LABELS[tag];
+  if (specific) return specific[lang];
+  const value = tag.slice(tag.indexOf(":") + 1);
+  return value.replace(/-/g, " ");
+}
+
+export interface GroupedTags {
+  /** Operator tags grouped by namespace, namespaces in TAG_NAMESPACES order. A person can carry MORE
+   *  THAN ONE value in a namespace (two `event:` tags) — ALL are kept, never just the first. */
+  operator: { namespace: string; tags: string[] }[];
+  /** System / technical tags: csv_import, activity_ingest, batch:*, tagged:*, and anything else that
+   *  is not an operator tag. Shown apart from business-meaningful attributes. */
+  system: string[];
+}
+
+/** Split a stored tag list into namespaced operator attributes and the system/trace tags. */
+export function groupTags(tags: readonly string[] | null | undefined): GroupedTags {
+  const byNs = new Map<string, string[]>();
+  const system: string[] = [];
+  for (const raw of tags ?? []) {
+    const tag = normalizeTag(raw);
+    if (tag === "") continue;
+    if (isOperatorTag(tag)) {
+      const ns = tag.slice(0, tag.indexOf(":"));
+      const arr = byNs.get(ns) ?? [];
+      if (!arr.includes(tag)) arr.push(tag);
+      byNs.set(ns, arr);
+    } else {
+      if (!system.includes(tag)) system.push(tag);
+    }
+  }
+  const operator = (TAG_NAMESPACES as readonly string[])
+    .filter((ns) => byNs.has(ns))
+    .map((ns) => ({ namespace: ns, tags: byNs.get(ns)! }));
+  return { operator, system };
+}

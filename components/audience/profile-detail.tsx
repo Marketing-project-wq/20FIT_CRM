@@ -19,6 +19,7 @@ import {
 } from "@/lib/crm/demographic-pick";
 import { Why } from "@/components/ui/why";
 import { EditCoreDialog } from "@/components/audience/edit-core-dialog";
+import { groupTags, namespaceLabel, tagValueLabel } from "@/lib/crm/tags";
 import { useI18n } from "@/components/i18n/lang-provider";
 import type { Dict } from "@/lib/i18n";
 
@@ -245,6 +246,50 @@ function CountBadge({ n }: { n: number }) {
  * closed row, never vanishes. `open` is the INITIAL state (open when it has content); the user can
  * toggle freely afterward. Max depth is two: TAB → this. No collapsible inside a collapsible.
  */
+/**
+ * "Atribut dari tag" (Bagian 1) — the namespaced tags shown AS FIELDS, one row per namespace, not as
+ * one long `event:…|format:…` string. A person can hold several values in one namespace (two events)
+ * — all are shown. System/technical tags (csv_import, batch:*, tagged:*, activity_ingest) are kept
+ * apart, in a muted trace line, so they never masquerade as business attributes.
+ */
+function TagAttributes({ tags }: { tags: string[] | null }) {
+  const { t, lang } = useI18n();
+  const A = t.profile.tagAttr;
+  const grouped = groupTags(tags);
+  return (
+    <div className="space-y-3">
+      {grouped.operator.length === 0 ? (
+        <p className="font-body text-[13px] italic text-ink-faint">{A.none}</p>
+      ) : (
+        <dl className="space-y-2.5">
+          {grouped.operator.map(({ namespace, tags: vals }) => (
+            <div key={namespace} className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:gap-3">
+              <dt className="font-display text-[12px] font-bold uppercase tracking-wide text-ink-soft sm:w-40 sm:shrink-0">
+                {namespaceLabel(namespace, lang)}
+              </dt>
+              <dd className="flex flex-wrap gap-1.5">
+                {vals.map((tag) => (
+                  <Badge key={tag} tone="neutral">{tagValueLabel(tag, lang)}</Badge>
+                ))}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {grouped.system.length > 0 && (
+        <div className="border-t border-glass-border pt-2.5">
+          <p className="mb-1 font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">{A.systemLabel}</p>
+          <span className="flex flex-wrap gap-1.5">
+            {grouped.system.map((tag) => (
+              <span key={tag} className="rounded-sm bg-glass px-1.5 py-0.5 font-mono text-[11px] text-ink-faint" title={A.systemHint}>{tag}</span>
+            ))}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Section({
   title,
   count,
@@ -1390,7 +1435,8 @@ export function ProfileDetail({
   // Counts for the tab labels + collapsible titles. Perilaku's count is the whole-profile-empty
   // signal: it is 0 exactly when there is no behavioural data at all.
   const contactFilled = [p.phone, p.email, p.city].filter(Boolean).length;
-  const kurasiFilled = [p.notes, p.tags && p.tags.length > 0 ? "x" : null, p.duplicate_reason].filter(Boolean).length;
+  // Tags moved to their own card (Bagian 1); the curation count is notes + dup reason only now.
+  const kurasiFilled = [p.notes, p.duplicate_reason].filter(Boolean).length;
   const imp = data.importData;
   // PARTICIPATION (RFM + programs) — behavioural, so it belongs to Perilaku, matching ImportSection.
   // The demographic fields the same import carries (birth date, city) are counted under Demografi.
@@ -1516,6 +1562,16 @@ export function ProfileDetail({
               <Field label={P.fSource} mono>{p.source ? p.source : <Empty />}</Field>
             </Section>
 
+            {/* Bagian 1: the namespaced tags shown AS FIELDS, one row per namespace. */}
+            <Section
+              title={P.tagAttr.title}
+              count={groupTags(p.tags).operator.length}
+              icon={<User className="h-4 w-4 text-ink-soft" aria-hidden />}
+            >
+              <p className="mb-3 font-body text-[12px] leading-relaxed text-ink-faint">{P.tagAttr.subtitle}</p>
+              <TagAttributes tags={p.tags} />
+            </Section>
+
             {/* Identitas — NIK + turunannya + tanggal lahir + alamat + kontak darurat, DIGABUNG dari
                 Hyrox/klinik/staging berdasarkan MAKNA (bukan tabel sumber). NIK penuh; satu tanggal
                 lahir dari rantai prioritas; gerbang view_contact (K-31). */}
@@ -1555,11 +1611,8 @@ export function ProfileDetail({
 
             <Section title={P.secCuration} count={kurasiFilled} icon={<User className="h-4 w-4 text-ink-soft" aria-hidden />} open={false}>
               <Field label={P.cNotes}>{p.notes ? p.notes : <Empty />}</Field>
-              <Field label={P.cTags}>
-                {p.tags && p.tags.length > 0 ? (
-                  <span className="flex flex-wrap gap-1.5">{p.tags.map((t) => <Badge key={t} tone="neutral">{t}</Badge>)}</span>
-                ) : <Empty />}
-              </Field>
+              {/* Tags moved to their own "Atribut dari tag" card (Bagian 1), shown as fields per
+                  namespace instead of a flat block. Not duplicated here. */}
               <Field label={P.cDupReason}>{p.duplicate_reason ? p.duplicate_reason : <Empty />}</Field>
             </Section>
           </>
