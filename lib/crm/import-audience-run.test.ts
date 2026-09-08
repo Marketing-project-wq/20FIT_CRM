@@ -82,4 +82,17 @@ describe("runImportRequest — dry-run writes NOTHING", () => {
     expect(res).toEqual({ ok: false, error: "no_email_column" });
     expect(deps.loadKeys).not.toHaveBeenCalled();
   });
+
+  // TUGAS 4 (T-69) — HARD ATOMIC. loadKeys runs BEFORE commit, so a read failure must abort with ZERO
+  // writes. This is the whole point of making loadKeys throw: the old swallow returned empty keys and
+  // let commit run on a corrupted plan (a half import). A throw here must never reach commit/audit.
+  it("execute writes NOTHING when loadKeys throws (read failure is hard-atomic)", async () => {
+    const err = Object.assign(new Error("loadImportKeys email read failed"), { code: "read_failed" });
+    const deps = makeDeps({ loadKeys: vi.fn(async () => { throw err; }) });
+    await expect(
+      runImportRequest({ phase: "execute", headers, rows, collectionSource: "Sportfest 2", filename: "p.csv" }, deps),
+    ).rejects.toMatchObject({ code: "read_failed" });
+    expect(deps.commit).not.toHaveBeenCalled(); // the WRITE never happens
+    expect(deps.audit).not.toHaveBeenCalled(); // no audit row claiming success
+  });
 });

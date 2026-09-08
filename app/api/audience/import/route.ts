@@ -13,6 +13,7 @@ import {
   type ImportPhase,
 } from "@/lib/crm/import-audience-run";
 import { importFailureMessage, MAX_IMPORT_ROWS } from "@/lib/crm/import-audience";
+import { loadImportKeys, type ImportReadClient } from "@/lib/crm/import-keys";
 import type { ImportKeys, ImportPlan, NormalizedRow } from "@/lib/crm/import-audience";
 
 export const dynamic = "force-dynamic";
@@ -87,47 +88,12 @@ export async function POST(request: NextRequest) {
   const batchId = crypto.randomUUID();
 
   const deps: ImportDeps = {
+    // Reads which of this batch's emails/phones already exist (+ suppressions). CHUNKED and FAIL-LOUD
+    // (loadImportKeys, T-69): a single `.in()` over 1.432 emails built a ~58 KB URL the gateway rejected
+    // with HTTP 400, and the old inline reader discarded that error — the swallow that shipped a half
+    // import as success. Extracted to lib so it is unit-testable with a fake client.
     async loadKeys(emails, phones): Promise<ImportKeys> {
-      const existingEmails = new Set<string>();
-      // (T-55) Taggable = at least one row for this email whose `merged_into` IS NULL. Kept apart from
-      // existingEmails on purpose: existingEmails decides INSERT-or-not and must mirror the ingest
-      // function's anti-join (which counts merged rows too), while THIS set decides TAG-or-not and must
-      // mirror its `upd` filter (which does not). One set could only satisfy one of the two, and the
-      // half it got wrong would be wrong in silence.
-      const taggableEmails = new Set<string>();
-      const existingPhones = new Set<string>();
-      const suppressedEmails = new Set<string>();
-      const suppressedPhones = new Set<string>();
-      // Which of THIS batch's emails/phones already exist in master (bounded by the batch, not 82k).
-      if (emails.length > 0) {
-        const { data, error } = await admin
-          .from("master_customer")
-          .select("email_normalized, merged_into")
-          .in("email_normalized", emails);
-        if (error) throw readFailure("email", error.code);
-        for (const r of data ?? []) {
-          const e = r.email_normalized as string | null;
-          if (!e) continue;
-          existingEmails.add(e);
-          if (r.merged_into === null) taggableEmails.add(e);
-        }
-      }
-      if (phones.length > 0) {
-        const { data, error } = await admin.from("master_customer").select("phone_normalized").in("phone_normalized", phones);
-        if (error) throw readFailure("phone", error.code);
-        for (const r of data ?? []) if (r.phone_normalized) existingPhones.add(r.phone_normalized as string);
-      }
-      // Active suppressions (small) — keyed by normalized identity.
-      const { data: sup, error: supErr } = await admin
-        .from("crm_suppression")
-        .select("identity_kind, identity_key")
-        .eq("status", "active");
-      if (supErr) throw readFailure("suppression", supErr.code);
-      for (const s of sup ?? []) {
-        if (s.identity_kind === "email") suppressedEmails.add(s.identity_key as string);
-        else if (s.identity_kind === "phone") suppressedPhones.add(s.identity_key as string);
-      }
-      return { existingEmails, taggableEmails, existingPhones, suppressedEmails, suppressedPhones };
+      return loadImportKeys(admin as unknown as ImportReadClient, emails, phones);
     },
     async commit(insertRows: NormalizedRow[], meta) {
       const payload = insertRows.map((r) => ({
@@ -231,20 +197,6 @@ export async function POST(request: NextRequest) {
 function rpcFailure(code: string | null | undefined): Error & { code: string | null } {
   const err = new Error("crm_ingest_csv_people failed") as Error & { code: string | null };
   err.code = safeCode(code);
-  return err;
-}
-
-/**
- * A failed loadKeys READ, as a PII-free Error carrying the DB code. Import MUST fail loud on a read
- * error, never proceed with empty keys. Empty keys make planImport treat every row as net-new, so the
- * ingest anti-join silently skips everyone already in the pool — a HALF import reported as success.
- * This shipped (T-69, 8 Sep 2026): a ~24 KB `.in(email…)` URL for a >550-row file returned HTTP 400,
- * the error was discarded by `const { data } =`, and 1.432-row files imported ~half with ZERO tagging
- * under a green check. Throwing here turns that silent lie into an honest failure (TUGAS 4: because
- * loadKeys is the first dep call, a throw aborts the request before any write — zero partial writes). */
-function readFailure(stage: "email" | "phone" | "suppression", code: string | null | undefined): Error & { code: string } {
-  const err = new Error(`loadKeys ${stage} read failed`) as Error & { code: string };
-  err.code = safeCode(code) ?? "read_failed";
   return err;
 }
 
