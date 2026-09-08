@@ -193,6 +193,27 @@ export interface ImportSummary {
   netContactable: number; // netInsert − suppressed (the count that can actually be sent to)
 }
 
+/**
+ * How many people this run will ACTUALLY change — inserts PLUS existing people it tags (K-58). The
+ * confirm button gates on THIS, not on netInsert alone.
+ *
+ * BUG (8 Sep 2026, T-67): the button gated on `netInsert > 0`, so a file whose every row was already
+ * in the pool — netInsert 0, taggedExisting 2 — left the button dead. Tagging existing participants
+ * is HALF the work K-58 exists for, and the UI could not trigger it. A happy-path test never caught
+ * it; an all-"already exists" input did. Pure + tested so it cannot regress.
+ */
+export function importActionableTotal(s: Pick<ImportSummary, "netInsert" | "taggedExisting">): number {
+  return s.netInsert + s.taggedExisting;
+}
+
+/** May the operator press confirm? Something to do (insert OR tag) AND a collection source given. */
+export function canRunImport(
+  s: Pick<ImportSummary, "netInsert" | "taggedExisting">,
+  collectionSource: string,
+): boolean {
+  return importActionableTotal(s) > 0 && collectionSource.trim() !== "";
+}
+
 export interface ImportPlan {
   summary: ImportSummary;
   insertRows: NormalizedRow[]; // exactly the rows to hand to the ingest function

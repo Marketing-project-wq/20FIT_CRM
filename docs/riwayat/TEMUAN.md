@@ -2170,3 +2170,53 @@ diputuskan di sini).
 memuat `"full_name": null` **secara sengaja** — saya tak punya nama yang bisa diverifikasi untuk
 `marketing@20fit.id` / `tifany@20fit.id` dan memilih tidak mengarang. CSV tak dipakai sama sekali;
 tak ada berkas dengan kolom nama yang bisa salah petakan.
+
+## T-66 — RPC edit inti: bug `array_append` yang berulang (ditangkap uji), + celah aktor `crm_ingest_csv_people` — 8 Sep 2026
+
+**Bug yang berulang, ditangkap oleh disiplin yang tepat.** `crm_update_master_fields` apply pertama
+(`20260908051258`) memakai `v_changed := v_changed || 'city'`. `CREATE FUNCTION` lolos; panggilan
+sungguhan gagal `22P02: malformed array literal: "city"` — Postgres menyelesaikan `text[] || 'literal'`
+sebagai `array_cat`, bukan `array_append`. **Ini persis migrasi 9 dan 17, dan komentarnya saya baca
+sendiri lalu ulangi.** Diperbaiki ke `array_append` (apply kedua `20260908051431`, definisi FINAL).
+Yang menangkapnya bukan tinjauan mata, melainkan **aturan "panggilan sungguhan dalam transaksi
+rollback, CREATE yang berhasil tak membuktikan apa pun" (T-48)** — enam uji jalur dijalankan, jalur
+sukses langsung memunculkannya. Bukti bahwa gerbang uji itu bekerja.
+
+**Celah aktor yang BELUM ditutup — tindak lanjut, bukan pekerjaan putaran ini.**
+`crm_update_master_fields` kini **menolak** panggilan tanpa aktor (T5). `crm_ingest_csv_people`
+**tidak** — ia menerima `p_uploaded_by` yang boleh null, dan auditnya ditulis oleh RUTE, bukan RPC
+(T-65). Jadi kelemahan yang sama masih terbuka di jalur impor: panggilan langsung tanpa aktor
+menulis ke `master_customer` tanpa jejak. Menutupnya (mewajibkan aktor + memindahkan audit ke dalam
+RPC) adalah migrasi tersendiri, **di luar lingkup putaran ini** (LARANGAN). Dicatat di sini supaya
+tak hilang: 355/356 baris `crm_audit_log` punya aktor — satu-satunya jalur yang bisa memproduksi
+baris tanpa aktor adalah dua RPC ini, dan kini hanya satu yang ditutup.
+
+## T-67 — Tombol impor digerbang pada `netInsert`, mengabaikan `taggedExisting` — impor hanya-tandai mustahil dijalankan — 8 Sep 2026
+
+Pemilik mencoba mengimpor `email_20fit_admin.csv` (2 baris) dan tombolnya mati. Kedua alamat sudah
+ada di pool sejak impor 04:16, jadi ringkasan benar: `Akan masuk 0 · Akan ditandai 2`. Tapi tombol
+digerbang `summary.netInsert === 0` dan berbunyi "Konfirmasi & impor **0** orang" — nonaktif.
+
+**Akibatnya: impor yang HANYA menandai orang yang sudah ada tak bisa dijalankan sama sekali** — dan
+itu separuh dari pekerjaan yang K-58 bangun (peserta yang sudah jadi pelanggan tetap mendapat tag
+event-nya). Jalurnya ada di RPC (`tagged_existing`); UI tak bisa memicunya.
+
+**Perbaikan:** gerbang pada `importActionableTotal = netInsert + taggedExisting > 0` (pure + teruji,
+`canRunImport`). Label jujur soal keduanya: "Konfirmasi · N masuk, M ditandai". Kedua nol → tombol
+tetap nonaktif dengan alasan dinyatakan ("Tak ada yang berubah — 0 masuk dan 0 ditandai"). Layar
+Laporan sudah menyebut keduanya.
+
+**Cara ia lolos, dan cara ia ditemukan:** uji jalur-bahagia (ada yang masuk) tak pernah menyentuh
+gerbang saat `netInsert=0`. Yang menemukannya adalah **masukan yang seluruhnya "sudah ada"** —
+pemilik mencobanya, bukan meninjau. Test pengunci `{netInsert:0, taggedExisting:2}` → aktif kini
+menutupnya. Kelas yang sama dengan gerbang kirim yang tak pernah melihat kegagalan (T-42): sebuah
+kondisi boolean yang benar untuk kasus umum dan salah untuk kasus yang justru jadi alasan fitur ada.
+
+**Catatan terkait (BUG 2, bukan bug):** wizard MENGENALI header `Nama` (dan `Nama Lengkap`/`nama`/
+`name`) dan membaca namanya, serta menangani pemisah `;` (Excel Indonesia) — diuji langsung atas
+berkas pemilik (`import-name-header.test.ts`). Nama NULL pada 2 baris berasal dari impor 04:16 lewat
+**RPC langsung** (`full_name:null`, T-65), bukan wizard. Konsekuensi K-58: orang yang sudah ada
+dengan nama kosong TAK terisi oleh impor (tagged_existing hanya menyentuh `tags`) — satu-satunya
+jalan mengisi namanya hari ini adalah tombol edit. Keputusan pemilik (K-58 tak diubah): biarkan
+tombol edit mengisinya, atau kelak izinkan impor mengisi field KOSONG pada orang yang sudah ada
+(bukan menimpa).

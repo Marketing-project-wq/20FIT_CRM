@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import {
   IMPORT_TARGET_FIELDS,
   MAX_IMPORT_ROWS,
+  importActionableTotal,
+  canRunImport,
   type ColumnMapping,
   type ImportField,
   type ImportSummary,
@@ -367,13 +369,23 @@ export function ImportWizard() {
             <Button variant="outline" onClick={() => setStep("map")}>← Kembali ke pemetaan</Button>
             <Button
               onClick={runExecute}
-              disabled={busy || collectionSource.trim() === "" || summary.netInsert === 0}
+              disabled={busy || !canRunImport(summary, collectionSource)}
               className="disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {busy ? "Mengimpor…" : `Konfirmasi & impor ${summary.netInsert.toLocaleString("id-ID")} orang`}
+              {busy
+                ? "Mengimpor…"
+                : `Konfirmasi · ${summary.netInsert.toLocaleString("id-ID")} masuk, ${summary.taggedExisting.toLocaleString("id-ID")} ditandai`}
             </Button>
-            {/* Say WHY the confirm button is inert — never a silent dead button (K-57). */}
-            {collectionSource.trim() === "" && summary.netInsert > 0 && (
+            {/* Say WHY the confirm button is inert — never a silent dead button (K-57). Two distinct
+                reasons, never merged: nothing-to-do (T-67 — a file whose rows are ALL already in the
+                pool still tags them, so the gate is netInsert+taggedExisting, not netInsert), and a
+                missing collection source. */}
+            {importActionableTotal(summary) === 0 && (
+              <span className="font-body text-[12px] text-ink-faint">
+                Tak ada yang berubah — 0 masuk dan 0 ditandai. Tak ada yang bisa dikonfirmasi.
+              </span>
+            )}
+            {importActionableTotal(summary) > 0 && collectionSource.trim() === "" && (
               <span className="font-body text-[12px] text-ink-faint">Isi “sumber pengumpulan” untuk mengaktifkan.</span>
             )}
           </div>
