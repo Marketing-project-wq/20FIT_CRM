@@ -390,6 +390,11 @@ export async function sendCampaign(input: CampaignSendInput, nowIso: string): Pr
       if (error) throw error;
       return count ?? 0;
     },
+    // Rules 8 & 9: the real clock. In the engine's tests this is a recording no-op; here it is the
+    // actual pause that backoff and pacing depend on.
+    async sleep(ms) {
+      if (ms > 0) await new Promise((resolve) => setTimeout(resolve, ms));
+    },
   };
 
   // PRE-RUN bounce guard (5% auto-stop, activated 31 Aug 2026). Hard bounces mostly land LATER via
@@ -408,6 +413,7 @@ export async function sendCampaign(input: CampaignSendInput, nowIso: string): Pr
         deferredDailyLimit: 0,
         stoppedHighBounce: true,
         stoppedConsecutiveFailures: false,
+        retriedSends: 0,
       }
     : await runSend(engineRecipients, ports, input.campaignId, hashIdentityFor, config);
 
@@ -434,6 +440,7 @@ export async function sendCampaign(input: CampaignSendInput, nowIso: string): Pr
         deferred_daily_limit: summary.deferredDailyLimit,
         stopped_high_bounce: summary.stoppedHighBounce,
         stopped_consecutive_failures: summary.stoppedConsecutiveFailures,
+        retried_sends: summary.retriedSends,
         failed: summary.failed,
         failed_total: totalFailed(summary.failed),
       },

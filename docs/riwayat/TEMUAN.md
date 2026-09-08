@@ -2114,3 +2114,59 @@ pernah menempelkan alamat pelanggan ke dalam laporan atau konteks percakapan; ya
 hitungan. Catatan logika: bila klaim "irisan ∩ bounced = 0" benar, pertanyaan basis larut sendiri
 (119 dan 124 memberi angka sama) — tapi klaim itu berasal dari laporan yang sama, jadi tetap harus
 diturunkan ulang.
+
+## T-64 — Tembok 3 September: dugaan rate-limit, dan jalur kirim tanpa jeda apa pun — 8 Sep 2026
+
+**Ini DUGAAN, bukan fakta terverifikasi. Kode status penolakan provider dibuang** (T-41 baru menutup
+lubang itu *setelah* insiden), jadi tak ada yang tahu pasti apakah tembok 3 Sep adalah rate limit,
+batas paket, atau penangguhan. Yang tercoret oleh pemilik: token (sehat, uji hari ini lolos), kuota
+akun, penangguhan. Yang tersisa sebagai hipotesis terbaik: **CRM kena rate limit dan tak pernah
+lepas karena tidak punya jeda** — 2,8 permintaan/detik selama 108 menit tanpa berhenti (18.243 baris
+dalam jendela 07:00–09:00 UTC), sementara uji hari ini (4 email, jeda alami antar klik) langsung
+lolos. Konsisten dengan rate limit; **tidak membuktikannya**.
+
+**Yang dibangun (Bagian A, 8 Sep):** backoff + pacing di mesin kirim (`lib/crm/send-run.ts`).
+- Kesalahan yang bisa diulang (throttle 429/402/503, atau galat jaringan tanpa status HTTP) → jeda
+  lalu coba ulang penerima yang **sama**, maksimum 4 percobaan; backoff eksponensial 1s→2s→4s dengan
+  *equal jitter* (`backoffDelayMs`). Percobaan terakhir gagal → penerima dicatat gagal seperti biasa,
+  `provider_throttled` + kode status tetap tercatat.
+- Penolakan tingkat-penerima (4xx non-throttle, alamat tak sah, hard bounce) **tidak** diulang —
+  mengulangnya hanya mengulang penolakan yang sama.
+- Jeda dasar 500 ms setelah **setiap** percobaan nyata (bukan hanya saat galat). Membatasi laju di
+  ~2 kirim/detik; hari penuh 1.000 kirim ≈ 8–9 menit (dari ≈ 6). Penerima yang di-*skip* / ditunda /
+  sudah-diklaim tidak menyentuh provider dan tidak menambah jeda.
+- **Interaksi dengan tembok 20-gagal-beruntun (rule 7):** penghitung beruntun menghitung *penerima*
+  yang gagal total, dinaikkan **sekali** setelah semua percobaan habis — bukan per percobaan. Jadi
+  temboknya tetap "20 penerima gagal berturut-turut"; backoff hanya **memperlambat** tercapainya
+  (tiap penerima gagal kini memakan hingga ~7 detik jeda), dan satu keberhasilan me-*reset* beruntun.
+  Konsekuensi yang diinginkan: kedipan throttle sesaat yang sembuh oleh retry tak lagi membakar slot
+  dalam hitungan 20 — run berhenti pada tembok sungguhan, bukan pada goyangan.
+- Angka jeda (4 percobaan · 1s base · 500 ms pacing) adalah **usulan**; keduanya knob di
+  `DEFAULT_SEND_CONFIG`, mudah diubah kalau kode status yang sesungguhnya kelak terlihat.
+
+## T-65 — Impor pertama tidak menulis audit, karena auditnya ada di RUTE, bukan di RPC — 8 Sep 2026
+
+Impor pertama dalam sejarah sistem (2 orang, batch `a27e3b8c-…`, 04:16:32 UTC) **tidak
+meninggalkan satu pun baris `audience.imported`** di `crm_audit_log` (dikonfirmasi: 0 total, bukan
+hanya untuk batch itu).
+
+**Sebab:** audit `audience.imported` ditulis oleh **rute** `app/api/audience/import/route.ts:160`,
+sesudah RPC `crm_ingest_csv_people` (yang tidak menulis audit sendiri). Impor itu dijalankan lewat
+panggilan RPC **langsung** (MCP `execute_sql`), melewati rute — jadi tulisannya terjadi, auditnya
+tidak. Tulisan dan auditnya **tidak atomik**: audit hidup di lapisan aplikasi dan bisa dilewati.
+
+**Pelajaran, dan mengapa ia mengubah Bagian B:** audit yang hidup di rute bisa dilewati; audit yang
+hidup **di dalam** RPC `SECURITY DEFINER` tidak bisa — pemanggil mana pun mendapatkannya, atomik
+(K-14). RPC edit profil Bagian B menulis auditnya sendiri, di dalam transaksi yang sama dengan
+tulisannya. Perbaikan yang menggeneralisasi untuk jalur impor — memindahkan audit ke dalam
+`crm_ingest_csv_people` — adalah migrasi tersendiri, **di luar lingkup putaran ini** (LARANGAN:
+migrasi lain), dicatat sebagai tindak lanjut.
+
+**Dua baris yang telanjur masuk:** keduanya nyata dan benar (consent `explicit_opt_in`, batch tag).
+Apakah perlu baris audit susulan adalah **keputusan pemilik** (usulan di laporan penutup, bukan
+diputuskan di sini).
+
+**`full_name` NULL pada kedua baris:** bukan kolom tak terpetakan. JSON yang saya kirim ke RPC
+memuat `"full_name": null` **secara sengaja** — saya tak punya nama yang bisa diverifikasi untuk
+`marketing@20fit.id` / `tifany@20fit.id` dan memilih tidak mengarang. CSV tak dipakai sama sekali;
+tak ada berkas dengan kolom nama yang bisa salah petakan.

@@ -79,6 +79,18 @@ export interface SendConfig {
    *  is not a per-recipient problem, so continuing only writes tens of thousands of identical
    *  failures. Owner-approved 20, deliberately level with minBounceSample. */
   maxConsecutiveFailures: number;
+  /** Rule 8 (BACKOFF, 8 Sep 2026). Max send ATTEMPTS per recipient before it is finally recorded as
+   *  failed. 4 attempts ⇒ up to 3 backoff waits (1s, 2s, 4s jittered) — see backoffDelayMs. Only
+   *  RETRYABLE errors (provider throttle / network) consume an attempt; a recipient-level rejection
+   *  fails on the first try. */
+  maxSendAttempts: number;
+  /** Base for the exponential backoff, in ms. Wait before retry N = base·2^(N-1), then jittered. */
+  backoffBaseMs: number;
+  /** Rule 9 (PACING, 8 Sep 2026). A base pause after EVERY real send attempt, success or failure —
+   *  independent of any error. Sending 2.8/s without a break for 108 min is the behaviour that
+   *  provoked the 3 Sep wall (a hypothesis — the reject status was discarded; see TEMUAN.md). At
+   *  500 ms a run is capped near 2 sends/s; a full 1,000-send day takes ≈ 8–9 min instead of ≈ 6. */
+  interRecipientDelayMs: number;
 }
 
 export const DEFAULT_SEND_CONFIG: SendConfig = {
@@ -86,7 +98,46 @@ export const DEFAULT_SEND_CONFIG: SendConfig = {
   bounceThreshold: 0.05,
   minBounceSample: 20,
   maxConsecutiveFailures: 20,
+  maxSendAttempts: 4,
+  backoffBaseMs: 1000,
+  interRecipientDelayMs: 500,
 };
+
+/**
+ * Which thrown send errors are worth RETRYING the SAME recipient for (rule 8). Two kinds, and only
+ * two:
+ *   1. The provider throttling US — a THROTTLE_STATUS (429/402/503). Retrying after a pause is the
+ *      whole point: on 3 Sep the provider accepted 124 then refused 18,119 with no pause between.
+ *   2. A network-level throw with NO HTTP status — ECONNRESET/ETIMEDOUT/ENOTFOUND/… or fetch's bare
+ *      "fetch failed" TypeError. The request never reached a verdict; a retry is honest.
+ * Everything WITH a non-throttle HTTP status is a RECIPIENT-level answer (invalid address, hard
+ * bounce, 4xx rejection) — retrying it just repeats the same rejection, so it fails on attempt 1.
+ */
+export function isRetryableSendError(err: unknown): boolean {
+  const e = (err ?? {}) as { status?: unknown; code?: unknown; cause?: { code?: unknown } | null; message?: unknown };
+  if (typeof e.status === "number" && Number.isFinite(e.status)) {
+    return THROTTLE_STATUSES.includes(e.status); // a status present but non-throttle ⇒ recipient-level ⇒ no retry
+  }
+  const codeStr = String((e.cause?.code ?? e.code) ?? "").toUpperCase();
+  if (codeStr && ["ECONNRESET", "ETIMEDOUT", "ENOTFOUND", "EAI_AGAIN", "ECONNREFUSED", "EPIPE", "UND_ERR"].some((c) => codeStr.includes(c))) {
+    return true;
+  }
+  const msg = String(e.message ?? "").toLowerCase();
+  return msg.includes("fetch failed") || msg.includes("network");
+}
+
+/**
+ * Backoff wait (ms) before the retry that FOLLOWS a failed attempt number `attempt` (1-based). Base
+ * doubles each time — 1s, 2s, 4s at backoffBaseMs=1000 — with EQUAL JITTER: half fixed, half random
+ * in [0, half]. Jitter spreads retries so a fleet of recipients throttled at once do not all retry
+ * on the same tick and reproduce the burst. `rng` is injected so tests are deterministic (rng=()=>0
+ * ⇒ the minimum, half the base). The final attempt has no wait after it — 4 attempts ⇒ 3 waits.
+ */
+export function backoffDelayMs(attempt: number, config: SendConfig, rng: () => number = Math.random): number {
+  const full = config.backoffBaseMs * 2 ** (attempt - 1);
+  const half = full / 2;
+  return Math.round(half + rng() * half);
+}
 
 export interface SendRecipient {
   customerId: string;
@@ -150,6 +201,9 @@ export interface SendPorts {
   record(idempotencyKey: string, outcome: RecordOutcome): Promise<void>;
   /** Rule 3: today's already-sent count, read FROM THE LOG. */
   todaySentCount(): Promise<number>;
+  /** Rules 8 & 9: pause execution `ms` milliseconds. A PORT (not a bare setTimeout) so backoff and
+   *  pacing are provable in a unit test with zero real waiting — the fake records the calls. */
+  sleep(ms: number): Promise<void>;
 }
 
 export interface SendSummary {
@@ -162,6 +216,10 @@ export interface SendSummary {
   stoppedHighBounce: boolean;
   /** Rule 7: the run halted itself after `maxConsecutiveFailures` failures in a row. */
   stoppedConsecutiveFailures: boolean;
+  /** Rule 8: how many retry waits the backoff performed across the whole run. A run with a healthy
+   *  provider is 0; a non-zero value is the signal that would have made the 3 Sep throttling visible
+   *  the same day instead of hiding as 18k identical failures. */
+  retriedSends: number;
 }
 
 /** The cause with the most failures, or null when there were none. Used to label a halted run with
@@ -324,6 +382,7 @@ export async function runSend(
   campaignId: string,
   hashIdentityFor: (r: SendRecipient) => string,
   config: SendConfig = DEFAULT_SEND_CONFIG,
+  rng: () => number = Math.random,
 ): Promise<SendSummary> {
   const summary: SendSummary = {
     attempted: 0,
@@ -334,6 +393,7 @@ export async function runSend(
     deferredDailyLimit: 0,
     stoppedHighBounce: false,
     stoppedConsecutiveFailures: false,
+    retriedSends: 0,
   };
 
   const alreadyToday = await ports.todaySentCount();
@@ -386,14 +446,40 @@ export async function runSend(
     }
 
     summary.attempted++;
-    try {
-      const res = await ports.send(r, message);
-      await ports.record(key, { status: "sent", providerMessageId: res.providerMessageId });
-      summary.sent++;
-      budget--;
-      consecutiveFailures = 0; // rule 7: the streak is CONSECUTIVE — one success clears it.
-    } catch (err) {
-      // Rule 5: differentiated cause; one failure does NOT stop the rest.
+    // Rule 8 (BACKOFF). Retry the SAME recipient on a retryable error (provider throttle / network),
+    // pausing between tries; give up after config.maxSendAttempts and record the failure as usual.
+    //
+    // HOW THIS INTERACTS WITH RULE 7 (the 20-in-a-row wall): the consecutive-failure counter counts
+    // fully-FAILED RECIPIENTS, incremented ONCE here after all retries are exhausted — never per
+    // attempt. So the wall is still "20 recipients failed in a row", and backoff only DELAYS reaching
+    // it (each failed recipient now costs up to ~7 s of waits). That is the point: a brief throttle
+    // blip that a retry clears no longer burns a slot in the streak, so the run stops on a true wall,
+    // not on a wobble. A single success anywhere resets the streak to 0, exactly as before.
+    let err: unknown = null;
+    let delivered = false;
+    for (let attempt = 1; attempt <= config.maxSendAttempts; attempt++) {
+      try {
+        const res = await ports.send(r, message);
+        await ports.record(key, { status: "sent", providerMessageId: res.providerMessageId });
+        summary.sent++;
+        budget--;
+        consecutiveFailures = 0; // rule 7: the streak is CONSECUTIVE — one success clears it.
+        delivered = true;
+        break;
+      } catch (e) {
+        err = e;
+        if (isRetryableSendError(e) && attempt < config.maxSendAttempts) {
+          summary.retriedSends++;
+          await ports.sleep(backoffDelayMs(attempt, config, rng)); // wait, then retry the SAME recipient
+          continue;
+        }
+        break; // non-retryable, or attempts exhausted → fall through to the single failure record
+      }
+    }
+
+    if (!delivered) {
+      // Rule 5: differentiated cause; one failure does NOT stop the rest. Recorded ONCE per recipient
+      // (after all retries), never once per attempt.
       const cause = classifySendFailure(err);
       const status = cause === "hard_bounce" ? "bounced" : "failed";
       // PII-free scalar only: HTTP status, else a network/library code of a safe shape, else null.
@@ -405,14 +491,18 @@ export async function runSend(
       if (shouldStopForBounces(hardBounces, summary.attempted, config.bounceThreshold, config.minBounceSample)) {
         summary.stoppedHighBounce = true;
       }
-      // Rule 7: auto-stop on a WALL. N failures in a row is a provider/config problem, not N
-      // recipient problems; carrying on only writes thousands of identical rows (T-41's run wrote
-      // 18,119 of them over 1h47m). The caller records the halt on the run itself.
+      // Rule 7: auto-stop on a WALL — see the note above the retry loop for how backoff changes the
+      // TIMING of this but not the meaning.
       consecutiveFailures++;
       if (consecutiveFailures >= config.maxConsecutiveFailures) {
         summary.stoppedConsecutiveFailures = true;
       }
     }
+
+    // Rule 9 (PACING). A base pause after every real send attempt — success or failure — so the run
+    // never dead-sprints at the provider. Applied only here, where a request actually hit the API:
+    // suppressed / deferred / already-claimed recipients above `continue` past this and cost nothing.
+    if (config.interRecipientDelayMs > 0) await ports.sleep(config.interRecipientDelayMs);
   }
 
   return summary;

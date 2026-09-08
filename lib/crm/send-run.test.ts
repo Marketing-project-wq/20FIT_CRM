@@ -10,6 +10,8 @@ import {
   totalFailed,
   dominantFailureCause,
   emptySendFailureCounts,
+  isRetryableSendError,
+  backoffDelayMs,
   DEFAULT_SEND_CONFIG,
   type SendPorts,
   type SendRecipient,
@@ -28,8 +30,10 @@ class FakeStore implements SendPorts {
     code?: string | number | null;
   }>();
   suppressed = new Set<string>();
-  sentCustomers: string[] = []; // every customerId send() was actually called for, in order
-  failFor = new Map<string, unknown>(); // customerId -> error to throw from send()
+  sentCustomers: string[] = []; // every customerId a send() SUCCEEDED for, in order
+  sendAttempts: string[] = []; // every customerId send() was ENTERED for (success or throw) — counts retries
+  failFor = new Map<string, unknown>(); // customerId -> error thrown from send() EVERY time
+  failNTimesFor = new Map<string, { err: unknown; remaining: number }>(); // throw N times, then succeed
   badRenderFor = new Set<string>(); // customerId -> render a message with NO unsubscribe url
   today = 0;
 
@@ -55,8 +59,14 @@ class FakeStore implements SendPorts {
     };
   }
   async send(r: SendRecipient): Promise<{ providerMessageId: string | null }> {
-    const err = this.failFor.get(r.customerId);
-    if (err) throw err;
+    this.sendAttempts.push(r.customerId);
+    const always = this.failFor.get(r.customerId);
+    if (always) throw always;
+    const transient = this.failNTimesFor.get(r.customerId);
+    if (transient && transient.remaining > 0) {
+      transient.remaining--;
+      throw transient.err;
+    }
     this.sentCustomers.push(r.customerId);
     return { providerMessageId: `pm-${r.customerId}` };
   }
@@ -74,6 +84,12 @@ class FakeStore implements SendPorts {
   }
   async todaySentCount(): Promise<number> {
     return this.today;
+  }
+  // Records every backoff/pacing pause WITHOUT waiting, so timing rules are provable in milliseconds
+  // of test time. `sleeps` is every pause; the sub-counts let a test separate backoff from pacing.
+  sleeps: number[] = [];
+  async sleep(ms: number): Promise<void> {
+    this.sleeps.push(ms);
   }
 }
 
@@ -461,5 +477,94 @@ describe("send-run — consecutive-failure auto-stop", () => {
 
   it("DEFAULT_SEND_CONFIG carries the owner-approved threshold of 20", () => {
     expect(DEFAULT_SEND_CONFIG.maxConsecutiveFailures).toBe(20);
+  });
+});
+
+describe("send-run — rule 8 backoff + rule 9 pacing (8 Sep 2026)", () => {
+  const RNG0 = () => 0; // deterministic: backoffDelayMs → half the base (500, 1000, 2000)
+
+  it("throttle ONCE → the same recipient succeeds on the second attempt", async () => {
+    const store = new FakeStore();
+    store.failNTimesFor.set("c0", { err: { status: 429 }, remaining: 1 });
+    const s = await runSend(mk(1), store, "camp", hashFor, DEFAULT_SEND_CONFIG, RNG0);
+    expect(s.sent).toBe(1);
+    expect(totalFailed(s.failed)).toBe(0);
+    expect(s.retriedSends).toBe(1);
+    expect(store.sendAttempts.filter((c) => c === "c0")).toHaveLength(2); // failed once, then sent
+    expect(store.rows.get("camp:c0:email")?.status).toBe("sent");
+    // one backoff wait (500 at rng=0) BEFORE the retry, then one pacing pause (500) after success.
+    expect(store.sleeps).toEqual([500, 500]);
+  });
+
+  it("throttle ALWAYS → fails after max attempts, recorded provider_throttled (not a recipient fault)", async () => {
+    const store = new FakeStore();
+    store.failFor.set("c0", { status: 503 }); // provider capacity — throttle status, thrown every time
+    const s = await runSend(mk(1), store, "camp", hashFor, DEFAULT_SEND_CONFIG, RNG0);
+    expect(s.sent).toBe(0);
+    expect(s.failed.provider_throttled).toBe(1);
+    expect(s.retriedSends).toBe(3); // 4 attempts ⇒ 3 retries
+    expect(store.sendAttempts.filter((c) => c === "c0")).toHaveLength(4);
+    const row = store.rows.get("camp:c0:email");
+    expect(row?.status).toBe("failed");
+    expect(row?.failureCause).toBe("provider_throttled");
+    expect(row?.code).toBe("503"); // the PII-free status still recorded
+    // 3 backoff waits (500,1000,2000) then one pacing pause (500).
+    expect(store.sleeps).toEqual([500, 1000, 2000, 500]);
+  });
+
+  it("backoff does NOT change the outcome for a NON-throttle failure — no retry, one attempt", async () => {
+    const store = new FakeStore();
+    store.failFor.set("c0", { status: 422, message: "invalid email address" });
+    const s = await runSend(mk(1), store, "camp", hashFor, DEFAULT_SEND_CONFIG, RNG0);
+    expect(s.failed.invalid_address).toBe(1);
+    expect(s.retriedSends).toBe(0);
+    expect(store.sendAttempts.filter((c) => c === "c0")).toHaveLength(1); // recipient-level → tried once
+    // no backoff wait; only the pacing pause after the (final) attempt.
+    expect(store.sleeps).toEqual([500]);
+  });
+
+  it("a network throw (no HTTP status) IS retried; a bare 4xx rejection is NOT", () => {
+    expect(isRetryableSendError({ cause: { code: "ECONNRESET" } })).toBe(true);
+    expect(isRetryableSendError({ message: "fetch failed" })).toBe(true);
+    expect(isRetryableSendError({ status: 429 })).toBe(true);
+    expect(isRetryableSendError({ status: 402 })).toBe(true);
+    expect(isRetryableSendError({ status: 400 })).toBe(false); // has a status, not throttle ⇒ recipient-level
+    expect(isRetryableSendError({ status: 550, message: "hard bounce" })).toBe(false);
+  });
+
+  it("backoffDelayMs doubles per attempt and stays within [half, full] with jitter", () => {
+    expect(backoffDelayMs(1, DEFAULT_SEND_CONFIG, () => 0)).toBe(500);
+    expect(backoffDelayMs(1, DEFAULT_SEND_CONFIG, () => 1)).toBe(1000);
+    expect(backoffDelayMs(2, DEFAULT_SEND_CONFIG, () => 0)).toBe(1000);
+    expect(backoffDelayMs(3, DEFAULT_SEND_CONFIG, () => 0)).toBe(2000);
+    const mid = backoffDelayMs(1, DEFAULT_SEND_CONFIG, () => 0.5);
+    expect(mid).toBeGreaterThanOrEqual(500);
+    expect(mid).toBeLessThanOrEqual(1000);
+  });
+
+  it("a transient throttle that a retry clears does NOT burn a slot in the 20-in-a-row wall", async () => {
+    // 25 recipients, EACH throttled once then delivered. Old behaviour would be irrelevant (they all
+    // succeed), but this proves the streak never accumulates across recipients cleared by retry.
+    const store = new FakeStore();
+    for (let i = 0; i < 25; i++) store.failNTimesFor.set(`c${i}`, { err: { status: 429 }, remaining: 1 });
+    const s = await runSend(mk(25), store, "camp", hashFor, DEFAULT_SEND_CONFIG, RNG0);
+    expect(s.sent).toBe(25);
+    expect(s.retriedSends).toBe(25);
+    expect(s.stoppedConsecutiveFailures).toBe(false);
+  });
+
+  it("pacing pauses once per REAL attempt only — suppressed/deferred recipients cost no pause", async () => {
+    const store = new FakeStore();
+    store.suppressed.add("c1"); // skipped_suppressed → no provider call, no pacing pause
+    const s = await runSend(mk(3), store, "camp", hashFor, DEFAULT_SEND_CONFIG, RNG0);
+    expect(s.sent).toBe(2);
+    expect(s.skippedSuppressed).toBe(1);
+    expect(store.sleeps).toEqual([500, 500]); // two sends → two pacing pauses; the skip added none
+  });
+
+  it("DEFAULT config exposes the backoff + pacing knobs at their proposed values", () => {
+    expect(DEFAULT_SEND_CONFIG.maxSendAttempts).toBe(4);
+    expect(DEFAULT_SEND_CONFIG.backoffBaseMs).toBe(1000);
+    expect(DEFAULT_SEND_CONFIG.interRecipientDelayMs).toBe(500);
   });
 });
