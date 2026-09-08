@@ -112,3 +112,46 @@ describe("describeProposal / proposalIsEmpty", () => {
     expect(describeProposal(p)).toContain("seluruh pool");
   });
 });
+
+// ── TUGAS D: tags map ONLY to the real pool vocabulary; an unknown tag is dropped, never guessed ──
+describe("sanitizeAssistOutput — tag vocabulary + preserved refusal", () => {
+  const POOL = ["event:sportfest-2-2026-02", "event:platarox-2026-07", "peran:peserta"];
+
+  it("keeps proposed tags that ARE in the pool (tagsAny + tagsAll)", () => {
+    const p = sanitizeAssistOutput(
+      { tagsAny: ["event:sportfest-2-2026-02", "event:platarox-2026-07"], tagsAll: ["peran:peserta"] },
+      { canViewHealth: true, allowedTags: POOL },
+    );
+    expect(p.criteria.tagsAny).toEqual(["event:sportfest-2-2026-02", "event:platarox-2026-07"]);
+    expect(p.criteria.tagsAll).toEqual(["peran:peserta"]);
+    expect(proposalIsEmpty(p)).toBe(false);
+  });
+
+  it("DROPS a tag not in the pool — and the proposal is then empty (refusal preserved, not guessed)", () => {
+    // The model invented a plausible-looking but non-existent event. It must NOT be kept, and must
+    // NOT be bent to a neighbour like sportfest-2. Nothing else mapped → proposalIsEmpty → the route
+    // returns "couldn't map", exactly the refusal the owner asked to keep.
+    const p = sanitizeAssistOutput(
+      { tagsAny: ["event:iss-jhr-2026"] },
+      { canViewHealth: true, allowedTags: POOL },
+    );
+    expect(p.criteria.tagsAny).toEqual([]);
+    expect(proposalIsEmpty(p)).toBe(true);
+  });
+
+  it("keeps the valid tags and drops only the unknown ones in a mixed proposal", () => {
+    const p = sanitizeAssistOutput(
+      { tagsAny: ["event:sportfest-2-2026-02", "event:does-not-exist"] },
+      { canViewHealth: true, allowedTags: POOL },
+    );
+    expect(p.criteria.tagsAny).toEqual(["event:sportfest-2-2026-02"]);
+  });
+
+  it("still drops a malformed (non-operator) tag by shape even before the pool check", () => {
+    const p = sanitizeAssistOutput(
+      { tagsAny: ["not a tag", "EVENT:UPPER", "event:sportfest-2-2026-02"] },
+      { canViewHealth: true, allowedTags: POOL },
+    );
+    expect(p.criteria.tagsAny).toEqual(["event:sportfest-2-2026-02"]);
+  });
+});

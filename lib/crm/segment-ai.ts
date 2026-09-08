@@ -3,6 +3,7 @@ import { AUDIENCE_UNITS, AUDIENCE_SEGMENTS } from "./audience-constants";
 import { ECOSYSTEM_UNITS } from "./engagement-constants";
 import { STAGING_RFM_VALUES, STAGING_PROGRAMS } from "./staging-constants";
 import { sanitizeAssistOutput, type AssistProposal } from "./segment-ai-shared";
+import { groupTags, namespaceLabel, tagValueLabel } from "./tags";
 import type { Lang } from "@/lib/i18n";
 
 /**
@@ -38,7 +39,26 @@ const DEFAULT_MODEL = "deepseek/deepseek-v4-flash-0731";
  */
 const AI_TIMEOUT_MS = 25_000;
 
-function buildSystemPrompt(lang: Lang): string {
+/** The tag vocabulary section — the EXACT operator tags present in the pool, grouped per namespace
+ *  with their human labels. The model may map an event/role name ONLY to a tag in this list; anything
+ *  else goes to `unexpressible`. Empty pool → an explicit "no tags" line so the model can't invent. */
+function tagVocabSection(availableTags: readonly string[]): string {
+  if (availableTags.length === 0) {
+    return "- tagsAny / tagsAll: array of tag. TIDAK ADA tag di pool saat ini — selalu kosongkan keduanya, dan kalau permintaan menyebut acara/peran, tulis di unexpressible.";
+  }
+  const grouped = groupTags(availableTags);
+  const lines = grouped.operator.map((g) => {
+    const values = g.tags.map((t) => `"${t}" (${tagValueLabel(t, "id")})`).join(", ");
+    return `    ${g.namespace} — ${namespaceLabel(g.namespace, "id")}: ${values}`;
+  });
+  return [
+    "- tagsAny: array of tag — cocok kalau orang punya SALAH SATU tag (mis. ikut event A ATAU B). tagsAll: array of tag — HARUS punya SEMUA (mis. peran race DAN wave pagi). [] kalau tak ada.",
+    "  Tag yang BOLEH dipakai (HANYA ini — salin persis, jangan mengarang):",
+    ...lines,
+  ].join("\n");
+}
+
+function buildSystemPrompt(lang: Lang, availableTags: readonly string[]): string {
   const programs = STAGING_PROGRAMS.map((p) => `${p.key}${p.clinical ? " (KLINIS)" : ""} = "${p.label}"`).join(", ");
   // One prompt, one vocabulary — the user may write in any language; only the language the model
   // REPLIES in (notes + unexpressible reasons) follows the user's chosen UI language.
@@ -57,9 +77,11 @@ function buildSystemPrompt(lang: Lang): string {
     `- srcProgram: array of key dari: ${programs}. Boleh beberapa key sekaligus (mis. peserta Half ATAU Double → dua-duanya), atau [] kalau tak ada.`,
     "- joinedWithinDays: integer (hari) — bergabung ≤ N hari lalu (untuk sambutan). Berdasarkan aktivitas NYATA.",
     "- inactiveForDays: integer (hari) — tidak aktif ≥ N hari (untuk aktivasi ulang). Berdasarkan aktivitas NYATA.",
+    tagVocabSection(availableTags),
     "- unexpressible: array string. notes: string pendek.",
     "",
     "ATURAN KETAT:",
+    "- Tag: petakan nama acara/peran HANYA ke tag di daftar tag di atas (cocokkan berdasarkan makna, mis. \"sportfest 2\" → \"event:sportfest-2-2026-02\"). Kalau acara/peran yang diminta TIDAK ADA di daftar, JANGAN menebak tag terdekat — tulis di unexpressible bahwa tag itu tak ada di pool. Menebak segmen jauh lebih buruk daripada mengaku tidak tahu.",
     "- JANGAN mengarang field/nilai di luar daftar tertutup di atas. Kalau ragu, kosongkan dan jelaskan di unexpressible.",
     "- Kriteria waktu HANYA joinedWithinDays / inactiveForDays (dari aktivitas nyata). JANGAN mengarang kriteria waktu lain.",
     "- Program pasien klinik (clinic_2024_2025 / clinic_2025_2026) dan srcClinicPatient/srcClinicTxn bersifat klinis; boleh diusulkan, tetapi server yang menentukan izinnya.",
@@ -85,7 +107,7 @@ function extractJson(text: string): unknown {
 
 export async function proposeSegment(
   rawText: string,
-  opts: { canViewHealth: boolean; lang: Lang },
+  opts: { canViewHealth: boolean; lang: Lang; availableTags: readonly string[] },
 ): Promise<AssistProposal> {
   const text = String(rawText ?? "").trim().slice(0, MAX_INPUT);
   if (text === "") throw new AiUnavailableError("empty request");
@@ -112,7 +134,7 @@ export async function proposeSegment(
         temperature: 0,
         response_format: { type: "json_object" },
         messages: [
-          { role: "system", content: buildSystemPrompt(opts.lang) },
+          { role: "system", content: buildSystemPrompt(opts.lang, opts.availableTags) },
           { role: "user", content: text },
         ],
       }),
@@ -131,6 +153,8 @@ export async function proposeSegment(
   const reply = body?.choices?.[0]?.message?.content ?? "";
   if (!reply) throw new AiUnavailableError("empty model reply");
 
-  // Untrusted model output → the pure sanitizer is the security boundary.
-  return sanitizeAssistOutput(extractJson(reply), opts);
+  // Untrusted model output → the pure sanitizer is the security boundary. allowedTags makes the
+  // sanitizer drop any proposed tag NOT in the pool — the refusal survives even a model that ignores
+  // the prompt and invents a tag.
+  return sanitizeAssistOutput(extractJson(reply), { canViewHealth: opts.canViewHealth, allowedTags: opts.availableTags });
 }

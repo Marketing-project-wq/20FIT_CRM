@@ -14,6 +14,7 @@
 import { SEGMENT_NULL, capFilterValue, FILTER_VALUE_MAX } from "./audience-constants";
 import { isEcosystemUnit, isEcosystemProduct } from "./engagement-constants";
 import { isRfmValue, programByKey } from "./staging-constants";
+import { isOperatorTag } from "./tags";
 
 export type RevenueCriterion = "all" | "has" | "none" | "negative";
 
@@ -91,6 +92,18 @@ export interface SegmentCriteria {
   joinedWithinDays: number | null;
   inactiveForDays: number | null;
   /**
+   * TAG criteria (TUGAS D, 8 Sep 2026). Operator tags live on master_customer.tags (a text[] with a
+   * GIN index, idx_master_customer_tags) — NOT in the mirror, and NOT needing one: the segment count
+   * filters master_customer directly (applyCriteria), so a tag written by an import is segmentable
+   * IMMEDIATELY, with no wait for the 20:00 mirror refresh. `tagsAny` = overlap (`&&`): "joined event
+   * A OR B". `tagsAll` = contains (`@>`): "a race participant AND in the morning wave". Both are
+   * arrays OR/AND'd WITHIN themselves and AND'd across with the other criteria. Measured over 84.904
+   * rows: tagsAny ~6ms, tagsAll ~5ms warm (GIN Bitmap Index Scan). Empty array = not applied. Values
+   * are validated operator tags (isOperatorTag) — never guessed; an unknown tag is dropped, not run.
+   */
+  tagsAny: string[];
+  tagsAll: string[];
+  /**
    * EXCLUSION (Track A). The builder is otherwise AND-of-positive-presence; these NEGATE a presence
    * dimension — "has event engagement but is NOT a member and has NEVER been to arena". Each set
    * exclusion resolves to a customer_id set and is SUBTRACTED from the result (removing the UNION of
@@ -106,10 +119,19 @@ export interface SegmentCriteria {
     srcHyrox: boolean;
     srcMy20fit: boolean;
     srcRecency: boolean;
+    /** "NOT carrying any of these tags" — negated overlap on master_customer.tags. Applied INLINE in
+     *  applyCriteria (a master column), not via the id-set subtraction the other exclusions use. */
+    tagsAny: string[];
   };
 }
 
-/** Whether any exclusion is active — used to decide if the resolver must subtract sets. */
+/** Max tags in ONE tag criterion. Generous (an operator may segment across many events at once) but
+ *  bounded — the array becomes a PostgREST `tags=ov.{…}` operand and lands in audit metadata. */
+export const MAX_TAG_VALUES = 50;
+
+/** Whether any ID-SET exclusion is active — used to decide if the resolver must subtract sets. Tag
+ *  exclusion is deliberately NOT here: it is a master_customer column, applied inline in applyCriteria
+ *  (a negated overlap), so it needs no id-set subtraction and must not force the whole-pool base path. */
 export function hasExclusion(c: SegmentCriteria): boolean {
   const e = c.exclude;
   return !!e && (e.ecoUnit != null || e.srcArena || e.srcGym || e.srcHyrox || e.srcMy20fit || e.srcRecency);
@@ -153,6 +175,8 @@ export const EMPTY_CRITERIA: SegmentCriteria = {
   srcProgram: [],
   joinedWithinDays: null,
   inactiveForDays: null,
+  tagsAny: [],
+  tagsAll: [],
   exclude: {
     ecoUnit: null,
     srcArena: false,
@@ -160,6 +184,7 @@ export const EMPTY_CRITERIA: SegmentCriteria = {
     srcHyrox: false,
     srcMy20fit: false,
     srcRecency: false,
+    tagsAny: [],
   },
 };
 
@@ -185,6 +210,8 @@ export function activeCriteriaCount(c: SegmentCriteria): number {
   if (c.srcProgram.length) n++;
   if (c.joinedWithinDays != null) n++;
   if (c.inactiveForDays != null) n++;
+  if (c.tagsAny.length) n++;
+  if (c.tagsAll.length) n++;
   // Exclusions narrow the pool too — an exclusion-only segment is NOT "the whole pool".
   const e = c.exclude;
   if (e) {
@@ -194,6 +221,7 @@ export function activeCriteriaCount(c: SegmentCriteria): number {
     if (e.srcHyrox) n++;
     if (e.srcMy20fit) n++;
     if (e.srcRecency) n++;
+    if (e.tagsAny?.length) n++;
   }
   return n;
 }
@@ -227,6 +255,10 @@ export function parseCriteria(raw: unknown): SegmentCriteria {
   // a day-count, resolved against real activity timestamps server-side.
   const joinedWithinDays = clampDays(o.joinedWithinDays);
   const inactiveForDays = clampDays(o.inactiveForDays);
+  // TAG criteria: each value must be a well-formed operator tag (isOperatorTag) — an unknown or
+  // malformed tag is DROPPED, never guessed (the AI assistant's refusal depends on this too).
+  const tagsAny = parseTagList(o.tagsAny);
+  const tagsAll = parseTagList(o.tagsAll);
   // EXCLUSION: same closed validation as the positive twins. ecoUnit must be a known eco unit;
   // the source flags are booleans. Clinical dimensions are intentionally NOT negatable here.
   const ex = (o.exclude ?? {}) as Record<string, unknown>;
@@ -237,6 +269,7 @@ export function parseCriteria(raw: unknown): SegmentCriteria {
     srcHyrox: ex.srcHyrox === true,
     srcMy20fit: ex.srcMy20fit === true,
     srcRecency: ex.srcRecency === true,
+    tagsAny: parseTagList(ex.tagsAny),
   };
   return {
     unit,
@@ -258,8 +291,25 @@ export function parseCriteria(raw: unknown): SegmentCriteria {
     srcProgram,
     joinedWithinDays,
     inactiveForDays,
+    tagsAny,
+    tagsAll,
     exclude,
   };
+}
+
+/** Parse an untrusted tag list into clean, de-duplicated, VALID operator tags. Unknown/malformed tags
+ *  are dropped (never guessed); order preserved; capped at MAX_TAG_VALUES. Accepts a legacy bare
+ *  string (wrapped) for symmetry with the other multi-value parsers. */
+function parseTagList(v: unknown): string[] {
+  const arr = Array.isArray(v) ? v : typeof v === "string" ? [v] : [];
+  const out: string[] = [];
+  for (const item of arr) {
+    if (typeof item !== "string") continue;
+    const tag = item.trim().toLowerCase();
+    if (isOperatorTag(tag) && !out.includes(tag)) out.push(tag);
+    if (out.length >= MAX_TAG_VALUES) break;
+  }
+  return out;
 }
 
 /** Max values allowed in ONE multi-value criterion (RFM / program). Each value costs one resolver

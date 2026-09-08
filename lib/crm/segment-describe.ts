@@ -1,4 +1,5 @@
 import type { SegmentCriteria } from "./segment";
+import { tagValueLabel } from "./tags";
 
 /**
  * Plain-language description of the PRESENCE part of a segment (ecosystem + source flags, positive
@@ -31,6 +32,15 @@ const SRC: Record<string, { id: string; en: string }> = {
   srcRecency: { id: "beraktivitas nyata di aplikasi", en: "real app activity" },
 };
 
+/** Render a tag list with its human labels (reusing tagValueLabel — never a second label map),
+ *  capped so a big multi-select stays one readable clause. */
+function tagList(tags: string[], joiner: string, lang: Lang, more: (n: number) => string): string {
+  const MAX = 4;
+  const labels = tags.slice(0, MAX).map((t) => tagValueLabel(t, lang));
+  const head = labels.join(joiner);
+  return tags.length > MAX ? `${head}${joiner}${more(tags.length - MAX)}` : head;
+}
+
 /** The positive presence phrases (has X). */
 function positiveParts(c: SegmentCriteria, lang: Lang): string[] {
   const parts: string[] = [];
@@ -40,6 +50,15 @@ function positiveParts(c: SegmentCriteria, lang: Lang): string[] {
   if (c.srcRecency) parts.push(lang === "id" ? SRC.srcRecency.id : SRC.srcRecency.en);
   if (c.srcArena) parts.push(lang === "id" ? SRC.srcArena.id : SRC.srcArena.en);
   if (c.srcGym) parts.push(lang === "id" ? SRC.srcGym.id : SRC.srcGym.en);
+  // TAG criteria (TUGAS D). tagsAny reads "bertag salah satu: A atau B"; tagsAll "bertag semua: A dan B".
+  if (c.tagsAny.length) {
+    const list = tagList(c.tagsAny, lang === "id" ? " atau " : " or ", lang, (n) => (lang === "id" ? `+${n} lainnya` : `+${n} more`));
+    parts.push(lang === "id" ? `bertag salah satu: ${list}` : `tagged any of: ${list}`);
+  }
+  if (c.tagsAll.length) {
+    const list = tagList(c.tagsAll, lang === "id" ? " dan " : " and ", lang, (n) => (lang === "id" ? `+${n} lainnya` : `+${n} more`));
+    parts.push(lang === "id" ? `bertag semua: ${list}` : `tagged all of: ${list}`);
+  }
   return parts;
 }
 
@@ -55,6 +74,10 @@ function excludeParts(c: SegmentCriteria, lang: Lang): string[] {
   if (e.srcHyrox) parts.push(lang === "id" ? "belum pernah ikut Hyrox" : "never did Hyrox");
   if (e.srcMy20fit) parts.push(lang === "id" ? "belum punya akun aplikasi" : "has no app account");
   if (e.srcRecency) parts.push(lang === "id" ? "tak ada aktivitas nyata di aplikasi" : "no real app activity");
+  if (e.tagsAny?.length) {
+    const list = tagList(e.tagsAny, lang === "id" ? " atau " : " or ", lang, (n) => (lang === "id" ? `+${n} lainnya` : `+${n} more`));
+    parts.push(lang === "id" ? `tidak bertag: ${list}` : `not tagged: ${list}`);
+  }
   return parts;
 }
 

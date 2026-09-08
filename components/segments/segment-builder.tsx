@@ -16,6 +16,7 @@ import { Why } from "@/components/ui/why";
 import { useI18n } from "@/components/i18n/lang-provider";
 import { formatCount, formatPct, formatDateTime } from "@/lib/i18n";
 import { QuickSegments } from "@/components/segments/quick-segments";
+import { TagCheckboxGroups } from "@/components/segments/tag-picker";
 
 interface Counts {
   matched: number;
@@ -84,7 +85,7 @@ function TimeCriteria({
   );
 }
 
-export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, embedded = false, onComputed, returnTo }: { cityFillPct: number; cityFilled: number; total: number; canViewHealth: boolean; embedded?: boolean; onComputed?: (counts: { matched: number; contactableMarketing: number } | null) => void; returnTo?: string | null }) {
+export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, availableTags = [], embedded = false, onComputed, returnTo }: { cityFillPct: number; cityFilled: number; total: number; canViewHealth: boolean; availableTags?: string[]; embedded?: boolean; onComputed?: (counts: { matched: number; contactableMarketing: number } | null) => void; returnTo?: string | null }) {
   const { lang, t } = useI18n();
   const router = useRouter();
   const [c, setC] = useState<SegmentCriteria>(EMPTY_CRITERIA);
@@ -100,6 +101,7 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiProposal, setAiProposal] = useState<AssistProposal | null>(null);
+  const [tagMode, setTagMode] = useState<"any" | "all">("any");
 
   // Save the DEFINITION (criteria + validated tree), never a member list (K-40). Enabled only after
   // a compute, so a saved segment is one whose size the operator has just seen.
@@ -134,6 +136,26 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
     setCounts(null);
   }
 
+  // TAG picker (TUGAS D). One positive selection with a mode: "any" → tagsAny (overlap), "all" →
+  // tagsAll (contains). Kept in one bucket at a time so the two array operators never AND into a
+  // confusing double-filter. Exclude tags are a separate array (exclude.tagsAny).
+  const positiveTags = tagMode === "all" ? c.tagsAll : c.tagsAny;
+  function togglePositiveTag(tag: string) {
+    const key = tagMode === "all" ? "tagsAll" : "tagsAny";
+    const cur = c[key];
+    set(key, cur.includes(tag) ? cur.filter((x) => x !== tag) : [...cur, tag]);
+  }
+  function changeTagMode(mode: "any" | "all") {
+    setTagMode(mode);
+    // Move the current selection into the chosen bucket and clear the other.
+    setC((prev) => ({ ...prev, tagsAny: mode === "any" ? positiveTags : [], tagsAll: mode === "all" ? positiveTags : [] }));
+    setCounts(null);
+  }
+  function toggleExcludeTag(tag: string) {
+    const cur = c.exclude.tagsAny;
+    setEx("tagsAny", cur.includes(tag) ? cur.filter((x) => x !== tag) : [...cur, tag]);
+  }
+
   function setRowsAndClear(r: Row[]) {
     setRows(r);
     setCounts(null); // filter changed -> stale result
@@ -158,6 +180,8 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
       srcProgram: c.srcProgram,
       joinedWithinDays: c.joinedWithinDays,
       inactiveForDays: c.inactiveForDays,
+      tagsAny: c.tagsAny,
+      tagsAll: c.tagsAll,
       exclude: c.exclude,
     };
   }
@@ -195,6 +219,8 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
   function applyProposal(p: AssistProposal) {
     setRows(p.conditions.map((cnd) => ({ t: "cond", field: cnd.field, value: cnd.value })));
     setC((prev) => ({ ...prev, ...p.criteria }));
+    // Keep the tag-mode toggle in step with what the assistant proposed (tagsAll ⇒ "all").
+    setTagMode(p.criteria.tagsAll.length > 0 ? "all" : "any");
     setCounts(null);
     setAiProposal(null);
   }
@@ -337,6 +363,31 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
             canViewHealth={canViewHealth}
           />
 
+        {/* TAG criteria (TUGAS D) — segment by the tags imports write (event, role, wave, …). Filters
+            master_customer.tags directly, so a just-imported tag is usable IMMEDIATELY (no wait for the
+            nightly mirror refresh). Hidden entirely when the pool carries no operator tags yet. */}
+        {availableTags.length > 0 && (
+          <div className="tint-neutral mt-4 rounded-card p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h4 className="font-display text-[13px] font-bold uppercase tracking-wide text-ink">{t.segments.tags.title}</h4>
+              <div className="flex items-center gap-3 font-body text-[12px] text-ink-soft">
+                <label className="flex items-center gap-1.5">
+                  <input type="radio" name="tagmode" checked={tagMode === "any"} onChange={() => changeTagMode("any")} className="accent-red" />
+                  {t.segments.tags.any}
+                </label>
+                <label className="flex items-center gap-1.5">
+                  <input type="radio" name="tagmode" checked={tagMode === "all"} onChange={() => changeTagMode("all")} className="accent-red" />
+                  {t.segments.tags.all}
+                </label>
+              </div>
+            </div>
+            <p className="mt-1 font-body text-[12px] leading-relaxed text-ink-faint">{t.segments.tags.immediate}</p>
+            <div className="mt-3">
+              <TagCheckboxGroups available={availableTags} selected={positiveTags} onToggle={togglePositiveTag} lang={lang} />
+            </div>
+          </div>
+        )}
+
         {/* Exclusion (Track A) — "X but NOT Y". Each toggle REMOVES profiles that have that trait. */}
         <div className="tint-neutral mt-4 rounded-card p-4">
           <h4 className="font-display text-[13px] font-bold uppercase tracking-wide text-ink">{t.segments.exclude.title}</h4>
@@ -356,6 +407,16 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
               </label>
             ))}
           </div>
+          {/* Exclude by tag (TUGAS D) — "…but NOT anyone tagged X". Same grouped picker, writing to
+              exclude.tagsAny (a negated overlap on master_customer.tags). */}
+          {availableTags.length > 0 && (
+            <div className="mt-3 border-t border-glass-border pt-3">
+              <p className="font-display text-[12px] font-bold text-ink">{t.segments.tags.excludeTitle}</p>
+              <div className="mt-2">
+                <TagCheckboxGroups available={availableTags} selected={c.exclude.tagsAny} onToggle={toggleExcludeTag} lang={lang} />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Filter terbaca — the readable presence sentence, exclusions stated in plain words. */}

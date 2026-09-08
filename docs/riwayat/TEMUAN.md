@@ -2401,3 +2401,41 @@ rute API lain (`audience/[id]/*`, `suppression/*`, `templates`, `dashboard`, `se
 `consent`, `audit`, `quality`, `unsubscribe`, dll). Dikonsumsi UI berbeda (sebagian teksnya Inggris),
 jadi pembersihan tersendiri yang lebih besar — dicatat di sini agar tidak hilang, tidak diberkati diam-
 diam. Rute impor kini bersih.
+
+## T-71 — Tag bisa disegmentasi (TUGAS D): TANPA migrasi, tanpa kolom cermin — ⏱ DIUKUR 8 Sep 2026
+
+Pemilik gagal membuat segmen berbasis event; asisten AI menolak memetakan "iss jhr 2026" (penolakan
+yang BENAR — dipertahankan). Diagnosis awal (prompt): tambah kolom `tags` ke `crm_customer_mirror`
+lewat migrasi bergerbang, dan tag baru tak terlihat sampai refresh cron 20:00.
+
+**Pengukuran membantah premis itu — tidak perlu migrasi sama sekali.**
+- `master_customer.tags` (text[]) SUDAH ada dan SUDAH ber-GIN-index (`idx_master_customer_tags`).
+- Hitung segmen (`applyCriteria`) memfilter **`master_customer` langsung**, bukan cermin. Jadi tag
+  bisa disegmentasi **tanpa** kolom cermin, dan **tanpa** menunggu refresh 20:00 — langsung terlihat.
+- Biaya kueri terukur atas 84.904 baris (GIN Bitmap Index Scan): `tags && ...` (tagsAny) ~6 ms hangat,
+  `tags @> ...` (tagsAll) ~5 ms. Konsistensi diverifikasi: contains-satu=1.432, negated-overlap=83.472
+  (=84.904−1.432), contains-dua=40, overlap-dua=1.882 (=1.432+490−40). Index GIN sudah cukup — tak
+  ada indeks baru diperlukan.
+
+**Keputusan (menyimpang dari premis prompt, atas dasar ukuran):** TIDAK menambah kolom `tags` ke
+cermin, TIDAK ada migrasi. Filter langsung di master lebih sederhana DAN menghapus masalah "tak
+terlihat sampai refresh" yang dikhawatirkan. Kalau pemilik tetap ingin tag di cermin karena alasan
+lain, itu ronde migrasi tersendiri — tapi TUGAS D tak membutuhkannya.
+
+**Dibangun (kode murni, tanpa gerbang):**
+- `SegmentCriteria.tagsAny` (overlap "salah satu"), `tagsAll` (contains "semua"), `exclude.tagsAny`
+  (negated overlap, inline di applyCriteria — bukan id-set). `parseCriteria` memvalidasi bentuk tag
+  operator (`isOperatorTag`); tag tak dikenal DIBUANG, tak pernah ditebak. Cap `MAX_TAG_VALUES=50`.
+- `applyCriteria` (segment-read): overlaps/contains/not-overlaps pada `master_customer.tags`.
+- Deskripsi (segment-describe + describeProposal) memakai LABEL yang sudah ada (tagValueLabel/
+  namespaceLabel) — bukan daftar label kedua (dijaga tags.parity.test).
+- Vocab: `lib/crm/tag-vocab.ts` `fetchPoolTagVocab` — 28 tag operator distinct di pool (dibaca dari
+  ~3.781 baris ber-tag, gagal-keras bila baca error). Dipakai UI picker + prompt AI.
+- Asisten AI: prompt memuat vocab tag NYATA per namespace; sanitizer memvalidasi tag usulan terhadap
+  vocab pool (`allowedTags`) — tag yang tak ada di pool dibuang → proposal kosong → **penolakan tetap
+  terjaga** meski model mengabaikan prompt. Uji pengunci menutup perilaku ini.
+- UI: pemilih tag berkelompok per namespace (`TagCheckboxGroups`) memakai label yang sama; mode
+  "salah satu / semua"; pengecualian per tag. Layar menyatakan tag impor langsung bisa dipakai.
+
+**BELUM dikerjakan (ronde tersendiri, seperti diizinkan prompt):** Bagian B (impor→segmen emailList)
+dan Bagian C (impor isi-kolom-kosong — melonggarkan K-58, butuh migrasi bergerbang + entri KEPUTUSAN).

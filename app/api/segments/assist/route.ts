@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUserRole } from "@/lib/auth/current-role";
 import { isPermitted, resolveGrant } from "@/lib/auth/roles";
 import { proposeSegment, AiUnavailableError, AiTimeoutError } from "@/lib/crm/segment-ai";
+import { fetchPoolTagVocab } from "@/lib/crm/tag-vocab";
 import { getServerDict } from "@/lib/i18n/server";
 import { logApiFailure } from "@/lib/crm/failure-log";
 
@@ -65,9 +66,21 @@ export async function POST(request: NextRequest) {
 
   const canViewHealth = isPermitted(role, "profile.view_health");
 
+  // The pool's real tag vocabulary — the ONLY tags the assistant may map to. Fetched fresh (admin
+  // client) so a just-imported event is mappable immediately. A read failure must not silently become
+  // an empty vocabulary (which would refuse every tag), so it fails loud into the AI-unavailable path.
+  const admin = createAdminClient();
+  let availableTags: string[];
+  try {
+    availableTags = await fetchPoolTagVocab(admin);
+  } catch {
+    logApiFailure("/segments/assist", "tag_vocab_failed", {});
+    return NextResponse.json({ error: "ai_unavailable", message: t.ai.unavailable }, { status: 503 });
+  }
+
   let proposal;
   try {
-    proposal = await proposeSegment(text, { canViewHealth, lang });
+    proposal = await proposeSegment(text, { canViewHealth, lang, availableTags });
   } catch (e) {
     // Timeout first (it is a subclass of AiUnavailableError): its own message so the UI can say
     // "try again or build manually" instead of the generic "unavailable".
@@ -84,8 +97,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Mandatory audit — parameterized read. Records the RESOLVED criteria, never the raw text.
-  const adminClient = createAdminClient();
-  const { error: auditError } = await adminClient.from("crm_audit_log").insert({
+  const { error: auditError } = await admin.from("crm_audit_log").insert({
     actor_id: userId,
     actor_email: userEmail,
     action: "list.viewed",
@@ -107,6 +119,8 @@ export async function POST(request: NextRequest) {
         src_clinic_txn: proposal.criteria.srcClinicTxn,
         src_rfm: proposal.criteria.srcRfm,
         src_program: proposal.criteria.srcProgram,
+        tags_any: proposal.criteria.tagsAny,
+        tags_all: proposal.criteria.tagsAll,
       },
       clinical_blocked: proposal.clinicalBlocked,
       unexpressible_count: proposal.unexpressible.length,
