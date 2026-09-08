@@ -2372,3 +2372,32 @@ batas URL sekalian. Ronde tersendiri.
 luar 857 yang disisipkan batch `34e865c0` (1.037 − 857). Asalnya belum tertelusuri dari penanda batch
 saja. Tidak menghalangi perbaikan — impor ulang setelah ronde ini akan membuat angkanya benar apa pun
 asalnya.
+
+## T-70 — Dua gerbang salah: impor tanda-saja ditolak, dan 401 tanpa pesan menyalahkan berkas (instans keduabelas) — 8 Sep 2026
+
+Dua bug kecil, sekelas yang sudah dikenal.
+
+**A. `nothing_to_import` mengabaikan `taggedExisting`.** `import-audience-run.ts` memeriksa
+`plan.insertRows.length === 0` saja, lalu menolak. Ini gerbang yang SAMA dengan tombol impor (T-67)
+yang gated pada `netInsert > 0` — diperbaiki di UI, terlewat di jalur galat. Impor yang HANYA menandai
+adalah pekerjaan sah (K-58): 0 masuk + 1.432 ditandai harus berhasil, bukan galat. Diperbaiki:
+`insertRows.length === 0 && tagTargets.length === 0`. Teks pesan juga salah ("semua duplikat atau tak
+valid" bohong saat 1.432 akan ditandai) — ditulis ulang. Uji pengunci: {0 insert, 2 tag} → ok;
+{0, 0} → galat. Sapuan: hanya SATU proxy `insertRows.length`/`netInsert`-sendiri yang tersisa (line
+110); tombol sudah pakai `importActionableTotal`, `reconcileImport` pakai keduanya — tak ada instans
+keempat.
+
+**B. 401 tanpa `message` — tebakan yang menyalahkan pengguna (instans keduabelas).** `route.ts`
+mengembalikan `{ error: "unauthenticated" }` TANPA `message`, satu-satunya jalur galat impor yang
+begitu. UI jatuh ke teks cadangan "File tidak bisa dibaca" — menyalahkan BERKAS untuk SESI yang
+kedaluwarsa. Ini kelas T-41/T-49/T-54/T-69: penyebab dibuang, digantikan tebakan yang salah — kali ini
+tebakannya menyalahkan pengguna, dan pemilik kehilangan waktu karenanya. Diperbaiki: pesan benar
+("Sesi Anda berakhir — muat ulang halaman dan masuk lagi"). **Pagar:** `import-route-error-message.test.ts`
+memastikan setiap `NextResponse.json` berstatus ≥400 di rute impor membawa `message`; uji sintetis
+membuktikan pagar menggigit.
+
+**Sapuan repo (dilaporkan, BUKAN diperbaiki ronde ini).** ~**68 respons ≥400 tanpa `message`** di ~18
+rute API lain (`audience/[id]/*`, `suppression/*`, `templates`, `dashboard`, `search`, `segments`,
+`consent`, `audit`, `quality`, `unsubscribe`, dll). Dikonsumsi UI berbeda (sebagian teksnya Inggris),
+jadi pembersihan tersendiri yang lebih besar — dicatat di sini agar tidak hilang, tidak diberkati diam-
+diam. Rute impor kini bersih.

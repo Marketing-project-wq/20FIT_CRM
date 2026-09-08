@@ -45,7 +45,14 @@ export async function POST(request: NextRequest) {
   } catch {
     userId = null;
   }
-  if (!userId) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  if (!userId)
+    return NextResponse.json(
+      // A real message, not the UI's file-blaming fallback ("File tidak bisa dibaca"): a 401 is an
+      // expired session, not a bad file (T-70 — the twelfth "cause discarded, replaced by a wrong
+      // guess"; this time the guess blamed the user). Every ≥400 response on this route carries one.
+      { error: "unauthenticated", message: "Sesi Anda berakhir — muat ulang halaman dan masuk lagi." },
+      { status: 401 },
+    );
 
   const role = await getCurrentUserRole();
   if (!canImportAudience(role)) {
@@ -220,7 +227,7 @@ function errorMessage(code: string): string {
     case "collection_source_required":
       return "Isi dulu 'sumber pengumpulan' — dari mana daftar ini berasal.";
     case "nothing_to_import":
-      return "Tidak ada baris baru untuk dimasukkan (semua duplikat atau tak valid).";
+      return "Tidak ada yang bisa dikerjakan: tak ada orang baru untuk dimasukkan dan tak ada yang sudah ada untuk ditandai. Semua baris tak valid, duplikat di dalam berkas, atau hanya cocok dengan profil yang sudah digabung.";
     default:
       return "Impor gagal.";
   }
