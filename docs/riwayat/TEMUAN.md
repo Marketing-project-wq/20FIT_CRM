@@ -2254,3 +2254,53 @@ aman hari ini ≈ **~100 baris bertelepon** — jauh di bawah 20.000.
 Perbaikan (BERGATE): indeks **biasa** pada `phone_normalized` (subplan per-baris jadi index probe
 <1 ms). Indeks email tak diperlukan — biaya email tetap ~60 ms total berapa pun N. Batas layar 20.000
 diturunkan ke angka terbukti setelah indeks, dengan pesan galat yang menyebut batasnya.
+
+### T-68 (lanjutan) — indeks diterapkan, ambang baru diukur, batas jadi 15.000 — ⏱ DIUKUR 8 Sep 2026
+
+**Migrasi diterapkan** (gerbang dibuka, opsi (a) CREATE INDEX biasa lewat `apply_migration`):
+`create index idx_master_customer_phone_lookup on public.master_customer (phone_normalized);`
+Diverifikasi dari `pg_indexes` — indeks ada, **2552 kB** (~2,5 MB, sesuai perkiraan). Kedua indeks
+unik parsial tetap utuh (indeks biasa ini melayani lookup tanpa-predikat; yang unik tetap menjaga
+keunikan). Alasan bukan `CONCURRENTLY`: `pg_stat_user_tables` = 6.524 insert / 675 update / 0 delete
+seumur hidup — kolam nyaris beku, jadi lock ACCESS EXCLUSIVE sesaat tak menghalangi tulis apa pun.
+
+**EXPLAIN sebelum vs sesudah** (probe `exists` pada `phone_normalized`):
+- Sebelum: **Seq Scan** on `master_customer` (cost 3769,88).
+- Sesudah: **Index Only Scan using idx_master_customer_phone_lookup** (cost 2,68). Seq scan per-baris hilang.
+
+**Ambang baru terukur** (baris sintetis bertelepon, transaksi rollback, sesi hangat):
+
+| Baris | Sebelum indeks | Sesudah indeks |
+|---:|---:|---:|
+| 100 | 7.174 ms | **183 ms** |
+| 500 | 12.131 ms | **503 ms** |
+| 1.000 | (timeout) | **844 ms** |
+| 1.500 | (timeout) | **1.071 ms** |
+| 3.000 | — | **1.625 ms** |
+| 15.000 | — | **~3.792 ms** |
+| 20.000 | — | **~3.069–4.264 ms** (2 run) |
+| 25.000 | — | **~6.032 ms** |
+
+Fungsi sekarang **linear** (~0,45 ms/baris + ~280 ms dasar), bukan kuadratik.
+
+**Anggaran 8 detik — diverifikasi, bukan diasumsikan.** RPC dipanggil klien service-role
+(`admin.rpc`), dan `service_role` tak punya `statement_timeout`. Tapi PostgREST login sebagai peran
+**`authenticator`** yang `rolconfig`-nya `statement_timeout=8s` (+`lock_timeout=8s`); setelan
+login itu **bertahan** melewati `SET ROLE service_role` per-request — itulah sebab file 1.432-baris
+kena `57014` padahal jalur service-role. Diverifikasi dari `pg_roles`/`pg_db_role_setting`: hanya
+`anon`=3s, `authenticated`/`authenticator`=8s; tak ada setelan level-database.
+
+**Batas layar → 15.000** (`MAX_IMPORT_ROWS`, dari 20.000). Bukan angka terbesar yang lolos: 20.000
+pun terukur ~4,3 s (di bawah 8 s), tapi 15.000 duduk di **bawah setengah** plafon 8 s — margin ~2×
+untuk cold-cache/variasi peran yang **tak bisa** saya ukur tanpa impor produksi nyata (dilarang ronde
+ini). Batas dinyatakan **di langkah unggah** (bukan hanya pesan galat) beserta alasannya (anggaran 8
+detik), dan pra-cek `too_many_rows` menolak file besar di fase `analyze` — cepat, tanpa menunggu RPC.
+Pesan `57014` tak lagi menyalahkan berkas: menyebut batas 15.000 dan menyarankan memecah file; jika
+file sudah di bawah batas, menyatakan itu di luar dugaan dan minta dilaporkan.
+
+**Pelajaran (dicatat atas permintaan pemilik).** Diagnosis awal pihak #2 — "seq scan 83k baris per
+pencarian **email**" (anti-join) — **salah**. Pengukuran per-tahap menemukan penyebab sebenarnya:
+`phone_safe` (SubPlan telepon per-baris); email di-hash dan negligible. Hipotesis yang masuk akal dari
+**membaca definisi indeks** (dua indeks parsial → "pasti seq scan") tetap harus **diukur per tahap**
+sebelum diputuskan — kalau saya menuruti diagnosis email, saya akan menambah indeks email yang tak
+berguna dan membiarkan penyebab telepon tetap ada. Ukur dulu, baru simpulkan.

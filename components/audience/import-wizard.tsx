@@ -182,7 +182,7 @@ export function ImportWizard() {
         <h1 className="font-display text-[32px] font-black uppercase leading-none text-ink">Impor Audiens</h1>
         <p className="mt-2 max-w-3xl font-body text-[14px] text-ink-soft">
           Unggah CSV berisi kontak yang consent-nya sudah diberikan di titik pengumpulan. Anda memetakan kolom,
-          melihat ringkasan, lalu mengonfirmasi — impor tidak berjalan otomatis. Maks {MAX_IMPORT_ROWS.toLocaleString("id-ID")} baris.
+          melihat ringkasan, lalu mengonfirmasi — impor tidak berjalan otomatis.
         </p>
       </header>
 
@@ -205,6 +205,16 @@ export function ImportWizard() {
             </span>
             <input type="file" accept=".csv,text/csv" className="hidden" onChange={onFile} disabled={busy} />
           </label>
+          {/* Batas dinyatakan DI LANGKAH UNGGAH, bukan hanya di pesan galat — supaya pemilik tahu
+              file terlalu besar SEBELUM menunggu. Angka + alasannya (anggaran 8 detik) sengaja
+              disebut bersama: angka yang punya alasan lebih mudah dipercaya. Batas ini terukur,
+              bukan tebakan — lihat MAX_IMPORT_ROWS. */}
+          <p className="mt-4 font-body text-[12px] leading-relaxed text-ink-soft">
+            Maks <strong>{MAX_IMPORT_ROWS.toLocaleString("id-ID")} baris</strong> per file. Impor berjalan
+            di anggaran waktu database <strong>8 detik</strong> — itu sebabnya ada batas. File lebih besar
+            dari itu: pecah jadi beberapa bagian di bawah {MAX_IMPORT_ROWS.toLocaleString("id-ID")} baris,
+            lalu impor bergiliran.
+          </p>
         </div>
       )}
 

@@ -1,0 +1,34 @@
+-- Index: idx_master_customer_phone_lookup
+--
+-- WHY: crm_ingest_csv_people's `phone_safe` CTE runs a correlated
+--   `exists (select 1 from master_customer m where m.phone_normalized = pk)`
+-- once PER INPUT ROW. The only phone_normalized index on the table was PARTIAL
+-- (idx_master_customer_phone_unique, WHERE is_merged = false), and a predicate-free
+-- equality lookup cannot use a partial index — so every one of those per-row
+-- probes was a full seq scan of ~82k rows. Measured cost: 100 phone-bearing rows
+-- = 7174 ms; the app path (authenticator/authenticated role) has an 8 s
+-- statement_timeout, so ~100 phone rows already sat on the edge of 57014. The
+-- 1,432-row audiens-sportfest file failed there.
+--
+-- The email lookup in the same function (new_people anti-join) is a Hash Right
+-- Anti Join — ONE seq scan for the whole batch, ~31 ms — so NO email index is
+-- added. Only phone needs it. See docs/riwayat/TEMUAN.md T-68.
+--
+-- This is a PLAIN (non-unique, non-partial) btree index. It does NOT replace the
+-- partial unique index idx_master_customer_phone_unique, which still enforces
+-- uniqueness a plain index cannot. Both coexist: the unique one guards writes,
+-- this one serves the predicate-free lookup.
+--
+-- Applied with a plain CREATE INDEX (not CONCURRENTLY) inside apply_migration by
+-- owner decision: pg_stat_user_tables shows master_customer took 6,524 inserts /
+-- 675 updates / 0 deletes lifetime — a near-frozen pool — so the brief ACCESS
+-- EXCLUSIVE build lock blocks effectively no concurrent write, and CONCURRENTLY
+-- would trade a non-existent risk for leaving apply_migration's transaction and a
+-- second DDL path.
+--
+-- Rollback: drop index if exists public.idx_master_customer_phone_lookup;
+--
+-- LEDGER: APPLIED 2026-09-08 via mcp apply_migration (verified from pg_indexes).
+
+create index if not exists idx_master_customer_phone_lookup
+  on public.master_customer (phone_normalized);
