@@ -107,7 +107,12 @@ export async function runImportRequest(input: ImportInput, deps: ImportDeps): Pr
   // execute
   const collectionSource = (input.collectionSource ?? "").trim();
   if (collectionSource === "") return { ok: false, error: "collection_source_required" };
-  if (plan.insertRows.length === 0) return { ok: false, error: "nothing_to_import" };
+  // "Nothing to do" is BOTH empty, not just no inserts. A file whose every row is already in the pool
+  // has 0 inserts but N tags — and tagging existing people is legitimate work (K-58). Gating on
+  // insertRows alone is the SAME bug as the T-67 button (which gated on netInsert > 0 and went dead for
+  // an all-existing file); it was fixed in the UI and missed here on the error path. Mirror the button:
+  // there is work if there is an insert OR a tag.
+  if (plan.insertRows.length === 0 && plan.tagTargets.length === 0) return { ok: false, error: "nothing_to_import" };
 
   const meta: CommitMeta = {
     collectionSource,

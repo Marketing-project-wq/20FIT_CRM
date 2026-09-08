@@ -68,6 +68,38 @@ describe("runImportRequest — dry-run writes NOTHING", () => {
     expect(deps.audit).not.toHaveBeenCalled();
   });
 
+  // A (T-70): "nothing_to_import" must gate on insert AND tag, not insert alone. A file whose every
+  // row is already in the pool has 0 inserts but N tags — legitimate work (K-58, the T-67 button bug
+  // mirrored on the error path). 0 masuk + N ditandai must SUCCEED.
+  it("execute SUCCEEDS on a tag-only import (0 inserts, N existing tagged)", async () => {
+    // Both rows already exist and are taggable → planImport yields 0 insertRows, 2 tagTargets.
+    const existingKeys: ImportKeys = {
+      existingEmails: new Set(["a@x.com", "b@x.com"]),
+      taggableEmails: new Set(["a@x.com", "b@x.com"]),
+      existingPhones: new Set(),
+      suppressedEmails: new Set(),
+      suppressedPhones: new Set(),
+    };
+    const commit = vi.fn(async () => ({ inserted: 0, taggedExisting: 2, sharedPhoneInBatch: 0 }));
+    const deps = makeDeps({ loadKeys: vi.fn(async () => existingKeys), commit });
+    const res = await runImportRequest({ phase: "execute", headers, rows, collectionSource: "Sportfest 2" }, deps);
+    expect(res.ok).toBe(true); // NOT nothing_to_import — tagging is work
+    if (res.ok) {
+      expect(res.plan?.summary.netInsert).toBe(0);
+      expect(res.plan?.summary.taggedExisting).toBe(2);
+    }
+    expect(commit).toHaveBeenCalledTimes(1);
+  });
+
+  it("execute REFUSES nothing_to_import only when BOTH insert and tag are empty", async () => {
+    // Rows with no usable email → 0 inserts AND 0 tags → genuinely nothing to do.
+    const deps = makeDeps();
+    const blank = [{ name: "A", email: "" }, { name: "B", email: "   " }];
+    const res = await runImportRequest({ phase: "execute", headers, rows: blank, collectionSource: "X" }, deps);
+    expect(res).toEqual({ ok: false, error: "nothing_to_import" });
+    expect(deps.commit).not.toHaveBeenCalled();
+  });
+
   it("rejects an over-cap file before touching any dependency", async () => {
     const deps = makeDeps();
     const big = Array.from({ length: 20_001 }, (_, i) => ({ name: "x", email: `x${i}@y.com` }));
