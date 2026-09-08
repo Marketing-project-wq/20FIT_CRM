@@ -19,7 +19,25 @@ const PAGE = 1000;
 const MAX_PAGES = 50; // 50k tagged rows is far above today's 3.781 — a guard, never expected to bind
 
 export async function fetchPoolTagVocab(admin: SupabaseClient): Promise<string[]> {
-  const tags = new Set<string>();
+  return (await fetchPoolTagCounts(admin)).map((e) => e.tag);
+}
+
+export interface TagCountEntry {
+  tag: string;
+  /** How many people in master_customer carry this tag. */
+  people: number;
+}
+
+/**
+ * Distinct operator tags with their people-counts (TUGAS 1), computed ONCE from the ~3.781 tagged rows
+ * — the segment builder shows a number beside every tag so an operator isn't choosing blind among 40
+ * boxes. A single DB aggregate (`unnest + group by`) is ~92 ms warm but needs a full scan (the GIN
+ * index can't serve a group-by-all-tags), so we tally in memory over the same rows this read already
+ * pages — no per-tag query, no migration. Fail-loud on a read error (never a half count). Sorted by
+ * people desc so callers get "most useful first" for free.
+ */
+export async function fetchPoolTagCounts(admin: SupabaseClient): Promise<TagCountEntry[]> {
+  const counts = new Map<string, number>();
   for (let page = 0; page < MAX_PAGES; page++) {
     const from = page * PAGE;
     const { data, error } = await admin
@@ -30,9 +48,11 @@ export async function fetchPoolTagVocab(admin: SupabaseClient): Promise<string[]
     if (error) throw error; // fail loud: never return a half/empty vocabulary as if complete
     if (!data || data.length === 0) break;
     for (const row of data as { tags: string[] | null }[]) {
-      for (const t of row.tags ?? []) if (isOperatorTag(t)) tags.add(t);
+      for (const t of row.tags ?? []) if (isOperatorTag(t)) counts.set(t, (counts.get(t) ?? 0) + 1);
     }
     if (data.length < PAGE) break;
   }
-  return Array.from(tags).sort();
+  return Array.from(counts, ([tag, people]) => ({ tag, people })).sort(
+    (a, b) => b.people - a.people || a.tag.localeCompare(b.tag),
+  );
 }

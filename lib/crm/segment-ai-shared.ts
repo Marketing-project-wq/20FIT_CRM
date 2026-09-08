@@ -232,6 +232,24 @@ export function proposalIsEmpty(p: AssistProposal): boolean {
   return p.conditions.length === 0 && hasNoSourceCriteria(p.criteria);
 }
 
+/**
+ * Clickable example prompts for the AI box, generated from the REAL pool vocabulary (TUGAS 4) so an
+ * example never references a tag that does not exist (which would map to nothing / produce zero). Uses
+ * the top events by people-count. `entries` are {tag, people}; only the `event:` ones drive examples,
+ * and every phrase names an event that genuinely exists in the pool. Empty pool → no examples.
+ */
+export function buildAiExamples(entries: readonly { tag: string; people: number }[], lang: Lang): string[] {
+  const events = entries
+    .filter((e) => e.tag.startsWith("event:"))
+    .sort((a, b) => b.people - a.people)
+    .map((e) => tagValueLabel(e.tag, lang));
+  const out: string[] = [];
+  if (events[0]) out.push(lang === "id" ? `peserta ${events[0]}` : `participants of ${events[0]}`);
+  if (events[0] && events[1]) out.push(lang === "id" ? `${events[0]} yang juga ikut ${events[1]}` : `${events[0]} who also joined ${events[1]}`);
+  if (events[0]) out.push(lang === "id" ? `${events[0]} yang belum pernah ke arena` : `${events[0]} who have never been to arena`);
+  return out.slice(0, 3);
+}
+
 function hasNoSourceCriteria(c: SegmentCriteria): boolean {
   return (
     !c.ecoUnit && !c.ecoProduct && !c.srcHyrox && !c.srcMy20fit && !c.srcRecency &&
