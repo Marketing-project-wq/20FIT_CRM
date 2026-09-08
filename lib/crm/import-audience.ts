@@ -23,9 +23,17 @@ import { parseTagCell } from "./tags";
  *    exist at import time; the after-import residual is opsi (b), deferred (see K-57).
  */
 
-/** Hard cap for Fase 1 — small on purpose to shrink the blast radius of a first write-to-production
- *  path. Raise after it's proven in real use. One constant, referenced everywhere. */
-export const MAX_IMPORT_ROWS = 20_000;
+/** Hard cap per file. This is a MEASURED number, not a guess (⏱ DIUKUR 2026-09-08). The write path
+ *  is one RPC statement, and on the app path that statement is bounded by an 8 s statement_timeout
+ *  (verified: the `authenticator` role PostgREST logs in as carries statement_timeout=8s, and that
+ *  login setting survives the per-request `SET ROLE service_role` — which is why a 1.432-row file
+ *  raised 57014). After adding idx_master_customer_phone_lookup the RPC runs linearly:
+ *  15.000 rows = ~3,8 s, 20.000 = ~3–4,3 s, 25.000 = ~6 s (rolled-back synthetic benches, warm).
+ *  15.000 sits under HALF the 8 s ceiling, a ~2× safety margin against cold-cache/role variance we
+ *  could not measure without a real production import — so that is the honest cap. The previous
+ *  20.000 was written UNTESTED and failed at 1.432 (7 %); see docs/riwayat/TEMUAN.md T-68.
+ *  One constant, referenced everywhere. */
+export const MAX_IMPORT_ROWS = 15_000;
 
 /** Safe columns only (Fase 0 honored, same class as the activity ingest). DOB / gender / NIK / health
  *  are deliberately NOT importable here — they need their own legal basis. */
@@ -397,7 +405,7 @@ export function importFailureMessage(code: string | null): string {
     case "42501":
       return "Peran yang dipakai tidak berwenang menjalankan impor (kode 42501). Ini soal hak akses, bukan berkas Anda.";
     case "57014":
-      return "Database membatalkan operasi karena berjalan terlalu lama (kode 57014). Coba lagi dengan berkas yang lebih kecil.";
+      return `Impor melewati anggaran waktu database 8 detik dan dibatalkan (kode 57014). Batas aman yang terukur adalah ${MAX_IMPORT_ROWS.toLocaleString("id-ID")} baris per file — pecah file menjadi beberapa bagian di bawah angka itu, lalu impor bergiliran. Jika file Anda sudah di bawah ${MAX_IMPORT_ROWS.toLocaleString("id-ID")} baris, ini di luar dugaan (bukan salah berkas Anda): catat kejadiannya dan laporkan, jangan diulang berkali-kali.`;
     case null:
       return "Impor gagal dan database tidak memberi kode. Laporkan kejadian ini — jangan diulang berkali-kali tanpa penjelasan.";
     default:

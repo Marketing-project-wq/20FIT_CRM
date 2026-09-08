@@ -179,8 +179,11 @@ describe("planImport", () => {
     expect(p.outcomes.find((o) => o.email === "stop@x.com")?.status).toBe("insert_suppressed");
   });
 
-  it("MAX_IMPORT_ROWS is the small Fase-1 cap", () => {
-    expect(MAX_IMPORT_ROWS).toBe(20_000);
+  it("MAX_IMPORT_ROWS is the measured cap under the 8s budget", () => {
+    // Lowered from an untested 20.000 to a measured 15.000 (⏱ 2026-09-08): after the phone-lookup
+    // index the RPC runs 15.000 rows in ~3,8s, under half the verified 8s statement_timeout. See
+    // TEMUAN T-68. A change here is a change to a proven number, not a guess — keep it measured.
+    expect(MAX_IMPORT_ROWS).toBe(15_000);
   });
 });
 
@@ -201,12 +204,17 @@ describe("importFailureMessage — the class, and whether retrying can help", ()
     expect(m).toMatch(/tidak akan berhasil/);
   });
 
-  it("says 'try again' ONLY where trying again can actually work", () => {
-    // A timeout is the one class where a retry (smaller file) is real advice.
-    expect(importFailureMessage("57014")).toMatch(/Coba lagi/);
-    // Everywhere else it must not promise that.
+  it("offers a real remedy ONLY for a timeout, and names the measured limit — not the file", () => {
+    // 57014 is the one class where an actionable path exists: split the file under the cap and
+    // import in turns. TUGAS 3 — the message must NAME the measured limit (not blame the berkas)
+    // and must NOT use the old file-blaming "Coba lagi dengan berkas yang lebih kecil".
+    const t = importFailureMessage("57014");
+    expect(t).toContain(MAX_IMPORT_ROWS.toLocaleString("id-ID")); // states the real number
+    expect(t).toMatch(/pecah/i); // offers the split remedy
+    expect(t).not.toMatch(/berkas yang lebih kecil/); // no numberless "smaller file" blame
+    // Everywhere else must not offer that remedy — a retry cannot help.
     for (const code of ["PGRST202", "42883", "23514", "23505", "23503", "42501", null]) {
-      expect(importFailureMessage(code), `code ${code}`).not.toMatch(/Coba lagi/);
+      expect(importFailureMessage(code), `code ${code}`).not.toMatch(/pecah/i);
     }
   });
 

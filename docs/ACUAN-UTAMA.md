@@ -236,7 +236,8 @@ kerja, itu jalan memutar.
 peran lain (diverifikasi di `lib/auth/roles.ts`). Perluasan menunggu persetujuan Jeff. CS tidak bisa
 memakainya sama sekali hari ini.
 
-**c. Batas 20.000 baris per berkas** (`MAX_IMPORT_ROWS`).
+**c. Batas 15.000 baris per berkas** (`MAX_IMPORT_ROWS`) — terukur di bawah anggaran waktu database
+8 detik (⏱ DIUKUR 8 Sep 2026; sebelumnya 20.000 yang tak pernah diuji, lihat TEMUAN T-68).
 
 **d. Excel (`.xlsx`) belum didukung** — nol referensi di seluruh basis kode. CS hampir pasti bekerja
 dengan Excel, bukan CSV.

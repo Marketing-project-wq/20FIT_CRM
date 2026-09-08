@@ -36,7 +36,8 @@ yang ada (`crm_ingest_activity_people`), bukan jalur baru.
 5. **Kolom tak terpetakan ditampilkan.** Ringkasan menyebut kolom yang di-"abaikan" (mis. "Event") biar
    operator sadar apa yang tidak ikut — drop diam-diam adalah cara data hilang tanpa ketahuan.
 6. **Excel (.xlsx) — ditunda.** CSV dulu (butuh SheetJS — keputusan terpisah).
-7. **Cap — 20.000 baris/file** (Fase 1, `MAX_IMPORT_ROWS`, satu konstanta). Diperbesar setelah terbukti.
+7. **Cap — 15.000 baris/file** (`MAX_IMPORT_ROWS`, satu konstanta). Terukur di bawah anggaran 8 detik
+   database (⏱ 8 Sep 2026); sebelumnya 20.000 tanpa uji, gagal di 1.432 — lihat TEMUAN T-68.
 
 ## Yang dibangun
 

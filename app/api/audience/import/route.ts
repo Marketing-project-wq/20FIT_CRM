@@ -12,7 +12,7 @@ import {
   type ImportInput,
   type ImportPhase,
 } from "@/lib/crm/import-audience-run";
-import { importFailureMessage } from "@/lib/crm/import-audience";
+import { importFailureMessage, MAX_IMPORT_ROWS } from "@/lib/crm/import-audience";
 import type { ImportKeys, ImportPlan, NormalizedRow } from "@/lib/crm/import-audience";
 
 export const dynamic = "force-dynamic";
@@ -236,7 +236,7 @@ function errorMessage(code: string): string {
     case "empty_file":
       return "File kosong atau tidak terbaca.";
     case "too_many_rows":
-      return "Terlalu banyak baris. Batas Fase 1 adalah 20.000 baris per file.";
+      return `Terlalu banyak baris. Batas terukur adalah ${MAX_IMPORT_ROWS.toLocaleString("id-ID")} baris per file — impor berjalan di anggaran waktu database 8 detik. Pecah file menjadi beberapa bagian di bawah ${MAX_IMPORT_ROWS.toLocaleString("id-ID")} baris, lalu impor bergiliran.`;
     case "no_email_column":
       return "Petakan salah satu kolom ke Email — email wajib sebagai identitas dan kunci duplikat.";
     case "collection_source_required":
