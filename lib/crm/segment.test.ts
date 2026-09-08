@@ -7,6 +7,7 @@ import {
   EMPTY_CRITERIA,
   SEGMENT_NULL,
   MAX_CRITERION_VALUES,
+  MAX_TAG_VALUES,
 } from "./segment";
 import { FILTER_VALUE_MAX } from "./audience-constants";
 
@@ -139,11 +140,38 @@ describe("activeCriteriaCount", () => {
         srcArena: false, srcGym: false, srcClinicPatient: false, srcClinicTxn: false,
         srcRfm: [], srcProgram: [],
         joinedWithinDays: null, inactiveForDays: null,
-        exclude: { ecoUnit: null, srcArena: false, srcGym: false, srcHyrox: false, srcMy20fit: false, srcRecency: false },
+        tagsAny: [], tagsAll: [],
+        exclude: { ecoUnit: null, srcArena: false, srcGym: false, srcHyrox: false, srcMy20fit: false, srcRecency: false, tagsAny: [] },
       }),
     ).toBe(11);
   });
   it("revenue='all' and blank city do not count", () => {
     expect(activeCriteriaCount({ ...EMPTY_CRITERIA, revenue: "all", city: "  " })).toBe(0);
+  });
+  it("counts tag criteria (tagsAny, tagsAll, exclude tags)", () => {
+    expect(activeCriteriaCount({ ...EMPTY_CRITERIA, tagsAny: ["event:sportfest-2-2026-02"] })).toBe(1);
+    expect(activeCriteriaCount({ ...EMPTY_CRITERIA, tagsAny: ["event:a-1"], tagsAll: ["peran:peserta"] })).toBe(2);
+    expect(activeCriteriaCount({ ...EMPTY_CRITERIA, exclude: { ...EMPTY_CRITERIA.exclude, tagsAny: ["event:a-1"] } })).toBe(1);
+  });
+});
+
+describe("parseCriteria — tags (TUGAS D): valid operator tags only, never guessed", () => {
+  it("keeps well-formed operator tags, drops malformed/unknown-namespace, de-dupes", () => {
+    const c = parseCriteria({
+      tagsAny: ["event:sportfest-2-2026-02", "event:bad value", "not a tag", "batch:abc", "event:sportfest-2-2026-02", "peran:peserta"],
+      tagsAll: ["kategori:umum"],
+    });
+    // "event:bad value" (space) invalid; "not a tag" invalid; "batch:*" is a SYSTEM namespace (not an
+    // operator tag) → dropped; the duplicate is removed. Shape only — pool membership is the sanitizer's job.
+    expect(c.tagsAny).toEqual(["event:sportfest-2-2026-02", "peran:peserta"]);
+    expect(c.tagsAll).toEqual(["kategori:umum"]);
+  });
+  it("accepts a legacy bare string and caps at MAX_TAG_VALUES", () => {
+    expect(parseCriteria({ tagsAny: "event:solo-1" }).tagsAny).toEqual(["event:solo-1"]);
+    const many = Array.from({ length: MAX_TAG_VALUES + 5 }, (_, i) => `event:e-${i}`);
+    expect(parseCriteria({ tagsAny: many }).tagsAny).toHaveLength(MAX_TAG_VALUES);
+  });
+  it("parses exclude.tagsAny the same way", () => {
+    expect(parseCriteria({ exclude: { tagsAny: ["event:a-1", "junk"] } }).exclude.tagsAny).toEqual(["event:a-1"]);
   });
 });

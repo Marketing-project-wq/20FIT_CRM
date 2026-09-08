@@ -9,6 +9,7 @@ import { TabBar } from "@/components/shell/tab-bar";
 import { realSendEnabled } from "@/lib/crm/send-gate";
 import { unsubscribeHostServable } from "@/lib/crm/send-env";
 import { listSegments } from "@/lib/crm/segment-store";
+import { fetchPoolTagVocab } from "@/lib/crm/tag-vocab";
 import { extractVariables } from "@/lib/crm/template";
 import { isInternalTestTemplateKey } from "@/lib/crm/send-test-constants";
 import { loadCityFill } from "@/lib/crm/city-fill";
@@ -98,6 +99,13 @@ export default async function CampaignsPage({
   const deliveries = tab === "kiriman" && !detailRequested ? await listDeliveries(admin) : [];
   const detail = detailRequested ? await deliveryDetail(admin, runParam!) : null;
 
+  // The pool's operator-tag vocabulary for the segment builder's tag picker (TUGAS D). Fetched only
+  // on the Segmen tab for a builder. Degrades to [] on a read error — the picker simply hides; a
+  // failed vocab read must not crash the whole campaigns page (the AI route, which needs it to be
+  // complete, fails loud separately).
+  const availableTags =
+    canBuild && tab === "segmen" ? await fetchPoolTagVocab(admin).catch(() => [] as string[]) : [];
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -170,6 +178,7 @@ export default async function CampaignsPage({
           total={cityFill.total}
           canViewHealth={canViewHealth}
           canBuild={canBuild}
+          availableTags={availableTags}
           returnTo={returnTo}
         />
       )}

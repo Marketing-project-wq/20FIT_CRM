@@ -60,6 +60,14 @@ function applyCriteria(q: any, c: SegmentCriteria, masterFilterExpr?: string | n
     if (c.hasPhone) out = out.not("phone_normalized", "is", null);
     if (c.hasEmail) out = out.not("email_normalized", "is", null);
   }
+  // TAG criteria (TUGAS D) — master_customer.tags is a GIN-indexed text[], so these run on the SAME
+  // parent query as everything else (no id-set round-trip, no mirror). tagsAny = overlap, tagsAll =
+  // contains, exclude.tagsAny = negated overlap. Values are pre-validated operator tags (safe chars:
+  // lowercase/digit/hyphen/colon), so the `{…}` array literal needs no escaping. Applied even when a
+  // master filter TREE is present — a tree covers only the flat master columns, never tags.
+  if (c.tagsAny.length) out = out.overlaps("tags", c.tagsAny);
+  if (c.tagsAll.length) out = out.contains("tags", c.tagsAll);
+  if (c.exclude?.tagsAny?.length) out = out.not("tags", "ov", `{${c.exclude.tagsAny.join(",")}}`);
   // NOTE: ecosystem criteria (ecoUnit/ecoProduct) are NOT applied here — they live in
   // customer_engagement, a different table. They are resolved to a customer_id set and
   // intersected separately (see computeSegment). applyCriteria only touches master_customer.
@@ -77,7 +85,11 @@ function hasMasterCriteria(c: SegmentCriteria, masterFilterExpr?: string | null)
       (c.city && c.city.trim() !== "") ||
       c.revenue !== "all" ||
       c.hasPhone ||
-      c.hasEmail,
+      c.hasEmail ||
+      // Tag criteria are master_customer.tags columns — they narrow the master query directly.
+      c.tagsAny.length ||
+      c.tagsAll.length ||
+      c.exclude?.tagsAny?.length,
   );
 }
 

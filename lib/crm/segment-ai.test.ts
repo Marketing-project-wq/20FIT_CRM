@@ -27,28 +27,28 @@ describe("proposeSegment failure contract", () => {
       "fetch",
       vi.fn(() => Promise.reject(Object.assign(new Error("aborted"), { name: "AbortError" }))),
     );
-    await expect(proposeSegment("peserta sportfest", { canViewHealth: false, lang: "id" })).rejects.toBeInstanceOf(
+    await expect(proposeSegment("peserta sportfest", { canViewHealth: false, lang: "id", availableTags: [] })).rejects.toBeInstanceOf(
       AiTimeoutError,
     );
   });
 
   it("maps any other network failure to AiUnavailableError (not a timeout)", async () => {
     vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new Error("ECONNREFUSED"))));
-    const err = await proposeSegment("x", { canViewHealth: false, lang: "id" }).catch((e) => e);
+    const err = await proposeSegment("x", { canViewHealth: false, lang: "id", availableTags: [] }).catch((e) => e);
     expect(err).toBeInstanceOf(AiUnavailableError);
     expect(err).not.toBeInstanceOf(AiTimeoutError);
   });
 
   it("maps a non-OK model response to AiUnavailableError", async () => {
     vi.stubGlobal("fetch", vi.fn(() => Promise.resolve({ ok: false, status: 502 } as Response)));
-    await expect(proposeSegment("x", { canViewHealth: false, lang: "id" })).rejects.toBeInstanceOf(AiUnavailableError);
+    await expect(proposeSegment("x", { canViewHealth: false, lang: "id", availableTags: [] })).rejects.toBeInstanceOf(AiUnavailableError);
   });
 
   it("throws AiUnavailableError (never reaching fetch) when the API key is missing", async () => {
     delete process.env.SEGMENT_AI_API_KEY;
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
-    await expect(proposeSegment("x", { canViewHealth: false, lang: "id" })).rejects.toBeInstanceOf(AiUnavailableError);
+    await expect(proposeSegment("x", { canViewHealth: false, lang: "id", availableTags: [] })).rejects.toBeInstanceOf(AiUnavailableError);
     expect(fetchSpy).not.toHaveBeenCalled(); // a missing key 503s immediately — it never 524s
   });
 });

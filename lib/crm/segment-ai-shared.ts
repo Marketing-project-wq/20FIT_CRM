@@ -16,6 +16,7 @@ import { AUDIENCE_UNITS, AUDIENCE_SEGMENTS, SEGMENT_NULL, capFilterValue, FILTER
 import type { LeafField } from "./filter-tree";
 import { parseCriteria, hasClinicalCriteria, nonClinicalProgramKeys, type SegmentCriteria } from "./segment";
 import { programByKey } from "./staging-constants";
+import { tagValueLabel } from "./tags";
 import { getDictionary } from "../i18n";
 import type { Lang } from "../i18n/config";
 
@@ -87,7 +88,10 @@ function sanitizeCondition(raw: unknown): AssistCondition | null {
  * Turn untrusted LLM JSON into a safe PROPOSAL. Pure. Everything outside the closed vocabulary is
  * dropped; the clinical gate is enforced; nothing here computes or reads the database.
  */
-export function sanitizeAssistOutput(raw: unknown, opts: { canViewHealth: boolean }): AssistProposal {
+export function sanitizeAssistOutput(
+  raw: unknown,
+  opts: { canViewHealth: boolean; allowedTags?: readonly string[] },
+): AssistProposal {
   const o = (raw ?? {}) as Record<string, unknown>;
 
   const conditionsRaw = Array.isArray(o.conditions) ? o.conditions : [];
@@ -121,7 +125,17 @@ export function sanitizeAssistOutput(raw: unknown, opts: { canViewHealth: boolea
     srcProgram: o.srcProgram,
     joinedWithinDays: o.joinedWithinDays,
     inactiveForDays: o.inactiveForDays,
+    // TAG criteria (TUGAS D). parseCriteria validates SHAPE (operator-tag). Then, when the caller
+    // supplies the pool vocabulary, we intersect with it: a tag the model invented that is not in the
+    // pool is DROPPED, never guessed to a neighbour — this is what preserves the refusal even if the
+    // model ignores the prompt. If nothing survives and nothing else mapped, proposalIsEmpty → refuse.
+    tagsAny: o.tagsAny,
+    tagsAll: o.tagsAll,
   });
+  if (opts.allowedTags) {
+    const allow = new Set(opts.allowedTags);
+    criteria = { ...criteria, tagsAny: criteria.tagsAny.filter((t) => allow.has(t)), tagsAll: criteria.tagsAll.filter((t) => allow.has(t)) };
+  }
 
   // Clinical gate — SAME classifier (hasClinicalCriteria / clinicalProgramKeys) the manual route
   // uses. The route REJECTS a clinical request (403); the assistant STRIPS it and continues so the
@@ -199,6 +213,9 @@ export function describeProposal(p: AssistProposal, lang: Lang = "id"): string {
   if (cr.srcClinicTxn) parts.push(s.rbClinicTxn);
   if (cr.srcRfm.length) parts.push(`${s.rbRfm} ${summarizeList(cr.srcRfm, s)}`);
   if (cr.srcProgram.length) parts.push(`${s.rbProgram} ${summarizeList(cr.srcProgram.map((k) => programByKey(k)?.label ?? k), s)}`);
+  // TAG criteria (TUGAS D): reuse the tag labels, summarised like the other multi-value lists.
+  if (cr.tagsAny.length) parts.push(`${s.rbTagsAny} ${summarizeList(cr.tagsAny.map((t) => tagValueLabel(t, lang)), s)}`);
+  if (cr.tagsAll.length) parts.push(`${s.rbTagsAll} ${summarizeList(cr.tagsAll.map((t) => tagValueLabel(t, lang)), s)}`);
   return parts.length > 0 ? parts.join(` ${s.rbAnd} `) : s.rbWholePoolNoCriteria;
 }
 
@@ -218,6 +235,8 @@ export function proposalIsEmpty(p: AssistProposal): boolean {
 function hasNoSourceCriteria(c: SegmentCriteria): boolean {
   return (
     !c.ecoUnit && !c.ecoProduct && !c.srcHyrox && !c.srcMy20fit && !c.srcRecency &&
-    !c.srcArena && !c.srcGym && !c.srcClinicPatient && !c.srcClinicTxn && !c.srcRfm.length && !c.srcProgram.length
+    !c.srcArena && !c.srcGym && !c.srcClinicPatient && !c.srcClinicTxn && !c.srcRfm.length && !c.srcProgram.length &&
+    // A tag-only proposal is NOT empty — the assistant successfully mapped an event/role to tags.
+    !c.tagsAny.length && !c.tagsAll.length
   );
 }

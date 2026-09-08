@@ -23,6 +23,7 @@ export function SegmentsTab({
   total,
   canViewHealth,
   canBuild,
+  availableTags = [],
   returnTo,
 }: {
   segments: SavedSegmentMeta[];
@@ -31,6 +32,7 @@ export function SegmentsTab({
   total: number;
   canViewHealth: boolean;
   canBuild: boolean;
+  availableTags?: string[];
   returnTo?: string | null;
 }) {
   const { lang, t } = useI18n();
@@ -145,6 +147,7 @@ export function SegmentsTab({
                 cityFilled={cityFilled}
                 total={total}
                 canViewHealth={canViewHealth}
+                availableTags={availableTags}
                 returnTo={returnTo}
               />
             </>
