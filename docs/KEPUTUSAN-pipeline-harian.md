@@ -1,5 +1,7 @@
 # Daftar keputusan: pipeline harian ekosistem
 
+> ## ⏱ DIUKUR: 7 September 2026, 14:00–18:00 UTC
+>
 > Menyertai `docs/RANCANGAN-pipeline-harian.md`. **Nol baris kode dibangun sampai daftar ini
 > dijawab.** Setiap keputusan menyebutkan konsekuensinya dengan angka, bukan dengan kehati-hatian.
 

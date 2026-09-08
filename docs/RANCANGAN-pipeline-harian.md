@@ -1,5 +1,7 @@
 # Rancangan: pipeline harian ekosistem 20FIT
 
+> ## ⏱ DIUKUR: 7 September 2026, 14:00–18:00 UTC
+>
 > **Status: RANCANGAN. Nol tabel, nol migrasi, nol cron.** Dokumen ini tidak membangun apa pun.
 > Ia mengukur ulang premisnya, menjawab enam pertanyaan rancangan dengan angka, lalu menyerahkan
 > satu daftar keputusan ke pemilik.

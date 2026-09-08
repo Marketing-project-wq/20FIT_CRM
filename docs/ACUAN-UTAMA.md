@@ -188,8 +188,13 @@ Kegagalan tak terkirim            18.119   (3 Sep, penyebab kini tercatat)
    tidak melihatnya
 2. `SegmentCriteria` **tidak punya kriteria usia atau tanggal lahir sama sekali** (diverifikasi di
    `lib/crm/segment.ts`) — jadi angka yang ada di cermin belum bisa dipakai menyaring siapa pun
-3. Ada peringatan kualitas yang sudah tercatat: **2.232 tanggal ambigu hari-bulan** (0 terbukti
-   tertukar). Memindahkannya mentah-mentah berarti memindahkan ambiguitas itu juga
+3. **2.232 dari 5.467 tanggal itu ambigu hari-bulan** — 0 terbukti tertukar, tetapi 41% tak bisa
+   dipastikan apakah `03/07` berarti 3 Juli atau 7 Maret (temuan kualitas `staging_dob_ambiguity`,
+   sudah tampil di `/quality`). **Ini keputusan, bukan detail implementasi:** menyaring "usia 30–40"
+   di atas 2.232 tanggal yang mungkin meleset berbulan-bulan menghasilkan segmen yang terlihat
+   presisi dan tidak. Tiga pilihan yang masuk akal — pakai **tahun lahir saja** (tak ambigu untuk
+   semua 5.467), pakai hanya 3.235 yang tak ambigu, atau selesaikan ambiguitasnya dari sumber lain.
+   **Putuskan ini sebelum P2-2 dibangun**, bukan sesudah
 
 **Akibatnya untuk marketing:** segmentasi hari ini hanya bisa memakai unit bisnis, sumber,
 kontaktabilitas, kebaruan, dan LTV. Kampanye berbasis usia, gender, atau lokasi tidak mungkin —
@@ -284,7 +289,58 @@ Tanpa ini, semua data yang dikumpulkan tetap tidak bisa dipakai.
 | P0-3 | **Bangun jalur kirim massal** berkelompok di proses latar | Teknis | 8,1 jam berurutan tidak layak |
 | P0-4 | **Auto-suppress bounce keras** | Teknis | Melindungi reputasi domain |
 | P0-5 | **Jadwal ramp bertahap** — mulai ribuan, naik setelah melihat bounce | Pemilik | Bukan batas teknis, tapi disiplin |
-| P0-6 | **Perbaiki policy `authenticated_full_access` (T-17)** | Teknis + Jeff | 1.358 akun bisa menulis pool langsung; naik ke P0 karena setiap klaim kendali atas pool bergantung padanya |
+| P0-6 | **Eskalasikan paparan tulis `master_customer` + `customer_engagement` (T-17)** | **Jeff**, bukan teknis | Tiga lapis, lihat di bawah. Naik ke P0 karena setiap klaim kendali atas pool bergantung padanya |
+
+### P0-6 dirinci — tiga lapis, dan pola yang benar sudah ada di sebelahnya
+
+**Lapis 1 — policy untuk 1.358 akun.** `master_customer` **dan** `customer_engagement` sama-sama
+membawa `authenticated_full_access` (`ALL` · `USING true` · `WITH CHECK true`). Setiap akun di
+`auth.users` — **1.358** hari ini, pengguna aplikasi 20FIT mana pun yang berbagi proyek Supabase
+ini, bukan hanya staf CRM — dapat menyisipkan, mengubah, dan menghapus baris.
+
+**Lapis 2 — grant `anon` menunggu di belakang satu boolean.**
+
+```
+GRANT ke anon di master_customer : INSERT, SELECT, UPDATE, DELETE, TRUNCATE
+GRANT ke anon di customer_engagement : sama
+RLS aktif                        : true   ← satu-satunya yang menahan
+policy untuk anon                : tidak ada
+```
+
+Hari ini `anon` **diblokir** — RLS aktif dan tak ada policy untuknya. Tapi grant-nya sudah diberikan,
+sehingga pertahanannya adalah **satu boolean**. Kalau RLS pernah dimatikan di tabel ini, kunci `anon`
+yang tertanam di setiap bundel peramban langsung memperoleh akses **tulis** ke 82.830 profil. Itu
+bukan hipotesis di organisasi ini: enam tabel `clinic_*` di ARENA-BOOKING persis begitu — RLS mati,
+kunci anon publik.
+
+**Lapis 3 — pola yang benar sudah ada di basis data yang sama.** Tabel milik CRM sendiri sudah aman,
+dan lebih aman dari yang mungkin diduga: `crm_consent`, `crm_message_log`, `crm_suppression`,
+`crm_segment`, `crm_audit_log` semuanya **RLS aktif, nol policy, dan nol GRANT tulis** ke
+`anon`/`authenticated` — hanya `service_role` yang lewat, terlindung **dua lapis**, bukan satu. Yang
+belum mengikuti pola itu adalah tabel warisan lintas-divisi.
+
+**Ini eskalasi ke Jeff, bukan pekerjaan teknis.** `master_customer` dan `customer_engagement` dipakai
+lintas divisi; mencabut grant akan memutus tim lain kalau ada yang memakainya.
+
+**Ukur dulu sebelum mengusulkan pencabutan** — dan sebagian pengukurannya sudah dilakukan (7–8 Sep
+2026, lihat §"Apakah jalur `authenticated` benar-benar dipakai" di bawah). Ringkasnya: **tidak
+ditemukan satu pun bukti jalur itu pernah dipakai menulis.** Kalau pengukuran lanjutan oleh Jeff juga
+nol, pencabutannya murah. Kalau ada pemakainya, itu percakapan lain.
+
+### Apakah jalur `authenticated` benar-benar dipakai? — empat garis bukti
+
+| Bukti | Hasil |
+|---|---|
+| Jumlah baris vs muatan | 81.178 + 1.075 + 577 = **82.830, persis** — nol baris pernah dihapus |
+| `updated_at > created_at` | **723 baris, seluruhnya** dalam 11 menit pada 31 Jul 12:19–12:30 UTC — jendela muatan `live_txn_ingest`. **Nol pembaruan sesudahnya** |
+| `crm_audit_log` | Setiap aksi atas `master_customer` adalah BACA: `list.viewed` 188 · `profile.viewed` 39 · `search.performed` 32 · `export.performed` 3. **Nol aksi tulis** |
+| Kode CRM | Nol kueri sisi-peramban ke `master_customer` — ketiga berkas klien yang menyebut namanya hanya menampilkannya sebagai teks. Seluruh akses lewat klien `service_role` di server |
+
+**Batas bukti ini, dinyatakan:** tiga garis pertama tak akan melihat tulisan yang menyisipkan dan
+menghapus dalam jumlah sama, atau `UPDATE` yang juga menyetel `updated_at = created_at`. Keduanya
+mungkin secara teknis tetapi tak masuk akal sebagai pemakaian biasa. Yang bisa dikatakan dengan
+jujur: **tidak ada jejak pemakaian, dan ada empat cara berbeda yang seharusnya menunjukkannya kalau
+ada.**
 
 ## P1 — Menghambat tujuan "hub seluruh ekosistem"
 
@@ -301,7 +357,7 @@ Tanpa ini, semua data yang dikumpulkan tetap tidak bisa dipakai.
 | # | Pekerjaan | Milik | Catatan |
 |---|---|---|---|
 | P2-1 | **Entri satu orang untuk CS** | Teknis | UI + validasi di atas `crm_ingest_csv_people`; jalur tulisnya sudah ada dan teruji |
-| P2-2 | **Kriteria usia/tgl lahir di pembangun segmen** | Teknis | 5.442 sudah ada di cermin; yang hilang kriterianya, bukan datanya. Tangani 2.232 tanggal ambigu lebih dulu |
+| P2-2 | **Tambahkan kriteria usia ke `SegmentCriteria`** — datanya sudah sampai, kriterianya belum ada | Teknis | 5.442 tgl lahir SUDAH di `crm_customer_mirror.staging_dob`. Yang hilang: nol referensi usia/`staging_dob` di `lib/crm/segment.ts`. **Putuskan 2.232 tanggal ambigu hari-bulan lebih dulu** — lihat catatan di bawah |
 | P2-3 | **Segmentasi berbasis tag** — kolom `tags` di cermin + kriteria | Teknis | Tanpa ini, tag tersimpan tapi tak berguna |
 | P2-4 | **Perluas RBAC `audience.import`** ke CS/manager | Jeff | Tanpa ini hanya super admin bisa mengimpor |
 | P2-5 | **Dukungan Excel** untuk impor | Teknis | CS bekerja dengan `.xlsx` |
@@ -354,6 +410,42 @@ Dokumen ini **termasuk di dalamnya**. Lihat bagian berikut.
   perbarui tanggal di baris pertama**.
 - Nomor temuan (T-xx) dan keputusan (K-xx) merujuk `docs/riwayat/TEMUAN.md` dan
   `docs/riwayat/KEPUTUSAN.md`.
+
+## Angka yang wajib diukur ulang
+
+Daftar ini bukan hiasan: **pagar umur membacanya** dan mencetaknya di pesan kegagalan, supaya orang
+yang menemukan dokumen ini kedaluwarsa langsung punya daftar kerjanya alih-alih harus menyusunnya
+sendiri (`lib/docs/doc-freshness.ts`). Kalau Anda menambah angka baru ke dokumen ini, tambahkan
+juga barisnya di sini.
+
+- Pool `master_customer`, dan pecahannya: nama · email kolom · `email_normalized` · telepon · kota · gender · tgl lahir · alamat · LTV
+- Baris `email_normalized` NULL padahal `email` terisi, dan berapa yang cocok ke sumber pipeline
+- Ketiga muatan (tanggal + jumlah + `source`), untuk memastikan pool masih beku
+- Orang baru dari sumber HIDUP, dan yang HANYA ada di sumber beku — **diukur langsung, jangan hasil pengurangan** (lihat peringatan di bawah)
+- Kolom eksklusif per sumber (bukan kolom "baru vs CRM")
+- `crm_message_log`: dicoba · sampai · bounce · gagal · belum dikonfirmasi, dan laju kirim per detik
+- Isi `crm_suppression` dan `crm_send_config`
+- `auth.users`, policy dan GRANT pada `master_customer` + `customer_engagement` (P0-6)
+- `staging_20fit_data`: tgl lahir, yang cocok ke pool, dan yang sudah ada di `crm_customer_mirror.staging_dob`
+- Isi `crm_profile_demographic`, `crm_workflow`, `crm_workflow_enrollment`, `crm_segment`
+- Jadwal `cron.job`, sebelum menyimpulkan slot mana yang kosong
+
+> ### ⚠ Peringatan cara mengukur — tiga kesalahan yang sama dalam satu sprint
+>
+> **Jangan pernah mendapatkan sebuah angka dengan mengurangkan dua populasi yang tidak sebanding.**
+> Tiga angka di sprint ini lahir begitu dan ketiganya salah: `uob_users` "868 orang baru" (867 dari
+> mereka sudah ada di `my20fit_profile`), "1.421", dan "1.056 dari sumber beku" (sebenarnya 1.549).
+> Bentuknya selalu sama: A diukur atas satu himpunan sumber, B atas himpunan lain, lalu A − B ditulis
+> seolah bermakna.
+>
+> Aturannya: **setiap angka "berapa orang" ditulis sebagai satu kueri dengan `not in (...)` yang
+> eksplisit**, bukan sebagai selisih dua angka dari kueri berbeda. Kalau sebuah angka di dokumen ini
+> tak bisa ditelusuri ke satu kueri, ia belum diukur.
+>
+> Bisakah ini dijaga pagar? **Belum, dan saya belum tahu caranya** — pengurangan terjadi di kepala
+> orang yang menulis, bukan di berkas yang bisa dipindai. Yang bisa dipindai adalah *prosa* yang
+> menyebutkan pengurangan, dan itu menangkap yang jujur menuliskannya sambil melewatkan yang tidak.
+> Dicatat sebagai pertanyaan terbuka, bukan sebagai pekerjaan.
 
 ### Kenapa dokumen ini akan menua, dan apa yang bisa memeriksanya
 
