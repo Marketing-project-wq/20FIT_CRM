@@ -8,12 +8,38 @@ dipicu dari sana. Langkah + query verifikasi di bawah membuktikan seluruh rantai
 alamat `@20fit.id`; alamat pelanggan ditahan. Token Mailtrap yang bocor **tetap belum boleh** dipakai
 untuk kirim pelanggan — tapi uji internal ke `@20fit.id` aman.
 
-> ## ⚠️ DEADLOCK yang ditemukan 24 Agu 2026 — kenapa composer TAK BISA dipakai untuk uji internal
-> Diverifikasi ke DB langsung: **`master_customer` memuat 0 alamat `@20fit.id`** (staf bukan
-> pelanggan). Segmen menarik penerima **hanya** dari `master_customer`, dan dengan kirim nyata mati
-> gerbang **hanya** mengizinkan `@20fit.id`. Dua pengaman yang masing-masing benar, bersama-sama
-> membuat "segmen berisi profil `@20fit.id`" **mustahil** — composer akan menampilkan 0 "Akan
-> dikirimi". Karena itu uji internal dijalankan lewat **harness** di bawah, bukan composer.
+> ## ✅ DEADLOCK SUDAH TIDAK BERLAKU — diukur ulang 7 Sep 2026
+> **`master_customer` kini memuat 13 alamat `@20fit.id`** (diukur 7 Sep 2026, 06:49 UTC): semuanya
+> masuk **27 Agustus 2026** lewat `source='activity_ingest'` — bagian dari muatan 577 baris. Nol
+> ter-suppress, nol `merged_into`, nol pernah muncul di `crm_message_log`, ketiga belas punya
+> `email_normalized` dan nama lengkap.
+>
+> Maka composer **bisa** dipakai: sebuah segmen `emailList` berisi alamat-alamat itu menyelesaikan
+> penerima sungguhan. `previewCampaign` menghitung `sendable = withEmail − suppressed` lewat
+> resolusi yang **sama persis** dengan jalur kirim, dan consent tidak ikut menyaring (K-36:
+> consent adalah bukti, suppression adalah gerbang) — jadi nol baris consent pada ketiga belas
+> orang itu **tidak** menghalangi.
+>
+> `SEND_TEST_INTERNAL_ADDRESS` dan redeploy **tidak lagi diperlukan** untuk uji lewat composer.
+> Harness di bawah tetap sah dan tetap berguna (ia menyuntik penerima tanpa menyentuh pool sama
+> sekali), tapi ia bukan lagi satu-satunya jalan.
+>
+> ### Catatan lama — DIPERTAHANKAN, karena benar pada waktunya
+> > **DEADLOCK yang ditemukan 24 Agu 2026 — kenapa composer TAK BISA dipakai untuk uji internal.**
+> > Diverifikasi ke DB langsung: **`master_customer` memuat 0 alamat `@20fit.id`** (staf bukan
+> > pelanggan). Segmen menarik penerima **hanya** dari `master_customer`, dan dengan kirim nyata
+> > mati gerbang **hanya** mengizinkan `@20fit.id`. Dua pengaman yang masing-masing benar,
+> > bersama-sama membuat "segmen berisi profil `@20fit.id`" **mustahil** — composer akan
+> > menampilkan 0 "Akan dikirimi". Karena itu uji internal dijalankan lewat **harness** di bawah,
+> > bukan composer.
+>
+> **Kenapa catatan lama tidak dihapus.** Ia tidak salah; ia **kedaluwarsa** — benar pada 24 Agustus,
+> berhenti benar pada 27 Agustus ketika 13 alamat itu masuk, dan tak ada yang memberi tahu siapa
+> pun. Menghapusnya akan menghapus buktinya bahwa register yang menua adalah bahaya nyata di proyek
+> ini, bukan kekhawatiran teoretis. Pada 7 Sep 2026 catatan itu dipercaya apa adanya oleh sebuah
+> laporan agen dan menghasilkan rekomendasi yang salah (lihat **T-63**). Aturan yang lahir darinya:
+> **setiap klaim terukur membawa tanggal pengukurannya**, dan sebuah klaim tanpa tanggal harus
+> diukur ulang sebelum dipakai untuk mengambil keputusan.
 
 ## Langkah — via harness (panel "Uji kirim internal" di /campaigns, tampil saat kirim nyata mati)
 

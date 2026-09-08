@@ -9,6 +9,16 @@ segmentation and marketing automation for the Marketing Division.
 
 Full spec: `PRD — 20FIT Audience Data & CRM System v1.1`.
 
+> ## 📌 ACUAN UTAMA — `docs/ACUAN-UTAMA.md`
+>
+> **Start here.** The owner's primary reference for the whole system: an evaluation against the
+> five stated goals, a checklist of what works and what does not, and the priority order —
+> in **[`docs/ACUAN-UTAMA.md`](docs/ACUAN-UTAMA.md)**. Every new piece of work should point at a
+> line in its priority list; if it cannot, it needs its own justification.
+>
+> Its numbers are a **snapshot with a measurement timestamp in the first line**. Anyone who updates
+> a number must update that timestamp. Treat figures older than two weeks as needing re-measurement.
+
 > ## 🧭 Scope authority — `docs/KEBUTUHAN-SISTEM.md`
 >
 > The product owner's standing statement of what this system must do (and what is **not** its

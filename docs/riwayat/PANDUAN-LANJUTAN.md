@@ -4,6 +4,11 @@ Berkas ini adalah titik masuk. Baca ini lebih dulu sebelum apa pun, lalu ikuti t
 
 Terakhir diperbarui: **24 Agustus 2026.**
 
+> **📌 ACUAN UTAMA ada di [`docs/ACUAN-UTAMA.md`](../ACUAN-UTAMA.md)** (diukur 7 Sep 2026) — evaluasi
+> sistem terhadap lima tujuan pemilik beserta daftar prioritasnya. **Baca itu lebih dulu.** Berkas
+> yang sedang Anda baca ini masih menyatakan keadaan 13/24 Agustus dan sudah basi; ia belum
+> diperbarui, hanya diberi penunjuk ini.
+
 > ## 🧭 Rujukan lingkup teratas — `docs/KEBUTUHAN-SISTEM.md`
 >
 > Pernyataan pemilik produk (24 Agu 2026) tentang apa yang sistem ini **harus** lakukan dan apa

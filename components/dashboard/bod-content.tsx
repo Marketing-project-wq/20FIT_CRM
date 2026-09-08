@@ -1,18 +1,24 @@
 import { BarList } from "./bar-list";
 import type { Dict, Lang } from "@/lib/i18n";
 import { formatCount, formatDate, formatDateTime } from "@/lib/i18n";
-import { isBodSnapshotStale, bodSnapshotAgeHours, type BodSnapshot } from "@/lib/crm/bod";
+import { isBodSnapshotStale, bodSnapshotAgeHours, type BodSnapshot } from "@/lib/crm/bod-snapshot";
 
 export type BodData = BodSnapshot;
 
 /**
- * The five cards. Five is a limit on how many things must be read at once — not on how many
- * numbers may appear. A card carrying four related figures is still one thing to read; five cards
- * each carrying one figure would be five.
+ * The board summary — the TOP LAYER of the Dashboard, not a page of its own (K-61, revised 7 Sep
+ * 2026). It was briefly a separate `/bod` route; that was the wrong shape, because a second screen
+ * showing the same pool from the same data would drift away from the first one on its own. `/bod`
+ * now redirects here.
  *
- * Every number on this screen is computed at request time. None is written into a translation
- * string, which is the rule K-60 exists to state — and which four captions on the operational
- * dashboard had quietly broken.
+ * Five cards. Five is a limit on how many things must be read at once — not on how many numbers may
+ * appear: a card carrying four related figures is still one thing to read.
+ *
+ * EVERY figure comes from ONE daily snapshot, and the section's single timestamp is that snapshot's
+ * own `refreshed_at` — never the clock (K-63). Nothing here is counted at request time. That is why
+ * this section can carry one honest freshness line while the operational layer below carries its
+ * own: the promise is "one measurement time PER SECTION, and the boundary is stated" — not "one
+ * timestamp for the whole page", which would force these two very different things into one claim.
  */
 
 function Card({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
@@ -40,7 +46,7 @@ function Note({ children }: { children: React.ReactNode }) {
   return <p className="mt-4 font-body text-[12px] leading-relaxed text-ink-faint">{children}</p>;
 }
 
-export function BodContent({
+export function BodSummary({
   data,
   t,
   lang,
@@ -69,11 +75,14 @@ export function BodContent({
   }));
 
   return (
-    <div className="space-y-6">
-      <header className="flex flex-wrap items-end justify-between gap-4">
+    <section className="space-y-4">
+      {/* A stated boundary, not an implied one. The old failure was never "the page has more than
+          one freshness" — it was "the page has several freshnesses and nothing says so". Two
+          labelled layers is the fix; one unlabelled stream would be the old bug on purpose. */}
+      <header className="flex flex-wrap items-end justify-between gap-4 border-t-2 border-ink pt-4">
         <div>
-          <h1 className="font-display text-[30px] font-extrabold leading-none text-ink">{b.title}</h1>
-          <p className="mt-2 font-body text-[14px] text-ink-soft">{b.subtitle}</p>
+          <h2 className="font-display text-[22px] font-extrabold leading-none text-ink">{b.title}</h2>
+          <p className="mt-1.5 font-body text-[13px] text-ink-soft">{b.subtitle}</p>
         </div>
         {/* ONE timestamp for the whole page, and it is the SNAPSHOT'S OWN — never the clock.
             If tonight's refresh fails, this stops moving instead of advancing over stale numbers
@@ -157,6 +166,6 @@ export function BodContent({
           <Note>{b.gapNote}</Note>
         </Card>
       </div>
-    </div>
+    </section>
   );
 }

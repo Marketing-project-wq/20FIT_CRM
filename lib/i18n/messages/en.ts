@@ -88,6 +88,12 @@ export const en: Messages = {
     previewBanner: "PREVIEW · FIXTURE DATA — NOT PRODUCTION FIGURES",
     blockFailed: "This section failed to load.",
     blockRetry: "Retry",
+    // Heading + note for the lower layer. The boundary between layers is STATED, not implied: what
+    // was wrong before was never "a page has more than one freshness" but "a page has several
+    // freshnesses and nothing says so" (K-61, revised).
+    opsTitle: "Operational detail",
+    opsNote:
+      "This section is NOT part of the summary above, and its timing is different. Some of it is counted when this page is opened, some comes from the daily calculation — each block says which. If a figure here looks different from one in the summary, check the timing before concluding something is wrong.",
     audienceSize: "Audience size",
     audienceSizeHint: "20FIT audience data (read-only)",
     reachEmail: "Reachable by email",
@@ -114,10 +120,8 @@ export const en: Messages = {
     rfmNoBucket: "− (no tier)",
     liveTitle: "Live sources vs the frozen pool",
     liveNote: "The CRM pool only grows through manual loads — no pipeline feeds new registrants into it. The sources below are counted live per request, so the “not yet in pool” gap rises on its own as people register — the honest answer to “does it update automatically”.",
-    poolLayerA: "CRM pool: ",
-    poolLayerB: " profiles, last loaded ",
-    // {n} loads, {date} the last load date — both computed from created_at (K-60).
-    poolLayerC: " · {n} manual loads so far, most recently {date}. Nothing arrives between loads.",
+    poolBaseline:
+      "The baseline for the table below is every profile already in the CRM — that figure, and the load history behind it, are in the summary above. What is counted here is people in other systems who are NOT yet among them.",
     srcMy20fit: "my20fit",
     srcHyrox: "Hyrox",
     srcArena: "Arena",

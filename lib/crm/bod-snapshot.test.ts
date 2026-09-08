@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
-// bod.ts is `import "server-only"`.
+// bod-snapshot.ts is pure (no server-only), but the mock stays harmless and cheap.
 import { vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
@@ -11,7 +11,7 @@ import {
   isBodSnapshotStale,
   bodSnapshotAgeHours,
   BOD_STALE_AFTER_HOURS,
-} from "./bod";
+} from "./bod-snapshot";
 
 /**
  * GUARD (K-63): the board page's single timestamp comes from the SNAPSHOT, never from the clock —
@@ -83,9 +83,26 @@ describe("BOD snapshot — the timestamp is the snapshot's, never the clock's", 
     expect(ui).not.toMatch(/Date\.now\(\)/);
 
     // The page passes the clock in for the STALENESS decision only, never as the stamp.
-    const page = readFileSync(join(process.cwd(), "app", "(app)", "bod", "page.tsx"), "utf8");
+    //
+    // THIS PATH MOVED on 7 Sep 2026, and the move is the reason to read this comment. The summary
+    // used to be its own route at app/(app)/bod/page.tsx; it is now the top layer of the Dashboard
+    // at app/(app)/page.tsx, and /bod is a redirect. A source-scanning guard that keeps pointing at
+    // a file which no longer does the thing is the worst kind of guard — it can go green forever
+    // while checking nothing. When this assertion moved it went RED first (the redirect stub has no
+    // fetch and no clock), which is how it should fail; the fix was to re-aim it, never to relax it.
+    //
+    // existsSync is asserted deliberately: if the path is ever wrong, this fails LOUDLY instead of
+    // reading an empty string and passing a `toContain` on nothing.
+    const pagePath = join(process.cwd(), "app", "(app)", "page.tsx");
+    expect(existsSync(pagePath), `${pagePath} must exist — the guard is pointed at a real file`).toBe(true);
+    const page = readFileSync(pagePath, "utf8");
     expect(page).toContain("nowMs={Date.now()}");
     expect(page).toContain("fetchBodSnapshot");
+
+    // And /bod must stay a redirect, not quietly become a second screen again.
+    const bod = stripComments(readFileSync(join(process.cwd(), "app", "(app)", "bod", "page.tsx"), "utf8"));
+    expect(bod).toContain("redirect");
+    expect(bod).not.toContain("fetchBodSnapshot");
   });
 
   it("every figure on the page comes from the blob, so a stale blob makes ALL of them stale together", () => {
