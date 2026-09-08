@@ -222,6 +222,13 @@ describe("importFailureMessage — the class, and whether retrying can help", ()
     expect(importFailureMessage(null)).toMatch(/tidak memberi kode/);
   });
 
+  it("read_failed (T-69) says nothing was written and does not blame the file", () => {
+    const m = importFailureMessage("read_failed");
+    expect(m).toMatch(/TIDAK ADA yang ditulis/); // hard-atomic: zero partial writes
+    expect(m).toMatch(/bukan salah berkas Anda/);
+    expect(m).not.toMatch(/pecah/i); // not a size problem — a read failure
+  });
+
   it("still names an unknown code rather than swallowing it", () => {
     expect(importFailureMessage("40001")).toContain("40001");
   });

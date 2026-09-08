@@ -100,10 +100,11 @@ export async function POST(request: NextRequest) {
       const suppressedPhones = new Set<string>();
       // Which of THIS batch's emails/phones already exist in master (bounded by the batch, not 82k).
       if (emails.length > 0) {
-        const { data } = await admin
+        const { data, error } = await admin
           .from("master_customer")
           .select("email_normalized, merged_into")
           .in("email_normalized", emails);
+        if (error) throw readFailure("email", error.code);
         for (const r of data ?? []) {
           const e = r.email_normalized as string | null;
           if (!e) continue;
@@ -112,14 +113,16 @@ export async function POST(request: NextRequest) {
         }
       }
       if (phones.length > 0) {
-        const { data } = await admin.from("master_customer").select("phone_normalized").in("phone_normalized", phones);
+        const { data, error } = await admin.from("master_customer").select("phone_normalized").in("phone_normalized", phones);
+        if (error) throw readFailure("phone", error.code);
         for (const r of data ?? []) if (r.phone_normalized) existingPhones.add(r.phone_normalized as string);
       }
       // Active suppressions (small) — keyed by normalized identity.
-      const { data: sup } = await admin
+      const { data: sup, error: supErr } = await admin
         .from("crm_suppression")
         .select("identity_kind, identity_key")
         .eq("status", "active");
+      if (supErr) throw readFailure("suppression", supErr.code);
       for (const s of sup ?? []) {
         if (s.identity_kind === "email") suppressedEmails.add(s.identity_key as string);
         else if (s.identity_kind === "phone") suppressedPhones.add(s.identity_key as string);
@@ -228,6 +231,20 @@ export async function POST(request: NextRequest) {
 function rpcFailure(code: string | null | undefined): Error & { code: string | null } {
   const err = new Error("crm_ingest_csv_people failed") as Error & { code: string | null };
   err.code = safeCode(code);
+  return err;
+}
+
+/**
+ * A failed loadKeys READ, as a PII-free Error carrying the DB code. Import MUST fail loud on a read
+ * error, never proceed with empty keys. Empty keys make planImport treat every row as net-new, so the
+ * ingest anti-join silently skips everyone already in the pool — a HALF import reported as success.
+ * This shipped (T-69, 8 Sep 2026): a ~24 KB `.in(email…)` URL for a >550-row file returned HTTP 400,
+ * the error was discarded by `const { data } =`, and 1.432-row files imported ~half with ZERO tagging
+ * under a green check. Throwing here turns that silent lie into an honest failure (TUGAS 4: because
+ * loadKeys is the first dep call, a throw aborts the request before any write — zero partial writes). */
+function readFailure(stage: "email" | "phone" | "suppression", code: string | null | undefined): Error & { code: string } {
+  const err = new Error(`loadKeys ${stage} read failed`) as Error & { code: string };
+  err.code = safeCode(code) ?? "read_failed";
   return err;
 }
 

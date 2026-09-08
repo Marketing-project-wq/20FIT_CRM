@@ -404,6 +404,8 @@ export function importFailureMessage(code: string | null): string {
       return "Baris impor merujuk data yang tidak ada (kode 23503). Perlu ditinjau — mengulang tidak akan berhasil.";
     case "42501":
       return "Peran yang dipakai tidak berwenang menjalankan impor (kode 42501). Ini soal hak akses, bukan berkas Anda.";
+    case "read_failed":
+      return "Impor dibatalkan: gagal membaca data pembanding (dedup/suppression) dari database, jadi TIDAK ADA yang ditulis. Ini bukan salah berkas Anda dan tidak ada data yang masuk sebagian — coba lagi; kalau berulang, laporkan.";
     case "57014":
       return `Impor melewati anggaran waktu database 8 detik dan dibatalkan (kode 57014). Batas aman yang terukur adalah ${MAX_IMPORT_ROWS.toLocaleString("id-ID")} baris per file — pecah file menjadi beberapa bagian di bawah angka itu, lalu impor bergiliran. Jika file Anda sudah di bawah ${MAX_IMPORT_ROWS.toLocaleString("id-ID")} baris, ini di luar dugaan (bukan salah berkas Anda): catat kejadiannya dan laporkan, jangan diulang berkali-kali.`;
     case null:
