@@ -2220,3 +2220,37 @@ dengan nama kosong TAK terisi oleh impor (tagged_existing hanya menyentuh `tags`
 jalan mengisi namanya hari ini adalah tombol edit. Keputusan pemilik (K-58 tak diubah): biarkan
 tombol edit mengisinya, atau kelak izinkan impor mengisi field KOSONG pada orang yang sudah ada
 (bukan menimpa).
+
+## T-68 — Batas impor 20.000 ditulis tanpa pernah diuji; gagal `57014` di 1.432 (7%), dan sebabnya seq-scan telepon per-baris — 8 Sep 2026
+
+Pemilik gagal mengimpor `audiens-sportfest-2-2026-02.csv` (1.432 baris) dengan **`57014`
+statement timeout**. Nol baris tertulis (transaksi rollback utuh). Berkas kecil berhasil (334 orang,
+5 batch). Layar menjanjikan **20.000 baris**; sistem gagal di **1.432 — 7% dari yang dijanjikan
+sendiri**. Angka 20.000 tak pernah diukur — kelas yang sama dengan caption yang menua (T-50/T-56):
+angka di layar yang tak pernah dijalankan.
+
+**Sebab, diukur ulang hari ini** (`EXPLAIN ANALYZE` tiap tahap fungsi `crm_ingest_csv_people`):
+
+| Tahap | Lookup | Rencana | Biaya |
+|---|---|---|---|
+| `new_people` (anti-join) | `email_normalized` | **Hash Right Anti Join → satu seq scan** | ~31 ms, tetap berapa pun N |
+| `upd` (tag_targets) | `email_normalized` | **Hash Join → satu seq scan** | ~33 ms, tetap |
+| **`phone_safe`** | **`phone_normalized`** | **SubPlan → seq scan PER BARIS** | **~70 ms × jumlah baris bertelepon** |
+| `cons` | (dari `ins`) | insert, tak memindai master | O(n) |
+
+Kedua indeks yang ada **parsial**: email `WHERE …is_merged=false AND is_potential_duplicate=false`,
+telepon `WHERE …is_merged=false`. Fungsi mencari tanpa predikat itu, jadi Postgres tak memakainya →
+seq scan.
+
+**Ambang nyata terukur** (baris sintetis, transaksi rollback):
+- 100 baris **dengan** telepon → **7.174 ms**; 500 → 12.131 ms
+- 100 baris **tanpa** telepon → **110 ms** (65× lebih cepat); 1.000 tanpa telepon → 813 ms
+
+**Timeout sepenuhnya dari `phone_safe`.** Email di-hash (satu scan ~31 ms, negligible berapa pun N);
+`phone_safe.exists` adalah subplan korelasi yang di-seq-scan **per baris**. Anggaran nyata jalur app
+= **`statement_timeout=8s`** (peran `authenticated`/`authenticator`; bukan 2 menit sesi). Jadi ambang
+aman hari ini ≈ **~100 baris bertelepon** — jauh di bawah 20.000.
+
+Perbaikan (BERGATE): indeks **biasa** pada `phone_normalized` (subplan per-baris jadi index probe
+<1 ms). Indeks email tak diperlukan — biaya email tetap ~60 ms total berapa pun N. Batas layar 20.000
+diturunkan ke angka terbukti setelah indeks, dengan pesan galat yang menyebut batasnya.
