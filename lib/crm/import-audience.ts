@@ -222,6 +222,40 @@ export function canRunImport(
   return importActionableTotal(s) > 0 && collectionSource.trim() !== "";
 }
 
+export interface ImportReconciliation {
+  ok: boolean;
+  expectedInserted: number; // plan.netInsert
+  actualInserted: number; // what the RPC returned it inserted
+  expectedTagged: number; // plan.taggedExisting
+  actualTagged: number; // what the RPC returned it tagged
+}
+
+/**
+ * The honest-report check (T-69). The plan (TypeScript) decides who to insert and tag; the ingest RPC
+ * (SQL) then does the write and returns its own counts. When those AGREE, the import did exactly what
+ * was promised. When they DISAGREE — the exact shape of the 8 Sep bug: plan said netInsert 1.432 but
+ * the RPC returned inserted 857, tagged 0 — people were silently dropped between plan and write, and
+ * the screen MUST NOT show a green "selesai". This reconciliation is the runtime expression of the
+ * invariant `inserted + tagged == valid unique emails − merged − suppressed-skipped`: that right-hand
+ * side is exactly `netInsert + taggedExisting`, so `inserted == netInsert AND tagged == taggedExisting`
+ * is the same statement, split into its two halves so the warning can name which side broke.
+ *
+ * With loadKeys now fail-loud + chunked the original cause cannot recur; this stays as defence in depth
+ * — it catches ANY future divergence (a race, a new anti-join change) instead of hiding it.
+ */
+export function reconcileImport(
+  summary: Pick<ImportSummary, "netInsert" | "taggedExisting">,
+  committed: { inserted: number; taggedExisting: number },
+): ImportReconciliation {
+  return {
+    ok: committed.inserted === summary.netInsert && committed.taggedExisting === summary.taggedExisting,
+    expectedInserted: summary.netInsert,
+    actualInserted: committed.inserted,
+    expectedTagged: summary.taggedExisting,
+    actualTagged: committed.taggedExisting,
+  };
+}
+
 export interface ImportPlan {
   summary: ImportSummary;
   insertRows: NormalizedRow[]; // exactly the rows to hand to the ingest function

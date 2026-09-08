@@ -66,7 +66,7 @@ export type ImportResult =
       mapping: ColumnMapping;
       preview: Record<string, string>[];
       plan?: ImportPlan;
-      committed?: { inserted: number };
+      committed?: { inserted: number; taggedExisting: number; sharedPhoneInBatch: number };
     };
 
 function candidateKeys(rows: Record<string, string>[], mapping: ColumnMapping): { emails: string[]; phones: string[] } {

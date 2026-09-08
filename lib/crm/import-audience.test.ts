@@ -11,6 +11,7 @@ import {
   importFailureMessage,
   importActionableTotal,
   canRunImport,
+  reconcileImport,
 } from "./import-audience";
 
 const noKeys: ImportKeys = {
@@ -231,6 +232,59 @@ describe("importFailureMessage — the class, and whether retrying can help", ()
 
   it("still names an unknown code rather than swallowing it", () => {
     expect(importFailureMessage("40001")).toContain("40001");
+  });
+});
+
+// ── TUGAS 3/5.2 (T-69): the honest-report invariant, on a file that CROSSES the old URL threshold ──
+describe("reconcileImport — inserted+tagged must equal the plan, or it is not 'selesai'", () => {
+  // A 700-row file (> the ~591 where the `.in()` URL used to 400): 700 UNIQUE emails, ~half already in
+  // the pool. This is exactly the size and shape that broke on 8 Sep.
+  const N = 700;
+  const rows = Array.from({ length: N }, (_, i) => ({ email: `person${i}@sportfest.example`, name: `P${i}` }));
+  const mapping: ColumnMapping = { email: "email", name: "full_name" };
+  // The FIRST half already exist (and are taggable); the second half are net-new.
+  const existing = new Set(rows.slice(0, 350).map((r) => r.email));
+  const keys: ImportKeys = {
+    existingEmails: existing,
+    taggableEmails: existing,
+    existingPhones: new Set(),
+    suppressedEmails: new Set(),
+    suppressedPhones: new Set(),
+  };
+
+  it("the plan splits the 700-row file into 350 insert + 350 tag (no row unaccounted)", () => {
+    const p = planImport(rows, mapping, keys);
+    expect(p.summary.netInsert).toBe(350);
+    expect(p.summary.taggedExisting).toBe(350);
+    // The invariant, stated directly: every valid unique email is either inserted or tagged here
+    // (none merged, none suppressed), so inserted+tagged must cover all 700.
+    expect(p.summary.netInsert + p.summary.taggedExisting).toBe(N);
+  });
+
+  it("PASSES when the write matches the plan (honest green)", () => {
+    const p = planImport(rows, mapping, keys);
+    const committed = { inserted: 350, taggedExisting: 350 };
+    const rec = reconcileImport(p.summary, committed);
+    expect(rec.ok).toBe(true);
+    expect(rec.actualInserted + rec.actualTagged).toBe(N);
+  });
+
+  it("FAILS (would warn) on the exact 8-Sep shape: plan 350/350 but RPC wrote 211/0", () => {
+    // What the swallow produced: keys looked empty, so plan said all-new, and the anti-join wrote only
+    // the genuinely-new while tagging nobody. reconcileImport must catch the divergence, not hide it.
+    const p = planImport(rows, mapping, keys);
+    const bugCommitted = { inserted: 211, taggedExisting: 0 };
+    const rec = reconcileImport(p.summary, bugCommitted);
+    expect(rec.ok).toBe(false);
+    expect(rec.expectedInserted).toBe(350);
+    expect(rec.actualInserted).toBe(211);
+    expect(rec.expectedTagged).toBe(350);
+    expect(rec.actualTagged).toBe(0);
+  });
+
+  it("FAILS if only tagging diverges (both halves are checked, not just inserts)", () => {
+    const p = planImport(rows, mapping, keys);
+    expect(reconcileImport(p.summary, { inserted: 350, taggedExisting: 349 }).ok).toBe(false);
   });
 });
 

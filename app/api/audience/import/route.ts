@@ -12,7 +12,7 @@ import {
   type ImportInput,
   type ImportPhase,
 } from "@/lib/crm/import-audience-run";
-import { importFailureMessage, MAX_IMPORT_ROWS } from "@/lib/crm/import-audience";
+import { importFailureMessage, MAX_IMPORT_ROWS, reconcileImport } from "@/lib/crm/import-audience";
 import { loadImportKeys, type ImportReadClient } from "@/lib/crm/import-keys";
 import type { ImportKeys, ImportPlan, NormalizedRow } from "@/lib/crm/import-audience";
 
@@ -179,12 +179,21 @@ export async function POST(request: NextRequest) {
     : { ...result, delimiter };
 
   // A successful execute added people — refresh the read mirror so they appear in the pool/segments.
-  if (result.phase === "execute" && result.committed) {
+  if (result.phase === "execute" && result.committed && result.plan) {
+    // HONEST REPORT (T-69): reconcile what the plan promised against what the RPC actually wrote. If
+    // they diverge, people were silently dropped between plan and write — the screen must warn, never
+    // show a green "selesai". Logged server-side too, so a mismatch is never invisible even if unseen.
+    const reconciliation = reconcileImport(result.plan.summary, result.committed);
+    if (!reconciliation.ok) {
+      logApiFailure("/audience/import", "import_reconcile_mismatch", {
+        code: `${reconciliation.actualInserted}/${reconciliation.expectedInserted}_${reconciliation.actualTagged}/${reconciliation.expectedTagged}`,
+      });
+    }
     const { error: refreshErr } = await admin.rpc("crm_refresh_customer_mirror");
     if (refreshErr) logApiFailure("/audience/import", "mirror_refresh_failed", { code: refreshErr.code });
     // Not fatal to the import — the people are in; the mirror can be refreshed again. Report either way.
     return NextResponse.json(
-      { ...trimmed, batch: batchId, mirrorRefreshed: !refreshErr },
+      { ...trimmed, batch: batchId, mirrorRefreshed: !refreshErr, reconciliation },
       { headers: { "Cache-Control": "no-store" } },
     );
   }
