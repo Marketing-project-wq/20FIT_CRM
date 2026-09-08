@@ -41,11 +41,13 @@ export default async function ProfileDetailPage({ params }: { params: { id: stri
   // Whether this role may fill EMPTY demographic fields (profile.edit_demographic, K-32 extension).
   // The API re-checks server-side; this only decides whether to render the fill form.
   const canEditDemographic = isPermitted(role, "profile.edit_demographic");
+  // Whether this role may CORRECT core fields via the edit button (profile.edit_core). API re-checks.
+  const canEditCore = isPermitted(role, "profile.edit_core");
 
   return (
     <>
       <CoverageNotice screen="profile" />
-      <ProfileDetail id={params.id} canEditConsent={canEditConsent} canEditDemographic={canEditDemographic} />
+      <ProfileDetail id={params.id} canEditConsent={canEditConsent} canEditDemographic={canEditDemographic} canEditCore={canEditCore} />
     </>
   );
 }

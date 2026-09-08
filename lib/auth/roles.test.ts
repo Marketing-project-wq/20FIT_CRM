@@ -8,6 +8,7 @@ import {
   canSeeMedical,
   canManageRoles,
   canImportAudience,
+  canEditCore,
   canSeeNav,
   effectiveRole,
   isActiveRole,
@@ -114,7 +115,7 @@ describe("extensions beyond PRD 17.2 (kept explicitly separate, K-32)", () => {
   });
 
   it("the current extensions are edit_demographic + role.granted + audience.import, and NONE is in the PRD copy", () => {
-    expect([...EXTENSION_ACTIONS]).toEqual(["profile.edit_demographic", "role.granted", "audience.import"]);
+    expect([...EXTENSION_ACTIONS]).toEqual(["profile.edit_demographic", "role.granted", "audience.import", "profile.edit_core"]);
     expect(Object.prototype.hasOwnProperty.call(PRD_17_2, "profile.edit_demographic")).toBe(false);
     expect(Object.prototype.hasOwnProperty.call(PRD_17_2, "role.granted")).toBe(false);
     expect(Object.prototype.hasOwnProperty.call(PRD_17_2, "audience.import")).toBe(false);
@@ -360,5 +361,22 @@ describe("nav visibility", () => {
 
   it("unknown routes are hidden (fail-closed)", () => {
     expect(canSeeNav("super_admin", "/nope")).toBe(false);
+  });
+});
+
+describe("profile.edit_core (T-B) — koreksi kontak+atribut master_customer", () => {
+  it("hanya super_admin + crm_manager + data_steward yang boleh; sisanya ditolak; canEditCore menggigit", () => {
+    for (const r of ["super_admin", "crm_manager", "data_steward"] as const) {
+      expect(grantFor(r, "profile.edit_core")).toBe("allow");
+      expect(canEditCore(r)).toBe(true);
+    }
+    for (const r of ["crm_operator", "unit_manager", "analyst", "viewer"] as const) {
+      expect(grantFor(r, "profile.edit_core")).toBe("deny");
+      expect(canEditCore(r)).toBe(false);
+    }
+  });
+  it("lebih sempit dari edit_demographic — crm_operator boleh isi demografi tapi TIDAK koreksi inti", () => {
+    expect(grantFor("crm_operator", "profile.edit_demographic")).toBe("allow");
+    expect(grantFor("crm_operator", "profile.edit_core")).toBe("deny");
   });
 });

@@ -218,8 +218,26 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
   // caller so the "· dari klinik" label cannot leak clinic-membership (health status). T-21.
   const clinicSourceLabel = clinicProvenanceLabel(canViewHealth);
 
+  // Was `lifetime_value` set by hand? (B5) A profile.core_updated audit row for this customer that
+  // names `lifetime_value` in its metadata.fields means a person typed it — so the UI can badge it
+  // "diisi tangan" and nobody mistakes a hand value for a computed one. No new column (owner rule);
+  // read from the audit trail the edit RPC already writes.
+  let ltvHandFilled = false;
+  try {
+    const { data: he } = await admin
+      .from("crm_audit_log")
+      .select("id")
+      .eq("action", "profile.core_updated")
+      .eq("target_id", profile.customer_id)
+      .contains("metadata", { fields: ["lifetime_value"] })
+      .limit(1);
+    ltvHandFilled = !!(he && he.length > 0);
+  } catch {
+    ltvHandFilled = false; // a read failure must not block the profile; badge simply absent
+  }
+
   return NextResponse.json(
-    { profile, canViewHealth, canSeeContact, engagement, enrichment, multiSource, clinic, importData, demographic, clinicSourceLabel, mirror, mirrorRefreshedAt },
+    { profile, canViewHealth, canSeeContact, engagement, enrichment, multiSource, clinic, importData, demographic, clinicSourceLabel, mirror, mirrorRefreshedAt, ltvHandFilled },
     { headers: { "Cache-Control": "no-store" } },
   );
 }
