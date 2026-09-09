@@ -113,6 +113,9 @@ describe("dashboard block cost boundaries (progressive-load)", () => {
     expect(tables.has("crm_mirror_meta")).toBe(true);
     // shop has no precompute column, so it stays a live count on customer_engagement.
     expect(tables.has("customer_engagement")).toBe(true);
+    // The candidate COUNT is precomputed, but its FRESHNESS is a cheap live limit-1 read of the
+    // candidate table's newest row (T-77) — so the mirror block must touch crm_identity_candidate.
+    expect(tables.has("crm_identity_candidate")).toBe(true);
     expect(rpcs.size).toBe(0);
   });
 

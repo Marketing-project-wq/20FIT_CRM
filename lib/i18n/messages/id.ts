@@ -177,6 +177,11 @@ export const id = {
       "Angka ini BEDA dari selisih live di atas: populasi sumbernya berbeda (mis. di sini arena_bookings 4; di selisih live arena dihitung dari tabel arena lain). Kandidat = snapshot cermin (dedup lintas sumber); selisih = dihitung saat halaman dibuka. Keduanya benar, menghitung hal berbeda.",
     candSourceCol: "Sumber (mentah)",
     candCountCol: "Kandidat",
+    candAsOf: "Data per", // + tanggal baris kandidat terbaru (umur DATA, bukan waktu hitung ulang)
+    candFrozenSince: "Beku sejak", // + tanggal · N hari
+    candFrozenDays: "hari tanpa perubahan",
+    candFrozenWhy:
+      "Jumlah ini dihitung ulang tiap malam, tapi tabel sumbernya tak bertambah sejak backfill — jadi angkanya beku, bukan segar. Selisih live di atas adalah angka yang benar-benar hidup.",
     fitcoTitle: "Partisipasi Fitco",
     fitcoMatched: "tercocokkan ke profil",
     fitcoUnmatched: "belum tercocokkan",

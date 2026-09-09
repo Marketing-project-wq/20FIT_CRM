@@ -162,6 +162,32 @@ export interface NotInCrm {
   bySource: SourceGap[];
 }
 
+/**
+ * The candidate data's own "as of" instant — the NEWEST first_seen_at in crm_identity_candidate.
+ *
+ * WHY THIS EXISTS (a silent-failure fix, see TEMUAN.md). The candidate COUNT the card shows comes
+ * from the nightly precompute, which re-counts this table every night and is stamped with the
+ * mirror's refresh time — so a table that has not gained a row since its one 21 Aug backfill still
+ * printed under a "snapshot · <today>" tag and looked live. The honest freshness of that count is
+ * the age of the DATA, not the age of the COUNT: the newest row here. The card judges staleness from
+ * this (candidateFreshness), never from the mirror refresh time.
+ *
+ * CHEAP by construction: an index-ordered read of ONE row (order first_seen_at desc, limit 1) — the
+ * same shape fetchImmediateBlock already uses for master_customer's newest created_at. No aggregate,
+ * no table scan, no migration. Returns null when the table is empty or unreadable (the card then
+ * shows the count with no freshness verdict rather than a fabricated date).
+ */
+export async function fetchCandidateAsOf(admin: SupabaseClient): Promise<string | null> {
+  const { data, error } = await admin
+    .from("crm_identity_candidate")
+    .select("first_seen_at")
+    .order("first_seen_at", { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as { first_seen_at: string | null } | null)?.first_seen_at ?? null;
+}
+
 export async function fetchNotInCrm(admin: SupabaseClient): Promise<NotInCrm> {
   const bySource = await fetchLiveSourceGaps(admin);
   const perSourceSum = bySource.reduce((n, s) => n + s.gap, 0);

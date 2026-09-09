@@ -2731,3 +2731,40 @@ mengirim. Sakelar penyedia (`lib/email/send.ts`) + rute webhook + verifikasi Svi
 **Verifikasi domain 20fit.id di Resend: DI LUAR KENDALI KODE** — status ada di dasbor Resend milik
 pemilik; runbook langkah 1 memintanya dikonfirmasi Verified sebelum peralihan. Saya tak bisa (dan tak
 seharusnya) memverifikasinya dari sini.
+
+## T-77 — Kartu "Kandidat belum di pool" menstempel angka BEKU dengan waktu SEGAR: tabel satu backfill 21 Agu, tapi dihitung ulang tiap malam → 2.799 tampak hidup (perbaikan TAMPILAN, bukan data) — ⏱ DIUKUR 9 Sep 2026
+
+**Gejala.** Kartu kandidat di dashboard menampilkan **2.799** "belum di pool" dengan tag
+`snapshot cermin · <tanggal-waktu>` yang berisi **waktu refresh cermin (hari ini)**. Jadi angka itu
+TAMPAK segar — diperbarui semalam. Ia tidak.
+
+**Fakta yang diukur (9 Sep 2026, kueri baca-saja `crm_identity_candidate`):**
+- `count(*) = 2.799`, dan **`min(first_seen_at) == max(first_seen_at) == 2026-08-21 15:44:15`** — SATU
+  batch backfill, nol baris ditambah sejak. Umur data: **18 hari** per hari ini.
+- Batch yang sama dengan T-35 (tulis lintas-tim via service-role bersama, 21 Agu). Tak ada pipeline
+  yang memberi makan tabel ini; ia beku sejak lahir.
+
+**Mengapa ini kegagalan senyap — dan kelasnya SATU LANGKAH lebih buruk dari caption menua (T-50/T-56).**
+Caption yang menua setidaknya diam: angkanya ditulis tangan sekali lalu ditinggal. Di sini tiap sinyal
+kesegaran berkata "segar" justru KARENA ada pekerjaan malam: precompute `dashboard_stats` MENGHITUNG
+ULANG `count(*)` tabel beku itu tiap malam dan hasilnya distempel `refreshed_at` cermin. Angka yang
+dihitung ulang tapi sumbernya beku — "recount ≠ refresh". Konsekuensinya angka membengkak ~2–3× di atas
+gap yang benar-benar hidup: selisih live per-sumber di atas kartu (dedup ~970, diukur 8–9 Sep) dan
+headcount belum-di-pool (1.258, live) adalah angka yang benar-benar bergerak; 2.799 bukan.
+
+**Perbaikan (PR ini) — TAMPILAN saja, NOL sentuhan ke perhitungan malam, NOL migrasi.**
+- Kartu kini menilai kesegaran dari **umur DATA-nya sendiri**, bukan waktu hitung ulang: satu baca live
+  murah (`fetchCandidateAsOf`, `order first_seen_at desc limit 1` — bentuk yang sama dipakai
+  `fetchImmediateBlock` untuk `master_customer` terbaru) memberi `candidatesAsOf`.
+- `candidateFreshness(asOf, nowMs)` (murni, diuji) → `{asOf, ageDays, isStale}`. Di atas
+  `CANDIDATE_STALE_DAYS = 7`, kartu berhenti menyebutnya snapshot dan berkata **"Beku sejak <tanggal> ·
+  N hari tanpa perubahan"** + alasan ("dihitung ulang tiap malam, sumber tak bertambah").
+- **NILAI count tak diubah** — sebagai hitungan ia tak pernah salah; yang salah cuma label kesegarannya.
+  Tag cermin di kartu KANDIDAT diganti tanggal data sendiri; tag cermin di kartu RFM dibiarkan (RFM
+  memang precompute atas data cermin hidup — kesegarannya benar di sana).
+
+**Yang SENGAJA tidak dikerjakan** (keputusan pemilik: JANGAN bangun auto-sync harian sekarang):
+tak ada pipeline ingest, tak ada cron sync, tak ada penggantian sumber kartu dengan anti-join live ~970
+(mahal — lintas 7 tabel asing tiap render). Ini perbaikan kejujuran minimal, bukan pipa data. Angka
+hidup yang benar (not-in-pool 1.258 / selisih live) sudah tampil di atas kartu; pertimbangan menonjolkannya
+di atas "kandidat" beku dicatat, belum dibangun.
