@@ -31,3 +31,14 @@ export function composeUrlWithNewSegment(segmentId: string): string {
 export function composeUrl(): string {
   return `/campaigns?tab=${CAMPAIGN_COMPOSE_TAB}`;
 }
+
+/** The live send-progress screen for one run (Part A). `target` (the confirmed recipient total) and
+ *  `label` are passed so the screen can show "sent / total" and a title immediately; the screen then
+ *  polls the database for the live sent-count and raw run status. */
+export function campaignProgressHref(runId: string, opts?: { target?: number; label?: string | null }): string {
+  const params = new URLSearchParams();
+  if (opts?.target != null) params.set("target", String(opts.target));
+  if (opts?.label) params.set("label", opts.label);
+  const qs = params.toString();
+  return `/campaigns/progress/${encodeURIComponent(runId)}${qs ? `?${qs}` : ""}`;
+}

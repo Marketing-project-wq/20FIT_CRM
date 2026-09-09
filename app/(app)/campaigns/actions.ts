@@ -18,8 +18,11 @@ import {
   markRunSending,
   finalizeRunStatus,
   recordRunError,
+  activeSendingRun,
+  runProgress,
   type ResumableRun,
   type RunStatus,
+  type RunProgress,
 } from "@/lib/crm/campaign-run";
 import { classifySendThrow, unsubscribeHostServable, missingSendEnv } from "@/lib/crm/send-env";
 import { headers } from "next/headers";
@@ -220,6 +223,7 @@ export interface SendResult {
     | "send_threw" // sendCampaign threw; the run is marked stopped + last_error (see detail)
     | "missing_env" // required send env vars unset — reported ALL at once (see detail)
     | "unresolvable_recipients" // manual email-list addresses not in the pool — refuse BEFORE a run (see detail)
+    | "send_in_progress" // a run for this (segment,template) is already 'sending' — refuse a NEW run (Part C)
     | "unsubscribe_host_mismatch"; // unsubscribe link host ≠ serving host → dead link, refuse
   detail?: string; // on 'send_threw'/'unresolvable_recipients': PII-free cause / named addresses
   linkHost?: string | null; // on 'unsubscribe_host_mismatch': the host the unsubscribe link points to
@@ -233,15 +237,29 @@ export interface SendResult {
   runLabel?: string | null;
   isNewRun?: boolean; // true if this send opened a fresh instance (vs continued one)
   runStatus?: RunStatus; // where the run landed after this send (sent / sending / stopped)
+  target?: number; // recipients this run will attempt (confirmed sendable) — for the progress screen
 }
 
-export async function sendCampaignAction(args: {
+export interface SendArgs {
   segmentId: string;
   templateKey: string;
   confirmedLargeSend: boolean;
   shownSendable: number; // the number the operator saw when they pressed send
   run: RunChoice; // resume an existing instance or open a new one — required, never implied
-}): Promise<SendResult> {
+}
+
+/**
+ * START a campaign send (Part A/B/C). Runs EVERY gate, opens (or resumes) the run, marks it 'sending',
+ * and returns its id FAST — WITHOUT running the ~15-minute send loop. The client then navigates
+ * straight to the progress screen for this runId and fires runCampaignSendAction WITHOUT awaiting it,
+ * so the send is never tied to the browser's HTTP timeout (K-66). A gate failure still comes back here,
+ * synchronously, so the operator sees a REAL reason before anything is sent.
+ *
+ * Part C (double-send guard): a NEW run is REFUSED while a 'sending' run already exists for this
+ * (segment, template) — the exact catastrophe this round exists to stop (press Send again after a
+ * false "failed" → a second run to the WHOLE audience). Resuming that run is fine (idempotency).
+ */
+export async function startCampaignSendAction(args: SendArgs): Promise<SendResult> {
   const role = await getCurrentUserRole();
   if (grantFor(role, "send.at_or_below_threshold") === "deny") return { ok: false, error: "denied" };
 
@@ -249,6 +267,13 @@ export async function sendCampaignAction(args: {
   if (!seg) return { ok: false, error: "not_found" };
   if (seg.requiresClinical && !isPermitted(role, "profile.view_health")) return { ok: false, error: "clinical_gate" };
   if (!(await templateHasUnsubscribe(args.templateKey))) return { ok: false, error: "no_unsubscribe" };
+
+  // Part C: a NEW run is refused while one is already sending for this pair — before any other work,
+  // so the operator learns instantly and no second run is ever opened.
+  if (args.run.kind === "new") {
+    const active = await activeSendingRun(args.segmentId, args.templateKey);
+    if (active) return { ok: false, error: "send_in_progress", runId: active.id, runLabel: active.label };
+  }
 
   // Campaign name is REQUIRED for a NEW run (server-side, never trusting the client). A resume reuses
   // the existing run's name, so it isn't re-validated. Refuse up front — no preview/run work on a
@@ -273,13 +298,13 @@ export async function sendCampaignAction(args: {
   // on the uuid insert, and its unsubscribe link would have no identity to suppress). Refuse the whole
   // send here, NAMING the addresses, so the operator learns immediately instead of a silent stopped
   // run — internal test addresses belong in the Send-test / crm_test_recipient path, not here.
-  let emailRecipients: Awaited<ReturnType<typeof resolveEmailListRecipients>>["recipients"] | undefined;
+  // Manual email-list: refuse BEFORE opening a run if any address is not in the pool (named). The
+  // resolved recipients are re-derived in runCampaignSendAction at send time — start only gates.
   if (seg.stored.emailList && seg.stored.emailList.length > 0) {
     const resolved = await resolveEmailListRecipients(createAdminClient(), seg.stored.emailList);
     if (resolved.unresolved.length > 0) {
       return { ok: false, error: "unresolvable_recipients", detail: resolved.unresolved.join(", ") };
     }
-    emailRecipients = resolved.recipients;
   }
 
   const stamp = nowIso();
@@ -333,6 +358,52 @@ export async function sendCampaignAction(args: {
     isNewRun = true;
   }
 
+  await markRunSending(runId);
+
+  // Gates passed, run is open + marked sending. Return its id NOW — the client navigates to the
+  // progress screen and fires runCampaignSendAction without awaiting it. `target` is the confirmed
+  // sendable, so the progress screen shows an honest "sent / total" from the number just gated against.
+  return { ok: true, drift, runId, runLabel, isNewRun, target: fresh.sendable };
+}
+
+/**
+ * RUN the send loop for an already-started run (Part A). Loads the run's segment + template from the
+ * DATABASE (never the client), resolves recipients, and runs the whole ~15-minute loop. The client
+ * fires this WITHOUT awaiting it and navigates away; the server keeps running regardless of the
+ * client's connection (proven behaviour), and the run is resumable if the process ever dies. On a real
+ * throw the run records WHY (status stopped + last_error, T-30). Nothing here is inferred from the
+ * connection — the source of truth is the run row + crm_message_log (K-66).
+ */
+export async function runCampaignSendAction(input: { runId: string }): Promise<SendResult> {
+  const role = await getCurrentUserRole();
+  if (grantFor(role, "send.at_or_below_threshold") === "deny") return { ok: false, error: "denied" };
+
+  const admin = createAdminClient();
+  const { data: runRow, error: runReadError } = await admin
+    .from("crm_campaign_run")
+    .select("id, segment_id, template_key, label, status")
+    .eq("id", input.runId)
+    .maybeSingle();
+  // A read error is NOT "no such run" — refuse the send rather than mistake a failed read for a missing
+  // run (T-69). The run stays as start left it ('sending'); the operator can retry from the progress page.
+  if (runReadError) return { ok: false, error: "run_not_found", runId: input.runId };
+  const row = runRow as { id: string; segment_id: string | null; template_key: string; label: string | null; status: RunStatus } | null;
+  if (!row || !row.segment_id) return { ok: false, error: "run_not_found" };
+
+  const seg = await getSegmentById(row.segment_id);
+  if (!seg) return { ok: false, error: "not_found" };
+
+  // Re-resolve a manual email-list to the override recipients (start already refused unresolvable ones).
+  let emailRecipients: Awaited<ReturnType<typeof resolveEmailListRecipients>>["recipients"] | undefined;
+  if (seg.stored.emailList && seg.stored.emailList.length > 0) {
+    const resolved = await resolveEmailListRecipients(admin, seg.stored.emailList);
+    if (resolved.unresolved.length > 0) {
+      await recordRunError(input.runId, "unresolvable_recipients");
+      return { ok: false, error: "unresolvable_recipients", detail: resolved.unresolved.join(", "), runId: input.runId };
+    }
+    emailRecipients = resolved.recipients;
+  }
+
   let actorId = "unknown";
   let actorEmail: string | null = null;
   try {
@@ -343,24 +414,19 @@ export async function sendCampaignAction(args: {
     // fail-closed identity; the send still records a row, audit actor is 'unknown'
   }
 
-  await markRunSending(runId);
-
-  // If the send throws (e.g. a required secret is unset), the run records WHY — status stopped +
-  // last_error — and the operator gets a structured error, instead of a silent draft (T-30).
-  // Configurable daily ceiling (crm_send_config). The bounce auto-stop config (threshold/minSample)
-  // stays at the built-in default — it is NEVER coupled to the daily limit (owner rule e).
-  const { dailyLimit } = await getSendConfig(createAdminClient());
+  const stamp = nowIso();
+  const { dailyLimit } = await getSendConfig(admin);
   let result: Awaited<ReturnType<typeof sendCampaign>>;
   try {
     result = await sendCampaign(
       {
-        campaignId: runId,
+        campaignId: input.runId,
         criteria: seg.stored.criteria,
         masterFilterExpr: seg.stored.masterFilterExpr,
-        templateKey: args.templateKey,
+        templateKey: row.template_key,
         actorId,
         actorEmail,
-        confirmedLargeSend: args.confirmedLargeSend,
+        confirmedLargeSend: true, // the large-send confirmation was already gated in startCampaignSendAction
         config: { ...DEFAULT_SEND_CONFIG, dailyLimit },
         ...(emailRecipients ? { overrideRecipients: emailRecipients } : {}),
       },
@@ -368,24 +434,48 @@ export async function sendCampaignAction(args: {
     );
   } catch (e) {
     const cause = classifySendThrow(e);
-    await recordRunError(runId, cause);
-    return { ok: false, error: "send_threw", detail: cause, runId, runLabel, isNewRun };
+    await recordRunError(input.runId, cause);
+    return { ok: false, error: "send_threw", detail: cause, runId: input.runId, runLabel: row.label };
   }
 
   // The WHOLE summary — the status rule reads the failure counts too (T-42).
-  const runStatus = await finalizeRunStatus(runId, result.summary);
-
+  const runStatus = await finalizeRunStatus(input.runId, result.summary);
   return {
     ok: true,
-    drift,
     summary: result.summary,
     withheldPrelaunch: result.withheldPrelaunch,
     realSend: result.realSend,
-    runId,
-    runLabel,
-    isNewRun,
+    runId: input.runId,
+    runLabel: row.label,
     runStatus,
   };
+}
+
+/**
+ * BACK-COMPAT: the original one-call send (gates → open run → send loop, all awaited). Kept for any
+ * non-interactive caller; the interactive compose path now uses startCampaignSendAction +
+ * runCampaignSendAction so it can show a progress screen instead of hanging on the HTTP request.
+ */
+export async function sendCampaignAction(args: SendArgs): Promise<SendResult> {
+  const started = await startCampaignSendAction(args);
+  if (!started.ok || !started.runId) return started;
+  const ran = await runCampaignSendAction({ runId: started.runId });
+  // Preserve the start-side annotations (drift / isNewRun) the old shape returned.
+  return { ...ran, drift: started.drift, isNewRun: started.isNewRun };
+}
+
+/** Live progress for a run, read straight from the database (Part A). The progress screen polls this;
+ *  the send status it shows is NEVER inferred from the HTTP connection (K-66). Read-only. */
+export interface CampaignProgressResult extends Partial<RunProgress> {
+  ok: boolean;
+  error?: "denied" | "run_not_found";
+}
+export async function campaignProgressAction(runId: string): Promise<CampaignProgressResult> {
+  const role = await getCurrentUserRole();
+  if (grantFor(role, "send.at_or_below_threshold") === "deny") return { ok: false, error: "denied" };
+  const p = await runProgress(runId);
+  if (!p) return { ok: false, error: "run_not_found" };
+  return { ok: true, ...p };
 }
 
 // ── Scheduled send: same gates as sendCampaignAction, but stores a pending row instead of sending.

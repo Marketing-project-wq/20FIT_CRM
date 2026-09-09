@@ -1575,3 +1575,23 @@ template (T-74). Keputusan bentuk perbaikan:
 5. **Field "Nama Pengirim" di editor template dipertahankan** (bukan dihapus): ia menjadi nyata
    begitu migrasi + wiring mendarat. Sampai saat itu ia belum tersimpan — dinyatakan di T-74, bukan
    diklaim sudah bekerja.
+
+## K-66 — UI menampilkan status kirim dari DATABASE, tidak pernah dari nasib koneksi HTTP — 9 Sep 2026
+
+Sumber: insiden 890 ISS (T-77). Kirim berjalan di dalam satu HTTP request panjang; saat browser/proxy
+timeout, klien menyimpulkan "gagal" dari hilangnya respons, padahal server terus mengirim (terukur:
+run `sending`, 489 `sent`, 0 gagal). Nyaris memicu kiriman ganda ke seluruh audiens.
+
+Keputusan tetap:
+
+1. **Status kirim yang ditampilkan operator SELALU berasal dari baris run + `crm_message_log` di
+   database — TIDAK PERNAH dari ada/tidaknya respons HTTP.** Koneksi putus adalah peristiwa jaringan,
+   bukan peristiwa kirim. Dibuat aturan murni + teruji (`reduceProgress`): poll gagal/timeout tak
+   pernah menjadi status 'failed'.
+2. **Setelah menekan Kirim, operator langsung dibawa ke halaman progres** ber-`run_id`, yang polling
+   DB — bukan menunggu respons HTTP kirim.
+3. **Run 'sending' untuk pasangan (segmen, template) menutup pintu run baru** (cegah kiriman ganda);
+   resume run yang sama tetap boleh (idempotency).
+4. **Akar tetap terbuka, sadar:** kirim masih mengikuti umur HTTP request. Memindahkannya ke job latar
+   (rute menjadwalkan lalu kembali; loop di worker/cron; UI polling) adalah perbaikan arsitektur ronde
+   tersendiri — semua sistem kirim massal bekerja begitu. Ronde ini menutup gejalanya.

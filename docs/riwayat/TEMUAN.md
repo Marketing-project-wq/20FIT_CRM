@@ -2731,3 +2731,47 @@ mengirim. Sakelar penyedia (`lib/email/send.ts`) + rute webhook + verifikasi Svi
 **Verifikasi domain 20fit.id di Resend: DI LUAR KENDALI KODE** — status ada di dasbor Resend milik
 pemilik; runbook langkah 1 memintanya dikonfirmasi Verified sebelum peralihan. Saya tak bisa (dan tak
 seharusnya) memverifikasinya dari sini.
+
+## T-77 — Kiriman 890 ISS: server terus jalan, UI berbohong "gagal"; nyaris jadi kiriman ganda ke seluruh audiens — ⏱ DIUKUR 9 Sep 2026
+
+Pemilik mengirim 890 email ISS lewat Resend. **Kirimnya berhasil** — tapi setelah ~2 menit UI
+menampilkan merah "Kirim gagal sebelum selesai; pengiriman ditandai berhenti dengan sebabnya."
+Pemilik mengira gagal dan **nyaris menekan Kirim lagi** — yang akan membuka run kedua ke 890 orang yang
+sama → email ganda ke seluruh audiens. Kelas T-70 lagi: layar mengatakan sesuatu yang tidak benar,
+kali ini dengan konsekuensi kiriman-ganda.
+
+**DIAGNOSIS — mana yang terjadi (diukur, bukan ditebak). Kasus (a): server terus jalan, UI berbohong.**
+- **Kode:** `sendCampaignAction` menjalankan SELURUH loop kirim di dalam satu HTTP request. Run hanya
+  ditandai gagal/berhenti di dalam `catch (e)` seputar `sendCampaign` (lemparan sisi-server, T-30).
+  Koneksi klien putus TIDAK melempar ke dalam `await sendCampaign` di server Node persisten (Railway),
+  jadi server tak masuk catch, tak memanggil `recordRunError`, dan loop lanjut. Pesan merah berasal
+  MURNI dari klien: `campaign-flow.tsx:299` `catch { setNotice(cc.errSendThrew) }` — `await
+  sendCampaignAction` ditolak saat HTTP timeout (~1 email/detik × 890 ≈ 15 menit > timeout
+  browser/proxy), dan klien menyimpulkan "gagal" dari hilangnya respons.
+- **DB langsung (read-only, saat run masih jalan):** run `39566e93` label "Promosi Pre event ISSxJHR
+  2026 - all user" → `status='sending'`, **`last_error=null`**, dan `crm_message_log` untuk campaign_id
+  itu: **489 baris `sent`, semua ber-`provider_message_id` + `sent_at`, 0 gagal/bounced** (naik dari
+  265 saat insiden ~2 menit — server terus mengirim setelah browser menyerah). Bukti definitif kasus
+  (a). Kasus (b) — server menandai gagal saat koneksi putus — **TIDAK terjadi** (satu-satunya jalur ke
+  'failed' adalah lemparan sisi-server, yang putus koneksi tak memicu).
+
+**PERBAIKAN ronde ini (menutup gejala; akar = job latar, ronde tersendiri):**
+- **Bagian A — halaman progres jujur.** `sendCampaignAction` dipecah: `startCampaignSendAction`
+  (semua gerbang + buka run + tandai 'sending', cepat, kembalikan `runId` + `target`) dan
+  `runCampaignSendAction(runId)` (loop kirim). Klien memanggil start, lalu **menembak run TANPA
+  await** dan berpindah ke `/campaigns/progress/[runId]` yang **polling DB tiap 3 detik**
+  (`campaignProgressAction` → status run + hitung `sent_at`). Menampilkan total sasaran/terkirim/sisa,
+  kecepatan, ETA, status run mentah, dan spanduk "Kirim berjalan di server. Aman menutup halaman ini."
+- **Bagian B — pesan "gagal palsu" ditutup.** Klien tak lagi meng-`await` loop panjang, jadi timeout
+  koneksi tak pernah mencapai catch yang memasang "gagal". Aturan dibuat murni + teruji
+  (`reduceProgress`, `lib/crm/send-progress.ts`): poll yang gagal/timeout (koneksi putus) TIDAK pernah
+  menjadi status 'failed' — status selalu dari baris run DB (K-66).
+- **Bagian C — cegah kiriman ganda.** `startCampaignSendAction` menolak run BARU bila sudah ada run
+  'sending' untuk pasangan (segmen, template): error `send_in_progress` + arahkan ke halaman progres.
+  Dijaga `activeSendingRun` (diuji). Resume run yang sama tetap boleh (idempotency campaign_id).
+
+**Kenapa lama tak menggigit, kenapa mendesak sekarang:** loop-di-dalam-HTTP-request selalu begini,
+tapi tak terasa sampai kiriman cukup besar melewati timeout. Kuota Resend bersama (≈50 ribu/bulan)
+menjadikan kiriman besar normal → urgensi tinggi. **Akar (kirim di job latar; rute menjadwalkan lalu
+kembali; loop di worker/cron; UI polling) SENGAJA tidak dikerjakan ronde ini** — perubahan arsitektur,
+ronde tersendiri. Ronde ini menutup gejala (layar berbohong + potensi kiriman ganda).

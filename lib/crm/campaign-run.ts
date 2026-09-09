@@ -170,6 +170,67 @@ export async function listResumableRuns(segmentId: string, templateKey: string):
   }
 }
 
+/**
+ * The newest run for this (segment, template) that is ACTIVELY 'sending' — the double-send guard
+ * (Part C). A campaign send runs the whole loop inside one long HTTP request; if the operator's browser
+ * times out (a big send is ~15 min) they may believe it failed and press Send again. A fresh NEW run
+ * would then re-send to the WHOLE audience. Before opening a NEW run this is checked: a 'sending' run
+ * present → refuse and point at it, never silently open a second. (Resuming that same run is idempotent
+ * — the campaign_id-scoped keys skip whoever it already reached — so only NEW runs are blocked.)
+ */
+export async function activeSendingRun(segmentId: string, templateKey: string): Promise<CampaignRun | null> {
+  try {
+    const admin = createAdminClient();
+    const { data, error } = await admin
+      .from("crm_campaign_run")
+      .select(RUN_COLS)
+      .eq("segment_id", segmentId)
+      .eq("template_key", templateKey)
+      .eq("status", "sending")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error || !data) return null;
+    return toRun(data as RunRow);
+  } catch {
+    return null;
+  }
+}
+
+export interface RunProgress {
+  status: RunStatus;
+  label: string | null;
+  sent: number; // rows with sent_at (provider-accepted) — stable across webhook transitions (T-44)
+  logged: number; // all rows for the run (queued + sent + failed + bounced) — what has been claimed
+  createdAt: string;
+}
+
+/**
+ * Live progress for a run, read straight from the database (Part A). The progress screen polls this
+ * every few seconds instead of trusting the send request's HTTP connection — the connection dying is
+ * NOT the send dying (K-66). `sent` counts sent_at, not status='sent', so it can't be deflated by a
+ * later delivered/bounced webhook. Returns null only if the run row is gone.
+ */
+export async function runProgress(runId: string): Promise<RunProgress | null> {
+  try {
+    const admin = createAdminClient();
+    const { data: run, error } = await admin
+      .from("crm_campaign_run")
+      .select("status, label, created_at")
+      .eq("id", runId)
+      .maybeSingle();
+    if (error || !run) return null;
+    const [{ count: sent }, { count: logged }] = await Promise.all([
+      admin.from("crm_message_log").select("id", { count: "exact", head: true }).eq("campaign_id", runId).not("sent_at", "is", null),
+      admin.from("crm_message_log").select("id", { count: "exact", head: true }).eq("campaign_id", runId),
+    ]);
+    const r = run as { status: RunStatus; label: string | null; created_at: string };
+    return { status: r.status, label: r.label, sent: sent ?? 0, logged: logged ?? 0, createdAt: r.created_at };
+  } catch {
+    return null;
+  }
+}
+
 /** Move a run to 'sending' just before a send begins (draft → sending). Idempotent for a resume that
  *  is already 'sending'. Best-effort: a failed status write must not block the send itself. */
 export async function markRunSending(runId: string): Promise<void> {

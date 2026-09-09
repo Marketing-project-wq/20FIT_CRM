@@ -19,7 +19,8 @@ import {
 import {
   previewCampaignAction,
   listRunsAction,
-  sendCampaignAction,
+  startCampaignSendAction,
+  runCampaignSendAction,
   scheduleCampaignAction,
   checkDuplicateCampaignNameAction,
   type PreviewResult,
@@ -27,6 +28,7 @@ import {
   type RunOption,
   type RunChoice,
 } from "./actions";
+import { campaignProgressHref } from "@/lib/crm/campaign-nav";
 
 export interface SegmentOption {
   id: string;
@@ -277,26 +279,33 @@ export function CampaignFlow({
       : { kind: "new", label: newLabel.trim() };
     setSending(true); setNotice(null);
     try {
-      const r = await sendCampaignAction({ segmentId, templateKey, confirmedLargeSend: confirmLarge, shownSendable, run });
-      if (!r.ok) {
-        if (r.error === "count_changed" && typeof r.freshSendable === "number") {
-          setShownSendable(r.freshSendable);
-          setPreview({ ...preview, sendable: r.freshSendable });
-          setNotice(`${cc.driftWarnA}${fmt(r.freshSendable)}${cc.driftWarnB}`);
-        } else if (r.error === "send_threw") {
-          setNotice(`${cc.errSendThrew}${r.detail ? ` (${r.detail})` : ""}`);
-        } else if (r.error === "missing_env") {
-          setNotice(`${cc.errMissingEnv}${r.detail ?? ""}`);
-        } else if (r.error === "unresolvable_recipients") {
-          setNotice(`${cc.errUnresolvable}${r.detail ?? ""}`);
-        } else { setNotice(errText(r.error)); }
+      // START ONLY — fast. Runs every gate + opens the run, but NOT the ~15-minute send loop, so this
+      // await never hangs on a long send. A real gate failure comes back here synchronously.
+      const s = await startCampaignSendAction({ segmentId, templateKey, confirmedLargeSend: confirmLarge, shownSendable, run });
+      if (!s.ok) {
+        if (s.error === "count_changed" && typeof s.freshSendable === "number") {
+          setShownSendable(s.freshSendable);
+          setPreview({ ...preview, sendable: s.freshSendable });
+          setNotice(`${cc.driftWarnA}${fmt(s.freshSendable)}${cc.driftWarnB}`);
+        } else if (s.error === "send_in_progress") {
+          // Part C: a run is already sending for this pair — never open a second (duplicate to all).
+          setNotice(`${cc.errSendInProgress}${s.runLabel ? ` “${s.runLabel}”` : ""}`);
+        } else if (s.error === "missing_env") {
+          setNotice(`${cc.errMissingEnv}${s.detail ?? ""}`);
+        } else if (s.error === "unresolvable_recipients") {
+          setNotice(`${cc.errUnresolvable}${s.detail ?? ""}`);
+        } else { setNotice(errText(s.error)); }
         return;
       }
-      setResult(r);
-      const refreshed = await listRunsAction(segmentId, templateKey);
-      setRuns(refreshed.ok ? refreshed.runs ?? [] : []);
-      setRunSel(null);
-    } catch { setNotice(cc.errSendThrew); }
+      // Fire the send loop but DO NOT await it — the browser must never hold a ~15-minute request open
+      // (K-66: the connection is not the send). Navigate straight to the honest progress screen, which
+      // polls the database. If the connection drops, the send keeps running on the server and the
+      // progress screen shows the real status — the UI never says "failed" from a dead connection.
+      if (s.runId) {
+        void runCampaignSendAction({ runId: s.runId });
+        router.push(campaignProgressHref(s.runId, { target: s.target, label: s.runLabel ?? newLabel.trim() }));
+      }
+    } catch { setNotice(cc.errSendStartFailed); }
     finally { setSending(false); }
   }
 
