@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSegmentById } from "@/lib/crm/segment-store";
-import { createRun } from "@/lib/crm/campaign-run";
+import { createRun, recordRunError } from "@/lib/crm/campaign-run";
 import { cronRunLabel } from "@/lib/crm/campaign-label";
 import { claimDueScheduledSends, markScheduledSent, markScheduledFailed } from "@/lib/crm/scheduled-send";
 import {
@@ -67,7 +67,16 @@ export async function POST(req: NextRequest) {
       // (deliveries.ts drops a 'sent' schedule to avoid double-counting). Any unresolvable email-list
       // or thrown send is caught by drainRunOnce and recorded on the RUN (stopped + last_error), so
       // the failure is never silent even though the schedule row is already handed off.
-      await enqueueRunDrain(admin, run.id, "system:scheduled-send");
+      const enq = await enqueueRunDrain(admin, run.id, "system:scheduled-send");
+      if (!enq.ok) {
+        // The DB's partial unique index refused a second 'sending' run for this (segment, template):
+        // another send to the same audience is already in progress. Abandon this run and fail the
+        // schedule with a named cause instead of double-sending.
+        await recordRunError(run.id, enq.conflict ? "superseded_concurrent_run" : "enqueue_failed");
+        await markScheduledFailed(admin, s.id, enq.conflict ? "duplicate_active_run" : "enqueue_failed");
+        enqueueFailed++;
+        continue;
+      }
       await markScheduledSent(admin, s.id);
       enqueued++;
     } catch {

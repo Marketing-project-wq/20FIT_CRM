@@ -60,12 +60,18 @@ export async function enqueueRunDrain(
   admin: SupabaseClient,
   runId: string,
   requestedBy: string | null,
-): Promise<{ ok: boolean }> {
+): Promise<{ ok: boolean; conflict: boolean }> {
   const { error } = await admin
     .from("crm_campaign_run")
     .update({ drain_active: true, drain_claimed_at: null, drain_requested_by: requestedBy, status: "sending" })
     .eq("id", runId);
-  return { ok: !error };
+  if (!error) return { ok: true, conflict: false };
+  // 23505 = the partial unique index crm_campaign_run_one_active_per_pair: another run for this
+  // (segment, template) is ALREADY 'sending' — the DB refused a second concurrent send to the same
+  // audience. This is NOT a generic failure; the caller reports send_in_progress and abandons the
+  // orphan run. (A resume is the SAME row transitioning to 'sending', which never self-conflicts.)
+  if ((error as { code?: string }).code === "23505") return { ok: false, conflict: true };
+  return { ok: false, conflict: false };
 }
 
 /** Stop draining a run (paused / done / stopped / operator "Hentikan"): clear the flag + claim. The

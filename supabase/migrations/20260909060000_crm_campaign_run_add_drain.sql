@@ -55,8 +55,33 @@ create index if not exists crm_campaign_run_drain_idx
   on public.crm_campaign_run (drain_claimed_at)
   where drain_active;
 
+-- ── DOUBLE-SEND HARD STOP (owner request, closes the send_in_progress TOCTOU) ──────────────────
+-- At most ONE in-progress ('sending') run per (segment_id, template_key). A SECOND run to the same
+-- audience is a second campaign_id → DIFFERENT idempotency keys (idempotency only de-dupes WITHIN a
+-- run) → everyone emailed twice. That is the 890-recipient ISS near-miss. The app guard
+-- (activeSendingRunFor) is best-effort and has a TOCTOU under a same-instant double press; this
+-- PARTIAL UNIQUE INDEX makes the DATABASE the arbiter, so the second run's transition to 'sending' is
+-- rejected (23505) no matter how tight the race — the app then reports send_in_progress and abandons
+-- the orphan draft.
+--
+-- WHY (segment_id, template_key) IS SAFE FOR WORKFLOW RUNS. A campaign run always has segment_id NOT
+-- NULL (crm_campaign_run_owner_xor). A WORKFLOW run has segment_id NULL, and a B-tree unique index
+-- treats NULLs as DISTINCT (the default, NULLS DISTINCT), so two automated 'sending' workflow runs —
+-- (NULL, 't') vs (NULL, 't') — never collide here. So this constrains exactly the campaign runs it
+-- must, and never an automated one. Verified read-only before writing: ZERO existing duplicate
+-- (segment_id, template_key) pairs among 'sending' runs, so CREATE UNIQUE INDEX builds cleanly.
+create unique index if not exists crm_campaign_run_one_active_per_pair
+  on public.crm_campaign_run (segment_id, template_key)
+  where status = 'sending';
+
+comment on index public.crm_campaign_run_one_active_per_pair is
+  'P0-3 double-send hard stop: at most one ''sending'' run per (segment, template). A second run would '
+  'be a second campaign_id → different idempotency keys → double send. Workflow runs (segment_id NULL) '
+  'are exempt because NULLs are distinct in a unique index.';
+
 -- ROLLBACK (safe only while NO run is mid-drain — check first):
 --   select count(*) from public.crm_campaign_run where drain_active;  -- expect 0
+--   drop index if exists public.crm_campaign_run_one_active_per_pair;
 --   drop index if exists public.crm_campaign_run_drain_idx;
 --   alter table public.crm_campaign_run
 --     drop column if exists drain_active,

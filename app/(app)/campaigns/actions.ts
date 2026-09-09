@@ -17,6 +17,7 @@ import {
   getRunForPair,
   listResumableRuns,
   activeSendingRunFor,
+  recordRunError,
   type ResumableRun,
   type RunStatus,
 } from "@/lib/crm/campaign-run";
@@ -359,7 +360,18 @@ export async function sendCampaignAction(args: {
   // Progress and any failures show in the Kiriman (Deliveries) tab; the send audit row is written by
   // the drainer, carrying this operator's email as actor_email.
   const enq = await enqueueRunDrain(createAdminClient(), runId, actorEmail);
-  if (!enq.ok) return { ok: false, error: "enqueue_failed", runId, runLabel, isNewRun };
+  if (!enq.ok) {
+    if (enq.conflict) {
+      // Lost the create→enqueue race to a concurrent send for the same (segment, template): the DB's
+      // partial unique index refused this run's transition to 'sending' (only a NEW run can conflict — a
+      // resume is the same row). Abandon this orphan and point at the run already in progress. This is
+      // the airtight backstop to the app-level guard's TOCTOU — the DB, not timing, has the last word.
+      await recordRunError(runId, "superseded_concurrent_run");
+      const winner = await activeSendingRunFor(args.segmentId, args.templateKey);
+      return { ok: false, error: "send_in_progress", runId: winner?.id, runLabel: winner?.label ?? null };
+    }
+    return { ok: false, error: "enqueue_failed", runId, runLabel, isNewRun };
+  }
 
   return {
     ok: true,
