@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSegmentById } from "./segment-store";
 import { sendCampaign, resolveEmailListRecipients } from "./send-campaign";
-import { finalizeRunStatus, markRunSending } from "./campaign-run";
+import { finalizeRunStatus, finalizeRunFromLog, markRunSending } from "./campaign-run";
 import { classifySendThrow } from "./send-env";
 import { getSendConfig } from "./send-config";
 import { DEFAULT_SEND_CONFIG, type SendSummary } from "./send-run";
@@ -261,13 +261,16 @@ export async function drainRunOnce(
       await finalizeRunStatus(run.id, summary);
       await clearRunDrain(admin, run.id);
       break;
-    case "done":
-      // Everything left was handled. finalizeRunStatus reads THIS batch's summary (sent/failed) →
-      // sent/partial/failed; earlier batches' failures still show on the deliveries row via the log
-      // count (a known, pre-existing multi-batch status imprecision — RENCANA-kirim-latar.md).
-      await finalizeRunStatus(run.id, summary);
+    case "done": {
+      // Everything left was handled → TERMINAL status from the WHOLE run log, not this one batch: a
+      // run whose failures were in an EARLIER batch must land 'partial'/'failed', never 'sent' (T-42
+      // invariant on the latar path). Falls back to the last-batch summary only if the whole-log count
+      // read fails, so 'done' always reaches a terminal status.
+      const fromLog = await finalizeRunFromLog(admin, run.id);
+      if (fromLog == null) await finalizeRunStatus(run.id, summary);
       await clearRunDrain(admin, run.id);
       break;
+    }
   }
   return { next, sent: summary.sent };
 }

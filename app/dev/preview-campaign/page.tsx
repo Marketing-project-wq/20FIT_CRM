@@ -41,6 +41,9 @@ const DELIVERIES: DeliveryRow[] = [
   // d8: a campaign run PAUSED at today's daily budget (P0-3) — leftover waits for a human, so it
   // offers both "Lanjutkan" and "Hentikan".
   { kind: "run", id: "d8", runId: "r8", label: "Broadcast Sept #2 · 24 Agu 2026", ownerName: "Semua member", source: "manual", templateKey: "welcome", recipientCount: 1000, failedCount: 0, state: "paused", time: "2026-08-24T02:00:00Z", cancellable: false, resumable: true, stoppable: true, lastError: null },
+  // d9: a STALLED run (P0-3) — drain-active but the executor has gone silent (deploy killed a tick /
+  // cron down). Reads distinctly from 'running' so a dead run doesn't look alive; offers "Hentikan".
+  { kind: "run", id: "d9", runId: "r9", label: "Blast member baru · 23 Agu 2026", ownerName: "Member baru", source: "manual", templateKey: "welcome", recipientCount: 3200, failedCount: 0, state: "stalled", time: "2026-08-23T02:00:00Z", cancellable: false, resumable: false, stoppable: true, lastError: null },
   { kind: "run", id: "d4", runId: "r4", label: "Reaktivasi app · 28 Agu 2026", ownerName: "Alur reaktivasi", source: "auto", templateKey: "reactivate", recipientCount: 1500, failedCount: 0, state: "done", time: "2026-08-28T03:00:00Z", cancellable: false, resumable: false, stoppable: false, lastError: null },
   { kind: "run", id: "d5", runId: "r5", label: "Broadcast Sept #1", ownerName: "Semua member", source: "manual", templateKey: "welcome", recipientCount: 240, failedCount: 12, state: "stopped", time: "2026-08-27T04:00:00Z", cancellable: false, resumable: false, stoppable: false, lastError: "bounce keras > 5% (auto-stop reputasi domain)" },
   // The two states added with T-42, so the markers are visible here before they occur in production.

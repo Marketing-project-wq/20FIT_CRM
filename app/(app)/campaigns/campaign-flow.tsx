@@ -203,6 +203,7 @@ export function CampaignFlow({
       case "label_required": return cc.errNameRequired;
       case "run_not_found": return cc.errRunNotFound;
       case "run_create_failed": return cc.errRunCreate;
+      case "send_in_progress": return cc.errSendInProgress;
       case "enqueue_failed": return cc.errEnqueue;
       case "unsubscribe_host_mismatch": return cc.errHostMismatch;
       case "missing_env": return cc.errMissingEnv;

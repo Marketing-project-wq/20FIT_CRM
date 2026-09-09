@@ -27,6 +27,7 @@ export type DeliveryState =
   | "overdue"
   | "running"
   | "paused" // P0-3: a campaign run that spent today's daily budget — leftover waits for a human "Lanjutkan"
+  | "stalled" // P0-3: drain-active but the executor has gone silent (dead tick / cron down) — a zombie made loud
   | "done"
   | "partial"
   | "failed"
@@ -172,6 +173,26 @@ export async function listDeliveries(admin: SupabaseClient, limit = 100, nowIso 
     countRecipients(admin, runs.map((r) => r.id)),
   ]);
 
+  // P0-3 zombie detection: for the (usually 0-1) runs that are DRAIN-ACTIVE, read their last log
+  // activity so a run whose executor has gone silent reads 'stalled', not a lively 'running'. Only
+  // draining campaign runs are checked, so this is a tiny number of extra reads, never one per row.
+  const lastProgress = new Map<string, string>();
+  await Promise.all(
+    runs
+      .filter((r) => r.drain_active && !r.workflow_id && r.segment_id)
+      .map(async (r) => {
+        // Capture `error` (T-69): a failed read must not read as "no progress" and cry stalled falsely.
+        const { data, error } = await admin
+          .from("crm_message_log")
+          .select("created_at")
+          .eq("campaign_id", r.id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (!error && data) lastProgress.set(r.id, (data as { created_at: string }).created_at);
+      }),
+  );
+
   const rows: DeliveryRow[] = [];
 
   for (const s of scheduled) {
@@ -217,7 +238,14 @@ export async function listDeliveries(admin: SupabaseClient, limit = 100, nowIso 
     // never use the drainer, so their 'sending' stays plain 'running'. The rule is a pure helper so it
     // can be locked by a test (a wrong resumable flag would re-send).
     const isCampaignRun = !r.workflow_id && !!r.segment_id;
-    const disp = runDrainDisplay(r.status, r.drain_active, isCampaignRun);
+    // Minutes since the run last made progress (its newest log row, else when it was created) — only
+    // meaningful for a drain-active campaign run, else null. runDrainDisplay turns a long silence into
+    // 'stalled' so a dead executor is visible instead of a zombie that reads 'running'.
+    const minutesSinceProgress =
+      r.drain_active && isCampaignRun
+        ? (new Date(nowIso).getTime() - new Date(lastProgress.get(r.id) ?? r.created_at).getTime()) / 60000
+        : null;
+    const disp = runDrainDisplay(r.status, r.drain_active, isCampaignRun, minutesSinceProgress);
     const state: DeliveryState = disp.sendingState ?? RUN_STATE[r.status] ?? "running";
     rows.push({
       kind: "run",

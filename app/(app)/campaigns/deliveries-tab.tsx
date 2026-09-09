@@ -19,6 +19,7 @@ const STATE_META: Record<DeliveryState, { key: keyof Dict["campaignsPage"]["deli
   overdue: { key: "stateOverdue", tone: "red" }, // past its time but never ran — the T-40 #8 symptom, made loud
   running: { key: "stateRunning", tone: "amber" },
   paused: { key: "statePaused", tone: "blue" }, // P0-3: spent today's daily budget — waits for a human Lanjutkan
+  stalled: { key: "stateStalled", tone: "red" }, // P0-3: drain-active but the executor went silent — a zombie made loud
   done: { key: "stateDone", tone: "green" },
   // Two states a run can now land in honestly instead of being filed as "Selesai" (T-42): some
   // recipients failed (partial) or every one did (failed).

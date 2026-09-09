@@ -16,6 +16,7 @@ import {
   createRun,
   getRunForPair,
   listResumableRuns,
+  activeSendingRunFor,
   type ResumableRun,
   type RunStatus,
 } from "@/lib/crm/campaign-run";
@@ -215,6 +216,7 @@ export interface SendResult {
     | "label_required" // new run with a missing/too-short/too-long name — refused before any work
     | "run_not_found"
     | "run_create_failed"
+    | "send_in_progress" // a run to this (segment, template) is already in progress — a NEW run would double-send
     | "enqueue_failed" // the drain flag could not be written — nothing was queued
     | "missing_env" // required send env vars unset — reported ALL at once (see detail)
     | "unresolvable_recipients" // manual email-list addresses not in the pool — refuse BEFORE a run (see detail)
@@ -315,6 +317,14 @@ export async function sendCampaignAction(args: {
     runLabel = existing.label;
     isNewRun = false;
   } else {
+    // DOUBLE-SEND GUARD (ported from PR #45, widened to the async drain model). Refuse a NEW run to a
+    // (segment, template) that already has one IN PROGRESS ('sending' — draining or paused). A second
+    // run is a second campaign_id → different idempotency keys → idempotency can't de-dupe across it,
+    // so everyone would be emailed twice. This is the exact 890-recipient ISS path: send looked failed,
+    // operator nearly pressed Send again. Point them at the run already running; resuming it is safe.
+    const active = await activeSendingRunFor(args.segmentId, args.templateKey);
+    if (active) return { ok: false, error: "send_in_progress", runId: active.id, runLabel: active.label };
+
     let actorForRun: string | null = null;
     try {
       actorForRun = (await createClient().auth.getUser()).data.user?.email ?? null;

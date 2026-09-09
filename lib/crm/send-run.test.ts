@@ -651,3 +651,54 @@ describe("send-run — batch cap (maxPerInvocation)", () => {
     expect(DEFAULT_SEND_CONFIG.maxPerInvocation).toBe(Number.MAX_SAFE_INTEGER);
   });
 });
+
+// ── P0-3: TWO EXECUTOR TICKS OVERLAP on the SAME run — no double-send ──────────────────────────
+//
+// The pg_cron executor fires every few minutes; if one tick runs long, the next can start before it
+// finishes, both draining the SAME run (same campaign_id). The drain-claim (drain_claimed_at,
+// optimistic-concurrency) REDUCES this, but it is NOT the correctness guard — the correctness guard is
+// the DETERMINISTIC idempotency key + a UNIQUE index on crm_message_log.idempotency_key: claim() is
+// INSERT-if-absent and returns false on the unique violation (23505), so a recipient already claimed by
+// one tick is skipped by the other. This is the exact property that keeps the 890-recipient incident
+// from becoming 890 double-sends through the new (background) door.
+//
+// HONEST BOUNDARY (state it, don't imply more): FakeStore.claim models that unique-index atomicity
+// (Map has→set, no await between, so the first claim of a key wins) — the SAME contract the real
+// adapter gets from Postgres's UNIQUE constraint + the `error.code === "23505" → return false` branch
+// in send-campaign.ts. The true DB-level guarantee (two INSERTs of one key across two connections) is
+// an INTEGRATION property that this unit suite, running against an in-memory fake, does not exercise.
+// What this test proves is that the ENGINE's use of the claim is correct under interleaving: given an
+// atomic claim, two concurrent ticks send each recipient exactly once.
+describe("send-run — overlapping ticks send each recipient exactly once", () => {
+  it("two concurrent runs over the same campaign + store double-send NOBODY", async () => {
+    const store = new FakeStore();
+    const all = mk(20);
+    // Promise.all interleaves the two runs at every await point (single-threaded microtask scheduling).
+    const [a, b] = await Promise.all([
+      runSend(all, store, "camp", hashFor),
+      runSend(all, store, "camp", hashFor),
+    ]);
+
+    // Each recipient was SENT exactly once across both ticks — the invariant, whatever the interleaving.
+    expect(store.sentCustomers.length).toBe(20);
+    expect(new Set(store.sentCustomers).size).toBe(20);
+    expect(store.rows.size).toBe(20); // one claim row per recipient — never two for the same key
+
+    // The 20 sends are split between the ticks; every recipient the other tick reached was skipped as
+    // already-claimed. sent + skipped, summed across both ticks, accounts for all 20 twice: 20 sent
+    // total, 20 already-sent skips total (the loser of each claim race).
+    expect(a.sent + b.sent).toBe(20);
+    expect(a.skippedAlreadySent + b.skippedAlreadySent).toBe(20);
+  });
+
+  it("the claim is atomic per key — a second claim of a key never succeeds, even interleaved", async () => {
+    // The unit-level equivalent of the UNIQUE index: fire many claims of the SAME key concurrently;
+    // exactly one wins. This is what makes the interleaved run above safe.
+    const store = new FakeStore();
+    const key = buildIdempotencyKey({ campaignId: "camp", customerId: "c0", channel: "email" });
+    const meta: ClaimMeta = { customerId: "c0", channel: "email", identityHash: "h", language: "id", campaignId: "camp" };
+    const results = await Promise.all(Array.from({ length: 10 }, () => store.claim(key, meta)));
+    expect(results.filter((r) => r === true)).toHaveLength(1); // exactly one true
+    expect(results.filter((r) => r === false)).toHaveLength(9);
+  });
+});
