@@ -6,10 +6,12 @@ import { Button } from "@/components/ui/button";
 import { STARTER_TEMPLATES, MOBILE_PREVIEW_CROP_PX } from "./starter-templates";
 import { BlockEditor, blocksToHtml, newBlock, type Block } from "./block-editor";
 import { renderEmailDocument } from "@/lib/crm/email-document";
+import { MAX_SENDER_NAME } from "@/lib/email/sender-name";
 import {
   listBrandAssetsAction,
   uploadBrandAssetAction,
   deleteBrandAssetAction,
+  activeFromAddressAction,
   type BrandAsset,
 } from "@/app/(app)/templates/brand-asset-actions";
 
@@ -36,6 +38,9 @@ export function EmailTemplateBuilder({ template, onClose }: EmailTemplateBuilder
   // "blank" pick starts in Blocks mode (set in pickStarter). Others open in HTML.
   const [mode, setMode] = useState<EditMode>("html");
   const [senderName, setSenderName] = useState(template?.sender_name || "20FIT");
+  // The from-ADDRESS the active provider actually sends as (TAMBAHAN A) — fetched from the server, never
+  // hardcoded, so the preview can't promise crm@ while Resend sends info@. "" until loaded.
+  const [fromAddress, setFromAddress] = useState("");
   const [subject, setSubject] = useState(template?.subject || "");
   const [htmlContent, setHtmlContent] = useState(template?.body || DEFAULT_HTML);
   // Block state — only authoritative while mode === "blocks". Switching to HTML/Preview flushes it
@@ -54,6 +59,7 @@ export function EmailTemplateBuilder({ template, onClose }: EmailTemplateBuilder
 
   useEffect(() => {
     listBrandAssetsAction().then((r) => { if (r.ok) setAssets(r.assets); });
+    activeFromAddressAction().then((r) => { if (r.ok) setFromAddress(r.from); });
   }, []);
 
   function pickStarter(id: string) {
@@ -190,6 +196,7 @@ export function EmailTemplateBuilder({ template, onClose }: EmailTemplateBuilder
           <EditorBody
             mode={mode} switchMode={switchMode}
             senderName={senderName} setSenderName={setSenderName}
+            fromAddress={fromAddress}
             subject={subject} setSubject={setSubject}
             htmlContent={htmlContent} setHtmlContent={(v: string) => { setHtmlContent(v); setHtmlEdited(true); }}
             blocks={blocks} setBlocks={setBlocks}
@@ -336,6 +343,7 @@ function EditorBody(p: any) {
         <div>
           <label className="mb-2 block font-display text-[13px] font-bold text-ink">Nama Pengirim</label>
           <input type="text" value={p.senderName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => p.setSenderName(e.target.value)}
+            maxLength={MAX_SENDER_NAME}
             className="w-full rounded-md border border-glass-border bg-glass px-3 py-2 font-body text-[14px] text-ink focus:border-ink focus:outline-none" placeholder="20FIT" />
         </div>
         <div>
@@ -398,7 +406,7 @@ function EditorBody(p: any) {
       ) : (
         <div className="flex flex-col gap-2 rounded-md border border-glass-border bg-white p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="font-mono text-[11px] text-ink-faint"><strong>From:</strong> {p.senderName} &lt;crm@20fit.id&gt; · <strong>Subject:</strong> {p.subject || "(no subject)"}</div>
+            <div className="font-mono text-[11px] text-ink-faint"><strong>From:</strong> {p.senderName} &lt;{p.fromAddress || "…"}&gt; · <strong>Subject:</strong> {p.subject || "(no subject)"}</div>
             <div className="flex items-center gap-1" role="group" aria-label="Lebar pratinjau">
               <Button size="sm" variant={p.previewWidth === "desktop" ? "primary" : "outline"} onClick={() => p.setPreviewWidth("desktop")}>
                 <Monitor className="mr-1 h-4 w-4" />Desktop

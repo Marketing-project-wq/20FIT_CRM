@@ -2,7 +2,7 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { normalizeEmail } from "@/lib/crm/normalize";
 import { buildRecoveryEmail } from "@/lib/auth/recovery-email";
-import { sendTransactionalEmail } from "@/lib/email/mailtrap";
+import { sendTransactionalEmail } from "@/lib/email/send";
 import { getLang } from "@/lib/i18n/server";
 
 /**

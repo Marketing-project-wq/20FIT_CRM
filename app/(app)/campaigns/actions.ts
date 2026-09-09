@@ -500,7 +500,7 @@ export async function sendPreviewEmailAction(
   const admin = createAdminClient();
   const { data: tplData } = await admin
     .from("crm_message_template")
-    .select("name, subject, body")
+    .select("name, subject, body, sender_name")
     .eq("template_key", templateKey)
     .eq("channel", "email")
     .eq("is_active", true)
@@ -509,7 +509,7 @@ export async function sendPreviewEmailAction(
     .maybeSingle();
 
   if (!tplData) return { ok: false, error: "no_template" };
-  const tpl = tplData as { name: string; subject: string | null; body: string };
+  const tpl = tplData as { name: string; subject: string | null; body: string; sender_name: string | null };
 
   // Replace template variables with placeholder values for preview, then compose through the SAME
   // email skeleton the real send uses (so a Send-test reflects the exact frame that ships).
@@ -520,13 +520,15 @@ export async function sendPreviewEmailAction(
   const { html, text } = renderEmailDocument(substituted, previewUnsubUrl);
   const subject = `[PREVIEW] ${tpl.subject ?? tpl.name}`;
 
-  const { sendTransactionalEmail } = await import("@/lib/email/mailtrap");
+  const { sendTransactionalEmail } = await import("@/lib/email/send");
   const sentTo: string[] = [];
   const errors: string[] = [];
 
   for (const to of toEmails) {
     try {
-      await sendTransactionalEmail({ to, subject, text, html }, "campaign-preview");
+      // T-74: the preview sends under the template's OWN sender name, so a Send-test reflects the
+      // exact from.name a real campaign would use (null → client default "20FIT CRM").
+      await sendTransactionalEmail({ to, subject, text, html }, "campaign-preview", tpl.sender_name ?? undefined);
       sentTo.push(to);
     } catch {
       errors.push(to);

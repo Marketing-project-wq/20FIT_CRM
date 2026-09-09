@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUserRole } from "@/lib/auth/current-role";
 import { grantFor } from "@/lib/auth/roles";
+import { validateSenderName, MAX_SENDER_NAME } from "@/lib/email/sender-name";
 
 /**
  * GET /api/templates?id=<uuid> — fetch a single template by ID (for editing).
@@ -58,6 +59,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Email templates require a subject" }, { status: 400 });
     }
 
+    // Sender name is REJECTED here (the write path), not just capped in the input box — the same
+    // reject-at-the-write-path pattern as full_name/city in crm_update_master_fields (T-74 / K-65).
+    // The helper also cleans newlines + repeated whitespace; empty → null (send falls back to default).
+    const senderCheck = validateSenderName(body.sender_name);
+    if (!senderCheck.ok) {
+      return NextResponse.json(
+        { error: `Sender name too long (max ${MAX_SENDER_NAME} characters)` },
+        { status: 400 },
+      );
+    }
+
     const admin = createAdminClient();
 
     // Get the highest version for this template_key + language
@@ -89,6 +101,7 @@ export async function POST(req: NextRequest) {
         name,
         subject: channel === "email" ? subject : null,
         body: content,
+        sender_name: senderCheck.value, // T-74: was silently dropped (never destructured); now persisted
         variables: Array.from(variables),
         wa_approval_status: channel === "whatsapp" ? "draft" : "not_applicable",
         is_active: true,

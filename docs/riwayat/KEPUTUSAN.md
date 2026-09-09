@@ -1549,3 +1549,29 @@ bukan tag — ia daftar kirim.*
 `iss-jhr-hybrid-race.csv` (**109 dari 677** baris masuk sebagai tag) berasal dari situ: baris yang
 hanya membawa `wave:`/`jadwal:` tak punya tag kanon yang sah, jadi ditolak — bukan cacat impor.
 Daftar wave itu adalah pekerjaan **segmen manual**, bukan tag.
+
+## K-65 — Nama pengirim: parameter dengan default `20FIT CRM`; kampanye baca dari template; alamat & reply-to tetap — 9 Sep 2026
+
+Sumber: pemilik melaporkan nama pengirim di-hardcode di `lib/email/mailtrap.ts` dan tak pernah membaca
+template (T-74). Keputusan bentuk perbaikan:
+
+1. **Nama pengirim = parameter, default `"20FIT CRM"`.** Jalur reset kata sandi memakai default
+   (tak berubah — nama itu memang ditulis untuknya). Jalur kampanye mengirimkan nama dari template.
+   SATU fungsi kirim, nama disuntik per-konteks — bukan cabang if/else, bukan fungsi kirim kedua.
+
+2. **Sumber nama kampanye = kolom `sender_name` di `crm_message_template`.** Kolomnya belum ada →
+   **migrasi bergerbang**: SQL ditampilkan, TIDAK diterapkan sampai pemilik menyetujui. Setelah kolom
+   ada: `POST /api/templates` menyimpan `sender_name`; jalur kirim + pratinjau men-select-nya dan
+   meneruskannya. Sebelum kolom ada, wiring itu tak dikirim (select kolom yang belum ada memecah
+   kirim kampanye).
+
+3. **Alamat pengirim tetap `MAILTRAP_FROM` (crm@20fit.id) untuk semua jalur** — satu domain
+   terverifikasi; alamat per-kampanye butuh verifikasi domain sendiri. BUKAN diwarisi keliru,
+   disengaja.
+
+4. **Satu tempat pengaturan saja.** Kalau kelak pindah ke Mailtrap Email Marketing (jalur bulk), ia
+   membaca nama pengirim dari template yang sama — tidak membangun pengaturan kedua.
+
+5. **Field "Nama Pengirim" di editor template dipertahankan** (bukan dihapus): ia menjadi nyata
+   begitu migrasi + wiring mendarat. Sampai saat itu ia belum tersimpan — dinyatakan di T-74, bukan
+   diklaim sudah bekerja.
