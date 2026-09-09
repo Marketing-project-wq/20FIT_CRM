@@ -2543,3 +2543,62 @@ di lintasan baris yang sama — menjumlah per-tag akan overcount orang multi-tag
 cakupan orang tiap namespace walau terlipat, bukan sekadar "7 nilai". (Angka distinct per-namespace
 dihitung saat layar dibuka dari data pool nyata; belum saya jalankan atas produksi ronde ini — uji
 memakai data sintetis yang membuktikan hitungannya distinct, bukan angka pool yang sebenarnya.)
+
+## T-74 — Nama pengirim ditulis untuk email reset, diwarisi diam-diam oleh jalur kampanye; + field "Nama Pengirim" di editor template tak berujung ke mana pun — 9 Sep 2026
+
+Pemilik: "nama pengirim di-hardcode `20FIT CRM` di `lib/email/mailtrap.ts`, tak pernah baca template.
+Aku atur di template, tak berpengaruh." Benar — tapi bukan gagal simpan, melainkan **tak pernah
+dibaca**, dan lebih dalam dari satu baris.
+
+**LANGKAH 0 — diukur dulu (kode dibaca, bukan ditebak):**
+
+1. **Apakah `crm_message_template` punya kolom nama pengirim? TIDAK.** 14 kolom
+   (`id, template_key, channel, language, version, name, subject, body, variables,
+   wa_approval_status, wa_provider_template_id, is_active, created_at, created_by`). `name` = LABEL
+   template (dipakai hanya sebagai cadangan subjek `subject ?? name`), bukan nama pengirim. Jadi
+   pemilik memang tak bisa menyimpan nama pengirim ke template hari ini.
+
+2. **Berapa jalur memanggil `sendTransactionalEmail`? TIGA:**
+   - `lib/auth/recovery.ts:83` — reset kata sandi. Butuh nama tetap `20FIT CRM` (alat internal).
+   - `app/(app)/campaigns/actions.ts:529` — pratinjau kampanye.
+   - `lib/crm/send-campaign.ts:364` — kirim kampanye.
+   Dua terakhir mau nama dari template. Perbaikan tak boleh membuat reset mengaku sebagai merek.
+
+3. **Apakah ada jalur Mailtrap Email Marketing (kuota terpisah, 30 ribu) dengan pengaturan nama
+   sendiri? TIDAK ada di kode.** Satu-satunya jalur keluar hari ini adalah Sending API
+   (`send.api.mailtrap.io`) via `sendTransactionalEmail`. Tak ada klien bulk/marketing. (Angka kuota
+   dari pemilik, belum saya verifikasi.) Implikasi: JANGAN bangun tempat pengaturan kedua — kalau
+   kelak pindah ke jalur marketing, ia harus membaca nama pengirim dari template yang sama.
+
+**Temuan majemuk — field yang tak berujung ke mana pun.** Editor template
+(`components/templates/email-template-builder.tsx`) PUNYA field "Nama Pengirim" (default `20FIT`),
+menampilkannya di pratinjau (`From: {senderName} <crm@20fit.id>`), dan MENGIRIM `sender_name` saat
+simpan (baris 160). Tapi `POST /api/templates` men-destructure `{ template_key, channel, language,
+name, subject, body }` — **tak pernah membaca `sender_name`** — dan tabelnya tak punya kolomnya. Jadi
+nilai itu hilang di DUA lapis sebelum bahkan bertemu hardcode di jalur kirim: operator mengetik nama,
+melihatnya di pratinjau (memperkuat keyakinan bahwa itu bekerja), menyimpan — dan nilai itu menguap.
+
+**Kelas kegagalan.** Bukan senyap yang biasa (nilai ditulis, gagal tersimpan). Ini saudaranya:
+**nilai yang benar dalam satu konteks (email reset ke staf internal) diwarisi diam-diam oleh konteks
+kedua (email pelanggan) yang dibangun di atas fungsi yang sama, tanpa ada yang memeriksa saat konteks
+bertambah.** `sendTransactionalEmail` dibuat untuk reset; jalur kampanye menumpang, dan ikut
+memakai "20FIT CRM".
+
+**Nilai lain yang diwarisi cara serupa — diperiksa:**
+- **Alamat pengirim** (`MAILTRAP_FROM` = crm@20fit.id): dipakai bersama SEMUA jalur, tapi ini
+  **disengaja** — satu-satunya domain terverifikasi; alamat berbeda butuh verifikasi domain sendiri.
+  Bukan bug warisan, biarkan.
+- **Reply-to:** TIDAK diset di mana pun (body Sending tak punya `reply_to`). Bukan warisan, melainkan
+  absen — balasan kampanye kini jatuh ke crm@20fit.id. Catatan, bukan cacat ronde ini.
+- **Footer / unsubscribe:** TIDAK diwarisi. Reset memakai komposer sendiri (`buildRecoveryEmail`,
+  tanpa footer/unsubscribe); kampanye memakai `renderEmailDocument` (dengan footer unsubscribe). Dua
+  komposer terpisah — benar secara konstruksi.
+
+**Perbaikan ronde ini (aman, tanpa DB):** `sendTransactionalEmail` menerima `senderName` sebagai
+parameter, default `"20FIT CRM"` → jalur reset byte-for-byte tak berubah (diuji). Ini menghapus
+hardcode sebagai satu-satunya sumber; nilai kini bisa disuntik.
+
+**Bergerbang (BELUM dijalankan — tunggu gerbang):** kolom `sender_name` belum ada, jadi wiring jalur
+kampanye (baca dari template → kirim ke `senderName`) menunggu migrasi. SQL diajukan di laporan +
+badan PR; API `POST /api/templates` yang membuang `sender_name` DAN select di jalur kirim/pratinjau
+baru disambungkan setelah kolomnya ada (select kolom yang belum ada = PostgREST 400 → memecah kirim).

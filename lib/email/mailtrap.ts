@@ -32,15 +32,24 @@ export interface SendReceipt {
 }
 
 /**
- * Send one transactional email through Mailtrap Sending. From-identity is fixed to
- * `20FIT CRM <MAILTRAP_FROM>` (MAILTRAP_FROM = crm@20fit.id on Railway) so reset mail no
- * longer arrives under another team's sender name. Throws on missing config or a non-2xx
- * response; the thrown message carries no recipient address or body. Returns the provider
- * message id from the response for send-log correlation.
+ * Send one transactional email through Mailtrap Sending. The from-ADDRESS is fixed to
+ * `MAILTRAP_FROM` (crm@20fit.id on Railway) — the one verified sending domain, deliberately
+ * shared by every path, NOT a per-message setting (a different from-address needs its own
+ * domain verification). The display NAME is a parameter with default `"20FIT CRM"`:
+ *
+ *   - Left at the default, the password-reset path is byte-for-byte unchanged — the name was
+ *     written for that email (an internal tool whose accounts are admin-created).
+ *   - The campaign path passes the sender name the operator set on the template, so a customer
+ *     campaign is no longer forced to sign itself "20FIT CRM" (T-74: the name written for the
+ *     reset email was inherited, unexamined, by the campaign path built on top of this function).
+ *
+ * Throws on missing config or a non-2xx response; the thrown message carries no recipient address
+ * or body. Returns the provider message id from the response for send-log correlation.
  */
 export async function sendTransactionalEmail(
   mail: OutboundEmail,
   category = "password-reset",
+  senderName = "20FIT CRM",
 ): Promise<SendReceipt> {
   const token = process.env.MAILTRAP_API_TOKEN;
   const from = process.env.MAILTRAP_FROM;
@@ -55,7 +64,7 @@ export async function sendTransactionalEmail(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from: { email: from, name: "20FIT CRM" },
+      from: { email: from, name: senderName },
       to: [{ email: mail.to }],
       subject: mail.subject,
       text: mail.text,
