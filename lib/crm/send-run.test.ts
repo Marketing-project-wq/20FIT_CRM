@@ -568,3 +568,137 @@ describe("send-run — rule 8 backoff + rule 9 pacing (8 Sep 2026)", () => {
     expect(DEFAULT_SEND_CONFIG.interRecipientDelayMs).toBe(500);
   });
 });
+
+// ── P0-3: the per-invocation batch cap (background drainer) ────────────────────────────────────
+//
+// A tick of the background drainer sends at most `maxPerInvocation`, so one HTTP invocation is
+// bounded in duration. `haltedForBatch` tells the drainer "there is MORE right now, continue on the
+// next tick" — distinct from `deferredDailyLimit` ("today's shared budget is spent, wait for
+// tomorrow / a human resume"). The two must never be confused: the first re-arms in minutes, the
+// second waits a day.
+describe("send-run — batch cap (maxPerInvocation)", () => {
+  it("stops after the cap and flags haltedForBatch, leaving the rest UNCLAIMED", async () => {
+    const store = new FakeStore();
+    const s = await runSend(mk(10), store, "camp", hashFor, { ...DEFAULT_SEND_CONFIG, maxPerInvocation: 4 });
+    expect(s.sent).toBe(4);
+    expect(s.haltedForBatch).toBe(true); // more remained → the drainer continues next tick
+    expect(s.deferredDailyLimit).toBe(0); // NOT a daily-budget stop — budget was untouched
+    expect(store.sentCustomers).toEqual(["c0", "c1", "c2", "c3"]);
+    expect(store.rows.size).toBe(4); // the other six are neither sent nor claimed — a later tick gets them
+  });
+
+  it("does NOT flag haltedForBatch when the cap lands exactly on the last recipient (drained)", async () => {
+    const store = new FakeStore();
+    const s = await runSend(mk(4), store, "camp", hashFor, { ...DEFAULT_SEND_CONFIG, maxPerInvocation: 4 });
+    expect(s.sent).toBe(4);
+    expect(s.haltedForBatch).toBe(false); // the loop ended on its own → the run is DONE, not halted
+  });
+
+  it("re-arms across ticks: three capped invocations drain the whole run, nobody twice", async () => {
+    const store = new FakeStore();
+    const all = mk(10);
+    const cfg = { ...DEFAULT_SEND_CONFIG, maxPerInvocation: 4 };
+
+    const t1 = await runSend(all, store, "camp", hashFor, cfg);
+    expect(t1.sent).toBe(4);
+    expect(t1.haltedForBatch).toBe(true);
+
+    const t2 = await runSend(all, store, "camp", hashFor, cfg);
+    expect(t2.sent).toBe(4);
+    expect(t2.skippedAlreadySent).toBe(4); // the first tick's 4 are claim-skipped
+    expect(t2.haltedForBatch).toBe(true);
+
+    const t3 = await runSend(all, store, "camp", hashFor, cfg);
+    expect(t3.sent).toBe(2);
+    expect(t3.skippedAlreadySent).toBe(8);
+    expect(t3.haltedForBatch).toBe(false); // nothing left → drained
+
+    expect(store.sentCustomers).toEqual(["c0", "c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8", "c9"]);
+    expect(new Set(store.sentCustomers).size).toBe(10); // each exactly once
+  });
+
+  it("only SEND attempts count against the cap — suppressed recipients pass through freely", async () => {
+    const store = new FakeStore();
+    store.suppressed.add("c1");
+    store.suppressed.add("c2");
+    // cap 2 real sends; the two suppressed skips in between must not consume the cap.
+    const s = await runSend(mk(6), store, "camp", hashFor, { ...DEFAULT_SEND_CONFIG, maxPerInvocation: 2 });
+    expect(s.sent).toBe(2); // c0, c3
+    expect(s.skippedSuppressed).toBe(2); // c1, c2 — skipped, not counted against the cap
+    expect(s.haltedForBatch).toBe(true); // c4, c5 remain
+    expect(store.sentCustomers).toEqual(["c0", "c3"]);
+  });
+
+  it("the daily budget still bounds a capped run — a budget stop reads deferred, not halted", async () => {
+    const store = new FakeStore();
+    store.today = 997; // budget = 3
+    // cap is larger than the budget, so the BUDGET is the limiter, not the cap.
+    const s = await runSend(mk(10), store, "camp", hashFor, {
+      ...DEFAULT_SEND_CONFIG,
+      dailyLimit: 1000,
+      maxPerInvocation: 8,
+    });
+    expect(s.sent).toBe(3);
+    expect(s.deferredDailyLimit).toBe(7); // the rest wait for TOMORROW (a human resume), not this cycle
+    expect(s.haltedForBatch).toBe(false); // NOT a batch halt — the drainer pauses, it does not re-arm
+  });
+
+  it("the DEFAULT config imposes no cap — a large run sends the whole list in one call", async () => {
+    const store = new FakeStore();
+    const s = await runSend(mk(250), store, "camp", hashFor); // DEFAULT_SEND_CONFIG
+    expect(s.sent).toBe(250);
+    expect(s.haltedForBatch).toBe(false);
+    expect(DEFAULT_SEND_CONFIG.maxPerInvocation).toBe(Number.MAX_SAFE_INTEGER);
+  });
+});
+
+// ── P0-3: TWO EXECUTOR TICKS OVERLAP on the SAME run — no double-send ──────────────────────────
+//
+// The pg_cron executor fires every few minutes; if one tick runs long, the next can start before it
+// finishes, both draining the SAME run (same campaign_id). The drain-claim (drain_claimed_at,
+// optimistic-concurrency) REDUCES this, but it is NOT the correctness guard — the correctness guard is
+// the DETERMINISTIC idempotency key + a UNIQUE index on crm_message_log.idempotency_key: claim() is
+// INSERT-if-absent and returns false on the unique violation (23505), so a recipient already claimed by
+// one tick is skipped by the other. This is the exact property that keeps the 890-recipient incident
+// from becoming 890 double-sends through the new (background) door.
+//
+// HONEST BOUNDARY (state it, don't imply more): FakeStore.claim models that unique-index atomicity
+// (Map has→set, no await between, so the first claim of a key wins) — the SAME contract the real
+// adapter gets from Postgres's UNIQUE constraint + the `error.code === "23505" → return false` branch
+// in send-campaign.ts. The true DB-level guarantee (two INSERTs of one key across two connections) is
+// an INTEGRATION property that this unit suite, running against an in-memory fake, does not exercise.
+// What this test proves is that the ENGINE's use of the claim is correct under interleaving: given an
+// atomic claim, two concurrent ticks send each recipient exactly once.
+describe("send-run — overlapping ticks send each recipient exactly once", () => {
+  it("two concurrent runs over the same campaign + store double-send NOBODY", async () => {
+    const store = new FakeStore();
+    const all = mk(20);
+    // Promise.all interleaves the two runs at every await point (single-threaded microtask scheduling).
+    const [a, b] = await Promise.all([
+      runSend(all, store, "camp", hashFor),
+      runSend(all, store, "camp", hashFor),
+    ]);
+
+    // Each recipient was SENT exactly once across both ticks — the invariant, whatever the interleaving.
+    expect(store.sentCustomers.length).toBe(20);
+    expect(new Set(store.sentCustomers).size).toBe(20);
+    expect(store.rows.size).toBe(20); // one claim row per recipient — never two for the same key
+
+    // The 20 sends are split between the ticks; every recipient the other tick reached was skipped as
+    // already-claimed. sent + skipped, summed across both ticks, accounts for all 20 twice: 20 sent
+    // total, 20 already-sent skips total (the loser of each claim race).
+    expect(a.sent + b.sent).toBe(20);
+    expect(a.skippedAlreadySent + b.skippedAlreadySent).toBe(20);
+  });
+
+  it("the claim is atomic per key — a second claim of a key never succeeds, even interleaved", async () => {
+    // The unit-level equivalent of the UNIQUE index: fire many claims of the SAME key concurrently;
+    // exactly one wins. This is what makes the interleaved run above safe.
+    const store = new FakeStore();
+    const key = buildIdempotencyKey({ campaignId: "camp", customerId: "c0", channel: "email" });
+    const meta: ClaimMeta = { customerId: "c0", channel: "email", identityHash: "h", language: "id", campaignId: "camp" };
+    const results = await Promise.all(Array.from({ length: 10 }, () => store.claim(key, meta)));
+    expect(results.filter((r) => r === true)).toHaveLength(1); // exactly one true
+    expect(results.filter((r) => r === false)).toHaveLength(9);
+  });
+});

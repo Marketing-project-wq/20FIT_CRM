@@ -5,23 +5,23 @@ import { createClient } from "@/lib/supabase/server";
 import { isPermitted, grantFor } from "@/lib/auth/roles";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSegmentById } from "@/lib/crm/segment-store";
-import { previewCampaign, sendCampaign, resolveEmailListRecipients } from "@/lib/crm/send-campaign";
+import { previewCampaign, resolveEmailListRecipients } from "@/lib/crm/send-campaign";
 import { getSendConfig } from "@/lib/crm/send-config";
+import { enqueueRunDrain } from "@/lib/crm/send-drain";
 import { validateCampaignName, decideRunLabel } from "@/lib/crm/campaign-name";
 import { renderEmailDocument } from "@/lib/crm/email-document";
 import { describeCountDrift, planDailySpread, type CountDrift, type DailySpread } from "@/lib/crm/send-plan";
-import { DEFAULT_SEND_CONFIG, requiresLargeSendConfirmation, type SendSummary } from "@/lib/crm/send-run";
+import { requiresLargeSendConfirmation } from "@/lib/crm/send-run";
 import {
   createRun,
   getRunForPair,
   listResumableRuns,
-  markRunSending,
-  finalizeRunStatus,
+  activeSendingRunFor,
   recordRunError,
   type ResumableRun,
   type RunStatus,
 } from "@/lib/crm/campaign-run";
-import { classifySendThrow, unsubscribeHostServable, missingSendEnv } from "@/lib/crm/send-env";
+import { unsubscribeHostServable, missingSendEnv } from "@/lib/crm/send-env";
 import { headers } from "next/headers";
 import { runInternalSendTest, cleanupInternalSendTest, type SendTestResult, type SendTestCleanupResult } from "@/lib/crm/send-test-harness";
 import { extractVariables } from "@/lib/crm/template";
@@ -217,22 +217,25 @@ export interface SendResult {
     | "label_required" // new run with a missing/too-short/too-long name — refused before any work
     | "run_not_found"
     | "run_create_failed"
-    | "send_threw" // sendCampaign threw; the run is marked stopped + last_error (see detail)
+    | "send_in_progress" // a run to this (segment, template) is already in progress — a NEW run would double-send
+    | "enqueue_failed" // the drain flag could not be written — nothing was queued
     | "missing_env" // required send env vars unset — reported ALL at once (see detail)
     | "unresolvable_recipients" // manual email-list addresses not in the pool — refuse BEFORE a run (see detail)
     | "unsubscribe_host_mismatch"; // unsubscribe link host ≠ serving host → dead link, refuse
-  detail?: string; // on 'send_threw'/'unresolvable_recipients': PII-free cause / named addresses
+  detail?: string; // on 'unresolvable_recipients': the named addresses
   linkHost?: string | null; // on 'unsubscribe_host_mismatch': the host the unsubscribe link points to
   servingHost?: string | null; // on 'unsubscribe_host_mismatch': the host actually serving the app
   drift?: CountDrift; // recount at confirm vs what the operator saw
   freshSendable?: number; // the recounted number to show + re-press against (on count_changed)
-  summary?: SendSummary;
-  withheldPrelaunch?: number;
-  realSend?: boolean;
+  // ASYNC (P0-3): the send no longer runs in this request. On success the run is QUEUED for background
+  // draining and the operator watches progress in the Kiriman (Deliveries) tab — there is no
+  // synchronous summary here anymore.
+  queued?: boolean; // true → the run was flagged for background draining
+  sendable?: number; // how many recipients will be attempted in the background (the recounted number)
   runId?: string; // the instance this send targeted (crm_message_log.campaign_id)
   runLabel?: string | null;
   isNewRun?: boolean; // true if this send opened a fresh instance (vs continued one)
-  runStatus?: RunStatus; // where the run landed after this send (sent / sending / stopped)
+  runStatus?: RunStatus; // 'sending' — the run is now draining in the background
 }
 
 export async function sendCampaignAction(args: {
@@ -273,13 +276,14 @@ export async function sendCampaignAction(args: {
   // on the uuid insert, and its unsubscribe link would have no identity to suppress). Refuse the whole
   // send here, NAMING the addresses, so the operator learns immediately instead of a silent stopped
   // run — internal test addresses belong in the Send-test / crm_test_recipient path, not here.
-  let emailRecipients: Awaited<ReturnType<typeof resolveEmailListRecipients>>["recipients"] | undefined;
+  // Pre-check only: an address not in the pool can't be a recipient, so refuse (naming them) BEFORE a
+  // run is queued — immediate operator feedback. The drainer re-resolves the list at send time (the
+  // recipients are not carried on the run), so nothing is stored from here.
   if (seg.stored.emailList && seg.stored.emailList.length > 0) {
     const resolved = await resolveEmailListRecipients(createAdminClient(), seg.stored.emailList);
     if (resolved.unresolved.length > 0) {
       return { ok: false, error: "unresolvable_recipients", detail: resolved.unresolved.join(", ") };
     }
-    emailRecipients = resolved.recipients;
   }
 
   const stamp = nowIso();
@@ -314,6 +318,14 @@ export async function sendCampaignAction(args: {
     runLabel = existing.label;
     isNewRun = false;
   } else {
+    // DOUBLE-SEND GUARD (ported from PR #45, widened to the async drain model). Refuse a NEW run to a
+    // (segment, template) that already has one IN PROGRESS ('sending' — draining or paused). A second
+    // run is a second campaign_id → different idempotency keys → idempotency can't de-dupe across it,
+    // so everyone would be emailed twice. This is the exact 890-recipient ISS path: send looked failed,
+    // operator nearly pressed Send again. Point them at the run already running; resuming it is safe.
+    const active = await activeSendingRunFor(args.segmentId, args.templateKey);
+    if (active) return { ok: false, error: "send_in_progress", runId: active.id, runLabel: active.label };
+
     let actorForRun: string | null = null;
     try {
       actorForRun = (await createClient().auth.getUser()).data.user?.email ?? null;
@@ -333,58 +345,43 @@ export async function sendCampaignAction(args: {
     isNewRun = true;
   }
 
-  let actorId = "unknown";
   let actorEmail: string | null = null;
   try {
-    const { data } = await createClient().auth.getUser();
-    actorId = data.user?.id ?? "unknown";
-    actorEmail = data.user?.email ?? null;
+    actorEmail = (await createClient().auth.getUser()).data.user?.email ?? null;
   } catch {
-    // fail-closed identity; the send still records a row, audit actor is 'unknown'
+    // fail-closed identity; the run still drains, drain_requested_by is just null
   }
 
-  await markRunSending(runId);
-
-  // If the send throws (e.g. a required secret is unset), the run records WHY — status stopped +
-  // last_error — and the operator gets a structured error, instead of a silent draft (T-30).
-  // Configurable daily ceiling (crm_send_config). The bounce auto-stop config (threshold/minSample)
-  // stays at the built-in default — it is NEVER coupled to the daily limit (owner rule e).
-  const { dailyLimit } = await getSendConfig(createAdminClient());
-  let result: Awaited<ReturnType<typeof sendCampaign>>;
-  try {
-    result = await sendCampaign(
-      {
-        campaignId: runId,
-        criteria: seg.stored.criteria,
-        masterFilterExpr: seg.stored.masterFilterExpr,
-        templateKey: args.templateKey,
-        actorId,
-        actorEmail,
-        confirmedLargeSend: args.confirmedLargeSend,
-        config: { ...DEFAULT_SEND_CONFIG, dailyLimit },
-        ...(emailRecipients ? { overrideRecipients: emailRecipients } : {}),
-      },
-      stamp,
-    );
-  } catch (e) {
-    const cause = classifySendThrow(e);
-    await recordRunError(runId, cause);
-    return { ok: false, error: "send_threw", detail: cause, runId, runLabel, isNewRun };
+  // ASYNC SEND (P0-3). The engine no longer runs inside this request — that was up to ~8-14 minutes of
+  // a held browser connection for one day's budget alone, and a large send is far worse. Flag the run
+  // for background draining (drain_active=true, status 'sending') and return immediately; the pg_cron
+  // executor drains it in bounded batches OFF this request (lib/crm/send-drain.ts, RENCANA-kirim-latar).
+  // A resume re-arms the same instance (skips whoever it already reached); a new run starts fresh.
+  // Progress and any failures show in the Kiriman (Deliveries) tab; the send audit row is written by
+  // the drainer, carrying this operator's email as actor_email.
+  const enq = await enqueueRunDrain(createAdminClient(), runId, actorEmail);
+  if (!enq.ok) {
+    if (enq.conflict) {
+      // Lost the create→enqueue race to a concurrent send for the same (segment, template): the DB's
+      // partial unique index refused this run's transition to 'sending' (only a NEW run can conflict — a
+      // resume is the same row). Abandon this orphan and point at the run already in progress. This is
+      // the airtight backstop to the app-level guard's TOCTOU — the DB, not timing, has the last word.
+      await recordRunError(runId, "superseded_concurrent_run");
+      const winner = await activeSendingRunFor(args.segmentId, args.templateKey);
+      return { ok: false, error: "send_in_progress", runId: winner?.id, runLabel: winner?.label ?? null };
+    }
+    return { ok: false, error: "enqueue_failed", runId, runLabel, isNewRun };
   }
-
-  // The WHOLE summary — the status rule reads the failure counts too (T-42).
-  const runStatus = await finalizeRunStatus(runId, result.summary);
 
   return {
     ok: true,
+    queued: true,
     drift,
-    summary: result.summary,
-    withheldPrelaunch: result.withheldPrelaunch,
-    realSend: result.realSend,
+    sendable: fresh.sendable,
     runId,
     runLabel,
     isNewRun,
-    runStatus,
+    runStatus: "sending",
   };
 }
 

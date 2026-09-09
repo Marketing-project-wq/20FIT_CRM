@@ -447,6 +447,7 @@ export async function sendCampaign(input: CampaignSendInput, nowIso: string): Pr
         stoppedHighBounce: true,
         stoppedConsecutiveFailures: false,
         retriedSends: 0,
+        haltedForBatch: false,
       }
     : await runSend(engineRecipients, ports, input.campaignId, hashIdentityFor, config);
 

@@ -1,4 +1,5 @@
 import "server-only";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   isResumableRunStatus,
@@ -241,5 +242,70 @@ export async function recordRunError(runId: string, cause: string): Promise<void
     await admin.from("crm_campaign_run").update({ status: "stopped", last_error: cause }).eq("id", runId);
   } catch {
     // nothing more we can do here; the action-layer error return is the other half of the trace.
+  }
+}
+
+/**
+ * Set a run's TERMINAL status from its WHOLE message log — NOT one batch's summary. The background
+ * drainer (P0-3) sends a run in many batches, and finalizeRunStatus reads only the batch it is handed,
+ * so a run whose failures were in an EARLIER batch but whose FINAL batch was clean would be filed
+ * 'sent' — silently dropping the T-42 invariant that a run carrying failures never reads clean (the
+ * exact class of the 3 Sep 124-sent/18,119-failed run recorded 'sent'). This counts sent vs failed
+ * across EVERY batch from crm_message_log and feeds the SAME nextRunStatus rule, so 'partial'/'failed'
+ * survive no matter which batch failed. `sent` here is provider-accepted (status sent/delivered);
+ * `failed` is send-time failure or bounce (status failed/bounced) — so a mid-run batch that failed
+ * half its recipients lands the run in 'partial', not 'sent'. On a count-read error it returns null and
+ * does NOT overwrite the status — never files a run 'sent' on a failed read (fail-loud on a brake). The
+ * admin client is INJECTED so the whole-log rule is provable against a fake (campaign-run-finalize.test).
+ */
+export async function finalizeRunFromLog(admin: SupabaseClient, runId: string): Promise<RunStatus | null> {
+  const sentRes = await admin
+    .from("crm_message_log").select("id", { count: "exact", head: true })
+    .eq("campaign_id", runId).in("status", ["sent", "delivered"]);
+  const failedRes = await admin
+    .from("crm_message_log").select("id", { count: "exact", head: true })
+    .eq("campaign_id", runId).in("status", ["failed", "bounced"]);
+  if (sentRes.error || failedRes.error) return null; // do NOT overwrite status on a failed read
+  const next = nextRunStatus({
+    sent: sentRes.count ?? 0,
+    failed: failedRes.count ?? 0,
+    deferredDailyLimit: 0,
+    stoppedHighBounce: false,
+    stoppedConsecutiveFailures: false,
+  });
+  const { error } = await admin.from("crm_campaign_run").update({ status: next }).eq("id", runId);
+  if (error) return null;
+  return next;
+}
+
+/**
+ * The active in-progress run for a (segment, template), or null. "Active" = status 'sending' — the
+ * background drainer keeps a run 'sending' while it drains AND while it is paused at the daily limit,
+ * so this catches both. Used to REFUSE opening a SECOND run to the same audience while one is still in
+ * progress: that is the exact double-send path of the 890-recipient ISS incident (press Send twice →
+ * two runs → two campaign_ids → DIFFERENT idempotency keys → everyone emailed twice; idempotency only
+ * de-dupes WITHIN one run). Resuming the SAME run stays allowed (same keys → no double send); this only
+ * blocks a NEW run. Ported from PR #45's send_in_progress guard, widened to the async drain model.
+ */
+export async function activeSendingRunFor(
+  segmentId: string,
+  templateKey: string,
+): Promise<{ id: string; label: string | null } | null> {
+  try {
+    const admin = createAdminClient();
+    const { data, error } = await admin
+      .from("crm_campaign_run")
+      .select("id, label")
+      .eq("segment_id", segmentId)
+      .eq("template_key", templateKey)
+      .eq("status", "sending")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error || !data) return null;
+    const row = data as { id: string; label: string | null };
+    return { id: row.id, label: row.label };
+  } catch {
+    return null;
   }
 }
