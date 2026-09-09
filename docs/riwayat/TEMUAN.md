@@ -2493,3 +2493,53 @@ browser ter-autentikasi berdata pool yang tak bisa saya tegakkan andal di sini):
 - Baris nilai-tag selalu-terlihat: **56 → 0** (8 header namespace terlipat).
 - Daftar pengecualian-tag duplikat: **28 baris → 0** (dihapus, jadi chip).
 - Kartu pintasan terlihat: **9 → 3** (+ "lihat semua").
+
+## T-73 — Segmen manual dari CSV: satu parser dipakai ulang, pratinjau 4-angka sebelum simpan, batas terukur; + bug URL `.in()` laten di jalur KIRIM ditutup — ⏱ DIUKUR 9 Sep 2026
+
+Pemilik: "operator dapat berkas CSV dari CS berisi daftar undangan satu kampanye (wave, slot jam) —
+biar bisa diunggah jadi segmen manual, DI SAMPING kotak tempel, tanpa parser CSV kedua, tanpa bikin
+orang baru." Plus batas kanon tag: usul pihak #2 menambah `wave`/`jadwal` ke kanon DITOLAK pemilik
+(benar). Batas dicatat di **KEPUTUSAN K-64**: tag kanon = atribut orang yang berulang lintas-event
+(`event, peran, format, kategori, tipe, nilai, sumber, produk`); segmen manual = daftar sekali-pakai
+(wave, slot jam, grup bus, nomor meja). Uji satu-baris: "kalau nilainya tak akan muncul lagi di event
+berikutnya, itu bukan tag — itu daftar kirim." `wave:`/`jadwal:` di berkas ISS DITOLAK penjaga-tag
+dengan benar → itulah asal impor separuh `iss-jhr-hybrid-race.csv` (109 dari 677 baris).
+
+**TUGAS 2 — unggah CSV, SATU parser (T-73).** Unggah CSV di samping kotak tempel (bukan pengganti).
+Parser audience import dipakai ulang lewat helper bersama `parseCsvText` (papaparse + deteksi pemisah;
+berkas CS pakai `;`) — `import "server-only"`. Rute impor `app/api/audience/import/route.ts` kini
+memanggil `parseCsvText` yang sama (bukan `Papa.parse` inline) → bukti satu parser, bukan dua. Pemetik
+kolom muncul saat >1 kolom (tebak kolom email via `guessColumnMapping` yang sama, bisa disunting).
+Ekstraksi + normalisasi lewat `parseEmailListInput` bersama (split `[\s,;]`, trim, lowercase, `@`,
+dedup) — kaidah SAMA yang disimpan aksi save, jadi angka pratinjau = yang tersimpan.
+
+**Pratinjau 4-angka SEBELUM simpan (kejujuran K-40).** Tombol Pratinjau memakai
+`resolveEmailListRecipients` — resolver YANG SAMA dengan jalur kirim — jadi pratinjau tak bisa
+menjanjikan penerima yang kirim akan buang. Empat angka: dibaca, cocok di pool (penerima), tidak di
+pool (tak dikirim — impor dulu), ter-suppress. Tombol Simpan tetap MATI sampai ada pratinjau segar
+untuk daftar saat ini (`previewSig === emails.join("|")`) — mengubah daftar mereset pratinjau. TIDAK
+bikin orang baru: alamat di luar pool dilaporkan, tak disisipkan. `unresolvable_recipients` tak
+disentuh. Audit pratinjau = ANGKA saja (nol PII).
+
+**Batas terukur (bukan angka tak teruji).** `MAX_EMAIL_LIST = 5.000`. Biaya pengikat = RESOLVE: tiap
+potongan 300-alamat = satu seq scan penuh `master_customer` (~34 ms hangat / ~600 ms dingin — indeks
+email PARSIAL, `IN(list)` tak bisa pakai, T-68), tabel di-cache setelah scan pertama → resolve 5.000
+alamat ≈ satu scan dingin + 16 potongan hangat ≈ ~1,5 s — ~5× di bawah anggaran 8 s (sama seperti
+batas impor 15.000). Wave nyata terbesar = 258; 5.000 ≈ 20× itu. Dijaga di pratinjau DAN save.
+
+**Bug laten ditutup (jalur KIRIM).** `resolveEmailListRecipients` memotong `.in(email_normalized)`
+pada `PAGE = 1000` → URL ~30 KB → HTTP 400 ditelan (persis pola T-69) untuk daftar >~450. Diturunkan
+ke `EMAIL_IN_CHUNK = 300` (URL-aman, ≤~16 KB). Belum pernah pecah di produksi (wave nyata ≤258), tapi
+laten sampai wave pertama >450. `PAGE = 1000` tetap untuk paginasi `.range()`.
+
+**TUGAS 3 — sambungkan layar + dua rapi kecil.** (a) Layar manual: `notInPoolHint` = "alamat yang
+belum di pool TIDAK ditambah di sini — impor dulu lewat Audience → Impor"; `choiceHint` = "filter
+otomatis untuk yang berulang (event, peran); daftar manual untuk sekali-pakai (wave, slot jam)";
+`snapshotNote` = "segmen daftar-email adalah POTRET, tanggal dibuat ditambah otomatis ke nama".
+(b) Judul ganda: `SegmentBuilder` di dalam tab kini `embedded` → header `<h1>SEGMENTS</h1>` internal +
+deskripsi berulang ditekan, sisakan satu "BUAT SEGMEN BARU". (c) Header namespace terlipat kini
+menambah jumlah-ORANG distinct per namespace (`fetchPoolTagCounts` menghitung distinct-per-namespace
+di lintasan baris yang sama — menjumlah per-tag akan overcount orang multi-tag) → operator lihat
+cakupan orang tiap namespace walau terlipat, bukan sekadar "7 nilai". (Angka distinct per-namespace
+dihitung saat layar dibuka dari data pool nyata; belum saya jalankan atas produksi ronde ini — uji
+memakai data sintetis yang membuktikan hitungannya distinct, bukan angka pool yang sebenarnya.)

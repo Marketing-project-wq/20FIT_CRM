@@ -1523,3 +1523,29 @@ Menghitungnya langsung di sini akan memberi halaman ini cap waktu kedua, yaitu j
 seluruh rancangan ini tolak. Jadi `shop` dikeluarkan dan kartunya **menyebutkannya**, alih-alih
 diam-diam mengecilkan total. Memasukkannya ke potret harian adalah perubahan satu baris pada fungsi
 malam — migrasi bergerbang tersendiri, bukan sekarang.
+
+## K-64 — Batas kanon tag vs segmen manual: yang berulang jadi tag, yang sekali-pakai jadi daftar kirim — 9 Sep 2026
+
+Pihak #2 mengusulkan menambah `wave` dan `jadwal` ke kanon tag. **Ditolak** (usul ditarik), dan alasan
+pemilik lebih baik: "wave dan jadwal tidak seharusnya masuk sistem filter otomatis karena sangat
+custom tergantung event-nya — itu membuat filtering tidak seragam." Benar:
+`wave:doubles-men-1-07-00-11-30` bermakna sekali untuk satu event lalu tak pernah lagi; memasukkannya
+ke kanon berarti kosakata filter tumbuh tanpa batas tiap event baru, dan filter bersama berhenti
+seragam.
+
+**Aturan (akan muncul lagi tiap event, jadi ditulis bukan diingat):**
+- **Tag kanon = atribut ORANG yang berulang lintas event dan bermakna berbulan-bulan kemudian.**
+  Delapan namespace, tertutup: `event`, `peran`, `format`, `kategori`, `tipe`, `nilai`, `sumber`,
+  `produk`. (Kanon ini juga yang menyetir `OPERATOR_TAG_REGEX_SOURCE` di `lib/crm/tags.ts` — dijaga
+  `tags.parity.test`.)
+- **Segmen manual = daftar khusus SATU kampanye.** wave, slot jam, kelompok bus, nomor meja — apa pun
+  yang bermakna sekali lalu mati. Dibuat lewat segmen `emailList` (unggah CSV / tempel), bukan tag.
+
+**Uji kelayakan satu kalimat:** *kalau nilainya tak akan pernah muncul lagi di event berikutnya, ia
+bukan tag — ia daftar kirim.*
+
+**Penjaga tag bekerja benar, bukan bug.** `wave:` dan `jadwal:` di berkas ISS ditolak oleh penjaga tag
+(`isOperatorTag` — namespace di luar kanon) persis seperti seharusnya. Kegagalan impor sebagian pada
+`iss-jhr-hybrid-race.csv` (**109 dari 677** baris masuk sebagai tag) berasal dari situ: baris yang
+hanya membawa `wave:`/`jadwal:` tak punya tag kanon yang sah, jadi ditolak — bukan cacat impor.
+Daftar wave itu adalah pekerjaan **segmen manual**, bukan tag.

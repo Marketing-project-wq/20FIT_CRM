@@ -11,7 +11,7 @@ import { rowsToTree, type Row } from "@/components/segments/filter-tree-builder"
 import { UnifiedFilterBuilder } from "@/components/segments/unified-filter-builder";
 import { describeProposal, proposalIsEmpty, buildAiExamples, type AssistProposal } from "@/lib/crm/segment-ai-shared";
 import { ambiguousTagValueLabels, disambiguateTagLabel } from "@/lib/crm/tags";
-import type { TagCountEntry } from "@/lib/crm/tag-vocab";
+import type { TagVocabCounts } from "@/lib/crm/tag-vocab";
 import { saveSegmentAction } from "@/app/(app)/segments/actions";
 import { CAMPAIGN_COMPOSE_TAB, composeUrlWithNewSegment } from "@/lib/crm/campaign-nav";
 import { Why } from "@/components/ui/why";
@@ -87,7 +87,7 @@ function TimeCriteria({
   );
 }
 
-export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, tagCounts = [], embedded = false, onComputed, returnTo }: { cityFillPct: number; cityFilled: number; total: number; canViewHealth: boolean; tagCounts?: TagCountEntry[]; embedded?: boolean; onComputed?: (counts: { matched: number; contactableMarketing: number } | null) => void; returnTo?: string | null }) {
+export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, tagVocab = { entries: [], namespacePeople: {} }, embedded = false, onComputed, returnTo }: { cityFillPct: number; cityFilled: number; total: number; canViewHealth: boolean; tagVocab?: TagVocabCounts; embedded?: boolean; onComputed?: (counts: { matched: number; contactableMarketing: number } | null) => void; returnTo?: string | null }) {
   const { lang, t } = useI18n();
   const router = useRouter();
   const [c, setC] = useState<SegmentCriteria>(EMPTY_CRITERIA);
@@ -154,6 +154,7 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
   // Derived tag data. availableTags is the flat vocab (for describe disambiguation); aiExamples come
   // from the REAL pool (never a fake example); ambiguous = value-labels that clash across namespaces
   // (T0), so the readable sentence and chips can prefix the namespace only where needed.
+  const tagCounts = tagVocab.entries;
   const availableTags = tagCounts.map((e) => e.tag);
   const aiExamples = buildAiExamples(tagCounts, lang);
   const ambiguousTagLabels = ambiguousTagValueLabels(availableTags, lang);
@@ -395,6 +396,7 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
             <div className="mt-3">
               <TagFilter
                 entries={tagCounts}
+                namespacePeople={tagVocab.namespacePeople}
                 included={positiveTags}
                 excluded={c.exclude.tagsAny}
                 mode={tagMode}

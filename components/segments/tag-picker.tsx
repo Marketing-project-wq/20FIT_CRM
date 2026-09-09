@@ -35,6 +35,7 @@ export interface TagFilterWords {
   allMode: string;
   modeHint: string;
   selectedOfValues: string; // "{sel} dipilih · {n} nilai" — {sel}/{n} substituted
+  peopleSuffix: string; // "orang" / "people" — after the distinct namespace people-count
   noMatch: string;
 }
 
@@ -44,6 +45,7 @@ function nsOf(tag: string): string {
 
 export function TagFilter({
   entries,
+  namespacePeople = {},
   included,
   excluded,
   mode,
@@ -54,6 +56,10 @@ export function TagFilter({
   w,
 }: {
   entries: TagCountEntry[];
+  /** DISTINCT people per namespace — shown in the folded header so the operator knows the size
+   *  without opening it. Summing per-tag counts would overcount (multi-tag people), so this is a
+   *  distinct count computed server-side. */
+  namespacePeople?: Record<string, number>;
   included: string[];
   excluded: string[];
   mode: "any" | "all";
@@ -199,6 +205,9 @@ export function TagFilter({
                   <span className="font-display text-[12px] font-bold uppercase tracking-wide text-ink">{namespaceLabel(g.namespace, lang)}</span>
                 </span>
                 <span className="font-body text-[11px] text-ink-faint">
+                  {namespacePeople[g.namespace] != null && (
+                    <span className="tabular-nums text-ink-soft">{formatCount(namespacePeople[g.namespace], lang)} {w.peopleSuffix} · </span>
+                  )}
                   {w.selectedOfValues.replace("{sel}", String(selectedCount)).replace("{n}", String(g.tags.length))}
                 </span>
               </button>

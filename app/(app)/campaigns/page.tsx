@@ -103,8 +103,10 @@ export default async function CampaignsPage({
   // on the Segmen tab for a builder. Degrades to [] on a read error — the picker simply hides; a
   // failed vocab read must not crash the whole campaigns page (the AI route, which needs it to be
   // complete, fails loud separately).
-  const tagCounts =
-    canBuild && tab === "segmen" ? await fetchPoolTagCounts(admin).catch(() => []) : [];
+  const tagVocab =
+    canBuild && tab === "segmen"
+      ? await fetchPoolTagCounts(admin).catch(() => ({ entries: [], namespacePeople: {} }))
+      : { entries: [], namespacePeople: {} };
 
   return (
     <div className="flex flex-col gap-6">
@@ -178,7 +180,7 @@ export default async function CampaignsPage({
           total={cityFill.total}
           canViewHealth={canViewHealth}
           canBuild={canBuild}
-          tagCounts={tagCounts}
+          tagVocab={tagVocab}
           returnTo={returnTo}
         />
       )}

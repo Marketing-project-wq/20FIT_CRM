@@ -43,10 +43,22 @@ describe("fetchPoolTagCounts", () => {
       { tags: null },
     ];
     const out = await fetchPoolTagCounts(fakeClient([rows]));
-    expect(out).toEqual([
+    expect(out.entries).toEqual([
       { tag: "event:a-1", people: 3 },
       { tag: "peran:pendaftar", people: 2 },
     ]); // system tags (csv_import, batch:x) not counted; sorted desc
+  });
+
+  it("counts DISTINCT people per namespace — a person with two event tags counts once", async () => {
+    const rows: Row[] = [
+      { tags: ["event:a-1", "event:b-2"] }, // one person, TWO event tags → event namespace +1
+      { tags: ["event:a-1", "peran:pendaftar"] }, // event +1, peran +1
+      { tags: ["peran:pendaftar"] }, // peran +1
+    ];
+    const out = await fetchPoolTagCounts(fakeClient([rows]));
+    // Summing per-tag would give event = 3 (a-1:2 + b-2:1); DISTINCT people is 2.
+    expect(out.namespacePeople).toEqual({ event: 2, peran: 2 });
+    expect(out.entries.find((e) => e.tag === "event:a-1")?.people).toBe(2);
   });
 
   it("THROWS on a read error (never returns a half count)", async () => {
