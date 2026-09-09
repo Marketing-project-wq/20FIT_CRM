@@ -17,6 +17,10 @@ export const dynamic = "force-dynamic";
  *   - a mirror snapshot 3 days old (does the 24h staleness warning stand out?)
  */
 const STALE_REFRESHED_AT = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+// The candidate table's own age — deliberately WELL past CANDIDATE_STALE_DAYS so the preview
+// exercises the "beku sejak" branch (production's crm_identity_candidate is one frozen 21 Aug batch;
+// its count is re-computed nightly, but the DATA has not moved — the card must say so).
+const FROZEN_CANDIDATE_AS_OF = new Date(Date.now() - 19 * 24 * 60 * 60 * 1000).toISOString();
 
 const FIXTURE = {
   // All measured on production 7 Sep 2026. The fixture mirrors the REAL state so the preview
@@ -95,6 +99,7 @@ const FIXTURE = {
       { source: "rc_participants", count: 4 },
     ],
   },
+  candidatesAsOf: FROZEN_CANDIDATE_AS_OF,
   fitco: { matched: 67653, unmatched: 7260 },
   mirror: { refreshedAt: STALE_REFRESHED_AT, rowCount: 82253 },
 };

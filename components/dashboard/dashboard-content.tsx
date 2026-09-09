@@ -9,7 +9,8 @@ import type { BodSnapshot } from "@/lib/crm/bod-snapshot";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Why } from "@/components/ui/why";
 import { useI18n } from "@/components/i18n/lang-provider";
-import { formatCount, formatDateTime } from "@/lib/i18n";
+import { formatCount, formatDate, formatDateTime } from "@/lib/i18n";
+import { candidateFreshness } from "@/lib/crm/candidate-freshness";
 
 interface SourceGap { key: string; total: number; inPool: number; gap: number }
 interface ProductCount { product: string; registrations: number }
@@ -24,7 +25,7 @@ interface Fitco { matched: number; unmatched: number }
 // longer renders — a field kept "just in case" is how a removed card gets quietly re-added.
 interface ImmediateBlock { audienceSize: number; contactCoverage: ContactCoverage; importDob: number; workflowCount: number; workflowQueued: number }
 // `unitSpread` is NOT here: the unit-spread card moved to the summary (same `engagement` blob).
-interface MirrorBlock { importRfm: { value: string; count: number }[]; candidates: Candidates; fitco: Fitco; mirror: MirrorMeta }
+interface MirrorBlock { importRfm: { value: string; count: number }[]; candidates: Candidates; candidatesAsOf: string | null; fitco: Fitco; mirror: MirrorMeta }
 interface EventsBlock { eventRegistrations: ProductCount[] }
 interface SourcesBlock { liveSources: SourceGap[] }
 
@@ -63,7 +64,7 @@ function srcLabel(t: ReturnType<typeof useI18n>["t"], key: string): string {
 function blocksFromStats(s: DashboardStats) {
   return {
     immediate: { audienceSize: s.audienceSize, contactCoverage: s.contactCoverage, importDob: s.importDob, workflowCount: s.workflowCount, workflowQueued: s.workflowQueued } as ImmediateBlock,
-    mirror: { importRfm: s.importRfm, candidates: s.candidates, fitco: s.fitco, mirror: s.mirror } as MirrorBlock,
+    mirror: { importRfm: s.importRfm, candidates: s.candidates, candidatesAsOf: s.candidatesAsOf, fitco: s.fitco, mirror: s.mirror } as MirrorBlock,
     events: { eventRegistrations: s.eventRegistrations } as EventsBlock,
     sources: { liveSources: s.liveSources } as SourcesBlock,
   };
@@ -135,19 +136,39 @@ function GapTable({ sources, t, lang }: { sources: SourceGap[]; t: Dict; lang: L
   );
 }
 
-/** D — the deduped "candidates not yet in the pool" card (snapshot). Explicitly labelled as NOT the
- *  pool and NOT the live gap (different population), with its own snapshot freshness. */
-function CandidateCard({ candidates, fitco, t, lang, mirrorAt }: {
-  candidates: Candidates; fitco: Fitco; t: Dict; lang: Lang; mirrorAt: string | null;
+/** D — the deduped "candidates not yet in the pool" card. Explicitly labelled as NOT the pool and
+ *  NOT the live gap (different population).
+ *
+ *  FRESHNESS IS THE DATA'S OWN AGE, NOT THE MIRROR'S (bug fix, see TEMUAN.md). The count comes from
+ *  the nightly precompute, which RE-COUNTS crm_identity_candidate every night — so this card used to
+ *  stamp the frozen count with the mirror's refresh time (today) and it LOOKED live. It is not: the
+ *  table is a single 21 Aug backfill that no pipeline feeds. So the card judges freshness from
+ *  `candidatesAsOf` (the newest row's timestamp) and, once that is older than CANDIDATE_STALE_DAYS,
+ *  says "beku sejak <date>" out loud instead of a fresh-snapshot tag. `nowMs` is the decision clock
+ *  (K-63), never rendered as a time. */
+function CandidateCard({ candidates, fitco, t, lang, candidatesAsOf, nowMs }: {
+  candidates: Candidates; fitco: Fitco; t: Dict; lang: Lang; candidatesAsOf: string | null; nowMs: number;
 }) {
+  const fresh = candidateFreshness(candidatesAsOf, nowMs);
   return (
     <div className="card p-5">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="font-display text-[14px] font-bold text-ink">{t.dashboard.candTitle}</h3>
-        {mirrorAt && <FreshTag>{t.dashboard.freshSnapshot} · {formatDateTime(mirrorAt, lang)}</FreshTag>}
+        {/* Truthful freshness: the DATA's as-of date. When it is stale the amber banner below carries
+            the date (and the alarm), so the neutral tag steps aside rather than printing it twice. */}
+        {fresh.asOf && !fresh.isStale && <FreshTag>{t.dashboard.candAsOf} {formatDate(fresh.asOf, lang)}</FreshTag>}
       </div>
       <p className="mt-2 font-display text-[30px] font-black leading-none text-ink">{formatCount(candidates.total, lang)}</p>
       <p className="mt-1 font-mono text-[11px] text-amber">{t.dashboard.candLabel}</p>
+      {fresh.isStale && fresh.asOf && (
+        <div className="tint-amber mt-3 rounded-sm px-3 py-2">
+          <p className="font-body text-[12px] font-semibold text-ink">
+            {t.dashboard.candFrozenSince} {formatDate(fresh.asOf, lang)}
+            {fresh.ageDays != null ? ` · ${formatCount(fresh.ageDays, lang)} ${t.dashboard.candFrozenDays}` : ""}
+          </p>
+          <p className="mt-1 font-body text-[11px] leading-relaxed text-ink-soft">{t.dashboard.candFrozenWhy}</p>
+        </div>
+      )}
       <div className="mt-3 overflow-x-auto">
         <table className="w-full min-w-[18rem] border-collapse">
           <thead>
@@ -405,7 +426,7 @@ export function DashboardContent(
               it counts a DIFFERENT population (candNote in its <Why>), so the two are not misread as
               contradicting each other. From the MIRROR block (precompute). */}
           {mirrorB.status === "ready" && mirrorB.data ? (
-            <CandidateCard candidates={mirrorB.data.candidates} fitco={mirrorB.data.fitco} t={t} lang={lang} mirrorAt={mirrorAt} />
+            <CandidateCard candidates={mirrorB.data.candidates} fitco={mirrorB.data.fitco} t={t} lang={lang} candidatesAsOf={mirrorB.data.candidatesAsOf} nowMs={nowMs ?? Date.now()} />
           ) : mirrorB.status === "error" ? (
             <BlockFail t={t} onRetry={isPreview ? undefined : () => loadBlock("mirror")} />
           ) : (

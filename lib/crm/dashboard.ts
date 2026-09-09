@@ -12,7 +12,7 @@ import {
   type UnitCount,
   type ProductCount,
 } from "./dashboard-viz";
-import { fetchLiveSourceGaps, type SourceGap } from "./dashboard-sources";
+import { fetchLiveSourceGaps, fetchCandidateAsOf, type SourceGap } from "./dashboard-sources";
 import { fetchMirrorDashboardStats, type MirrorDashboardStats } from "./mirror";
 
 /** The 5 ecosystem units the mirror precompute (dashboard_stats.engagement) carries, in a FIXED
@@ -109,6 +109,10 @@ export interface DashboardStats {
   /** Deduped candidates not yet in the pool (snapshot) + per-source split. DIFFERENT population
    *  from liveSources (per-source, live) — labelled distinctly on screen. */
   candidates: { total: number; bySource: { source: string; count: number }[] };
+  /** The candidate DATA's own "as of" instant (newest crm_identity_candidate.first_seen_at). NOT the
+   *  mirror refresh time: the count is re-computed nightly but the underlying table is frozen, so the
+   *  card judges freshness from this, not from when the COUNT last ran. LIVE, cheap (limit-1). */
+  candidatesAsOf: string | null;
   /** Fitco participation (snapshot): matched into the pool vs not. */
   fitco: { matched: number; unmatched: number };
   /** Mirror freshness: when the snapshot was last refreshed, and its row count. */
@@ -162,6 +166,9 @@ export interface MirrorBlock {
    *  SourcesBlock.liveSources (which is per-source, live) — the two are shown side by side, each
    *  labelled with what it counts + its freshness (candidates = snapshot, gap = live). */
   candidates: { total: number; bySource: { source: string; count: number }[] };
+  /** The candidate data's own newest-row instant — see DashboardStats.candidatesAsOf. The card shows
+   *  THIS as the candidate freshness, not the mirror refresh time. */
+  candidatesAsOf: string | null;
   /** Fitco participation (snapshot): matched into the pool vs not. */
   fitco: { matched: number; unmatched: number };
   mirror: { refreshedAt: string | null; rowCount: number | null };
@@ -223,14 +230,19 @@ export async function fetchReachBlock(admin: SupabaseClient): Promise<ReachBlock
  * expanded against the closed vocabulary so a zero bucket (Campion user) shows 0, never vanishes.
  */
 export async function fetchMirrorBlock(admin: SupabaseClient): Promise<MirrorBlock> {
-  const [stats, shopProfiles] = await Promise.all([
+  // candidatesAsOf is a LIVE limit-1 read (the candidate count is precomputed, but its freshness is
+  // the data's own newest-row age — see fetchCandidateAsOf). It rides alongside the two existing
+  // reads here, the same way fetchShopProfilesLive already mixes one live count into this block.
+  const [stats, shopProfiles, candidatesAsOf] = await Promise.all([
     fetchMirrorDashboardStats(admin),
     fetchShopProfilesLive(admin),
+    fetchCandidateAsOf(admin),
   ]);
   return {
     unitSpread: unitSpreadFromEngagement(stats.engagement, shopProfiles),
     importRfm: rfmFromPrecompute(stats.rfm),
     candidates: candidatesFromPrecompute(stats.candidates),
+    candidatesAsOf,
     fitco: { matched: Number(stats.fitco.matched ?? 0), unmatched: Number(stats.fitco.unmatched ?? 0) },
     mirror: { refreshedAt: stats.refreshedAt, rowCount: stats.rowCount },
   };
@@ -283,6 +295,7 @@ export async function fetchDashboardStats(admin: SupabaseClient): Promise<Dashbo
     eventRegistrations: events.eventRegistrations,
     liveSources: sources.liveSources,
     candidates: mirror.candidates,
+    candidatesAsOf: mirror.candidatesAsOf,
     fitco: mirror.fitco,
     mirror: mirror.mirror,
   };

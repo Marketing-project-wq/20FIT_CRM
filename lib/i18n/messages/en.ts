@@ -160,6 +160,11 @@ export const en: Messages = {
       "This number DIFFERS from the live gap above: the source populations are different (e.g. here arena_bookings 4; the live arena gap counts a different arena table). Candidates = mirror snapshot (deduped across sources); gap = computed on page load. Both are correct; they count different things.",
     candSourceCol: "Source (raw)",
     candCountCol: "Candidates",
+    candAsOf: "Data as of", // + the newest candidate row's date (age of the DATA, not of the recount)
+    candFrozenSince: "Frozen since", // + date · N days
+    candFrozenDays: "days with no change",
+    candFrozenWhy:
+      "This count is recomputed nightly, but its source table has not grown since the backfill — so the number is frozen, not fresh. The live gap above is the number that actually moves.",
     fitcoTitle: "Fitco participation",
     fitcoMatched: "matched to a profile",
     fitcoUnmatched: "not matched",
