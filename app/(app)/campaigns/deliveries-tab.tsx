@@ -5,6 +5,7 @@ import { getServerDict } from "@/lib/i18n/server";
 import type { Dict } from "@/lib/i18n";
 import type { DeliveryRow, DeliveryState, DeliveryDetail } from "@/lib/crm/deliveries";
 import { CancelDeliveryButton } from "./cancel-delivery-button";
+import { DrainControlButtons } from "./drain-control-buttons";
 
 /**
  * Deliveries tab (Campaigns) — one chronological list of scheduled sends + campaign runs. A run row
@@ -17,6 +18,7 @@ const STATE_META: Record<DeliveryState, { key: keyof Dict["campaignsPage"]["deli
   upcoming: { key: "stateUpcoming", tone: "blue" },
   overdue: { key: "stateOverdue", tone: "red" }, // past its time but never ran — the T-40 #8 symptom, made loud
   running: { key: "stateRunning", tone: "amber" },
+  paused: { key: "statePaused", tone: "blue" }, // P0-3: spent today's daily budget — waits for a human Lanjutkan
   done: { key: "stateDone", tone: "green" },
   // Two states a run can now land in honestly instead of being filed as "Selesai" (T-42): some
   // recipients failed (partial) or every one did (failed).
@@ -262,6 +264,9 @@ export function DeliveriesTab({
                     </Link>
                   )}
                   {row.cancellable && <CancelDeliveryButton id={row.id} />}
+                  {row.runId && (row.resumable || row.stoppable) && (
+                    <DrainControlButtons runId={row.runId} resumable={row.resumable} stoppable={row.stoppable} />
+                  )}
                 </div>
               </div>
             );

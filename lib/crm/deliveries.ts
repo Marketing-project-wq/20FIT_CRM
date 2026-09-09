@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { renderEmailDocument } from "./email-document";
 import type { RunStatus } from "./campaign-run-status";
+import { runDrainDisplay } from "./delivery-drain-state";
 
 /**
  * Deliveries read layer — the "Kiriman" tab under Campaigns. Scheduled, running, done and stopped are
@@ -25,6 +26,7 @@ export type DeliveryState =
   | "upcoming"
   | "overdue"
   | "running"
+  | "paused" // P0-3: a campaign run that spent today's daily budget — leftover waits for a human "Lanjutkan"
   | "done"
   | "partial"
   | "failed"
@@ -55,6 +57,9 @@ export interface DeliveryRow {
   state: DeliveryState;
   time: string; // UTC ISO — scheduled_at for upcoming, created_at for a run
   cancellable: boolean; // only a pending scheduled send
+  // P0-3 background-drain controls (campaign runs only):
+  resumable: boolean; // a 'paused' run (sending, drain inactive) → a "Lanjutkan" button re-arms the drain
+  stoppable: boolean; // a 'sending' run (draining OR paused) → a "Hentikan" button halts it
   lastError: string | null;
 }
 
@@ -76,6 +81,7 @@ interface RunRow {
   template_key: string;
   label: string | null;
   status: RunStatus;
+  drain_active: boolean;
   created_at: string;
   last_error: string | null;
 }
@@ -145,7 +151,7 @@ export async function listDeliveries(admin: SupabaseClient, limit = 100, nowIso 
       .order("scheduled_at", { ascending: false }),
     admin
       .from("crm_campaign_run")
-      .select("id, segment_id, workflow_id, template_key, label, status, created_at, last_error")
+      .select("id, segment_id, workflow_id, template_key, label, status, drain_active, created_at, last_error")
       .order("created_at", { ascending: false })
       .limit(limit),
   ]);
@@ -193,6 +199,8 @@ export async function listDeliveries(admin: SupabaseClient, limit = 100, nowIso 
       state,
       time: s.scheduled_at,
       cancellable: s.status === "pending",
+      resumable: false,
+      stoppable: false,
       lastError: s.last_error,
     });
   }
@@ -204,6 +212,13 @@ export async function listDeliveries(admin: SupabaseClient, limit = 100, nowIso 
       : r.segment_id
         ? segments.get(r.segment_id) ?? null
         : null;
+    // P0-3: a segment-owned 'sending' run is either actively DRAINING (drain_active) or PAUSED at
+    // today's daily budget (drain inactive → leftover waits for a human "Lanjutkan"). Workflow runs
+    // never use the drainer, so their 'sending' stays plain 'running'. The rule is a pure helper so it
+    // can be locked by a test (a wrong resumable flag would re-send).
+    const isCampaignRun = !r.workflow_id && !!r.segment_id;
+    const disp = runDrainDisplay(r.status, r.drain_active, isCampaignRun);
+    const state: DeliveryState = disp.sendingState ?? RUN_STATE[r.status] ?? "running";
     rows.push({
       kind: "run",
       id: r.id,
@@ -214,9 +229,11 @@ export async function listDeliveries(admin: SupabaseClient, limit = 100, nowIso 
       templateKey: r.template_key,
       recipientCount: counts.get(r.id)?.logged ?? 0,
       failedCount: counts.get(r.id)?.failed ?? 0,
-      state: RUN_STATE[r.status] ?? "running",
+      state,
       time: r.created_at,
       cancellable: false,
+      resumable: disp.resumable,
+      stoppable: disp.stoppable,
       lastError: r.last_error,
     });
   }

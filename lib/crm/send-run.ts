@@ -91,6 +91,14 @@ export interface SendConfig {
    *  provoked the 3 Sep wall (a hypothesis — the reject status was discarded; see TEMUAN.md). At
    *  500 ms a run is capped near 2 sends/s; a full 1,000-send day takes ≈ 8–9 min instead of ≈ 6. */
   interRecipientDelayMs: number;
+  /** BATCH CAP (P0-3, background drainer). The most send ATTEMPTS one runSend invocation may claim
+   *  before it stops and reports `haltedForBatch`. It bounds a single tick's DURATION so a background
+   *  executor can drain a large run across many short ticks (never one multi-hour HTTP request), while
+   *  the daily budget still bounds the DAY. Only send attempts count against it — suppressed,
+   *  already-sent and daily-deferred recipients are cheap and pass through freely. Default is
+   *  effectively unlimited (Number.MAX_SAFE_INTEGER) so the synchronous send paths (internal test,
+   *  workflow) are unchanged; only the drainer sets it to DRAIN_BATCH. */
+  maxPerInvocation: number;
 }
 
 export const DEFAULT_SEND_CONFIG: SendConfig = {
@@ -101,6 +109,7 @@ export const DEFAULT_SEND_CONFIG: SendConfig = {
   maxSendAttempts: 4,
   backoffBaseMs: 1000,
   interRecipientDelayMs: 500,
+  maxPerInvocation: Number.MAX_SAFE_INTEGER, // no batch cap by default; only the drainer lowers it
 };
 
 /**
@@ -220,6 +229,12 @@ export interface SendSummary {
    *  provider is 0; a non-zero value is the signal that would have made the 3 Sep throttling visible
    *  the same day instead of hiding as 18k identical failures. */
   retriedSends: number;
+  /** BATCH CAP (P0-3). true → this invocation stopped because it reached `maxPerInvocation` send
+   *  attempts while recipients still remained — i.e. there is MORE of this run to send RIGHT NOW,
+   *  and the background drainer should continue on the next tick. Distinct from `deferredDailyLimit`
+   *  (which means today's shared budget is spent, so the rest waits for TOMORROW / a human resume).
+   *  false whenever the loop finished on its own — whether drained, daily-deferred, or auto-stopped. */
+  haltedForBatch: boolean;
 }
 
 /** The cause with the most failures, or null when there were none. Used to label a halted run with
@@ -394,6 +409,7 @@ export async function runSend(
     stoppedHighBounce: false,
     stoppedConsecutiveFailures: false,
     retriedSends: 0,
+    haltedForBatch: false,
   };
 
   const alreadyToday = await ports.todaySentCount();
@@ -403,6 +419,17 @@ export async function runSend(
 
   for (const r of recipients) {
     if (summary.stoppedHighBounce || summary.stoppedConsecutiveFailures) break;
+
+    // BATCH CAP (P0-3). Once this invocation has claimed `maxPerInvocation` send attempts AND another
+    // recipient still remains, stop and flag `haltedForBatch` so the background drainer continues on
+    // the next tick. Checked at the TOP so it never fires on the exact last recipient (the for-loop
+    // ends first → haltedForBatch stays false → the run is treated as drained, not halted). Only real
+    // send attempts count (summary.attempted) — suppressed / already-sent / daily-deferred recipients
+    // below cost nothing and pass through, so a tick still finishes cheap skips within one pass.
+    if (summary.attempted >= config.maxPerInvocation) {
+      summary.haltedForBatch = true;
+      break;
+    }
 
     // Rule 1: suppression is checked HERE, at send time — not when the segment was counted.
     if (await ports.isSuppressed(r.customerId, r.channel)) {

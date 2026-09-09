@@ -10,8 +10,6 @@ import { formatCount, formatDateTime } from "@/lib/i18n";
 import { validateCampaignName } from "@/lib/crm/campaign-name";
 import { saveCampaignDraft, loadCampaignDraft, clearCampaignDraft } from "@/lib/crm/campaign-draft";
 import { segmentBuilderUrlFromCompose } from "@/lib/crm/campaign-nav";
-import { SEND_FAILURE_CAUSES, totalFailed } from "@/lib/crm/send-run";
-import type { SendFailureCause } from "@/lib/crm/send-run";
 import { PreviewEmailPanel } from "./preview-email-panel";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -45,16 +43,6 @@ type Channel = "email" | null;
 
 const selectCls =
   "h-10 w-full rounded-sm border border-glass-border bg-glass px-3 font-body text-[14px] text-ink focus:outline-none focus:ring-2 focus:ring-red";
-
-/** Failure-cause → dictionary key. Keyed by the cause union, so adding a cause to the engine without
- *  a label here is a COMPILE error rather than a blank line in the operator's failure block. */
-const FAIL_CAUSE_KEY: Record<SendFailureCause, "failCauseInvalidAddress" | "failCauseHardBounce" | "failCauseProviderRejected" | "failCauseProviderThrottled" | "failCauseUnknown"> = {
-  invalid_address: "failCauseInvalidAddress",
-  hard_bounce: "failCauseHardBounce",
-  provider_rejected: "failCauseProviderRejected",
-  provider_throttled: "failCauseProviderThrottled",
-  unknown: "failCauseUnknown",
-};
 
 /** One collapsible step. MODULE-scoped on purpose: a component defined inside CampaignFlow gets a new
  *  function identity every render, so React would remount its subtree — and drop input focus — on every
@@ -215,7 +203,7 @@ export function CampaignFlow({
       case "label_required": return cc.errNameRequired;
       case "run_not_found": return cc.errRunNotFound;
       case "run_create_failed": return cc.errRunCreate;
-      case "send_threw": return cc.errSendThrew;
+      case "enqueue_failed": return cc.errEnqueue;
       case "unsubscribe_host_mismatch": return cc.errHostMismatch;
       case "missing_env": return cc.errMissingEnv;
       default: return cc.errNotFound;
@@ -283,8 +271,8 @@ export function CampaignFlow({
           setShownSendable(r.freshSendable);
           setPreview({ ...preview, sendable: r.freshSendable });
           setNotice(`${cc.driftWarnA}${fmt(r.freshSendable)}${cc.driftWarnB}`);
-        } else if (r.error === "send_threw") {
-          setNotice(`${cc.errSendThrew}${r.detail ? ` (${r.detail})` : ""}`);
+        } else if (r.error === "enqueue_failed") {
+          setNotice(cc.errEnqueue);
         } else if (r.error === "missing_env") {
           setNotice(`${cc.errMissingEnv}${r.detail ?? ""}`);
         } else if (r.error === "unresolvable_recipients") {
@@ -553,7 +541,7 @@ export function CampaignFlow({
 
       {/* STEP 4 · KIRIM ke audiens */}
       <Step n={4} title={c.step4Title} done={!!result?.ok} locked={!step3Done} open={open} setOpen={setOpen}
-        summary={result?.ok && result.summary ? `${fmt(result.summary.sent)} ${c.step4SummarySuffix}` : undefined}
+        summary={result?.ok ? cc.queuedSummary : undefined}
       >
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-2 text-ink-soft">
@@ -664,48 +652,22 @@ export function CampaignFlow({
           {scheduledMsg && <p className="font-body text-[13px] font-semibold text-green">{scheduledMsg}</p>}
           {notice && <p role="alert" className="font-body text-[13px] leading-relaxed text-red">{notice}</p>}
 
-          {result?.ok && result.summary && (
-            <div className="flex flex-col gap-2 rounded-card border border-glass-border p-4">
+          {/* ASYNC (P0-3): the send runs in the BACKGROUND now — no synchronous summary. Confirm the
+              run is queued, say how many will be attempted, and point at the Kiriman tab where the
+              batches, progress and any failures appear as the drainer works. */}
+          {result?.ok && result.queued && (
+            <div className="tint-green flex flex-col gap-2 rounded-card p-4" role="status">
               <div className="flex items-center gap-2">
-                <p className="font-body text-[13px] font-semibold text-ink">{cc.resultTitle}</p>
+                <Check className="h-4 w-4 shrink-0 text-green" aria-hidden />
+                <p className="font-body text-[13px] font-semibold text-ink">{cc.queuedTitle}</p>
                 <Badge tone={result.isNewRun ? "neutral" : "blue"}>{result.isNewRun ? cc.resRunLabelNew : cc.resRunLabelResume}</Badge>
                 <span className="font-body text-[12px] text-ink-soft">{result.runLabel ?? cc.runUntitled}</span>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Badge tone="green">{cc.resSent}: {fmt(result.summary.sent)}</Badge>
-                <Badge tone="neutral">{cc.resAlreadySent}: {fmt(result.summary.skippedAlreadySent)}</Badge>
-                <Badge tone="blue">{cc.resSkipped}: {fmt(result.summary.skippedSuppressed)}</Badge>
-                <Badge tone="red">{cc.resFailed}: {fmt(totalFailed(result.summary.failed))}</Badge>
-                <Badge tone="neutral">{cc.resWithheld}: {fmt(result.withheldPrelaunch ?? 0)}</Badge>
-              </div>
-
-              {/* THE FAILURE BLOCK (T-41). A badge in a row of five badges is not how someone learns
-                  that a send failed — the 3 Sep run reported 18,119 failures and nobody read it as a
-                  problem for hours. When anything failed, the count and the causes get their own
-                  tinted panel, right here, at the moment the operator is still looking. No new data
-                  is fetched: this is what the send response already returned. */}
-              {totalFailed(result.summary.failed) > 0 && (
-                <div className="tint-red flex flex-col gap-1.5 rounded-card p-3" role="alert">
-                  <p className="font-body text-[13px] font-semibold text-red">
-                    {cc.failBlockTitle.replace("{n}", fmt(totalFailed(result.summary.failed)))}
-                  </p>
-                  <ul className="flex flex-col gap-0.5 font-body text-[12px] leading-relaxed text-ink-soft">
-                    {SEND_FAILURE_CAUSES.filter((cause) => result.summary!.failed[cause] > 0).map((cause) => (
-                      <li key={cause}>
-                        {cc[FAIL_CAUSE_KEY[cause]]}: <span className="font-semibold">{fmt(result.summary!.failed[cause])}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  <p className="font-body text-[12px] leading-relaxed text-ink-soft">
-                    {result.summary.stoppedConsecutiveFailures
-                      ? cc.failBlockHalted
-                      : result.summary.sent > 0
-                        ? cc.failBlockPartial
-                        : cc.failBlockAll}
-                  </p>
-                </div>
-              )}
-              {!result.realSend && <p className="font-body text-[12px] leading-relaxed text-ink-faint">{cc.resInternalNote}</p>}
+              <p className="font-body text-[13px] leading-relaxed text-ink-soft">
+                {cc.queuedBodyA}<strong>{fmt(result.sendable ?? 0)}</strong>{cc.queuedBodyB}
+              </p>
+              <p className="font-body text-[12px] leading-relaxed text-ink-faint">{cc.queuedWatch}</p>
+              {!realSend && <p className="font-body text-[12px] leading-relaxed text-ink-faint">{cc.resInternalNote}</p>}
             </div>
           )}
         </div>
