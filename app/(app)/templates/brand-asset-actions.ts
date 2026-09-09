@@ -4,6 +4,19 @@ import { getCurrentUserRole } from "@/lib/auth/current-role";
 import { grantFor } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { activeFromAddress } from "@/lib/email/send";
+
+/**
+ * The from-ADDRESS the active email provider sends as, for the template preview (TAMBAHAN A). The
+ * preview must not hardcode an address: after the Resend switch the send goes from info@20fit.id while
+ * a hardcoded preview would still promise crm@20fit.id — the T-74 shape in reverse. Gate matches
+ * template authoring. Not a secret: the from-address is visible on every email that ships.
+ */
+export async function activeFromAddressAction(): Promise<{ ok: boolean; from: string }> {
+  const role = await getCurrentUserRole();
+  if (grantFor(role, "workflow.create") === "deny") return { ok: false, from: "" };
+  return { ok: true, from: activeFromAddress() };
+}
 
 /**
  * Brand asset (logo) actions. Upload → Supabase Storage bucket 'brand-assets' (public) → record

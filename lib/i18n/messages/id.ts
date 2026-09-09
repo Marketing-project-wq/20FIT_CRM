@@ -1218,7 +1218,7 @@ export const id = {
   // Campaigns console (send path) — compose flow + pre-launch block. Born bilingual.
   sendLimitsPage: {
     title: "Batas kirim",
-    intro: "Batas harian adalah kontrol REPUTASI domain, bukan kuota Mailtrap. Domain 20fit.id punya riwayat email transaksional tapi belum punya riwayat pemasaran massal — lonjakan volume mendadak adalah sinyal spam terkuat di Gmail/Yahoo. Batasnya bisa dinaikkan, tapi bertahap.",
+    intro: "Batas harian ini adalah REM LINTAS-SISTEM. Email CRM kini lewat akun Resend yang dibagi dengan delapan sistem 20FIT lain (tiket, POS, atur ulang kata sandi, dan lainnya) pada SATU kuota bulanan, dan Resend tak menerapkan batas harian per-kunci — jadi plafon ini satu-satunya yang menahan kampanye CRM lepas kendali dari memakan kuota yang diandalkan email transaksional sistem-sistem itu. Ia juga menjaga reputasi domain: 20fit.id belum banyak riwayat pemasaran massal, jadi lonjakan mendadak adalah sinyal spam kuat. Naikkan bertahap, dan beri tahu tim lain sebelum kiriman besar.",
     dailyLabel: "Batas harian sistem",
     dailyHint: "Jumlah maksimum email kampanye per hari (semua kampanye + workflow). Di atas batas, sisa penerima antre ke hari berikutnya — bukan gagal.",
     workflowLabel: "Sub-batas workflow (per hari)",

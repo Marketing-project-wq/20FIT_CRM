@@ -3,7 +3,7 @@ vi.mock("server-only", () => ({}));
 // send-campaign pulls these via the "@/" alias, which the test runner does not resolve; the resolver
 // under test never calls them (admin is passed in), so stub them out to keep imports resolvable.
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({}) }));
-vi.mock("@/lib/email/mailtrap", () => ({ sendTransactionalEmail: async () => ({ providerMessageId: null }) }));
+vi.mock("@/lib/email/send", () => ({ sendTransactionalEmail: async () => ({ providerMessageId: null }) }));
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveEmailListRecipients } from "./send-campaign";
 

@@ -36,6 +36,35 @@ describe("send-env pre-check (T-30)", () => {
   });
 });
 
+describe("send-env is PROVIDER-AWARE (TAMBAHAN B) — both branches", () => {
+  it("default / EMAIL_PROVIDER=mailtrap requires the MAILTRAP vars, not the Resend ones", () => {
+    const names = missingSendEnv({ EMAIL_PROVIDER: "mailtrap" } as unknown as NodeJS.ProcessEnv).map((v) => v.name);
+    expect(names).toEqual(["UNSUBSCRIBE_TOKEN_SECRET", "MAILTRAP_API_TOKEN", "MAILTRAP_FROM"]);
+    expect(names).not.toContain("RESEND_API_KEY");
+  });
+
+  it("EMAIL_PROVIDER=resend requires the RESEND vars, not the Mailtrap ones", () => {
+    const names = missingSendEnv({ EMAIL_PROVIDER: "resend" } as unknown as NodeJS.ProcessEnv).map((v) => v.name);
+    expect(names).toEqual(["UNSUBSCRIBE_TOKEN_SECRET", "RESEND_API_KEY", "RESEND_FROM"]);
+    expect(names).not.toContain("MAILTRAP_API_TOKEN");
+  });
+
+  it("under Resend, present Resend creds satisfy the check even with Mailtrap vars absent", () => {
+    const env = {
+      EMAIL_PROVIDER: "resend",
+      UNSUBSCRIBE_TOKEN_SECRET: "x".repeat(32),
+      RESEND_API_KEY: "re_test",
+      RESEND_FROM: "info@20fit.id",
+    } as unknown as NodeJS.ProcessEnv;
+    expect(missingSendEnv(env)).toEqual([]);
+  });
+
+  it("classifies a Resend config/send throw distinctly and PII-free", () => {
+    expect(classifySendThrow(new Error("Resend is not configured (RESEND_API_KEY / RESEND_FROM missing)."))).toBe("missing_env:RESEND");
+    expect(classifySendThrow(new Error("Resend send failed with HTTP 429."))).toBe("resend_send_failed");
+  });
+});
+
 describe("unsubscribe host check (owner request 25 Aug — a dead unsubscribe link is worse than not sending)", () => {
   it("hostOf strips scheme/port/path", () => {
     expect(hostOf("https://crm.20fit.id/unsubscribe?token=x")).toBe("crm.20fit.id");

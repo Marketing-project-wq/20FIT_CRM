@@ -84,6 +84,7 @@ vi.mock("@/lib/auth/current-role", () => ({ getCurrentUserRole: async () => "sup
 vi.mock("@/lib/auth/roles", async () => await import("../auth/roles"));
 vi.mock("@/lib/email/sender-name", async () => await import("../email/sender-name"));
 vi.mock("@/lib/email/mailtrap", async () => await import("../email/mailtrap"));
+vi.mock("@/lib/email/send", async () => await import("../email/send"));
 
 import { POST } from "../../app/api/templates/route";
 import { loadTemplates } from "./send-campaign";

@@ -520,7 +520,7 @@ export async function sendPreviewEmailAction(
   const { html, text } = renderEmailDocument(substituted, previewUnsubUrl);
   const subject = `[PREVIEW] ${tpl.subject ?? tpl.name}`;
 
-  const { sendTransactionalEmail } = await import("@/lib/email/mailtrap");
+  const { sendTransactionalEmail } = await import("@/lib/email/send");
   const sentTo: string[] = [];
   const errors: string[] = [];
 

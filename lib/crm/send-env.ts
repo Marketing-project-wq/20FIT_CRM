@@ -19,12 +19,33 @@ export interface RequiredSendVar {
  * safe fallback in send-campaign (defaults to https://crm.20fit.id), so its absence degrades (wrong
  * unsubscribe base) rather than blocks. CAMPAIGN_SEND_ENABLED is NOT here either — its ABSENCE is the
  * safe/correct state (pre-launch), never a blocker.
+ *
+ * PROVIDER-AWARE (TAMBAHAN B): the send credentials required depend on EMAIL_PROVIDER. A blind list
+ * that always demanded the Mailtrap vars would, after the switch to Resend, check vars the send no
+ * longer uses and MISS the ones it does — and the failure would surface at send time, not at the
+ * pre-check. So the provider-specific vars are chosen from the ACTIVE provider (default mailtrap).
  */
-export const REQUIRED_SEND_VARS: RequiredSendVar[] = [
+const COMMON_SEND_VARS: RequiredSendVar[] = [
   { name: "UNSUBSCRIBE_TOKEN_SECRET", reason: "HMAC identity_hash + sign unsubscribe links (fail-closed, ≥16 chars)" },
+];
+const MAILTRAP_SEND_VARS: RequiredSendVar[] = [
   { name: "MAILTRAP_API_TOKEN", reason: "authenticate to Mailtrap to send" },
   { name: "MAILTRAP_FROM", reason: "the From address campaigns send as" },
 ];
+const RESEND_SEND_VARS: RequiredSendVar[] = [
+  { name: "RESEND_API_KEY", reason: "authenticate to Resend to send" },
+  { name: "RESEND_FROM", reason: "the From address campaigns send as" },
+];
+
+/** The vars a real send requires under the ACTIVE provider (EMAIL_PROVIDER, default mailtrap). */
+export function requiredSendVars(env: NodeJS.ProcessEnv = process.env): RequiredSendVar[] {
+  const providerVars = env.EMAIL_PROVIDER === "resend" ? RESEND_SEND_VARS : MAILTRAP_SEND_VARS;
+  return [...COMMON_SEND_VARS, ...providerVars];
+}
+
+/** The DEFAULT (Mailtrap) required set — kept for the default-provider path and existing callers.
+ *  Prefer requiredSendVars(env) where the active provider matters. */
+export const REQUIRED_SEND_VARS: RequiredSendVar[] = [...COMMON_SEND_VARS, ...MAILTRAP_SEND_VARS];
 
 /** UNSUBSCRIBE_TOKEN_SECRET must also be long enough (the secret helpers reject < 16). Treat a too-
  *  short value as missing so the pre-check catches it here instead of a throw deep in the send. */
@@ -37,9 +58,10 @@ function isPresent(v: RequiredSendVar, env: NodeJS.ProcessEnv): boolean {
   return true;
 }
 
-/** Every required send var that is missing (or, for the secret, too short) — reported together. */
+/** Every required send var (for the ACTIVE provider) that is missing (or, for the secret, too short) —
+ *  reported together. */
 export function missingSendEnv(env: NodeJS.ProcessEnv = process.env): RequiredSendVar[] {
-  return REQUIRED_SEND_VARS.filter((v) => !isPresent(v, env));
+  return requiredSendVars(env).filter((v) => !isPresent(v, env));
 }
 
 /**
@@ -52,8 +74,10 @@ export function classifySendThrow(e: unknown): string {
   const msg = e instanceof Error ? e.message : String(e ?? "");
   if (msg.includes("UNSUBSCRIBE_TOKEN_SECRET")) return "missing_env:UNSUBSCRIBE_TOKEN_SECRET";
   if (msg.includes("MAILTRAP_API_TOKEN") || msg.includes("Mailtrap is not configured")) return "missing_env:MAILTRAP";
+  if (msg.includes("RESEND_API_KEY") || msg.includes("Resend is not configured")) return "missing_env:RESEND";
   if (msg.includes("No active email template")) return "no_active_template";
   if (msg.includes("Mailtrap send failed")) return "mailtrap_send_failed";
+  if (msg.includes("Resend send failed")) return "resend_send_failed";
   if (msg.includes("unsubscribe URL")) return "missing_unsubscribe_url";
   // A recipient id that is not a valid uuid (crm_message_log.customer_id / crm_suppression.customer_id
   // are `uuid`). This is what a raw/synthetic id — an address not resolved to a real master_customer —

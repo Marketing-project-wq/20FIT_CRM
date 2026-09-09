@@ -10,7 +10,7 @@ import type { SegmentCriteria } from "./segment";
 import { renderTemplate } from "./template";
 import { signUnsubscribeToken, unsubscribeSecret } from "./unsubscribe-token";
 import { hashIdentity, identityHashSecret } from "./identity-hash";
-import { sendTransactionalEmail } from "@/lib/email/mailtrap";
+import { sendTransactionalEmail } from "@/lib/email/send";
 import { logApiFailure } from "./failure-log";
 import { SEND_ACTION } from "./send-constants";
 import { realSendEnabled, maySendTo } from "./send-gate";
@@ -212,6 +212,33 @@ function startOfTodayIso(nowIso: string): string {
   return `${nowIso.slice(0, 10)}T00:00:00.000Z`;
 }
 
+/**
+ * How many emails were ACCEPTED by the provider today — the daily ceiling's true unit (T-43/T-44,
+ * owner option (a)). Counts rows whose `sent_at` falls in today's window, NOT `status='sent'`:
+ *
+ *  - `sent_at` is stamped ONCE, the moment the provider returns 2xx, and is never cleared. A webhook
+ *    later flips the row `sent → delivered` (or `→ bounced`), which a `status='sent'` filter would
+ *    drop — so a second same-day run re-read `alreadyToday` as near-zero and re-spent the whole
+ *    ceiling (T-44: 98,4% of a day's sends vanished from the count). `sent_at` survives every later
+ *    transition, so the count is stable.
+ *  - A FAILED send has no `sent_at` (the 'sent' branch never ran), so failures are correctly excluded
+ *    — they consumed no provider quota. This closes the T-43 mismatch (the ceiling limited successes
+ *    while the counter watched a transient status) in the SAME predicate: one field, `sent_at`, is
+ *    both "really sent" and "counts against the shared quota".
+ *
+ * `.gte("sent_at", …)` is null-safe: a null `sent_at` fails the comparison and is excluded, so no
+ * separate not-null clause is needed. Throws on a read error — a ceiling read that silently returns 0
+ * would hand back the entire budget (fail-loud, never fail-open on a brake).
+ */
+export async function countSentToday(admin: SupabaseClient, nowIso: string): Promise<number> {
+  const { count, error } = await admin
+    .from("crm_message_log")
+    .select("id", { count: "exact", head: true })
+    .gte("sent_at", startOfTodayIso(nowIso));
+  if (error) throw error;
+  return count ?? 0;
+}
+
 export interface CampaignPreview {
   matched: number; // profiles meeting the criteria (with or without email)
   withEmail: number; // of those, how many have a usable canonical email
@@ -248,11 +275,10 @@ export async function previewCampaign(
   ]);
   const suppressedCount = recipients.reduce((n, r) => (suppressed.has(r.customerId) ? n + 1 : n), 0);
   const withEmail = recipients.length;
-  const { count } = await admin
-    .from("crm_message_log")
-    .select("id", { count: "exact", head: true })
-    .eq("status", "sent")
-    .gte("created_at", startOfTodayIso(nowIso));
+  // Same sent_at-based count as the run budget (T-43/T-44): the number the form promises must equal
+  // what the run enforces. Tolerant here (preview only) — a count error shows full budget rather than
+  // failing the whole preview, exactly as before.
+  const sentToday = await countSentToday(admin, nowIso).catch(() => 0);
   const dailyLimit = input.dailyLimit ?? DEFAULT_SEND_CONFIG.dailyLimit;
   return {
     matched: withEmail + noContact,
@@ -260,7 +286,7 @@ export async function previewCampaign(
     noContact,
     suppressed: suppressedCount,
     sendable: withEmail - suppressedCount,
-    remainingDailyBudget: Math.max(0, dailyLimit - (count ?? 0)),
+    remainingDailyBudget: Math.max(0, dailyLimit - sentToday),
     unresolved,
   };
 }
@@ -393,13 +419,9 @@ export async function sendCampaign(input: CampaignSendInput, nowIso: string): Pr
       if (error) logApiFailure("/campaigns", "log_update_failed", { code: error.code });
     },
     async todaySentCount() {
-      const { count, error } = await admin
-        .from("crm_message_log")
-        .select("id", { count: "exact", head: true })
-        .eq("status", "sent")
-        .gte("created_at", startOfTodayIso(nowIso));
-      if (error) throw error;
-      return count ?? 0;
+      // T-43/T-44: count provider-accepted rows by sent_at (stable across webhook transitions), so a
+      // second same-day run sees the real total already sent — not a count deflated by delivered/bounced.
+      return countSentToday(admin, nowIso);
     },
     // Rules 8 & 9: the real clock. In the engine's tests this is a recording no-op; here it is the
     // actual pause that backoff and pacing depend on.

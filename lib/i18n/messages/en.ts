@@ -1124,7 +1124,7 @@ export const en: Messages = {
   // Campaigns console (send path) — compose flow + pre-launch block. Born bilingual.
   sendLimitsPage: {
     title: "Send limits",
-    intro: "The daily limit is a domain REPUTATION control, not a Mailtrap quota. 20fit.id has a transactional email history but no mass-marketing history yet — a sudden volume spike is the strongest spam signal at Gmail/Yahoo. The limit can be raised, but gradually.",
+    intro: "This daily limit is a CROSS-SYSTEM brake. CRM email now runs through a Resend account shared with eight other 20FIT systems (ticketing, POS, password resets, and more) on ONE monthly quota, and Resend enforces no per-key daily cap — so this ceiling is the only thing keeping a runaway CRM campaign from eating the quota those systems' transactional email depends on. It also guards domain reputation: 20fit.id has little mass-marketing history, so a sudden spike is a strong spam signal. Raise it gradually, and warn the other teams before a large send.",
     dailyLabel: "System daily limit",
     dailyHint: "Maximum campaign emails per day (all campaigns + workflows). Over the limit, remaining recipients queue to the next day — they are not failed.",
     workflowLabel: "Workflow sub-cap (per day)",

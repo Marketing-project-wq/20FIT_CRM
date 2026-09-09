@@ -2635,3 +2635,99 @@ adalah SATU-SATUNYA field yang dibuang (kini diperbaiki). Editor WhatsApp mengir
 consent, suppression, profile-search) memakai **server action bertipe**, bukan rute JSON mentah, jadi
 celah buang-senyap tak berlaku. Satu-satunya rute JSON lain (`/api/audience/import`) domain berbeda —
 ditandai, di luar lingkup perbaikan ini.
+
+## T-75 — Pindah ke Resend membuat plafon CRM jadi satu-satunya rem atas kuota yang dibagi sembilan sistem; nol yang memantau agregatnya — 9 Sep 2026
+
+Pemilik memindahkan email CRM ke Resend (kuota + biaya). Akun Resend **dipakai bersama sembilan kunci
+20FIT**, delapan aktif (angka dari pemilik, belum saya verifikasi ke dasbor Resend):
+`Ticket.20fit.id`, `telent_reset password`, `Photo.20fit.id`, `coach-portal`, `My.20fit.id`, `POS`,
+`RMTN`, `racelabtiming`, dan **`CRM`** (Sending, belum pernah dipakai).
+
+```
+Transaksional : 16.487 / 50.000 per bulan  (≈550/hari dari delapan sistem lain)
+Batas harian  : TIDAK ADA di sisi Resend
+Perpanjangan  : 10 September
+```
+
+**Perubahan kelas risiko.** Di Mailtrap, CRM punya kuota 4.000 sendiri — kampanye lepas kendali hanya
+melukai dirinya. Di Resend, kuota yang sama dipakai **konfirmasi tiket, struk POS, atur ulang kata
+sandi**. Yang berhenti duluan bukan kampanyenya, melainkan email konfirmasi pelanggan yang baru beli
+tiket. Karena Resend tak punya batas harian, **`crm_send_config.daily_limit` menjadi satu-satunya rem
+yang ada** untuk melindungi delapan sistem lain.
+
+**Tak ada pengawas agregat.** Sembilan kunci menembak kuota 50.000 yang sama; **nol** yang memantau
+totalnya. Tiap sistem hanya tahu kirimannya sendiri. Tak ada alarm saat agregat mendekati 50.000 —
+yang tahu duluan adalah sistem yang gagal kirim. Ini utang terpisah (pemantauan lintas-tim), dicatat
+di sini supaya tak hilang; bukan sesuatu yang bisa ditutup CRM sendiri.
+
+**Perbaikan prasyarat (T-43/T-44, ronde ini).** Sebelum adaptor Resend, penghitung plafon diperbaiki
+ke **opsi (a) — hitung baris ber-`sent_at`** (bukan `status='sent'`), supaya webhook `sent→delivered`
+tak lagi mengosongkan hitungan dan run kedua di hari sama melihat total nyata (dikunci
+`lib/crm/send-daily-count.test.ts`). Tanpa ini, rem satu-satunya itu bocor lintas-run — tak boleh
+dibiarkan saat kuota dibagi.
+
+**Teks layar diperbarui** (kelas T-56): `sendLimitsPage.intro` dulu berkata "kontrol reputasi domain,
+bukan kuota Mailtrap" — kini menyebut rem lintas-sistem + kuota bersama Resend.
+
+### PERTANYAAN TERBUKA untuk pemilik — nilai `daily_limit` (TIDAK diubah ronde ini)
+
+Nilai yang benar bergantung berapa yang tim lain butuhkan — percakapan lintas-tim, bukan keputusan
+teknis. Aritmetikanya (angka dari pemilik, per 9 Sep, kuota mungkin berubah 10 Sep saat perpanjangan):
+
+```
+Baseline delapan sistem lain : ≈550/hari  ≈ 16.500/bulan
+Kuota bersama                : 50.000/bulan
+Plafon CRM sekarang          : 1.000/hari ≈ 30.000/bulan ≈ 60% kuota bersama
+550/hari + 1.000/hari CRM    ≈ 46.500/bulan → ~93% kuota, margin ~3.500 (~7%)
+```
+
+Pada 1.000/hari CRM penuh + baseline sistem lain, kuota bersama nyaris habis. Pertanyaan ke pemilik:
+berapa plafon CRM yang aman setelah menyisakan ruang untuk delapan sistem lain (yang baseline-nya bisa
+naik)? Keputusan + nilai barunya milik pemilik; `daily_limit` dibiarkan `1000` sampai itu diputuskan.
+
+## T-76 — Adaptor Resend: detail API diverifikasi ke dokumentasi Resend sendiri (bukan prompt); THROTTLE_STATUSES 429 terbukti, sisanya hipotesis — 9 Sep 2026
+
+Pindah penyedia email CRM ke Resend (sakelar `EMAIL_PROVIDER`, default `mailtrap`). **resend.com
+DIBLOKIR egress dari lingkungan ini**, jadi detail API diverifikasi silang dari **repo resmi Resend
+`github.com/resend/resend-skills`** + pencarian web — BUKAN halaman dokumen live. Kalau nanti bisa
+akses langsung, konfirmasi ulang.
+
+**Detail API (terverifikasi) — dan yang BERBEDA dari dugaan awal:**
+- **Kirim:** `POST https://api.resend.com/emails`, `Authorization: Bearer <RESEND_API_KEY>` (kunci
+  ber-awalan `re_`).
+- **`from` adalah SATU string `"Nama <email>"`** — BUKAN objek `{email,name}` seperti Mailtrap. (Beda #1
+  — adaptor membangun `${senderNameForWire(name)} <${RESEND_FROM}>`.)
+- Body: `from`, `to` (array), `subject`, `html`, `text`, opsional `reply_to`/`tags`/`headers`. Kategori
+  dipetakan ke `tags:[{name:"category",value:…}]` (nilai tag Resend harus `[A-Za-z0-9_-]`).
+- **Id pesan ada di TOP-LEVEL `id`** pada respons HTTP mentah (`{ "id": "<uuid>" }`); SDK membungkusnya
+  jadi `data.id`. Adaptor pakai fetch mentah → baca `body.id`. (Beda #2 dari asumsi "data.id".)
+- **Webhook: SATU event per POST** `{ type, created_at, data:{ email_id, to, … } }` — BUKAN array
+  `events[]` batch seperti Mailtrap. (Beda #3 — parser & rute terpisah.) Event: `email.sent`,
+  `email.delivered`, `email.bounced`, `email.complained` (+ opened/clicked/delivery_delayed/failed).
+  `email.sent` DIABAIKAN (status/sent_at distempel saat kirim, bukan dari webhook). Bounce `soft`
+  diabaikan (tak auto-suppress); hanya `hard` → bounced.
+- **Tanda tangan webhook: Svix** — header `svix-id`/`svix-timestamp`/`svix-signature`, secret `whsec_…`,
+  HMAC-SHA256(base64) atas `${id}.${timestamp}.${rawBody}`, header berisi token `v1,<sig>` dipisah spasi
+  (cocok satu = sah). (Beda #4 — Mailtrap pakai HMAC-hex atas raw body dengan header sendiri.)
+
+**THROTTLE_STATUSES — TUGAS 6, jujur:**
+- **429 = rate limit → TERBUKTI** di dokumentasi Resend (rate limit per-tim; header `ratelimit-*` +
+  `retry-after`). 429 sudah ada di set `{429,402,503}`, jadi backoff (T-64) memperlakukan throttle Resend
+  dengan benar **tanpa mengubah `send-run.ts`** (dibuktikan diff kosong).
+- **Angka rate-nya sendiri TAK PASTI**: satu sumber "10 req/s", sumber lain "2 req/s" — persis kasus
+  "pengetahuan pihak #2 kedaluwarsa". Yang PENTING (status 429) konsisten.
+- **Kode status kuota-bulanan-habis TIDAK terdokumentasi** di sumber yang bisa dijangkau → **HIPOTESIS**,
+  tidak disajikan sebagai fakta. `402` di set adalah warisan Mailtrap (payment-required) — untuk Resend
+  **inert** (kemungkinan tak pernah dikembalikan), jadi tak menimbulkan salah-klasifikasi; `503` generik.
+  Set dibiarkan `{429,402,503}` **tanpa perubahan** — bukan karena disalin buta, tapi karena 429
+  (satu-satunya yang terbukti untuk Resend) sudah tercakup dan sisanya tak memicu salah bagi Resend.
+  Kalau uji kirim menunjukkan `failure_cause=unknown` pada throttle nyata, itu sinyal untuk menambah
+  status yang teramati — ditulis di runbook langkah 6.
+
+**Kontrak identik dibuktikan uji** (`lib/email/resend.test.ts`): `err.status` sebagai properti (T-41),
+nol PII di pesan galat (tak ada penerima, tak ada body respons), id dari `body.id`, config-missing tak
+mengirim. Sakelar penyedia (`lib/email/send.ts`) + rute webhook + verifikasi Svix semuanya diuji.
+
+**Verifikasi domain 20fit.id di Resend: DI LUAR KENDALI KODE** — status ada di dasbor Resend milik
+pemilik; runbook langkah 1 memintanya dikonfirmasi Verified sebelum peralihan. Saya tak bisa (dan tak
+seharusnya) memverifikasinya dari sini.
