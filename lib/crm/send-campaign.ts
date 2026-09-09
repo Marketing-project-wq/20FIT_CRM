@@ -5,6 +5,7 @@ import { resolveRestrictIds, applyMasterCriteria } from "./segment-read";
 import { normalizeEmail } from "./normalize";
 import { renderEmailDocument } from "./email-document";
 import { fetchSuppressedCustomerIds } from "./contactability-read";
+import { EMAIL_IN_CHUNK } from "./email-list";
 import type { SegmentCriteria } from "./segment";
 import { renderTemplate } from "./template";
 import { signUnsubscribeToken, unsubscribeSecret } from "./unsubscribe-token";
@@ -133,8 +134,10 @@ export async function resolveEmailListRecipients(
   if (normalized.length === 0) return { recipients: [], unresolved: [] };
 
   const byEmail = new Map<string, string>(); // email_normalized → customer_id
-  for (let i = 0; i < normalized.length; i += PAGE) {
-    const chunk = normalized.slice(i, i + PAGE);
+  // URL-safe chunk (EMAIL_IN_CHUNK=300), NOT PAGE=1000: 1.000 emails in one `.in()` builds a ~30 KB
+  // URL the gateway rejects (T-69). 300 keeps every request under the ~24 KB limit.
+  for (let i = 0; i < normalized.length; i += EMAIL_IN_CHUNK) {
+    const chunk = normalized.slice(i, i + EMAIL_IN_CHUNK);
     const { data, error } = await admin
       .from("master_customer")
       .select("customer_id, email_normalized")

@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import Papa from "papaparse";
+import { parseCsvText } from "@/lib/crm/csv-parse";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUserRole } from "@/lib/auth/current-role";
@@ -81,15 +81,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "too_large", message: "File terlalu besar (maks 15 MB)." }, { status: 413 });
   }
 
-  // Parse on the SERVER (papaparse) — headered records, empty lines skipped. papaparse handles quoting,
-  // embedded commas/newlines, and a leading BOM.
-  const parsed = Papa.parse<Record<string, string>>(csvText, { header: true, skipEmptyLines: "greedy" });
-  const headers = (parsed.meta.fields ?? []).map((h) => h.trim());
-  const rows = (parsed.data ?? []).filter((r) => r && typeof r === "object");
-  // papaparse auto-detects the delimiter (it tries , \t | ; and picks the one giving the most consistent
-  // column count). We surface its choice so the operator can catch the rare misdetection — e.g. a `;`
-  // file where every value landed in one column would show delimiter="," here and a single header.
-  const delimiter = parsed.meta.delimiter || ",";
+  // Parse on the SERVER via the ONE shared parser (T-73) — same papaparse config the manual email-list
+  // CSV upload uses. Auto delimiter (handles the `;` CS files); a misdetection shows as delimiter + a
+  // single header the operator can catch.
+  const { headers, rows, delimiter } = parseCsvText(csvText);
 
   const admin = createAdminClient();
   const batchId = crypto.randomUUID();

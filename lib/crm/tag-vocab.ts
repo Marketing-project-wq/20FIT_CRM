@@ -19,13 +19,20 @@ const PAGE = 1000;
 const MAX_PAGES = 50; // 50k tagged rows is far above today's 3.781 — a guard, never expected to bind
 
 export async function fetchPoolTagVocab(admin: SupabaseClient): Promise<string[]> {
-  return (await fetchPoolTagCounts(admin)).map((e) => e.tag);
+  return (await fetchPoolTagCounts(admin)).entries.map((e) => e.tag);
 }
 
 export interface TagCountEntry {
   tag: string;
   /** How many people in master_customer carry this tag. */
   people: number;
+}
+
+export interface TagVocabCounts {
+  entries: TagCountEntry[];
+  /** DISTINCT people per namespace — a person with two `event:` tags counts ONCE (summing per-tag
+   *  counts would overcount). This is what the folded namespace header shows ("Acara · 3.625 orang"). */
+  namespacePeople: Record<string, number>;
 }
 
 /**
@@ -36,8 +43,9 @@ export interface TagCountEntry {
  * pages — no per-tag query, no migration. Fail-loud on a read error (never a half count). Sorted by
  * people desc so callers get "most useful first" for free.
  */
-export async function fetchPoolTagCounts(admin: SupabaseClient): Promise<TagCountEntry[]> {
+export async function fetchPoolTagCounts(admin: SupabaseClient): Promise<TagVocabCounts> {
   const counts = new Map<string, number>();
+  const nsPeople = new Map<string, number>();
   for (let page = 0; page < MAX_PAGES; page++) {
     const from = page * PAGE;
     const { data, error } = await admin
@@ -48,11 +56,21 @@ export async function fetchPoolTagCounts(admin: SupabaseClient): Promise<TagCoun
     if (error) throw error; // fail loud: never return a half/empty vocabulary as if complete
     if (!data || data.length === 0) break;
     for (const row of data as { tags: string[] | null }[]) {
-      for (const t of row.tags ?? []) if (isOperatorTag(t)) counts.set(t, (counts.get(t) ?? 0) + 1);
+      const rowNamespaces = new Set<string>();
+      for (const t of row.tags ?? []) {
+        if (!isOperatorTag(t)) continue;
+        counts.set(t, (counts.get(t) ?? 0) + 1);
+        rowNamespaces.add(t.slice(0, t.indexOf(":")));
+      }
+      // DISTINCT people per namespace: count this row ONCE per namespace it carries any tag in.
+      rowNamespaces.forEach((ns) => nsPeople.set(ns, (nsPeople.get(ns) ?? 0) + 1));
     }
     if (data.length < PAGE) break;
   }
-  return Array.from(counts, ([tag, people]) => ({ tag, people })).sort(
+  const entries = Array.from(counts, ([tag, people]) => ({ tag, people })).sort(
     (a, b) => b.people - a.people || a.tag.localeCompare(b.tag),
   );
+  const namespacePeople: Record<string, number> = {};
+  nsPeople.forEach((v, k) => { namespacePeople[k] = v; });
+  return { entries, namespacePeople };
 }
