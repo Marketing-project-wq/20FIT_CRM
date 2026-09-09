@@ -74,24 +74,29 @@ interface LoadedTemplate {
   version: number;
   subject: string | null;
   body: string;
+  /** Per-template sender display name (T-74). null when unset → the send falls back to the Mailtrap
+   *  client's default "20FIT CRM". SELECTED here — if this column is dropped from the select, the
+   *  full-chain test (send-campaign-sender.test.ts) goes red. */
+  senderName: string | null;
 }
 
-/** Highest-version email template per language for a key. Returns {} if none is active. */
-async function loadTemplates(
+/** Highest-version email template per language for a key. Returns {} if none is active. Exported so
+ *  the full-chain sender-name test can read the SAME row the send path reads (no per-layer stub). */
+export async function loadTemplates(
   admin: SupabaseClient,
   templateKey: string,
 ): Promise<Record<"id" | "en", LoadedTemplate | undefined>> {
   const { data, error } = await admin
     .from("crm_message_template")
-    .select("language, version, subject, body")
+    .select("language, version, subject, body, sender_name")
     .eq("template_key", templateKey)
     .eq("channel", "email")
     .eq("is_active", true)
     .order("version", { ascending: false });
   if (error) throw error;
   const out: Record<"id" | "en", LoadedTemplate | undefined> = { id: undefined, en: undefined };
-  for (const row of (data ?? []) as { language: "id" | "en"; version: number; subject: string | null; body: string }[]) {
-    if (!out[row.language]) out[row.language] = { version: row.version, subject: row.subject, body: row.body };
+  for (const row of (data ?? []) as { language: "id" | "en"; version: number; subject: string | null; body: string; sender_name: string | null }[]) {
+    if (!out[row.language]) out[row.language] = { version: row.version, subject: row.subject, body: row.body, senderName: row.sender_name };
   }
   return out;
 }
@@ -361,9 +366,12 @@ export async function sendCampaign(input: CampaignSendInput, nowIso: string): Pr
       // Mailtrap's documented success body carries `message_ids`; the client returns the first one
       // (SendReceipt). Storing the provider's own id makes webhook correlation reliable instead of
       // depending on a hashed-address match. It is null only if the body lacks an id.
+      // T-74: pass the template's sender name (same tpl lookup as render); null → client default.
+      const tpl = templates[r.language] ?? templates.id ?? templates.en;
       const receipt = await sendTransactionalEmail(
         { to: r.destination, subject: message.subject ?? "", text: message.text, html: message.html },
         "crm-campaign",
+        tpl?.senderName ?? undefined,
       );
       return { providerMessageId: receipt.providerMessageId };
     },

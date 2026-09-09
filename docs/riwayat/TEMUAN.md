@@ -2602,3 +2602,36 @@ hardcode sebagai satu-satunya sumber; nilai kini bisa disuntik.
 kampanye (baca dari template → kirim ke `senderName`) menunggu migrasi. SQL diajukan di laporan +
 badan PR; API `POST /api/templates` yang membuang `sender_name` DAN select di jalur kirim/pratinjau
 baru disambungkan setelah kolomnya ada (select kolom yang belum ada = PostgREST 400 → memecah kirim).
+
+### T-74 (lanjutan) — rantai disambungkan penuh + dikunci uji lintas-lapis — ⏱ DITERAPKAN 9 Sep 2026
+
+Migrasi `sender_name` disetujui pemilik lalu **diterapkan sekali** (apply_migration; stempel ledger
+`20260909060215` ≠ nama berkas `20260909050000` — pola divergensi yang sama dengan 15/28/30/37/38/39/40).
+Diverifikasi dari `information_schema`: kolom `sender_name text`, nullable YES, default null; 23 baris,
+**0** ber-`sender_name` (semua NULL → jalur kirim jatuh ke default "20FIT CRM"). Ledger README baris 41.
+
+Ketiga lapis disambungkan: (1) `POST /api/templates` kini men-destructure/menyimpan `sender_name`
+(dulu dibuang senyap — inti T-74); (2) `loadTemplates` di jalur kirim men-`select` `sender_name` +
+memetakannya; (3) jalur pratinjau + kirim meneruskannya ke `sendTransactionalEmail`.
+
+**Batas panjang + pembersihan (helper bersama `lib/email/sender-name.ts`):** `MAX_SENDER_NAME = 64`
+— TIDAK diukur dari data (kolom baru, 0 baris), melainkan **dinalar**: default "20FIT" (5), string
+merek+lokasi terpanjang realistis ~30, klien email memotong nama ~30–40; 64 = ruang lega di atas
+realistis, jauh di bawah rentang render rusak. Disiplin "maks realistis + ruang" yang sama dengan cap
+full_name (120, maks nyata 46) — di sini "realistis" menggantikan "terukur" karena belum ada baris.
+Ditegakkan DI RUTE (jalur tulis, bukan hanya input) — pola full_name/city di crm_update_master_fields;
+baris baru + spasi berlebih dibersihkan (collapse+trim) di pintu; dibersihkan+diklamp defensif sekali
+lagi tepat sebelum kawat (`senderNameForWire`).
+
+**Uji lintas-lapis (bukan per-lapis):** `lib/crm/sender-name-chain.test.ts` memasukkan nilai SEKALI
+di payload editor dan memeriksanya SEKALI di `from.name` kawat, menjalankan rute nyata → `loadTemplates`
+nyata → `sendTransactionalEmail` nyata (hanya `fetch` + Supabase yang dipalsu). **Terbukti merah** saat
+rute membuang `sender_name` DAN saat select jalur kirim membuangnya (dua-duanya diuji dengan mematahkan
+lapis lalu memulihkan). Inilah yang uji per-lapis lewatkan: tiap lapis hijau sendiri.
+
+**Audit field editor↔rute (dilaporkan, tak semua diperbaiki):** di `/api/templates`, `sender_name`
+adalah SATU-SATUNYA field yang dibuang (kini diperbaiki). Editor WhatsApp mengirim
+{template_key, channel, language, name, body} — semuanya dikonsumsi rute. Editor lain (segment,
+consent, suppression, profile-search) memakai **server action bertipe**, bukan rute JSON mentah, jadi
+celah buang-senyap tak berlaku. Satu-satunya rute JSON lain (`/api/audience/import`) domain berbeda —
+ditandai, di luar lingkup perbaikan ini.

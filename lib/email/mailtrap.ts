@@ -1,5 +1,6 @@
 import "server-only";
 import { extractMessageId } from "./mailtrap-parse";
+import { senderNameForWire } from "./sender-name";
 
 /**
  * Minimal Mailtrap Email Sending API client — the app's OWN outbound mailer, used instead
@@ -64,7 +65,9 @@ export async function sendTransactionalEmail(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from: { email: from, name: senderName },
+      // senderNameForWire is the last-resort clean+clamp: whatever any caller (campaign, future
+      // marketing path, reset default) passes, from.name is always trimmed, newline-free and bounded.
+      from: { email: from, name: senderNameForWire(senderName) },
       to: [{ email: mail.to }],
       subject: mail.subject,
       text: mail.text,

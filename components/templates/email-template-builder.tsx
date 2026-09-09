@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { STARTER_TEMPLATES, MOBILE_PREVIEW_CROP_PX } from "./starter-templates";
 import { BlockEditor, blocksToHtml, newBlock, type Block } from "./block-editor";
 import { renderEmailDocument } from "@/lib/crm/email-document";
+import { MAX_SENDER_NAME } from "@/lib/email/sender-name";
 import {
   listBrandAssetsAction,
   uploadBrandAssetAction,
@@ -336,6 +337,7 @@ function EditorBody(p: any) {
         <div>
           <label className="mb-2 block font-display text-[13px] font-bold text-ink">Nama Pengirim</label>
           <input type="text" value={p.senderName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => p.setSenderName(e.target.value)}
+            maxLength={MAX_SENDER_NAME}
             className="w-full rounded-md border border-glass-border bg-glass px-3 py-2 font-body text-[14px] text-ink focus:border-ink focus:outline-none" placeholder="20FIT" />
         </div>
         <div>
