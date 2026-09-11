@@ -196,14 +196,28 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: result.error, message }, { status: result.error === "too_many_rows" || result.error === "collection_source_required" || result.error === "no_email_column" ? 422 : 400 });
   }
 
-  // Trim the plan before returning: the client needs summary + per-row outcomes, NOT insertRows (that
-  // is the bulk of the payload and carries the imported emails the browser already has from its upload).
+  // Trim the plan before returning: the client needs summary + per-row outcomes + generated tag labels,
+  // NOT insertRows (that is the bulk of the payload and carries the imported emails the browser already
+  // has from its upload).
   const trimmed = result.plan
-    ? { ...result, plan: { summary: result.plan.summary, outcomes: result.plan.outcomes }, delimiter }
+    ? { ...result, plan: { summary: result.plan.summary, outcomes: result.plan.outcomes, generatedTagLabels: result.plan.generatedTagLabels }, delimiter }
     : { ...result, delimiter };
 
   // A successful execute added people — refresh the read mirror so they appear in the pool/segments.
   if (result.phase === "execute" && result.committed && result.plan) {
+    // Auto-register tags generated from namespace-mapped columns. Uses ignoreDuplicates so existing
+    // tags are not overwritten — only genuinely new slugs get a row. Not fatal to the import.
+    const genLabels = result.plan.generatedTagLabels;
+    if (Object.keys(genLabels).length > 0) {
+      const tagRows = Object.entries(genLabels).map(([tag, label]) => ({
+        slug: tag,
+        namespace: tag.slice(0, tag.indexOf(":")),
+        label,
+      }));
+      const { error: regErr } = await admin.from("crm_tag_registry").upsert(tagRows, { onConflict: "slug", ignoreDuplicates: true });
+      if (regErr) logApiFailure("/audience/import", "tag_registry_failed", { code: regErr.code });
+    }
+
     // HONEST REPORT (T-69): reconcile what the plan promised against what the RPC actually wrote. If
     // they diverge, people were silently dropped between plan and write — the screen must warn, never
     // show a green "selesai". Logged server-side too, so a mismatch is never invisible even if unseen.

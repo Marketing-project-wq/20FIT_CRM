@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { safeCode } from "./safe-code";
+import { slugifyTagValue } from "./tags";
 import {
   guessColumnMapping,
   isExcelBrokenPhone,
@@ -23,13 +24,13 @@ const noKeys: ImportKeys = {
 };
 
 describe("guessColumnMapping", () => {
-  it("guesses common Indonesian + English headers, each field once", () => {
+  it("guesses name, email, and tags from headers — phone and city are not auto-guessed", () => {
     const m = guessColumnMapping(["Nama Lengkap", "Email", "No HP", "Kota", "Catatan"]);
     expect(m).toEqual({
       "Nama Lengkap": "full_name",
       Email: "email",
-      "No HP": "phone",
-      Kota: "city",
+      "No HP": "ignore",
+      Kota: "ignore",
       Catatan: "ignore",
     });
   });
@@ -37,6 +38,35 @@ describe("guessColumnMapping", () => {
     const m = guessColumnMapping(["email", "email cadangan"]);
     expect(m["email"]).toBe("email");
     expect(m["email cadangan"]).toBe("ignore");
+  });
+  it("content-based email detection: ≥80% email-format values → email column", () => {
+    const rows = [
+      { Kontak: "a@x.com", Nama: "A" },
+      { Kontak: "b@x.com", Nama: "B" },
+      { Kontak: "c@x.com", Nama: "C" },
+      { Kontak: "d@x.com", Nama: "D" },
+      { Kontak: "not-email", Nama: "E" },
+    ];
+    const m = guessColumnMapping(["Kontak", "Nama"], rows);
+    expect(m["Kontak"]).toBe("email");
+    expect(m["Nama"]).toBe("full_name");
+  });
+  it("content-based email detection does NOT fire when <80%", () => {
+    const rows = [
+      { Kontak: "a@x.com", Nama: "A" },
+      { Kontak: "b@x.com", Nama: "B" },
+      { Kontak: "not-email", Nama: "C" },
+      { Kontak: "also-not", Nama: "D" },
+      { Kontak: "nope", Nama: "E" },
+    ];
+    const m = guessColumnMapping(["Kontak", "Nama"], rows);
+    expect(m["Kontak"]).toBe("ignore");
+  });
+  it("header-based email detection takes priority over content-based", () => {
+    const rows = [{ Email: "a@x.com", Other: "b@x.com" }];
+    const m = guessColumnMapping(["Email", "Other"], rows);
+    expect(m["Email"]).toBe("email");
+    expect(m["Other"]).toBe("ignore");
   });
 });
 
@@ -65,6 +95,52 @@ describe("normalizeMappedRow", () => {
     const n = normalizeMappedRow({ Nama: "X", Surel: "x@x.com", HP: "0812-3456-7890", Kota: "", X: "" }, mapping);
     expect(n.phoneExcelBroken).toBe(false);
     expect(n.phoneNormalized).toBe("6281234567890");
+  });
+});
+
+describe("normalizeMappedRow — namespace column mapping", () => {
+  it("maps a column to ns:kategori → slugifies cell value into a tag", () => {
+    const mapping: ColumnMapping = { email: "email", Kategori: "ns:kategori" as ColumnMapping[string] };
+    const n = normalizeMappedRow({ email: "a@x.com", Kategori: "Doubles Men" }, mapping);
+    expect(n.tags).toContain("kategori:doubles-men");
+    expect(n.generatedTagLabels).toEqual({ "kategori:doubles-men": "Doubles Men" });
+  });
+
+  it("multiple namespace columns generate tags from each", () => {
+    const mapping: ColumnMapping = {
+      email: "email",
+      Kategori: "ns:kategori" as ColumnMapping[string],
+      Sumber: "ns:sumber" as ColumnMapping[string],
+    };
+    const n = normalizeMappedRow({ email: "a@x.com", Kategori: "Relay Mixed", Sumber: "Event Hyrox" }, mapping);
+    expect(n.tags).toContain("kategori:relay-mixed");
+    expect(n.tags).toContain("sumber:event-hyrox");
+    expect(n.generatedTagLabels["kategori:relay-mixed"]).toBe("Relay Mixed");
+    expect(n.generatedTagLabels["sumber:event-hyrox"]).toBe("Event Hyrox");
+  });
+
+  it("empty cell in a namespace column produces no tag", () => {
+    const mapping: ColumnMapping = { email: "email", Kategori: "ns:kategori" as ColumnMapping[string] };
+    const n = normalizeMappedRow({ email: "a@x.com", Kategori: "" }, mapping);
+    expect(n.tags).toEqual([]);
+    expect(n.generatedTagLabels).toEqual({});
+  });
+
+  it("ns tags merge with raw Tag column tags", () => {
+    const mapping: ColumnMapping = {
+      email: "email",
+      tags: "tags",
+      Sumber: "ns:sumber" as ColumnMapping[string],
+    };
+    const n = normalizeMappedRow({ email: "a@x.com", tags: "event:hyrox-2026", Sumber: "Formulir" }, mapping);
+    expect(n.tags).toContain("event:hyrox-2026");
+    expect(n.tags).toContain("sumber:formulir");
+  });
+
+  it("slug generation: special chars → hyphens, leading/trailing stripped", () => {
+    const mapping: ColumnMapping = { email: "email", K: "ns:kategori" as ColumnMapping[string] };
+    const n = normalizeMappedRow({ email: "a@x.com", K: "  ---Hello World!!!---  " }, mapping);
+    expect(n.tags).toContain("kategori:hello-world");
   });
 });
 
@@ -446,6 +522,35 @@ describe("planImport — tags (K-58)", () => {
 });
 
 
+describe("planImport — namespace column mapping (generatedTagLabels)", () => {
+  it("aggregates generatedTagLabels across all rows, first label wins", () => {
+    const mapping: ColumnMapping = { email: "email", Kategori: "ns:kategori" as ColumnMapping[string] };
+    const rows = [
+      { email: "a@x.com", Kategori: "Doubles Men" },
+      { email: "b@x.com", Kategori: "Singles Women" },
+      { email: "c@x.com", Kategori: "Doubles Men" }, // duplicate value
+    ];
+    const p = planImport(rows, mapping, noKeys);
+    expect(Object.keys(p.generatedTagLabels)).toHaveLength(2);
+    expect(p.generatedTagLabels["kategori:doubles-men"]).toBe("Doubles Men");
+    expect(p.generatedTagLabels["kategori:singles-women"]).toBe("Singles Women");
+  });
+
+  it("ns-generated tags appear on insertRows", () => {
+    const mapping: ColumnMapping = { email: "email", Sumber: "ns:sumber" as ColumnMapping[string] };
+    const rows = [{ email: "a@x.com", Sumber: "Formulir Online" }];
+    const p = planImport(rows, mapping, noKeys);
+    expect(p.insertRows[0].tags).toContain("sumber:formulir-online");
+  });
+
+  it("ns-generated tags appear on tagTargets for existing contacts", () => {
+    const mapping: ColumnMapping = { email: "email", Kategori: "ns:kategori" as ColumnMapping[string] };
+    const keys: ImportKeys = { ...noKeys, existingEmails: new Set(["a@x.com"]), taggableEmails: new Set(["a@x.com"]) };
+    const p = planImport([{ email: "a@x.com", Kategori: "Relay" }], mapping, keys);
+    expect(p.tagTargets[0].tags).toContain("kategori:relay");
+  });
+});
+
 describe("import confirm gate (T-67) — tag-only runs must be runnable", () => {
   const S = (netInsert: number, taggedExisting: number) =>
     ({ netInsert, taggedExisting }) as Parameters<typeof importActionableTotal>[0];
@@ -467,5 +572,26 @@ describe("import confirm gate (T-67) — tag-only runs must be runnable", () => 
   it("a missing collection source blocks it even when there is work to do", () => {
     expect(canRunImport(S(0, 2), "")).toBe(false);
     expect(canRunImport(S(0, 2), "   ")).toBe(false);
+  });
+});
+
+describe("slugifyTagValue", () => {
+  it("lowercases, trims, replaces non-alphanumeric runs with hyphens", () => {
+    expect(slugifyTagValue("Doubles Men")).toBe("doubles-men");
+    expect(slugifyTagValue("  Relay Mixed  ")).toBe("relay-mixed");
+    expect(slugifyTagValue("Hello World!!!")).toBe("hello-world");
+    expect(slugifyTagValue("Event — Hyrox 2026")).toBe("event-hyrox-2026");
+  });
+  it("strips leading/trailing hyphens", () => {
+    expect(slugifyTagValue("---abc---")).toBe("abc");
+    expect(slugifyTagValue("!!!test!!!")).toBe("test");
+  });
+  it("returns empty string for whitespace-only or empty input", () => {
+    expect(slugifyTagValue("")).toBe("");
+    expect(slugifyTagValue("   ")).toBe("");
+    expect(slugifyTagValue("!!!")).toBe("");
+  });
+  it("preserves digits", () => {
+    expect(slugifyTagValue("Sportfest 3 2026")).toBe("sportfest-3-2026");
   });
 });

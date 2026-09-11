@@ -1,5 +1,5 @@
 import { normalizeEmail, normalizePhoneID } from "./normalize";
-import { parseTagCell } from "./tags";
+import { isOperatorTag, parseTagCell, slugifyTagValue } from "./tags";
 
 /**
  * PURE planning core for the CSV audience import (Fase 1). No I/O, no DB, no writes — it takes the
@@ -40,23 +40,34 @@ export const MAX_IMPORT_ROWS = 15_000;
 export const IMPORT_TARGET_FIELDS = ["full_name", "email", "phone", "city", "tags", "ignore"] as const;
 export type ImportField = (typeof IMPORT_TARGET_FIELDS)[number];
 
-/** Maps a CSV header (verbatim) to the destination field it fills, or "ignore". */
-export type ColumnMapping = Record<string, ImportField>;
+/** The 5 namespaces available as column-mapping targets in the UI. A column mapped to `ns:kategori`
+ *  turns every unique cell value into a `kategori:<slug>` tag. `format`, `nilai`, `produk` are
+ *  deliberately excluded — they are per-row properties from raw Tag columns, not whole-column maps. */
+export const NAMESPACE_MAPPING_TARGETS = ["event", "kategori", "sumber", "tipe", "peran"] as const;
 
-/** Header-name heuristics for the auto-guess. Operator can always override in the UI. */
-const GUESS: { field: Exclude<ImportField, "ignore">; re: RegExp }[] = [
+/** A column mapping target: a standard import field OR a namespace tag mapping (`ns:event` etc.). */
+export type MappingTarget = ImportField | `ns:${(typeof NAMESPACE_MAPPING_TARGETS)[number]}`;
+
+/** Maps a CSV header (verbatim) to the destination field or namespace it fills, or "ignore". */
+export type ColumnMapping = Record<string, MappingTarget>;
+
+/** Header-name heuristics for the auto-guess. Phone and city were removed — the UI maps those to
+ *  namespace tags instead. The operator can always override in the UI. */
+const GUESS: { field: ImportField; re: RegExp }[] = [
   { field: "email", re: /\b(e-?mail|surel|alamat\s*e-?mail)\b/i },
   { field: "tags", re: /\b(tags?|label|penanda)\b/i },
-  { field: "phone", re: /\b(phone|telp|telepon|hp|no\.?\s*hp|nomor|whatsapp|wa|mobile)\b/i },
   { field: "full_name", re: /\b(full[_\s]*name|nama\s*lengkap|nama|name)\b/i },
-  { field: "city", re: /\b(city|kota|domisili)\b/i },
 ];
 
+const EMAIL_CONTENT_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 /** Best-effort header→field guess. First matching pattern wins; each field is used at most once
- *  (the first header that matches it), the rest default to "ignore". */
-export function guessColumnMapping(headers: string[]): ColumnMapping {
+ *  (the first header that matches it), the rest default to "ignore". When `rows` are provided and
+ *  no header matched "email", a content-based pass detects a column where ≥80% of non-empty values
+ *  look like email addresses. */
+export function guessColumnMapping(headers: string[], rows?: Record<string, string>[]): ColumnMapping {
   const mapping: ColumnMapping = {};
-  const used = new Set<ImportField>();
+  const used = new Set<string>();
   for (const h of headers) {
     const hit = GUESS.find((g) => g.re.test(h) && !used.has(g.field));
     if (hit) {
@@ -64,6 +75,18 @@ export function guessColumnMapping(headers: string[]): ColumnMapping {
       used.add(hit.field);
     } else {
       mapping[h] = "ignore";
+    }
+  }
+  if (!used.has("email") && rows && rows.length > 0) {
+    for (const h of headers) {
+      if (mapping[h] !== "ignore") continue;
+      const nonEmpty = rows.filter((r) => (r[h] ?? "").trim() !== "");
+      if (nonEmpty.length === 0) continue;
+      const emailCount = nonEmpty.filter((r) => EMAIL_CONTENT_RE.test((r[h] ?? "").trim())).length;
+      if (emailCount / nonEmpty.length >= 0.8) {
+        mapping[h] = "email";
+        break;
+      }
     }
   }
   return mapping;
@@ -79,10 +102,12 @@ export interface NormalizedRow {
    *  original digits are GONE and unrecoverable, so the phone is dropped (never guessed-fixed) and the
    *  operator is told, not left in the dark. The row can still import on its email. */
   phoneExcelBroken: boolean;
-  /** Valid operator tags from this row's `tags` cell, normalized + deduplicated (TUGAS E). */
+  /** Valid operator tags from this row's `tags` cell + namespace-mapped columns, normalized + deduplicated. */
   tags: string[];
   /** Tags this row supplied that the canon refuses — reported per row, never dropped in silence. */
   invalidTags: string[];
+  /** Tags generated from namespace-mapped columns on this row: tag → original CSV value (for registry). */
+  generatedTagLabels: Record<string, string>;
 }
 
 /** Excel silently rewrites a long number (a phone!) as scientific notation when a column isn't Text:
@@ -95,13 +120,17 @@ export function isExcelBrokenPhone(raw: string | null | undefined): boolean {
 }
 
 /** Apply a mapping to one raw CSV record and normalize the contact identities through the ONE canon
- *  (normalize.ts) so dedup and suppression match exactly what the DB stores. */
+ *  (normalize.ts) so dedup and suppression match exactly what the DB stores. Namespace-mapped columns
+ *  (ns:*) are slugified and added as tags; their original CSV values are tracked for registry. */
 export function normalizeMappedRow(raw: Record<string, string>, mapping: ColumnMapping): NormalizedRow {
   let fullName: string | null = null;
   let email: string | null = null;
   let phone: string | null = null;
   let city: string | null = null;
   let tagCell: string | null = null;
+  const nsTags: string[] = [];
+  const nsInvalid: string[] = [];
+  const generatedTagLabels: Record<string, string> = {};
   for (const [header, field] of Object.entries(mapping)) {
     const v = (raw[header] ?? "").trim();
     if (v === "") continue;
@@ -110,6 +139,20 @@ export function normalizeMappedRow(raw: Record<string, string>, mapping: ColumnM
     else if (field === "phone") phone = v;
     else if (field === "city") city = v;
     else if (field === "tags") tagCell = v;
+    else if (typeof field === "string" && field.startsWith("ns:")) {
+      const ns = field.slice(3);
+      const slug = slugifyTagValue(v);
+      if (slug === "") continue;
+      const tag = `${ns}:${slug}`;
+      if (isOperatorTag(tag)) {
+        if (!nsTags.includes(tag)) {
+          nsTags.push(tag);
+          generatedTagLabels[tag] = v;
+        }
+      } else {
+        nsInvalid.push(tag);
+      }
+    }
   }
   const phoneExcelBroken = isExcelBrokenPhone(phone);
   const parsed = parseTagCell(tagCell);
@@ -117,16 +160,12 @@ export function normalizeMappedRow(raw: Record<string, string>, mapping: ColumnM
     fullName: fullName || null,
     email: email || null,
     emailNormalized: normalizeEmail(email),
-    // A phone Excel mangled into scientific notation has lost its digits — it is dropped (never
-    // guessed-fixed). normalizePhoneID would return null for it anyway, but we short-circuit so the
-    // intent is explicit and the row carries the flag the operator is shown.
     phoneNormalized: phoneExcelBroken ? null : normalizePhoneID(phone),
     city: city || null,
     phoneExcelBroken,
-    // TUGAS E: the CSV `tags` column, `|`-separated, validated against the canon (lib/crm/tags.ts).
-    // Rejected values are reported per row rather than dropped in silence.
-    tags: parsed.tags,
-    invalidTags: parsed.invalid,
+    tags: Array.from(new Set([...parsed.tags, ...nsTags])).sort(),
+    invalidTags: [...parsed.invalid, ...nsInvalid],
+    generatedTagLabels,
   };
 }
 
@@ -265,6 +304,9 @@ export interface ImportPlan {
    *  same list. A phone-only match is NOT here — that is a different person, who is inserted (K-57). */
   tagTargets: { email: string; tags: string[] }[];
   outcomes: RowOutcome[]; // per-row disposition, for the post-run report
+  /** Tags generated from namespace-mapped columns, aggregated across all rows: tag → original CSV
+   *  label. Used to auto-register new tags in crm_tag_registry on execute. */
+  generatedTagLabels: Record<string, string>;
 }
 
 export interface ImportKeys {
@@ -295,6 +337,7 @@ export function planImport(
   const tagTargets: { email: string; tags: string[] }[] = [];
   const seenEmails = new Set<string>(); // emails already accepted from THIS file
   const taggedSeen = new Set<string>(); // emails already queued for tagging from THIS file
+  const allGeneratedTagLabels: Record<string, string> = {};
   const s: ImportSummary = {
     read: rows.length,
     validEmail: 0,
@@ -315,6 +358,9 @@ export function planImport(
 
   rows.forEach((raw, index) => {
     const n = normalizeMappedRow(raw, mapping);
+    for (const [tag, label] of Object.entries(n.generatedTagLabels)) {
+      if (!allGeneratedTagLabels[tag]) allGeneratedTagLabels[tag] = label;
+    }
     if (extraTags && extraTags.length > 0) {
       const merged = new Set(n.tags);
       for (const t of extraTags) merged.add(t);
@@ -416,7 +462,7 @@ export function planImport(
   }
 
   s.netContactable = s.netInsert - s.suppressed;
-  return { summary: s, insertRows, tagTargets, outcomes };
+  return { summary: s, insertRows, tagTargets, outcomes, generatedTagLabels: allGeneratedTagLabels };
 }
 
 /**

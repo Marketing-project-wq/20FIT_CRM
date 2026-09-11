@@ -4,15 +4,15 @@ import { useEffect, useRef, useState } from "react";
 import { Upload, FileText, ArrowRight, CheckCircle2, AlertTriangle, X, ChevronDown, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
-  IMPORT_TARGET_FIELDS,
   MAX_IMPORT_ROWS,
+  NAMESPACE_MAPPING_TARGETS,
   importActionableTotal,
   canRunImport,
   type ColumnMapping,
-  type ImportField,
+  type MappingTarget,
   type ImportSummary,
 } from "@/lib/crm/import-audience";
-import { parseTagCell, groupTags, namespaceLabel, tagValueLabel, isOperatorTag } from "@/lib/crm/tags";
+import { parseTagCell, groupTags, namespaceLabel, tagValueLabel, isOperatorTag, slugifyTagValue } from "@/lib/crm/tags";
 
 /**
  * CSV import wizard (Fase 1) — upload → map columns → review summary → confirm → report. It NEVER
@@ -22,15 +22,6 @@ import { parseTagCell, groupTags, namespaceLabel, tagValueLabel, isOperatorTag }
  */
 
 type Step = "upload" | "map" | "summary" | "report";
-
-const FIELD_LABEL: Record<ImportField, string> = {
-  full_name: "Nama lengkap",
-  email: "Email",
-  phone: "Telepon",
-  city: "Kota",
-  tags: "Tag",
-  ignore: "— abaikan —",
-};
 
 interface AnalyzeResponse {
   ok: true;
@@ -56,7 +47,11 @@ interface DryRunResponse {
   phase: "dry_run";
   mapping: ColumnMapping;
   preview: Record<string, string>[];
-  plan: { summary: ImportSummary; outcomes: { index: number; status: string; email: string | null }[] };
+  plan: {
+    summary: ImportSummary;
+    outcomes: { index: number; status: string; email: string | null }[];
+    generatedTagLabels?: Record<string, string>;
+  };
 }
 interface RowOutcomeView {
   index: number;
@@ -96,6 +91,7 @@ export function ImportWizard() {
   const [collectionSource, setCollectionSource] = useState("");
   const [report, setReport] = useState<ExecuteResponse | null>(null);
   const [extraTags, setExtraTags] = useState<string[]>([]);
+  const [generatedTagLabels, setGeneratedTagLabels] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -160,6 +156,7 @@ export function ImportWizard() {
     if (!data) return;
     setSummary(data.plan.summary);
     setDryOutcomes(data.plan.outcomes ?? []);
+    setGeneratedTagLabels(data.plan.generatedTagLabels ?? {});
     setPreview(data.preview);
     setStep("summary");
   }
@@ -182,6 +179,7 @@ export function ImportWizard() {
     setSummary(null);
     setDryOutcomes([]);
     setExtraTags([]);
+    setGeneratedTagLabels({});
     setCollectionSource("");
     setReport(null);
     setError(null);
@@ -267,17 +265,25 @@ export function ImportWizard() {
                       <select
                         className="h-9 rounded-sm border border-glass-border bg-glass px-2 font-body text-[13px] text-ink focus:outline-none focus:ring-2 focus:ring-red"
                         value={mapping[h] ?? "ignore"}
-                        onChange={(e) => setMapping((m) => ({ ...m, [h]: e.target.value as ImportField }))}
+                        onChange={(e) => setMapping((m) => ({ ...m, [h]: e.target.value as MappingTarget }))}
                       >
-                        {IMPORT_TARGET_FIELDS.map((f) => (
-                          <option key={f} value={f}>{FIELD_LABEL[f]}</option>
-                        ))}
+                        <option value="email">Email</option>
+                        <option value="full_name">Nama lengkap</option>
+                        <option value="tags">Tag (mentah)</option>
+                        <option value="ignore">— abaikan —</option>
+                        <optgroup label="Petakan ke namespace tag">
+                          {NAMESPACE_MAPPING_TARGETS.map((ns) => (
+                            <option key={ns} value={`ns:${ns}`}>→ Tag {namespaceLabel(ns, "id")} ({ns}:)</option>
+                          ))}
+                        </optgroup>
                       </select>
                     </td>
                     <td className="py-2 font-body text-[12px] text-ink-soft">
                       {mapping[h] === "tags"
                         ? <TagSample raw={preview[0]?.[h] ?? ""} />
-                        : (preview[0]?.[h] ?? "")}
+                        : (mapping[h] ?? "").startsWith("ns:")
+                          ? <NsTagPreview namespace={(mapping[h] as string).slice(3)} values={preview.map(r => r[h]).filter(Boolean)} />
+                          : (preview[0]?.[h] ?? "")}
                     </td>
                   </tr>
                 ))}
@@ -375,6 +381,10 @@ export function ImportWizard() {
           {/* Per-row reasons BEFORE confirming — checking why each row is skipped/flagged is the point
               of a dry-run. Shows skips AND the shared-phone / suppressed inserts, each with its reason. */}
           <ProblemList outcomes={dryOutcomes} />
+
+          {Object.keys(generatedTagLabels).length > 0 && (
+            <NamespaceTagStats labels={generatedTagLabels} />
+          )}
 
           {extraTags.length > 0 && (
             <div className="mt-4 rounded-card border border-glass-border bg-glass p-3">
@@ -576,6 +586,59 @@ function TagSample({ raw }: { raw: string }) {
   );
 }
 
+/** Preview of namespace-mapped column values → slugified tags in the mapping step. */
+function NsTagPreview({ namespace, values }: { namespace: string; values: string[] }) {
+  const unique = Array.from(new Set(values.map((v) => v.trim()).filter((v) => v !== "")));
+  if (unique.length === 0) return <span className="text-ink-faint">—</span>;
+  return (
+    <div className="space-y-0.5">
+      {unique.slice(0, 3).map((v) => {
+        const slug = slugifyTagValue(v);
+        return (
+          <div key={v} className="flex items-baseline gap-1.5">
+            <span className="text-ink-faint">{v}</span>
+            <span className="text-ink-faint">→</span>
+            <span className="rounded-sm bg-glass px-1 py-0.5 font-mono text-[11px] text-ink">{namespace}:{slug || "?"}</span>
+          </div>
+        );
+      })}
+      {unique.length > 3 && <span className="text-[11px] text-ink-faint">…{unique.length - 3} lagi</span>}
+    </div>
+  );
+}
+
+/** Summary of tags generated from namespace-mapped columns, grouped by namespace. */
+function NamespaceTagStats({ labels }: { labels: Record<string, string> }) {
+  const byNs = new Map<string, { tag: string; label: string }[]>();
+  for (const [tag, label] of Object.entries(labels)) {
+    const ns = tag.slice(0, tag.indexOf(":"));
+    const arr = byNs.get(ns) ?? [];
+    arr.push({ tag, label });
+    byNs.set(ns, arr);
+  }
+  return (
+    <div className="mt-4 space-y-3">
+      {Array.from(byNs.entries()).map(([ns, tags]) => (
+        <div key={ns} className="rounded-card border border-glass-border bg-glass p-3">
+          <div className="font-display text-[12px] font-bold text-ink">
+            {tags.length} tag unik di namespace <span className="font-mono">{ns}:</span>
+          </div>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {tags.slice(0, 10).map(({ tag, label }) => (
+              <span key={tag} className="rounded-sm bg-glass px-2 py-0.5 font-body text-[11px] text-ink" title={label}>
+                {tagValueLabel(tag, "id")}
+              </span>
+            ))}
+            {tags.length > 10 && (
+              <span className="px-1 py-0.5 font-body text-[11px] text-ink-faint">…{tags.length - 10} lagi</span>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** The 5 operator namespaces surfaced in the Tag Assignment UI. `format`, `nilai`, `produk` are omitted
  *  — they are per-row properties derived from the CSV, not batch-wide. */
 const TAG_ASSIGNMENT_NAMESPACES = ["event", "kategori", "sumber", "tipe", "peran"] as const;
@@ -772,8 +835,8 @@ function UnmappedColumns({ headers, mapping }: { headers: string[]; mapping: Col
   return (
     <p className="mt-3 font-body text-[12px] text-ink-soft">
       Kolom tidak diimpor ({ignored.length}):{" "}
-      <span className="text-ink">{ignored.join(", ")}</span>. Hanya nama, email, telepon, dan kota yang masuk — sisanya
-      diabaikan. Kalau salah satunya seharusnya ikut, kembali ke pemetaan.
+      <span className="text-ink">{ignored.join(", ")}</span>. Kembali ke pemetaan kalau salah satunya
+      seharusnya dipetakan ke email, nama, atau tag namespace.
     </p>
   );
 }

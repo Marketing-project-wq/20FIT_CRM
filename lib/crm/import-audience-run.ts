@@ -86,7 +86,7 @@ export async function runImportRequest(input: ImportInput, deps: ImportDeps): Pr
   if (input.rows.length === 0) return { ok: false, error: "empty_file" };
   if (input.rows.length > MAX_IMPORT_ROWS) return { ok: false, error: "too_many_rows" };
 
-  const mapping = input.mapping ?? guessColumnMapping(input.headers);
+  const mapping = input.mapping ?? guessColumnMapping(input.headers, input.rows);
   const preview = input.rows.slice(0, PREVIEW_ROWS);
 
   // At least one column must be mapped to email — it is the required identity + dedup key.

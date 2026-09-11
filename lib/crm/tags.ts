@@ -65,6 +65,17 @@ export function normalizeTag(raw: string): string {
   return raw.trim().toLowerCase();
 }
 
+/** Slugify a raw CSV cell value into a tag value part: lowercase, trim, replace non-alphanumeric
+ *  runs with a single hyphen, strip leading/trailing hyphens. Used when a column is mapped to a
+ *  namespace target (ns:*) — the cell "Doubles Men" becomes "doubles-men". */
+export function slugifyTagValue(raw: string): string {
+  return raw
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 /** May an IMPORT introduce this tag? Namespaced, from the closed list. Refuses `batch:`/`tagged:`. */
 export function isOperatorTag(tag: string): boolean {
   return OPERATOR_TAG_RE.test(tag);
