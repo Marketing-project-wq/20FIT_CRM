@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-import { rfmFromPrecompute, unitSpreadFromEngagement, MIRROR_ENGAGEMENT_UNITS, fetchMirrorBlock } from "./dashboard";
+import { rfmFromPrecompute, unitSpreadFromEngagement, MIRROR_ENGAGEMENT_UNITS, fetchMirrorBlock, mergeEventSources } from "./dashboard";
 import { fetchMirrorDashboardStats, DASHBOARD_STATS_BLOCKS } from "./mirror";
 
 /**
@@ -69,6 +69,41 @@ describe("unitSpreadFromEngagement — every mirror unit present + live shop", (
     // sorted desc
     const p = rows.map((r) => r.profiles);
     expect(p).toEqual([...p].sort((a, b) => b - a));
+  });
+});
+
+describe("mergeEventSources — engagement + tag events, deduped by label (case-insensitive)", () => {
+  it("appends tag events that have no engagement counterpart", () => {
+    const engagement = [{ product: "Sportfest 3 2026-05", registrations: 500 }];
+    const tags = [{ product: "Iss Jhr 2026", registrations: 120 }];
+    const merged = mergeEventSources(engagement, tags);
+    expect(merged).toHaveLength(2);
+    expect(merged[0].product).toBe("Sportfest 3 2026-05");
+    expect(merged[1].product).toBe("Iss Jhr 2026");
+  });
+
+  it("folds matching labels (case-insensitive) by summing counts, keeping the first label form", () => {
+    const engagement = [{ product: "Hyrox Singles", registrations: 300 }];
+    const tags = [{ product: "hyrox singles", registrations: 50 }];
+    const merged = mergeEventSources(engagement, tags);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].product).toBe("Hyrox Singles");
+    expect(merged[0].registrations).toBe(350);
+  });
+
+  it("sorts the merged result by count descending", () => {
+    const engagement = [
+      { product: "A", registrations: 10 },
+      { product: "B", registrations: 200 },
+    ];
+    const tags = [{ product: "C", registrations: 50 }];
+    const merged = mergeEventSources(engagement, tags);
+    const counts = merged.map((r) => r.registrations);
+    expect(counts).toEqual([200, 50, 10]);
+  });
+
+  it("returns empty when both sources are empty", () => {
+    expect(mergeEventSources([], [])).toEqual([]);
   });
 });
 

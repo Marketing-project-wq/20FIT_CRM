@@ -57,6 +57,9 @@ function recordingFake() {
     },
     rpc: (name: string) => {
       rpcs.add(name);
+      if (name === "crm_tag_event_counts") {
+        return { then: (r: (v: unknown) => void) => r({ data: [{ tag: "event:test", people: 10 }], error: null }) };
+      }
       // Distinct, recognisable values so a test can prove the block passes the RPC output THROUGH
       // verbatim (no second calculation that would return something else).
       return { then: (r: (v: unknown) => void) => r({ data: { marketing: 42, transactional: 43 }, error: null }) };
@@ -99,11 +102,11 @@ describe("dashboard block cost boundaries (progressive-load)", () => {
     expect(Object.keys(out).sort()).toEqual(["emailable", "everContacted", "poolTotal", "whatsappable"]);
   });
 
-  it("EVENTS block does the event tally on customer_engagement (and the RPC does not)", async () => {
+  it("EVENTS block does the event tally on customer_engagement + tag event counts RPC", async () => {
     const { admin, tables, rpcs } = recordingFake();
     await fetchEventsBlock(admin);
     expect(tables.has("customer_engagement")).toBe(true);
-    expect(rpcs.size).toBe(0);
+    expect(rpcs.has("crm_tag_event_counts")).toBe(true);
   });
 
   it("MIRROR block reads the PRECOMPUTE blob (crm_mirror_meta) + live shop, not the contactable RPC", async () => {

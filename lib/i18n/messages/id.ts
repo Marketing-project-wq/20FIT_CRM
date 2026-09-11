@@ -154,7 +154,7 @@ export const id = {
     staleA: "Snapshot cermin berumur lebih dari ",
     staleB: " jam — angka unit bisa tertinggal dari sumber hidup. Jalankan refresh cermin untuk menyegarkan.",
     eventTitle: "Sebaran event",
-    eventNote: "Pendaftaran per produk event (jumlah baris, bukan orang distinct — satu orang bisa mendaftar beberapa event). Diurut terbanyak.",
+    eventNote: "Pendaftaran per produk event plus event dari tag CRM (tag event: dan kategori: menghitung orang distinct). Diurut terbanyak.",
     eventShowTop: "Tampilkan sepuluh teratas saja",
     eventShowAllA: "Tampilkan semua (+",
     eventShowAllB: " lagi)",

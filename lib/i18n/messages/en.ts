@@ -138,7 +138,7 @@ export const en: Messages = {
     staleA: "The mirror snapshot is older than ",
     staleB: " hours — the unit figures may trail the live sources. Run a mirror refresh to update them.",
     eventTitle: "Event spread",
-    eventNote: "Registrations per event product (row count, not distinct people — one person may register for several events). Sorted by most.",
+    eventNote: "Registrations per event product plus CRM-tagged events (event: and kategori: tags count distinct people). Sorted by most.",
     eventShowTop: "Show the top ten only",
     eventShowAllA: "Show all (+",
     eventShowAllB: " more)",

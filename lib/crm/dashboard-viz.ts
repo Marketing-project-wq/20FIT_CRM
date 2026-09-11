@@ -1,5 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { tagValueLabel } from "./tags";
 
 /**
  * Dashboard visualisations (Dashboard Visual sprint) — READ-ONLY aggregates for the bar charts.
@@ -8,11 +9,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  *
  * WHAT IS LIVE vs SNAPSHOT (shown on screen, TUGAS 3):
  *  - contactCoverage: LIVE head:true counts over master_customer.
- *  - eventRegistrations: LIVE — a paged tally of customer_engagement event rows. These are
- *    REGISTRATIONS (rows), not distinct people: a person may register for several event products.
- *    (Distinct-per-product would need count(distinct), which PostgREST can't express and this
- *    sprint adds no RPC; 36 of 18,247 event people have a duplicate product row, so registrations
- *    track distinct within ~0.2%.)
+ *  - eventRegistrations: LIVE — a paged tally of customer_engagement event rows (REGISTRATIONS,
+ *    not distinct people) PLUS tag-based events from crm_tag_event_counts() RPC (distinct people
+ *    per event:/kategori: tag on master_customer). Merged in fetchEventsBlock (dashboard.ts).
  *  - unitSpread: distinct PROFILES per unit. Five units come from the MIRROR (a snapshot —
  *    engagement_<unit> > 0), so the block shows the mirror's refreshed_at. `shop` has no mirror
  *    column, so it is counted LIVE (tiny) and marked as such.
@@ -104,6 +103,21 @@ export async function fetchUnitSpread(admin: SupabaseClient): Promise<UnitCount[
   });
   out.push({ unit: "shop", profiles: await distinctUnit(admin, "shop"), source: "live" });
   return out.sort((a, b) => b.profiles - a.profiles);
+}
+
+function titleCase(s: string): string {
+  return s.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** People per event:/kategori: tag on master_customer — the RPC does one unnest + GROUP BY. */
+export async function fetchTagEventCounts(admin: SupabaseClient): Promise<ProductCount[]> {
+  const { data, error } = await admin.rpc("crm_tag_event_counts");
+  if (error) throw error;
+  const rows = (data ?? []) as { tag: string; people: number }[];
+  return rows.map((r) => ({
+    product: titleCase(tagValueLabel(r.tag, "id")),
+    registrations: Number(r.people),
+  }));
 }
 
 /** Registrations (rows) per event product — a live paged tally. Sorted desc. */

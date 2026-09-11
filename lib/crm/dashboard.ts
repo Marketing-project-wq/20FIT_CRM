@@ -8,6 +8,7 @@ import {
   fetchContactCoverage,
   fetchShopProfilesLive,
   fetchEventRegistrations,
+  fetchTagEventCounts,
   type ContactCoverage,
   type UnitCount,
   type ProductCount,
@@ -259,9 +260,33 @@ export function candidatesFromPrecompute(
   return { total: Number(c.total) || 0, bySource };
 }
 
-/** EVENTS — the live per-product registration tally (the ~20-page read). */
+/** Merge engagement registrations and tag-based event counts. Tag entries whose label already
+ *  appears in the engagement list are folded in (counts added); the rest are appended. */
+export function mergeEventSources(engagement: ProductCount[], tags: ProductCount[]): ProductCount[] {
+  const merged = new Map<string, number>();
+  const lower = new Map<string, string>();
+  for (const e of engagement) {
+    const key = e.product.toLowerCase();
+    merged.set(key, (merged.get(key) ?? 0) + e.registrations);
+    if (!lower.has(key)) lower.set(key, e.product);
+  }
+  for (const t of tags) {
+    const key = t.product.toLowerCase();
+    merged.set(key, (merged.get(key) ?? 0) + t.registrations);
+    if (!lower.has(key)) lower.set(key, t.product);
+  }
+  return Array.from(merged.entries())
+    .map(([key, registrations]) => ({ product: lower.get(key)!, registrations }))
+    .sort((a, b) => b.registrations - a.registrations);
+}
+
+/** EVENTS — engagement registrations + tag-based event counts, merged and sorted. */
 export async function fetchEventsBlock(admin: SupabaseClient): Promise<EventsBlock> {
-  return { eventRegistrations: await fetchEventRegistrations(admin) };
+  const [engagement, tags] = await Promise.all([
+    fetchEventRegistrations(admin),
+    fetchTagEventCounts(admin),
+  ]);
+  return { eventRegistrations: mergeEventSources(engagement, tags) };
 }
 
 /** SOURCES — the per-source live gap vs the frozen pool (each source already runs in parallel). */
