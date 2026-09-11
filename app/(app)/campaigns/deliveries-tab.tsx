@@ -67,6 +67,58 @@ function Stat({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
+function ProgressBar({ row, labels }: { row: DeliveryRow; labels: Dict["campaignsPage"]["deliveries"] }) {
+  const total = row.recipientCount;
+  const delivered = row.deliveredCount;
+  const bad = row.failedCount + row.bouncedCount;
+  const remaining = Math.max(0, total - delivered - bad);
+  const pctDelivered = (delivered / total) * 100;
+  const pctBad = (bad / total) * 100;
+  const pctRemaining = 100 - pctDelivered - pctBad;
+  const inProgress = row.state === "running" || row.state === "paused" || row.state === "stalled";
+  const text = labels.progressSent.replace("{x}", String(delivered)).replace("{y}", String(total));
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex h-2 w-full overflow-hidden rounded-full bg-ink-faint/20">
+        {pctDelivered > 0 && (
+          <div className="bg-green transition-all duration-300" style={{ width: `${pctDelivered}%` }} />
+        )}
+        {pctBad > 0 && (
+          <div className="bg-red transition-all duration-300" style={{ width: `${pctBad}%` }} />
+        )}
+        {pctRemaining > 0 && (
+          <div
+            className={`bg-ink-faint/30 transition-all duration-300${inProgress ? " progress-pulse" : ""}`}
+            style={{ width: `${pctRemaining}%` }}
+          />
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 font-body text-[11px] text-ink-faint">
+        <span>{text}</span>
+        {delivered > 0 && (
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-2 w-2 rounded-full bg-green" />
+            {labels.progressDelivered}
+          </span>
+        )}
+        {bad > 0 && (
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-2 w-2 rounded-full bg-red" />
+            {labels.progressFailed}
+          </span>
+        )}
+        {remaining > 0 && (
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-2 w-2 rounded-full bg-ink-faint/30" />
+            {labels.progressRemaining}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function DeliveriesTab({
   deliveries,
   detail,
@@ -252,6 +304,9 @@ export function DeliveriesTab({
                   )}
                   <span className="font-mono">{wibDisplay(row.time)}</span>
                 </div>
+                {row.kind === "run" && row.recipientCount > 0 && (
+                  <ProgressBar row={row} labels={d} />
+                )}
                 {row.lastError && (
                   <p className="font-body text-[12px] text-red">{d.lastError}: {row.lastError}</p>
                 )}

@@ -132,3 +132,20 @@
   /* Mono numerals align in tables and KPI rows. */
   .font-mono { font-variant-numeric: tabular-nums; }
 }
+
+/* Progress-bar stripe pulse for in-progress sends (sending / paused). */
+@keyframes progress-stripe {
+  0%   { background-position: 0 0; }
+  100% { background-position: 16px 0; }
+}
+.progress-pulse {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 4px,
+    rgba(255,255,255,0.15) 4px,
+    rgba(255,255,255,0.15) 8px
+  );
+  background-size: 16px 16px;
+  animation: progress-stripe 0.8s linear infinite;
+}
