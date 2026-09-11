@@ -177,6 +177,8 @@ export const id = {
       "Angka ini BEDA dari selisih live di atas: populasi sumbernya berbeda (mis. di sini arena_bookings 4; di selisih live arena dihitung dari tabel arena lain). Kandidat = snapshot cermin (dedup lintas sumber); selisih = dihitung saat halaman dibuka. Keduanya benar, menghitung hal berbeda.",
     candSourceCol: "Sumber (mentah)",
     candCountCol: "Kandidat",
+    candSecondaryNote:
+      "Angka sekunder. Sinyal hidup — orang yang benar-benar di luar pool — ada di ringkasan di atas.",
     candAsOf: "Data per", // + tanggal baris kandidat terbaru (umur DATA, bukan waktu hitung ulang)
     candFrozenSince: "Beku sejak", // + tanggal · N hari
     candFrozenDays: "hari tanpa perubahan",

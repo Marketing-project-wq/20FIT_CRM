@@ -145,7 +145,15 @@ function GapTable({ sources, t, lang }: { sources: SourceGap[]; t: Dict; lang: L
  *  table is a single 21 Aug backfill that no pipeline feeds. So the card judges freshness from
  *  `candidatesAsOf` (the newest row's timestamp) and, once that is older than CANDIDATE_STALE_DAYS,
  *  says "beku sejak <date>" out loud instead of a fresh-snapshot tag. `nowMs` is the decision clock
- *  (K-63), never rendered as a time. */
+ *  (K-63), never rendered as a time.
+ *
+ *  SECONDARY BY VISUAL WEIGHT (owner request, T-77 follow-up). Even once the card is honest about its
+ *  frozenness, a 30px black number reads as the section's headline — and a frozen figure must never
+ *  outrank the LIVE "orang di luar pool" number, which is already the hero of summary card 5 at the
+ *  top. So the count is rendered SMALL — secondary by size, not by colour: it keeps full ink so it
+ *  never reads weaker than its own per-source rows below (that would just invert the hierarchy the
+ *  other way) — and a pointer sends the operator up to the live signal. Display only — the count value
+ *  and its computation are unchanged, and the live number is NOT restated here (one-number-one-place). */
 function CandidateCard({ candidates, fitco, t, lang, candidatesAsOf, nowMs }: {
   candidates: Candidates; fitco: Fitco; t: Dict; lang: Lang; candidatesAsOf: string | null; nowMs: number;
 }) {
@@ -158,7 +166,13 @@ function CandidateCard({ candidates, fitco, t, lang, candidatesAsOf, nowMs }: {
             the date (and the alarm), so the neutral tag steps aside rather than printing it twice. */}
         {fresh.asOf && !fresh.isStale && <FreshTag>{t.dashboard.candAsOf} {formatDate(fresh.asOf, lang)}</FreshTag>}
       </div>
-      <p className="mt-2 font-display text-[30px] font-black leading-none text-ink">{formatCount(candidates.total, lang)}</p>
+      {/* Pointer to the LIVE hero (summary card 5). Placed above the frozen number so the operator
+          reads "the live signal is up top" before the secondary count. */}
+      <p className="mt-1 font-body text-[12px] leading-snug text-ink-soft">{t.dashboard.candSecondaryNote}</p>
+      {/* Small — secondary by SIZE to the live not-in-pool hero (summary card 5), never the section
+          headline. But full ink, NOT muted: a card total must not read weaker than its own per-source
+          rows below it, which would invert the hierarchy the other way. */}
+      <p className="mt-2 font-display text-[20px] font-bold leading-none text-ink">{formatCount(candidates.total, lang)}</p>
       <p className="mt-1 font-mono text-[11px] text-amber">{t.dashboard.candLabel}</p>
       {fresh.isStale && fresh.asOf && (
         <div className="tint-amber mt-3 rounded-sm px-3 py-2">
