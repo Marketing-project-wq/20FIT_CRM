@@ -60,6 +60,8 @@ export interface DeliveryRow {
   sentCount: number;
   deliveredCount: number;
   bouncedCount: number;
+  openedCount: number;
+  clickedCount: number;
   state: DeliveryState;
   time: string; // UTC ISO — scheduled_at for upcoming, created_at for a run
   cancellable: boolean; // only a pending scheduled send
@@ -128,6 +130,8 @@ interface RunCounts {
   sent: number;
   delivered: number;
   bounced: number;
+  opened: number;
+  clicked: number;
 }
 
 /** Logged + FAILED recipients per run (crm_message_log.campaign_id = run.id) — two head-counts per
@@ -137,7 +141,7 @@ async function countRecipients(admin: SupabaseClient, runIds: string[]): Promise
   const counts = new Map<string, RunCounts>();
   await Promise.all(
     runIds.map(async (id) => {
-      const [{ count: logged }, { count: failed }, { count: sent }, { count: delivered }, { count: bounced }] = await Promise.all([
+      const [{ count: logged }, { count: failed }, { count: sent }, { count: delivered }, { count: bounced }, { count: opened }, { count: clicked }] = await Promise.all([
         admin.from("crm_message_log").select("id", { count: "exact", head: true }).eq("campaign_id", id),
         admin
           .from("crm_message_log")
@@ -159,8 +163,18 @@ async function countRecipients(admin: SupabaseClient, runIds: string[]): Promise
           .select("id", { count: "exact", head: true })
           .eq("campaign_id", id)
           .eq("status", "bounced"),
+        admin
+          .from("crm_message_log")
+          .select("id", { count: "exact", head: true })
+          .eq("campaign_id", id)
+          .not("opened_at", "is", null),
+        admin
+          .from("crm_message_log")
+          .select("id", { count: "exact", head: true })
+          .eq("campaign_id", id)
+          .not("clicked_at", "is", null),
       ]);
-      counts.set(id, { logged: logged ?? 0, failed: failed ?? 0, sent: sent ?? 0, delivered: delivered ?? 0, bounced: bounced ?? 0 });
+      counts.set(id, { logged: logged ?? 0, failed: failed ?? 0, sent: sent ?? 0, delivered: delivered ?? 0, bounced: bounced ?? 0, opened: opened ?? 0, clicked: clicked ?? 0 });
     }),
   );
   return counts;
@@ -243,6 +257,8 @@ export async function listDeliveries(admin: SupabaseClient, limit = 100, nowIso 
       sentCount: 0,
       deliveredCount: 0,
       bouncedCount: 0,
+      openedCount: 0,
+      clickedCount: 0,
       state,
       time: s.scheduled_at,
       cancellable: s.status === "pending",
@@ -286,6 +302,8 @@ export async function listDeliveries(admin: SupabaseClient, limit = 100, nowIso 
       sentCount: counts.get(r.id)?.sent ?? 0,
       deliveredCount: counts.get(r.id)?.delivered ?? 0,
       bouncedCount: counts.get(r.id)?.bounced ?? 0,
+      openedCount: counts.get(r.id)?.opened ?? 0,
+      clickedCount: counts.get(r.id)?.clicked ?? 0,
       state,
       time: r.created_at,
       cancellable: false,
@@ -308,6 +326,8 @@ export interface DeliveryRecipient {
   failureCause: string | null;
   sentAt: string | null;
   deliveredAt: string | null;
+  openedAt: string | null;
+  clickedAt: string | null;
   createdAt: string;
 }
 
@@ -388,7 +408,7 @@ export async function deliveryRecipients(
 ): Promise<DeliveryRecipient[]> {
   const { data, error } = await admin
     .from("crm_message_log")
-    .select("customer_id, identity_hash, channel, status, failure_cause, sent_at, delivered_at, created_at")
+    .select("customer_id, identity_hash, channel, status, failure_cause, sent_at, delivered_at, opened_at, clicked_at, created_at")
     .eq("campaign_id", runId)
     .order("created_at", { ascending: false })
     .limit(limit);
@@ -401,6 +421,8 @@ export async function deliveryRecipients(
     failure_cause: string | null;
     sent_at: string | null;
     delivered_at: string | null;
+    opened_at: string | null;
+    clicked_at: string | null;
     created_at: string;
   }[];
 
@@ -417,6 +439,8 @@ export async function deliveryRecipients(
     failureCause: l.failure_cause,
     sentAt: l.sent_at,
     deliveredAt: l.delivered_at,
+    openedAt: l.opened_at,
+    clickedAt: l.clicked_at,
     createdAt: l.created_at,
   }));
 }
@@ -439,6 +463,8 @@ export interface DeliveryDetail {
   result: {
     sent: number;
     delivered: number;
+    opened: number;
+    clicked: number;
     bounced: number;
     complained: number;
     unsubscribed: number;
@@ -446,8 +472,7 @@ export interface DeliveryDetail {
   };
   // Preview of the EXACT version sent (skeleton-wrapped). null if that version can't be found.
   preview: { subject: string | null; html: string } | null;
-  // Opens/clicks are NOT measured: the Mailtrap webhook does not subscribe Open/Click events, so
-  // opened_at/clicked_at are always null. We surface this as "not measured" rather than a fake 0.
+  // True once ANY log row has opened_at or clicked_at filled (i.e. the webhook is subscribing those events).
   engagementMeasured: boolean;
   recipients: DeliveryRecipient[];
 }
@@ -505,12 +530,13 @@ export async function deliveryDetail(admin: SupabaseClient, runId: string): Prom
   const result = {
     sent: logs.filter((l) => l.status === "sent" || l.status === "delivered" || l.sent_at != null).length,
     delivered: logs.filter((l) => l.delivered_at != null).length,
+    opened: logs.filter((l) => l.opened_at != null).length,
+    clicked: logs.filter((l) => l.clicked_at != null).length,
     bounced: logs.filter((l) => l.bounced_at != null).length,
     complained: logs.filter((l) => l.complained_at != null).length,
     unsubscribed: logs.filter((l) => l.unsubscribed_at != null).length,
     failed: logs.filter((l) => l.status === "failed").length,
   };
-  // opened_at / clicked_at are never filled (webhook doesn't subscribe those events).
   const engagementMeasured = logs.some((l) => l.opened_at != null || l.clicked_at != null);
 
   // The four audience numbers, from the run's send-audit row (campaign.sent, keyed by campaign_id).
@@ -563,6 +589,8 @@ export async function deliveryDetail(admin: SupabaseClient, runId: string): Prom
     failureCause: l.failure_cause,
     sentAt: l.sent_at,
     deliveredAt: l.delivered_at,
+    openedAt: l.opened_at,
+    clickedAt: l.clicked_at,
     createdAt: l.created_at,
   }));
 
