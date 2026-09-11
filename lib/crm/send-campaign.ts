@@ -10,7 +10,7 @@ import type { SegmentCriteria } from "./segment";
 import { renderTemplate } from "./template";
 import { signUnsubscribeToken, unsubscribeSecret } from "./unsubscribe-token";
 import { hashIdentity, identityHashSecret } from "./identity-hash";
-import { sendTransactionalEmail } from "@/lib/email/send";
+import { sendTransactionalEmail, sendTransactionalEmailBatch, supportsBatchSend } from "@/lib/email/send";
 import { logApiFailure } from "./failure-log";
 import { SEND_ACTION } from "./send-constants";
 import { realSendEnabled, maySendTo } from "./send-gate";
@@ -25,6 +25,7 @@ import {
   type RecordOutcome,
   type SendSummary,
   type SendConfig,
+  type BatchSendResult,
 } from "./send-run";
 import { campaignBounceStatus } from "./bounce-monitor";
 
@@ -401,6 +402,67 @@ export async function sendCampaign(input: CampaignSendInput, nowIso: string): Pr
       );
       return { providerMessageId: receipt.providerMessageId };
     },
+    // BATCH port (11 Sep 2026) — offered ONLY when the active provider has a batch endpoint, so a
+    // rollback to EMAIL_PROVIDER=mailtrap silently returns the engine to one-at-a-time sending rather
+    // than failing. The engine treats an absent port as "no batching", so this is a safe conditional.
+    ...(supportsBatchSend()
+      ? {
+          async sendBatch(items: readonly { recipient: SendRecipient; message: RenderedMessage }[]) {
+            // ONE Resend batch request carries ONE `from` line, but the sender name is per-template-
+            // LANGUAGE (T-74). A mixed-language chunk sent as a single request would put some
+            // recipients under the wrong sender name — so the chunk is split by resolved sender name
+            // and each group is its own request. Results are reassembled by ORIGINAL INDEX.
+            const senderNameFor = (r: SendRecipient): string | undefined => {
+              const tpl = templates[r.language] ?? templates.id ?? templates.en;
+              return tpl?.senderName ?? undefined;
+            };
+            // Grouped as a plain array of {senderName, idxs} rather than a Map: this file compiles to
+            // an ES5 target where Map iteration needs --downlevelIteration.
+            const groups: { senderName: string; idxs: number[] }[] = [];
+            items.forEach((it: { recipient: SendRecipient; message: RenderedMessage }, i: number) => {
+              const key = senderNameFor(it.recipient) ?? "";
+              const g = groups.find((x) => x.senderName === key);
+              if (g) g.idxs.push(i);
+              else groups.push({ senderName: key, idxs: [i] });
+            });
+
+            const out = new Array<BatchSendResult>(items.length);
+            let anyRequestSucceeded = false;
+            let firstThrow: unknown = null;
+
+            for (const { senderName, idxs } of groups) {
+              try {
+                const receipts = await sendTransactionalEmailBatch(
+                  idxs.map((i: number) => ({
+                    to: items[i].recipient.destination,
+                    subject: items[i].message.subject ?? "",
+                    text: items[i].message.text,
+                    html: items[i].message.html,
+                  })),
+                  "crm-campaign",
+                  senderName === "" ? undefined : senderName,
+                );
+                anyRequestSucceeded = true;
+                idxs.forEach((i: number, n: number) => {
+                  out[i] = { ok: true, providerMessageId: receipts[n]?.providerMessageId ?? null };
+                });
+              } catch (e) {
+                if (firstThrow === null) firstThrow = e;
+                idxs.forEach((i: number) => {
+                  out[i] = { ok: false, error: e };
+                });
+              }
+            }
+
+            // THROW ONLY IF NOTHING WENT OUT. This is a double-send guard, not a style choice: the
+            // engine reacts to a throw by re-sending the whole chunk one-by-one, which is only safe
+            // while zero messages were delivered. Once ANY group succeeded we must report per-item
+            // results instead — otherwise the successful group would be sent a second time.
+            if (!anyRequestSucceeded && firstThrow !== null) throw firstThrow;
+            return out;
+          },
+        }
+      : {}),
     async record(key, outcome: RecordOutcome) {
       const patch: Record<string, unknown> = { status: outcome.status };
       if (outcome.status === "sent") {

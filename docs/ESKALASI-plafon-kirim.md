@@ -1,7 +1,20 @@
 # ESKALASI — `crm_send_config.daily_limit` tidak membatasi apa yang namanya janjikan
 
 **Untuk:** pemilik produk. **Tanggal:** 3 September 2026.
-**Status:** keputusan belum diambil. **Tidak ada perbaikan yang dibangun** — dokumen ini menyajikan
+
+> ## ✅ DITUTUP 11 September 2026 — lihat `docs/KEPUTUSAN-kirim-tanpa-batas.md`
+> Pemilik memilih **mencabut plafon sepenuhnya** (kampanye tanpa batas, tanpa jam tunggu), dan
+> bersamaan itu memilih **opsi (b)** di bawah untuk T-43: budget kini dimakan oleh PERCOBAAN, bukan
+> keberhasilan. T-44 sudah lebih dulu diperbaiki (dihitung dari `sent_at`).
+>
+> Pertanyaan "berapa plafon yang benar" jadi **tidak berlaku lagi** — tidak ada plafon secara default.
+> Analisis di bawah tetap disimpan karena masih menjelaskan cara penghitung itu bekerja bila seorang
+> operator memasang plafon berhingga lagi lewat Settings.
+>
+> ⚠️ Catatan yang masih hidup: peringatan "kampanye penyelesaian sebaiknya TIDAK dijalankan dulu" di
+> §2 **sudah tidak berlaku** — ia menunggu keputusan ini, dan keputusannya sudah diambil.
+
+**Status asli:** keputusan belum diambil. **Tidak ada perbaikan yang dibangun** — dokumen ini menyajikan
 temuan, dampaknya pada keputusan yang sudah Anda ambil, dan tiga opsi dengan trade-off masing-masing.
 Memilih di antaranya adalah keputusan Anda, bukan keputusan agen.
 

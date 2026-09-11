@@ -26,10 +26,27 @@
  *   7. Consecutive-failure auto-stop at 20: a run that is failing on EVERY recipient in a row has hit
  *      a wall (provider down, credential dead, quota gone), not 20 bad addresses. It stops itself
  *      (stoppedConsecutiveFailures) instead of writing the rest of the list as failures.
+ *
+ * BATCHING (11 Sep 2026). When the adapter supplies a `sendBatch` port and config.batchSize > 1, the
+ * engine sends in CHUNKS: it prepares up to batchSize recipients (suppression → budget → render →
+ * claim), hands them to the provider in ONE request, then records each outcome individually. Rules
+ * 1–7 are unchanged in MEANING — every recipient is still suppression-checked, still claimed under its
+ * own deterministic key, still recorded with its own differentiated cause. What changes is only the
+ * GRANULARITY at which the two auto-stops are evaluated: once per chunk instead of once per recipient,
+ * so a run can overshoot a stop threshold by at most one chunk. That is the deliberate price of
+ * batching, and it is why the chunk is capped at 100.
+ *
+ * Adapters WITHOUT a sendBatch port (Mailtrap) transparently keep the original one-at-a-time path, so
+ * switching providers remains a pure env flip with no behavioural surprise.
  */
 
 import { safeCode } from "./safe-code";
+import { DAILY_LIMIT_DEFAULT, isUnlimitedDailyLimit } from "./send-limits";
 import type { IdentityKind } from "./suppression-input";
+
+/** Resend's documented maximum for POST /emails/batch. Also our chunk cap: the bigger the chunk, the
+ *  further a run can overshoot an auto-stop, so this is not raised "just because". */
+export const RESEND_BATCH_MAX = 100;
 
 export type Channel = "email" | "whatsapp";
 
@@ -88,9 +105,22 @@ export interface SendConfig {
   backoffBaseMs: number;
   /** Rule 9 (PACING, 8 Sep 2026). A base pause after EVERY real send attempt, success or failure —
    *  independent of any error. Sending 2.8/s without a break for 108 min is the behaviour that
-   *  provoked the 3 Sep wall (a hypothesis — the reject status was discarded; see TEMUAN.md). At
-   *  500 ms a run is capped near 2 sends/s; a full 1,000-send day takes ≈ 8–9 min instead of ≈ 6. */
+   *  provoked the 3 Sep wall (a hypothesis — the reject status was discarded; see TEMUAN.md).
+   *
+   *  NOW 0 BY DEFAULT (owner decision, 11 Sep 2026): "no wait" was an explicit requirement. The 3 Sep
+   *  wall is instead defended by (a) batching — `batchSize` collapses 100 sends into ONE API request,
+   *  so the request RATE drops ~100× even at full speed, which is what a provider actually throttles
+   *  on, and (b) the 429-aware backoff of rule 8, which stays. Set it back above 0 to re-pace. */
   interRecipientDelayMs: number;
+  /** BATCHING (11 Sep 2026). How many recipients are sent per provider API call when the adapter
+   *  supplies a `sendBatch` port (Resend's POST /emails/batch accepts up to 100). This is the single
+   *  biggest throughput lever AND the politest one: the team-wide Resend rate limit is 10 REQUESTS/s
+   *  shared with eight other 20FIT systems, so 100-per-request buys ~100× the email throughput while
+   *  consuming the SAME request budget those systems compete for.
+   *
+   *  1 (or an adapter with no sendBatch port, e.g. Mailtrap) keeps the original one-at-a-time path
+   *  byte-for-byte — that fallback is what lets the provider switch stay a pure env flip. */
+  batchSize: number;
   /** BATCH CAP (P0-3, background drainer). The most send ATTEMPTS one runSend invocation may claim
    *  before it stops and reports `haltedForBatch`. It bounds a single tick's DURATION so a background
    *  executor can drain a large run across many short ticks (never one multi-hour HTTP request), while
@@ -102,13 +132,14 @@ export interface SendConfig {
 }
 
 export const DEFAULT_SEND_CONFIG: SendConfig = {
-  dailyLimit: 1000,
-  bounceThreshold: 0.05,
+  dailyLimit: DAILY_LIMIT_DEFAULT, // UNLIMITED (owner decision 11 Sep 2026) — see send-limits.ts
+  bounceThreshold: 0.05, // KEPT: the volume ceiling was lifted, the damage auto-stops were not.
   minBounceSample: 20,
-  maxConsecutiveFailures: 20,
+  maxConsecutiveFailures: 20, // KEPT: a provider wall must still halt the run, not write 18k failures.
   maxSendAttempts: 4,
   backoffBaseMs: 1000,
-  interRecipientDelayMs: 500,
+  interRecipientDelayMs: 0, // no pacing pause (owner: "tanpa jam tunggu"); batching protects the req/s
+  batchSize: RESEND_BATCH_MAX, // one API call per 100 recipients when the adapter supports it
   maxPerInvocation: Number.MAX_SAFE_INTEGER, // no batch cap by default; only the drainer lowers it
 };
 
@@ -192,6 +223,13 @@ export interface RecordSkipped {
 }
 export type RecordOutcome = RecordSent | RecordFailed | RecordSkipped;
 
+/** One item's outcome inside a successful batch REQUEST. `ok:false` carries the provider's
+ *  per-recipient error so the engine can classify it with the same `classifySendFailure` it uses for a
+ *  thrown single send — one classifier, so batch and single can never disagree about a cause. */
+export type BatchSendResult =
+  | { ok: true; providerMessageId: string | null }
+  | { ok: false; error: unknown };
+
 /**
  * The ports the engine drives. Every method is async and side-effecting in production; in the test
  * they are backed by an in-memory store so a "real interruption" is just a partial call.
@@ -206,6 +244,22 @@ export interface SendPorts {
   render(recipient: SendRecipient): Promise<RenderedMessage>;
   /** Send it. Resolves with the provider id, or THROWS on a delivery failure (classified below). */
   send(recipient: SendRecipient, message: RenderedMessage): Promise<{ providerMessageId: string | null }>;
+  /** OPTIONAL batch send (11 Sep 2026): one provider request for up to `config.batchSize` recipients.
+   *
+   *  CONTRACT — and the reason this returns results instead of throwing per item: a batch has TWO
+   *  independent failure modes and the engine must tell them apart.
+   *    · The whole REQUEST failed (429, auth, network) → THROW, exactly like `send`. The engine then
+   *      retries the entire chunk under rule 8's backoff, because nothing was delivered.
+   *    · Individual ITEMS failed while the request succeeded (one bad address among 100) → resolve with
+   *      one result PER INPUT, in INPUT ORDER, marking those items `ok: false` with an error shaped
+   *      like `send`'s throw (an `err.status` property). Retrying those is pointless — the provider
+   *      already gave a per-recipient verdict — so they are recorded as failures immediately.
+   *
+   *  Returning fewer results than inputs is a contract violation; the engine treats any missing tail
+   *  as `unknown` failures rather than silently counting them sent. */
+  sendBatch?(
+    items: readonly { recipient: SendRecipient; message: RenderedMessage }[],
+  ): Promise<readonly BatchSendResult[]>;
   /** Stamp the outcome onto the claimed row. */
   record(idempotencyKey: string, outcome: RecordOutcome): Promise<void>;
   /** Rule 3: today's already-sent count, read FROM THE LOG. */
@@ -412,10 +466,112 @@ export async function runSend(
     haltedForBatch: false,
   };
 
-  const alreadyToday = await ports.todaySentCount();
-  let budget = Math.max(0, config.dailyLimit - alreadyToday);
+  // Rule 3. An UNLIMITED limit skips the log read entirely — there is no ceiling to measure against,
+  // so the query would only cost a round trip and give the run a number it cannot act on.
+  const unlimited = isUnlimitedDailyLimit(config.dailyLimit);
+  const alreadyToday = unlimited ? 0 : await ports.todaySentCount();
+  let budget = unlimited ? Number.MAX_SAFE_INTEGER : Math.max(0, config.dailyLimit - alreadyToday);
   let hardBounces = 0;
   let consecutiveFailures = 0;
+
+  // BATCHING. Only when the adapter actually offers it — otherwise every line below behaves exactly
+  // as it did before, which is what keeps the Mailtrap path and the provider switch risk-free.
+  const batchSize = Math.min(Math.max(1, Math.floor(config.batchSize)), RESEND_BATCH_MAX);
+  const useBatch = typeof ports.sendBatch === "function" && batchSize > 1;
+
+  /** Recipients CLAIMED and rendered, waiting for their batch request. Every item here owns a
+   *  crm_message_log row that is claimed but not yet stamped — so this MUST be flushed on every exit
+   *  path, including an auto-stop or a batch-cap halt, or those rows would be stranded forever. */
+  let pending: { recipient: SendRecipient; message: RenderedMessage; key: string }[] = [];
+
+  /** Send one chunk in a single provider request, then stamp every outcome. */
+  async function flushPending(): Promise<void> {
+    if (pending.length === 0) return;
+    const chunk = pending;
+    pending = [];
+
+    // Rule 8 applied to the REQUEST: a throw means nothing in this chunk was delivered, so the whole
+    // chunk is retried under the same backoff a single send would get. Per-ITEM errors never land
+    // here — they come back as ok:false results and are recipient-level verdicts, not worth a retry.
+    let results: readonly BatchSendResult[] | null = null;
+    let thrown: unknown = null;
+    for (let attempt = 1; attempt <= config.maxSendAttempts; attempt++) {
+      try {
+        results = await ports.sendBatch!(chunk.map((c) => ({ recipient: c.recipient, message: c.message })));
+        thrown = null;
+        break;
+      } catch (e) {
+        thrown = e;
+        if (isRetryableSendError(e) && attempt < config.maxSendAttempts) {
+          summary.retriedSends++;
+          await ports.sleep(backoffDelayMs(attempt, config, rng));
+          continue;
+        }
+        break;
+      }
+    }
+
+    // ONE BAD ADDRESS MUST NOT FAIL NINETY-NINE GOOD ONES. Resend validates a batch as a whole, so a
+    // single malformed recipient rejects the entire request with a 4xx. Blaming all 100 for it would
+    // be a lie in the log AND would burn the 20-in-a-row wall instantly. So on a RECIPIENT-LEVEL
+    // rejection (non-retryable → not a 429/network blip) the chunk is re-sent ONE BY ONE: the culprit
+    // fails alone and the rest go out normally. A retryable error that survived its backoff is a real
+    // provider wall — every item genuinely failed, and retrying singly would just repeat it 100 times.
+    if (thrown !== null && !isRetryableSendError(thrown)) {
+      results = await Promise.all(
+        chunk.map(async (c): Promise<BatchSendResult> => {
+          try {
+            const res = await ports.send(c.recipient, c.message);
+            return { ok: true, providerMessageId: res.providerMessageId };
+          } catch (e) {
+            return { ok: false, error: e };
+          }
+        }),
+      );
+      thrown = null;
+    }
+
+    // Decide every outcome first (pure), so the counter pass below can stay strictly ordered while the
+    // WRITES go out in parallel. A result the adapter failed to return is an `unknown` FAILURE, never
+    // an assumed success — a short array must not silently promote recipients to "sent".
+    const decided = chunk.map((item, i) => {
+      const res: BatchSendResult =
+        thrown !== null
+          ? { ok: false, error: thrown }
+          : (results?.[i] ?? { ok: false, error: new Error("Batch response was missing this recipient's result.") });
+      if (res.ok) {
+        return { item, outcome: { status: "sent", providerMessageId: res.providerMessageId } as RecordOutcome, cause: null };
+      }
+      const cause = classifySendFailure(res.error);
+      const status = cause === "hard_bounce" ? "bounced" : "failed";
+      return {
+        item,
+        outcome: { status, failureCause: cause, code: sendFailureCode(res.error) } as RecordOutcome,
+        cause,
+      };
+    });
+
+    // Counters IN ORDER — `consecutiveFailures` is a streak, so it only means anything if the chunk is
+    // walked front to back. The two auto-stops may flip here; the caller's loop sees them next turn.
+    for (const d of decided) {
+      if (d.cause === null) {
+        summary.sent++;
+        consecutiveFailures = 0; // rule 7: one success clears the streak.
+        continue;
+      }
+      summary.failed[d.cause]++;
+      if (d.cause === "hard_bounce") hardBounces++;
+      if (shouldStopForBounces(hardBounces, summary.attempted, config.bounceThreshold, config.minBounceSample)) {
+        summary.stoppedHighBounce = true;
+      }
+      consecutiveFailures++;
+      if (consecutiveFailures >= config.maxConsecutiveFailures) {
+        summary.stoppedConsecutiveFailures = true;
+      }
+    }
+
+    await Promise.all(decided.map((d) => ports.record(d.item.key, d.outcome)));
+  }
 
   for (const r of recipients) {
     if (summary.stoppedHighBounce || summary.stoppedConsecutiveFailures) break;
@@ -473,6 +629,22 @@ export async function runSend(
     }
 
     summary.attempted++;
+    // T-43 FIX (11 Sep 2026). The budget is consumed by the ATTEMPT, not by the success. It used to be
+    // decremented only on the success path, so a run that failed every recipient never touched it: on
+    // 3 Sep a 1,000/day ceiling let 18,243 rows be written because 18,119 failures cost nothing. A
+    // ceiling that only counts successes is not a ceiling on what we DO to the provider. This is
+    // option (b) of docs/ESKALASI-plafon-kirim.md, chosen by the owner — so "1,000" now means 1,000
+    // ATTEMPTS, and a day of heavy failures can exhaust it without contacting 1,000 people.
+    budget--;
+
+    if (useBatch) {
+      // Claimed and rendered — queue it. The flush (and therefore the provider request) happens when
+      // the chunk is full, or at the tail of the run.
+      pending.push({ recipient: r, message, key });
+      if (pending.length >= batchSize) await flushPending();
+      continue;
+    }
+
     // Rule 8 (BACKOFF). Retry the SAME recipient on a retryable error (provider throttle / network),
     // pausing between tries; give up after config.maxSendAttempts and record the failure as usual.
     //
@@ -489,7 +661,6 @@ export async function runSend(
         const res = await ports.send(r, message);
         await ports.record(key, { status: "sent", providerMessageId: res.providerMessageId });
         summary.sent++;
-        budget--;
         consecutiveFailures = 0; // rule 7: the streak is CONSECUTIVE — one success clears it.
         delivered = true;
         break;
@@ -531,6 +702,13 @@ export async function runSend(
     // suppressed / deferred / already-claimed recipients above `continue` past this and cost nothing.
     if (config.interRecipientDelayMs > 0) await ports.sleep(config.interRecipientDelayMs);
   }
+
+  // TAIL FLUSH — unconditional, and the reason `pending` is declared outside the loop. Every exit above
+  // is a `break` (auto-stop, batch cap) or loop exhaustion, and any of them can leave a partial chunk
+  // whose rows are ALREADY CLAIMED. Skipping this would strand them: claimed, never sent, and — because
+  // the idempotency key is deterministic — permanently skipped by every future re-run. The auto-stops
+  // stop the run from claiming MORE recipients; they never abandon recipients already claimed.
+  await flushPending();
 
   return summary;
 }

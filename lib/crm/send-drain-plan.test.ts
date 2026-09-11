@@ -55,9 +55,11 @@ describe("nextDrainState — one batch → the run's next drain state", () => {
 });
 
 describe("send-drain constants", () => {
-  it("the per-tick batch cap is a small positive number (bounds tick duration)", () => {
-    expect(DRAIN_BATCH).toBeGreaterThan(0);
-    expect(DRAIN_BATCH).toBeLessThanOrEqual(1000);
+  it("the per-tick batch cap sits above any realistic campaign, so it never throttles a send", () => {
+    // Since 11 Sep 2026 this is a CRASH-RECOVERY unit, not a volume policy: the owner's instruction is
+    // that the CRM imposes no ceiling of its own. It must therefore clear the largest known audience
+    // (~12k) comfortably, so a whole campaign drains in one tick and the bound never binds.
+    expect(DRAIN_BATCH).toBeGreaterThanOrEqual(20000);
   });
   it("claims only a few runs per tick (the daily budget is shared)", () => {
     expect(DRAIN_RUNS_PER_TICK).toBeGreaterThan(0);

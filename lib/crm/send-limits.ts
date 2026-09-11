@@ -2,14 +2,34 @@
  * Send-limit rules — PURE and client-safe (the Settings form and the server action both import
  * them, so the two can't disagree about what a valid limit is). No I/O here.
  *
- * The daily limit is a domain-REPUTATION ceiling, not a Mailtrap quota: 20fit.id has a
+ * The daily limit is a domain-REPUTATION ceiling, not a Mailtrap/Resend quota: 20fit.id has a
  * transactional history but ZERO mass-marketing history, and a sudden volume spike is the single
  * strongest spam signal at Gmail/Yahoo. So the limit is configurable (the owner may raise it) but a
  * large jump earns a one-time WARNING — never a block.
+ *
+ * UNLIMITED BY DEFAULT (owner decision, 11 Sep 2026). The owner asked for campaigns of ANY size with
+ * no wait and no manual resume, and explicitly accepted the two risks this ceiling existed to manage:
+ *   1. Domain reputation — 20fit.id's sending reputation is shared with eight transactional systems
+ *      (ticket confirmations, POS receipts, password resets). A complaint spike hurts those too.
+ *   2. The Resend monthly quota (~50k) is ONE pool shared with those same eight systems, and Resend
+ *      enforces no daily cap — so this app-side ceiling was the only brake on eating their quota.
+ * The bounce/complaint auto-stops (bounceThreshold, maxConsecutiveFailures) are deliberately KEPT as
+ * the last line of defence; only the volume ceiling is lifted. See docs/RENCANA-batas-kirim.md.
  */
 
-export const DAILY_LIMIT_DEFAULT = 1000;
-export const WORKFLOW_DAILY_CAP_DEFAULT = 300;
+/** UNLIMITED sentinel. A limit at or above this is treated as "no ceiling" and shown as such. Kept a
+ *  finite int32-safe value (not Infinity) so it still satisfies Number.isInteger validation and fits
+ *  the DB's integer column + the cap-≤-limit check constraint. */
+export const UNLIMITED_DAILY_LIMIT = 2_000_000_000;
+
+/** Is this limit effectively "no ceiling"? One predicate so the engine, the drainer and the Settings
+ *  screen can never disagree about what counts as unlimited. */
+export function isUnlimitedDailyLimit(limit: number): boolean {
+  return limit >= UNLIMITED_DAILY_LIMIT;
+}
+
+export const DAILY_LIMIT_DEFAULT = UNLIMITED_DAILY_LIMIT;
+export const WORKFLOW_DAILY_CAP_DEFAULT = UNLIMITED_DAILY_LIMIT;
 
 export interface SendLimits {
   dailyLimit: number;

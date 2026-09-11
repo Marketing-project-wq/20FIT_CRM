@@ -5,7 +5,14 @@ import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/components/i18n/lang-provider";
 import { formatCount } from "@/lib/i18n";
-import { validateSendLimits, isLargeRaise, RAMP_STEPS, type SendLimits } from "@/lib/crm/send-limits";
+import {
+  validateSendLimits,
+  isLargeRaise,
+  isUnlimitedDailyLimit,
+  UNLIMITED_DAILY_LIMIT,
+  RAMP_STEPS,
+  type SendLimits,
+} from "@/lib/crm/send-limits";
 import { setSendLimitsAction } from "@/app/(app)/settings/send-limits-actions";
 
 const inputCls =
@@ -31,7 +38,17 @@ export function SendLimitsPanel({ initial }: { initial: SendLimits }) {
   const workflowN = Number(workflow);
   const valid = validateSendLimits({ dailyLimit: dailyN, workflowDailyCap: workflowN });
   // The reputation warning shows while the entered daily limit more than doubles the CURRENT stored one.
-  const showWarning = Number.isFinite(dailyN) && isLargeRaise(initial.dailyLimit, dailyN);
+  // Suppressed while the field holds the unlimited sentinel: "you more than doubled it" is noise when
+  // the number is not a quantity at all, and the unlimited notice already states the risk in full.
+  const unlimitedEntered = Number.isFinite(dailyN) && isUnlimitedDailyLimit(dailyN);
+  const showWarning =
+    Number.isFinite(dailyN) && !unlimitedEntered && isLargeRaise(initial.dailyLimit, dailyN);
+
+  function setUnlimited() {
+    setDaily(String(UNLIMITED_DAILY_LIMIT));
+    setWorkflow(String(UNLIMITED_DAILY_LIMIT));
+    setNotice(null);
+  }
 
   function errText(code: string | undefined): string {
     switch (code) {
@@ -62,6 +79,19 @@ export function SendLimitsPanel({ initial }: { initial: SendLimits }) {
       </div>
 
       <div className="glass-strong flex flex-col gap-4 rounded-card p-5">
+        {/* The sentinel renders as a 10-digit number, which reads like a mistake. Say plainly that it
+            means "no ceiling", so nobody "corrects" it back down to 1000 and silently reinstates the
+            13-day drip the owner asked to remove. */}
+        {unlimitedEntered && (
+          <div className="tint-amber flex gap-2 rounded-card p-4">
+            <AlertTriangle className="h-4 w-4 shrink-0 text-amber" aria-hidden />
+            <div>
+              <p className="font-body text-[13px] font-semibold text-ink">{s.unlimitedBadge}</p>
+              <p className="mt-1 font-body text-[12px] leading-relaxed text-ink-soft">{s.unlimitedNote}</p>
+            </div>
+          </div>
+        )}
+
         <label className="flex flex-col gap-1.5">
           <span className="font-body text-[13px] font-semibold text-ink">{s.dailyLabel}</span>
           <input type="number" min={1} className={inputCls} value={daily} onChange={(e) => { setDaily(e.target.value); setNotice(null); }} />
@@ -91,6 +121,9 @@ export function SendLimitsPanel({ initial }: { initial: SendLimits }) {
 
         <div className="flex items-center gap-3">
           <Button size="sm" onClick={onSave} disabled={busy || !valid.ok}>{busy ? s.saving : s.save}</Button>
+          {!unlimitedEntered && (
+            <Button size="sm" variant="ghost" onClick={setUnlimited} disabled={busy}>{s.setUnlimited}</Button>
+          )}
           {notice && <span className="font-body text-[13px] text-ink-soft">{notice}</span>}
         </div>
       </div>

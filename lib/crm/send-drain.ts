@@ -256,10 +256,17 @@ export async function drainRunOnce(
       await releaseRunDrainClaim(admin, run.id);
       break;
     case "paused_daily_limit":
-      // Today's shared budget is spent → stay 'sending', drop drain_active. The leftover waits for a
-      // human "Lanjutkan" (planDailySpread decision) — the executor will NOT pick it up again.
+      // A finite ceiling was configured and today's share is spent. The run stays 'sending' and the
+      // drain stays ARMED — the next tick re-reads the ceiling from the log and continues the moment
+      // there is room (i.e. after WIB midnight), with no human in the loop.
+      //
+      // CHANGED 11 Sep 2026: this used to clear drain_active and wait for an operator to click
+      // "Lanjutkan", which is what made a large campaign take one calendar day and one click per
+      // 1,000 recipients. With the ceiling now UNLIMITED by default this branch is unreachable in
+      // normal operation; it only runs if an operator deliberately sets a finite limit in Settings,
+      // and even then it costs a wait for the clock, never a wait for a person.
       await markRunSending(run.id);
-      await clearRunDrain(admin, run.id);
+      await releaseRunDrainClaim(admin, run.id);
       break;
     case "stopped":
       // Bounce ratio / consecutive-failure wall — finalizeRunStatus records the reason from the

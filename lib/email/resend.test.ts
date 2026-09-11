@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 vi.mock("server-only", () => ({}));
-import { sendTransactionalEmail, extractResendId, type ResendSendError } from "./resend";
+import {
+  sendTransactionalEmail,
+  extractResendId,
+  extractResendBatchIds,
+  RESEND_BATCH_LIMIT,
+  type ResendSendError,
+} from "./resend";
 
 /**
  * The Resend adaptor must be contract-identical to lib/email/mailtrap.ts so the two are interchangeable
@@ -82,5 +88,43 @@ describe("sendTransactionalEmail (Resend)", () => {
     stubFetch(200, { id: "x" });
     await expect(sendTransactionalEmail(mail)).rejects.toThrow(/not configured/);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * BATCH id extraction. Resend answers a batch with `{ data: [{id}, …] }` INDEX-ALIGNED with the
+ * request array, and that alignment is load-bearing: provider_message_id is what every later webhook
+ * (delivered / bounced / complained) is correlated on. An id that slides one position would silently
+ * attach one recipient's delivery events to a DIFFERENT recipient — a corruption no later check could
+ * detect. So the parser is required to preserve POSITION and pad, never to compact.
+ */
+describe("extractResendBatchIds", () => {
+  it("returns ids in request order", () => {
+    const body = { data: [{ id: "a" }, { id: "b" }, { id: "c" }] };
+    expect(extractResendBatchIds(body, 3)).toEqual(["a", "b", "c"]);
+  });
+
+  it("pads to the expected length when the provider returns fewer rows", () => {
+    expect(extractResendBatchIds({ data: [{ id: "a" }] }, 3)).toEqual(["a", null, null]);
+  });
+
+  it("holds POSITION when a middle entry is malformed — it must not compact", () => {
+    // The third recipient's id must stay null; "c" must NOT slide up into slot 1.
+    const body = { data: [{ id: "a" }, { nope: true }, { id: "c" }] };
+    expect(extractResendBatchIds(body, 3)).toEqual(["a", null, "c"]);
+  });
+
+  it("treats a missing/!array data as all-unknown rather than throwing", () => {
+    expect(extractResendBatchIds({}, 2)).toEqual([null, null]);
+    expect(extractResendBatchIds(null, 2)).toEqual([null, null]);
+    expect(extractResendBatchIds({ data: "nope" }, 1)).toEqual([null]);
+  });
+
+  it("rejects a non-string or empty id instead of inventing one", () => {
+    expect(extractResendBatchIds({ data: [{ id: 42 }, { id: "" }] }, 2)).toEqual([null, null]);
+  });
+
+  it("pins Resend's documented batch ceiling", () => {
+    expect(RESEND_BATCH_LIMIT).toBe(100);
   });
 });
