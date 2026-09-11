@@ -1326,6 +1326,7 @@ export const id = {
       resFailed: "Gagal",
       recipientsTitle: "Penerima",
       progressSent: "{x} / {y} terkirim",
+      progressConfirmed: "Dikonfirmasi",
       progressDelivered: "Terkirim",
       progressFailed: "Gagal",
       progressRemaining: "Belum terkirim",

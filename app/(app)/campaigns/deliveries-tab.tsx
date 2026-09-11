@@ -70,19 +70,25 @@ function Stat({ label, value }: { label: string; value: ReactNode }) {
 function ProgressBar({ row, labels }: { row: DeliveryRow; labels: Dict["campaignsPage"]["deliveries"] }) {
   const total = row.recipientCount;
   const delivered = row.deliveredCount;
+  const sent = row.sentCount;
+  const good = sent + delivered;
   const bad = row.failedCount + row.bouncedCount;
-  const remaining = Math.max(0, total - delivered - bad);
+  const remaining = Math.max(0, total - good - bad);
   const pctDelivered = (delivered / total) * 100;
+  const pctSent = (sent / total) * 100;
   const pctBad = (bad / total) * 100;
-  const pctRemaining = 100 - pctDelivered - pctBad;
+  const pctRemaining = 100 - pctDelivered - pctSent - pctBad;
   const inProgress = row.state === "running" || row.state === "paused" || row.state === "stalled";
-  const text = labels.progressSent.replace("{x}", String(delivered)).replace("{y}", String(total));
+  const text = labels.progressSent.replace("{x}", String(good)).replace("{y}", String(total));
 
   return (
     <div className="flex flex-col gap-1">
       <div className="flex h-2 w-full overflow-hidden rounded-full bg-ink-faint/20">
         {pctDelivered > 0 && (
           <div className="bg-green transition-all duration-300" style={{ width: `${pctDelivered}%` }} />
+        )}
+        {pctSent > 0 && (
+          <div className="bg-green-dim transition-all duration-300" style={{ width: `${pctSent}%` }} />
         )}
         {pctBad > 0 && (
           <div className="bg-red transition-all duration-300" style={{ width: `${pctBad}%` }} />
@@ -99,6 +105,12 @@ function ProgressBar({ row, labels }: { row: DeliveryRow; labels: Dict["campaign
         {delivered > 0 && (
           <span className="flex items-center gap-1">
             <span className="inline-block h-2 w-2 rounded-full bg-green" />
+            {labels.progressConfirmed}
+          </span>
+        )}
+        {sent > 0 && (
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-2 w-2 rounded-full bg-green-dim" />
             {labels.progressDelivered}
           </span>
         )}

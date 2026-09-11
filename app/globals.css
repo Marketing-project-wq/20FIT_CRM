@@ -97,6 +97,9 @@
 .pill-outline-green { border:1px solid color-mix(in srgb, var(--green) 45%, transparent); color: var(--green); }
 .pill-outline-blue  { border:1px solid color-mix(in srgb, var(--blue) 45%, transparent);  color: var(--blue);  }
 
+/* Dimmed green for "sent but not yet webhook-confirmed" bar segments. */
+.bg-green-dim { background: color-mix(in srgb, var(--green) 55%, transparent); }
+
 /* Status pill tints — the four fixed status colours + neutral (PRD §18.6).
    CRM states are folded onto these; the palette is never expanded. */
 .tint-red     { background: color-mix(in srgb, var(--red) 12%, transparent);       color: var(--red); }

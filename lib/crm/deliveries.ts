@@ -55,6 +55,7 @@ export interface DeliveryRow {
    *    - 'stopped' — a halted run's failure count is the size of what it halted on.
    *  0 for a scheduled row that never became a run. */
   failedCount: number;
+  sentCount: number;
   deliveredCount: number;
   bouncedCount: number;
   state: DeliveryState;
@@ -122,6 +123,7 @@ async function resolveOwnerNames(
 interface RunCounts {
   logged: number;
   failed: number;
+  sent: number;
   delivered: number;
   bounced: number;
 }
@@ -133,13 +135,18 @@ async function countRecipients(admin: SupabaseClient, runIds: string[]): Promise
   const counts = new Map<string, RunCounts>();
   await Promise.all(
     runIds.map(async (id) => {
-      const [{ count: logged }, { count: failed }, { count: delivered }, { count: bounced }] = await Promise.all([
+      const [{ count: logged }, { count: failed }, { count: sent }, { count: delivered }, { count: bounced }] = await Promise.all([
         admin.from("crm_message_log").select("id", { count: "exact", head: true }).eq("campaign_id", id),
         admin
           .from("crm_message_log")
           .select("id", { count: "exact", head: true })
           .eq("campaign_id", id)
           .eq("status", "failed"),
+        admin
+          .from("crm_message_log")
+          .select("id", { count: "exact", head: true })
+          .eq("campaign_id", id)
+          .eq("status", "sent"),
         admin
           .from("crm_message_log")
           .select("id", { count: "exact", head: true })
@@ -151,7 +158,7 @@ async function countRecipients(admin: SupabaseClient, runIds: string[]): Promise
           .eq("campaign_id", id)
           .eq("status", "bounced"),
       ]);
-      counts.set(id, { logged: logged ?? 0, failed: failed ?? 0, delivered: delivered ?? 0, bounced: bounced ?? 0 });
+      counts.set(id, { logged: logged ?? 0, failed: failed ?? 0, sent: sent ?? 0, delivered: delivered ?? 0, bounced: bounced ?? 0 });
     }),
   );
   return counts;
@@ -231,6 +238,7 @@ export async function listDeliveries(admin: SupabaseClient, limit = 100, nowIso 
       templateKey: s.template_key,
       recipientCount: s.shown_sendable ?? 0,
       failedCount: 0,
+      sentCount: 0,
       deliveredCount: 0,
       bouncedCount: 0,
       state,
@@ -273,6 +281,7 @@ export async function listDeliveries(admin: SupabaseClient, limit = 100, nowIso 
       templateKey: r.template_key,
       recipientCount: counts.get(r.id)?.logged ?? 0,
       failedCount: counts.get(r.id)?.failed ?? 0,
+      sentCount: counts.get(r.id)?.sent ?? 0,
       deliveredCount: counts.get(r.id)?.delivered ?? 0,
       bouncedCount: counts.get(r.id)?.bounced ?? 0,
       state,
