@@ -260,6 +260,12 @@ export interface SendPorts {
   sendBatch?(
     items: readonly { recipient: SendRecipient; message: RenderedMessage }[],
   ): Promise<readonly BatchSendResult[]>;
+  /** OPTIONAL. Recipients that share this key may travel in the SAME provider request; those that
+   *  differ may not. The engine buckets by it so every `sendBatch` call is homogeneous and can
+   *  therefore be ONE request — which is what keeps a failure a whole-request failure, and so keeps
+   *  the backoff and the one-by-one isolation working. Resend's constraint is that one request has a
+   *  single `from`, so the adapter keys on the resolved sender name. Absent → one bucket for all. */
+  batchGroupKey?(recipient: SendRecipient): string;
   /** Stamp the outcome onto the claimed row. */
   record(idempotencyKey: string, outcome: RecordOutcome): Promise<void>;
   /** Rule 3: today's already-sent count, read FROM THE LOG. */
@@ -479,16 +485,30 @@ export async function runSend(
   const batchSize = Math.min(Math.max(1, Math.floor(config.batchSize)), RESEND_BATCH_MAX);
   const useBatch = typeof ports.sendBatch === "function" && batchSize > 1;
 
-  /** Recipients CLAIMED and rendered, waiting for their batch request. Every item here owns a
-   *  crm_message_log row that is claimed but not yet stamped — so this MUST be flushed on every exit
-   *  path, including an auto-stop or a batch-cap halt, or those rows would be stranded forever. */
-  let pending: { recipient: SendRecipient; message: RenderedMessage; key: string }[] = [];
+  interface PendingItem { recipient: SendRecipient; message: RenderedMessage; key: string }
 
-  /** Send one chunk in a single provider request, then stamp every outcome. */
-  async function flushPending(): Promise<void> {
-    if (pending.length === 0) return;
-    const chunk = pending;
-    pending = [];
+  /**
+   * Recipients CLAIMED and rendered, waiting for their batch request, BUCKETED BY BATCH GROUP.
+   *
+   * WHY BUCKETS AND NOT ONE FLAT LIST. A chunk must be sendable as exactly ONE provider request, and
+   * some recipients cannot legally share a request — e.g. a bilingual audience resolves to different
+   * template sender names, and one Resend request carries a single `from`. If a mixed chunk were
+   * handed over, the adapter would have to split it internally and could then return a PARTIAL
+   * failure, which silently defeats both recovery mechanisms below: the whole-chunk backoff and the
+   * one-by-one isolation only run when `sendBatch` THROWS, and an adapter that partly succeeded must
+   * not throw (that would double-send the successful part). The result was good recipients in the
+   * failing half being permanently recorded `failed` with no retry. Bucketing removes the problem at
+   * the source: every flush is homogeneous, so every failure is a whole-request failure again.
+   *
+   * Every item here owns a crm_message_log row that is claimed but not yet stamped — so ALL buckets
+   * MUST be flushed on every exit path, including an auto-stop or a batch-cap halt, or those rows
+   * would be stranded: claimed, never sent, and permanently skipped by re-runs (deterministic key).
+   */
+  const buckets: { key: string; items: PendingItem[] }[] = [];
+
+  /** Send ONE homogeneous chunk in a single provider request, then stamp every outcome. */
+  async function flushChunk(chunk: PendingItem[]): Promise<void> {
+    if (chunk.length === 0) return;
 
     // Rule 8 applied to the REQUEST: a throw means nothing in this chunk was delivered, so the whole
     // chunk is retried under the same backoff a single send would get. Per-ITEM errors never land
@@ -573,6 +593,14 @@ export async function runSend(
     await Promise.all(decided.map((d) => ports.record(d.item.key, d.outcome)));
   }
 
+  /** Flush every bucket — used at the tail, and on any early exit, so nothing stays claimed-unsent. */
+  async function flushAllBuckets(): Promise<void> {
+    for (const b of buckets) {
+      if (b.items.length === 0) continue;
+      await flushChunk(b.items.splice(0, b.items.length));
+    }
+  }
+
   for (const r of recipients) {
     if (summary.stoppedHighBounce || summary.stoppedConsecutiveFailures) break;
 
@@ -638,10 +666,18 @@ export async function runSend(
     budget--;
 
     if (useBatch) {
-      // Claimed and rendered — queue it. The flush (and therefore the provider request) happens when
-      // the chunk is full, or at the tail of the run.
-      pending.push({ recipient: r, message, key });
-      if (pending.length >= batchSize) await flushPending();
+      // Claimed and rendered — queue it in the bucket of recipients it may legally share a provider
+      // request with. The flush happens when THAT bucket is full, or at the tail of the run.
+      const groupKey = ports.batchGroupKey ? ports.batchGroupKey(r) : "";
+      let bucket = buckets.find((b) => b.key === groupKey);
+      if (!bucket) {
+        bucket = { key: groupKey, items: [] };
+        buckets.push(bucket);
+      }
+      bucket.items.push({ recipient: r, message, key });
+      if (bucket.items.length >= batchSize) {
+        await flushChunk(bucket.items.splice(0, bucket.items.length));
+      }
       continue;
     }
 
@@ -703,12 +739,12 @@ export async function runSend(
     if (config.interRecipientDelayMs > 0) await ports.sleep(config.interRecipientDelayMs);
   }
 
-  // TAIL FLUSH — unconditional, and the reason `pending` is declared outside the loop. Every exit above
-  // is a `break` (auto-stop, batch cap) or loop exhaustion, and any of them can leave a partial chunk
+  // TAIL FLUSH — unconditional, and the reason `buckets` is declared outside the loop. Every exit above
+  // is a `break` (auto-stop, batch cap) or loop exhaustion, and any of them can leave partial buckets
   // whose rows are ALREADY CLAIMED. Skipping this would strand them: claimed, never sent, and — because
   // the idempotency key is deterministic — permanently skipped by every future re-run. The auto-stops
   // stop the run from claiming MORE recipients; they never abandon recipients already claimed.
-  await flushPending();
+  await flushAllBuckets();
 
   return summary;
 }

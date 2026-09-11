@@ -862,3 +862,68 @@ describe("send-run — unlimited ceiling + T-43 budget accounting", () => {
     expect(s.sent).toBe(0);
   });
 });
+
+describe("send-run — batch grouping keeps every chunk sendable as ONE request", () => {
+  /** A store whose recipients may only share a request when their language matches — the shape of the
+   *  real adapter, where the `from` sender name is per template language. */
+  class GroupedStore extends BatchStore {
+    batchGroupKey(r: SendRecipient): string {
+      return r.language;
+    }
+  }
+
+  const mkMixed = (n: number): SendRecipient[] =>
+    Array.from({ length: n }, (_, i) => ({
+      customerId: `c${i}`,
+      channel: "email" as const,
+      identityKind: "email" as const,
+      destination: `c${i}@example.com`,
+      language: (i % 2 === 0 ? "id" : "en") as "id" | "en",
+    }));
+
+  it("never mixes two groups in one request", async () => {
+    const store = new GroupedStore();
+    await runSend(mkMixed(10), store, "camp", hashFor, { ...DEFAULT_SEND_CONFIG, batchSize: 10 });
+    expect(store.batchCalls.length).toBeGreaterThan(1);
+    for (const call of store.batchCalls) {
+      const langs = new Set(call.map((id) => (Number(id.slice(1)) % 2 === 0 ? "id" : "en")));
+      expect(langs.size).toBe(1); // a request is always single-language
+    }
+  });
+
+  it("a failing group still gets one-by-one isolation even when another group succeeded", async () => {
+    // THE REGRESSION THIS GUARDS (found in review, 11 Sep 2026): when a chunk held two sender groups
+    // and one failed while the other succeeded, the adapter could not throw (that would double-send
+    // the successful group), so the engine skipped its isolation pass and marked every recipient of
+    // the failing group `failed` — good addresses included, permanently, since the idempotency key is
+    // deterministic. Bucketing makes each group its own request, so isolation applies to each.
+    const store = new GroupedStore();
+    store.failBatchWith = { status: 422, message: "invalid email address" }; // rejects any batch call
+    store.failFor.set("c1", { status: 422, message: "invalid email address" }); // the only real culprit
+    const s = await runSend(mkMixed(10), store, "camp", hashFor, { ...DEFAULT_SEND_CONFIG, batchSize: 10 });
+    expect(s.sent).toBe(9); // every innocent recipient, in BOTH groups, still delivered
+    expect(s.failed.invalid_address).toBe(1);
+    expect(store.rows.get("camp:c1:email")?.status).toBe("failed");
+    expect(store.rows.get("camp:c3:email")?.status).toBe("sent"); // same group as the culprit
+  });
+
+  it("a transient throttle on one group is still retried under backoff, not recorded as permanent", async () => {
+    const store = new GroupedStore();
+    // failBatchNTimes alone: it throws the default 429 N times then recovers. (Setting failBatchWith
+    // too would make it throw FOREVER — that is the "always fails" knob, not the transient one.)
+    store.failBatchNTimes = 1; // the FIRST request throttles, then the provider recovers
+    const s = await runSend(mkMixed(4), store, "camp", hashFor, { ...DEFAULT_SEND_CONFIG, batchSize: 4 }, () => 0);
+    expect(s.sent).toBe(4); // nobody was written off as a permanent failure
+    expect(s.retriedSends).toBe(1);
+    expect(totalFailed(s.failed)).toBe(0);
+  });
+
+  it("flushes EVERY bucket at the tail — a partly-filled group is never stranded", async () => {
+    const store = new GroupedStore();
+    // batchSize 4 with 2 languages: neither bucket ever fills, so both exist only at the tail flush.
+    await runSend(mkMixed(6), store, "camp", hashFor, { ...DEFAULT_SEND_CONFIG, batchSize: 4 });
+    const stranded = Array.from(store.rows.values()).filter((r) => r.status === "queued");
+    expect(stranded).toEqual([]);
+    expect(store.sentCustomers).toHaveLength(6);
+  });
+});

@@ -407,59 +407,35 @@ export async function sendCampaign(input: CampaignSendInput, nowIso: string): Pr
     // than failing. The engine treats an absent port as "no batching", so this is a safe conditional.
     ...(supportsBatchSend()
       ? {
+          // ONE Resend request carries ONE `from` line, but the sender name is per-template-LANGUAGE
+          // (T-74) — so recipients may only share a request when their sender name matches. Declaring
+          // that here lets the ENGINE bucket by it, which is what keeps every sendBatch call below a
+          // single request. Doing the split inside sendBatch instead would force it to report partial
+          // failures, and a partial failure silently disables both the backoff and the one-by-one
+          // isolation (they only run when the call THROWS, which a partly-succeeded call must not do).
+          batchGroupKey(r: SendRecipient) {
+            const tpl = templates[r.language] ?? templates.id ?? templates.en;
+            return tpl?.senderName ?? "";
+          },
           async sendBatch(items: readonly { recipient: SendRecipient; message: RenderedMessage }[]) {
-            // ONE Resend batch request carries ONE `from` line, but the sender name is per-template-
-            // LANGUAGE (T-74). A mixed-language chunk sent as a single request would put some
-            // recipients under the wrong sender name — so the chunk is split by resolved sender name
-            // and each group is its own request. Results are reassembled by ORIGINAL INDEX.
-            const senderNameFor = (r: SendRecipient): string | undefined => {
-              const tpl = templates[r.language] ?? templates.id ?? templates.en;
-              return tpl?.senderName ?? undefined;
-            };
-            // Grouped as a plain array of {senderName, idxs} rather than a Map: this file compiles to
-            // an ES5 target where Map iteration needs --downlevelIteration.
-            const groups: { senderName: string; idxs: number[] }[] = [];
-            items.forEach((it: { recipient: SendRecipient; message: RenderedMessage }, i: number) => {
-              const key = senderNameFor(it.recipient) ?? "";
-              const g = groups.find((x) => x.senderName === key);
-              if (g) g.idxs.push(i);
-              else groups.push({ senderName: key, idxs: [i] });
-            });
-
-            const out = new Array<BatchSendResult>(items.length);
-            let anyRequestSucceeded = false;
-            let firstThrow: unknown = null;
-
-            for (const { senderName, idxs } of groups) {
-              try {
-                const receipts = await sendTransactionalEmailBatch(
-                  idxs.map((i: number) => ({
-                    to: items[i].recipient.destination,
-                    subject: items[i].message.subject ?? "",
-                    text: items[i].message.text,
-                    html: items[i].message.html,
-                  })),
-                  "crm-campaign",
-                  senderName === "" ? undefined : senderName,
-                );
-                anyRequestSucceeded = true;
-                idxs.forEach((i: number, n: number) => {
-                  out[i] = { ok: true, providerMessageId: receipts[n]?.providerMessageId ?? null };
-                });
-              } catch (e) {
-                if (firstThrow === null) firstThrow = e;
-                idxs.forEach((i: number) => {
-                  out[i] = { ok: false, error: e };
-                });
-              }
-            }
-
-            // THROW ONLY IF NOTHING WENT OUT. This is a double-send guard, not a style choice: the
-            // engine reacts to a throw by re-sending the whole chunk one-by-one, which is only safe
-            // while zero messages were delivered. Once ANY group succeeded we must report per-item
-            // results instead — otherwise the successful group would be sent a second time.
-            if (!anyRequestSucceeded && firstThrow !== null) throw firstThrow;
-            return out;
+            // Homogeneous by construction (see batchGroupKey), so this is ONE request and any failure
+            // is a WHOLE-request failure — which is exactly what the engine's recovery paths expect.
+            const first = items[0];
+            const senderName = first ? (templates[first.recipient.language] ?? templates.id ?? templates.en)?.senderName : null;
+            const receipts = await sendTransactionalEmailBatch(
+              items.map((it: { recipient: SendRecipient; message: RenderedMessage }) => ({
+                to: it.recipient.destination,
+                subject: it.message.subject ?? "",
+                text: it.message.text,
+                html: it.message.html,
+              })),
+              "crm-campaign",
+              senderName ?? undefined,
+            );
+            return items.map((_, i: number): BatchSendResult => ({
+              ok: true,
+              providerMessageId: receipts[i]?.providerMessageId ?? null,
+            }));
           },
         }
       : {}),
