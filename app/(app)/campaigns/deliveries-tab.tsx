@@ -39,11 +39,12 @@ function wibDisplay(utcIso: string): string {
   return `${wib.toISOString().slice(0, 16).replace("T", " ")} WIB`;
 }
 
-function Stat({ label, value }: { label: string; value: ReactNode }) {
+function Stat({ label, value, sub }: { label: string; value: ReactNode; sub?: string }) {
   return (
     <div className="rounded-sm border border-glass-border px-3 py-2">
       <div className="font-body text-[11px] uppercase tracking-wide text-ink-faint">{label}</div>
       <div className="mt-0.5 font-body text-[15px] font-semibold text-ink">{value}</div>
+      {sub && <div className="mt-0.5 font-body text-[10px] leading-tight text-ink-faint">{sub}</div>}
     </div>
   );
 }
@@ -204,8 +205,8 @@ export function DeliveriesTab({
         <section className="flex flex-col gap-2">
           <h3 className="font-body text-[13px] font-semibold text-ink">{d.resultTitle}</h3>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
-            <Stat label={d.resSent} value={detail.result.sent} />
-            <Stat label={d.resDelivered} value={detail.result.delivered} />
+            <Stat label={d.resSent} value={detail.result.sent} sub={d.resSentSub} />
+            <Stat label={d.resDelivered} value={detail.result.delivered} sub={d.resDeliveredSub} />
             <Stat label={d.resOpened} value={detail.engagementMeasured ? detail.result.opened : "—"} />
             <Stat label={d.resClicked} value={detail.engagementMeasured ? detail.result.clicked : "—"} />
             <Stat label={d.resBounced} value={detail.result.bounced} />
@@ -216,6 +217,11 @@ export function DeliveriesTab({
           {!detail.engagementMeasured && (
             <p className="rounded-sm border border-dashed border-glass-border px-3 py-2 font-body text-[12px] leading-relaxed text-ink-faint">
               {d.engagementNote}
+            </p>
+          )}
+          {detail.engagementMeasured && detail.result.opened === 0 && detail.result.clicked === 0 && (
+            <p className="font-body text-[12px] leading-relaxed text-ink-faint">
+              {d.engagementPending}
             </p>
           )}
         </section>

@@ -25,6 +25,17 @@ const REC_CAUSE: Record<string, keyof Dict["messagesPage"]> = {
   unknown: "causeUnknown",
 };
 
+type StatusFilter = "all" | "delivered" | "sent" | "bounced" | "failed" | "complained";
+
+const FILTER_OPTIONS: { value: StatusFilter; labelKey: keyof Dict["campaignsPage"]["deliveries"] }[] = [
+  { value: "all", labelKey: "filterAll" },
+  { value: "delivered", labelKey: "filterDelivered" },
+  { value: "sent", labelKey: "filterSent" },
+  { value: "bounced", labelKey: "filterBounced" },
+  { value: "failed", labelKey: "filterFailed" },
+  { value: "complained", labelKey: "filterComplained" },
+];
+
 function wibDisplay(utcIso: string): string {
   const d = new Date(utcIso);
   if (Number.isNaN(d.getTime())) return utcIso;
@@ -39,6 +50,7 @@ export function RecipientTable({ recipients }: { recipients: DeliveryRecipient[]
 
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -47,29 +59,68 @@ export function RecipientTable({ recipients }: { recipients: DeliveryRecipient[]
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
   }, [query]);
 
+  const statusCounts = useMemo(() => {
+    const counts: Record<StatusFilter, number> = { all: recipients.length, delivered: 0, sent: 0, bounced: 0, failed: 0, complained: 0 };
+    for (const r of recipients) {
+      if (r.status in counts) counts[r.status as StatusFilter]++;
+    }
+    return counts;
+  }, [recipients]);
+
   const filtered = useMemo(() => {
-    if (!debouncedQuery.trim()) return recipients;
-    const q = debouncedQuery.trim().toLowerCase();
-    return recipients.filter((r) => {
-      if (r.name && r.name.toLowerCase().includes(q)) return true;
-      if (r.rawEmail && r.rawEmail.toLowerCase().includes(q)) return true;
-      return false;
-    });
-  }, [recipients, debouncedQuery]);
+    let rows = recipients;
+    if (statusFilter !== "all") {
+      rows = rows.filter((r) => r.status === statusFilter);
+    }
+    if (debouncedQuery.trim()) {
+      const q = debouncedQuery.trim().toLowerCase();
+      rows = rows.filter((r) => {
+        if (r.name && r.name.toLowerCase().includes(q)) return true;
+        if (r.rawEmail && r.rawEmail.toLowerCase().includes(q)) return true;
+        return false;
+      });
+    }
+    return rows;
+  }, [recipients, debouncedQuery, statusFilter]);
+
+  const isFiltering = debouncedQuery.trim() || statusFilter !== "all";
 
   return (
     <>
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" />
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={d.searchPlaceholder}
-          className="w-full rounded-md border border-glass-border bg-glass py-2 pl-9 pr-3 font-body text-[13px] text-ink placeholder:text-ink-faint focus:border-red focus:outline-none focus:ring-1 focus:ring-red"
-        />
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={d.searchPlaceholder}
+            className="w-full rounded-md border border-glass-border bg-glass py-2 pl-9 pr-3 font-body text-[13px] text-ink placeholder:text-ink-faint focus:border-red focus:outline-none focus:ring-1 focus:ring-red"
+          />
+        </div>
+        <div className="flex flex-wrap gap-1">
+          {FILTER_OPTIONS.map((opt) => {
+            const count = statusCounts[opt.value];
+            if (opt.value !== "all" && count === 0) return null;
+            const active = statusFilter === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setStatusFilter(opt.value)}
+                className={`rounded-md px-2.5 py-1 font-body text-[12px] transition-colors ${
+                  active
+                    ? "bg-red text-white"
+                    : "bg-glass text-ink-soft hover:bg-glass-border"
+                }`}
+              >
+                {d[opt.labelKey]} ({count})
+              </button>
+            );
+          })}
+        </div>
       </div>
-      {debouncedQuery.trim() && (
+      {isFiltering && (
         <p className="font-body text-[12px] text-ink-faint">
           {d.showingResults.replace("{x}", String(filtered.length)).replace("{y}", String(recipients.length))}
         </p>
