@@ -1,9 +1,25 @@
 import { BarList } from "./bar-list";
+import { GrowthChart, type GrowthPoint } from "./growth-chart";
 import type { Dict, Lang } from "@/lib/i18n";
 import { formatCount, formatDate, formatDateTime } from "@/lib/i18n";
-import { isBodSnapshotStale, bodSnapshotAgeHours, type BodSnapshot } from "@/lib/crm/bod-snapshot";
+import { isBodSnapshotStale, bodSnapshotAgeHours, type BodSnapshot, type Load } from "@/lib/crm/bod-snapshot";
 
 export type BodData = BodSnapshot;
+
+function loadsToCumulative(loads: Load[]): GrowthPoint[] {
+  if (loads.length === 0) return [];
+  const byDay = new Map<string, number>();
+  for (const l of loads) {
+    const day = l.at.slice(0, 10);
+    byDay.set(day, (byDay.get(day) ?? 0) + l.count);
+  }
+  const days = Array.from(byDay.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  let cumulative = 0;
+  return days.map(([date, added]) => {
+    cumulative += added;
+    return { date, total: cumulative, added };
+  });
+}
 
 /**
  * The board summary — the TOP LAYER of the Dashboard, not a page of its own (K-61, revised 7 Sep
@@ -68,7 +84,7 @@ export function BodSummary({
   // to "0%" would turn a real number into a claim that nobody has been contacted.
   const contactedPct = reach.poolTotal > 0 ? ((reach.everContacted / reach.poolTotal) * 100).toFixed(1) : "0.0";
 
-  const loadBars = data.loads.map((l) => ({ label: formatDate(l.at, lang), value: l.count }));
+  const growthPoints = loadsToCumulative(data.loads);
   const unitBars = data.units.map((u) => ({
     label: b.units[u.unit as keyof typeof b.units] ?? u.unit,
     value: u.people,
@@ -130,8 +146,20 @@ export function BodSummary({
         </Card>
 
         <Card n={2} title={b.growthTitle}>
-          {loadBars.length > 0 ? (
-            <BarList items={loadBars} lang={lang} />
+          {growthPoints.length > 0 ? (
+            <>
+              <div className="mb-4 grid grid-cols-2 gap-4">
+                <Figure value={formatCount(growthPoints[growthPoints.length - 1].total, lang)} label={b.growthTotal} />
+                <Figure
+                  value={growthPoints.length > 1
+                    ? `+${formatCount(growthPoints[growthPoints.length - 1].total - growthPoints[0].total + growthPoints[0].added, lang)}`
+                    : `+${formatCount(growthPoints[0].added, lang)}`}
+                  label={b.growthNetAdd}
+                  tone="green"
+                />
+              </div>
+              <GrowthChart points={growthPoints} lang={lang} addedLabel={b.growthAdded} />
+            </>
           ) : (
             <p className="font-body text-[13px] text-ink-soft">{b.growthEmpty}</p>
           )}

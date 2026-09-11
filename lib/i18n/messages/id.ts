@@ -1975,8 +1975,11 @@ export const id = {
       "Dua saluran dihitung terpisah dan tidak dilebur: sebagian orang punya email tanpa nomor, sebagian sebaliknya. “Sudah pernah dikirimi” berarti penyedia email pernah menerima setidaknya satu pesan untuk orang itu — pesan yang memantul ikut dihitung, karena penyedianya tetap menerimanya.",
 
     growthTitle: "Pertumbuhan audiens",
+    growthTotal: "Total profil",
+    growthNetAdd: "Penambahan bersih",
+    growthAdded: "ditambahkan",
     growthNote:
-      "Setiap batang adalah satu muatan manual. Di antara muatan, tidak ada yang bertambah — itu sebabnya batangnya sedikit dan berjauhan, bukan karena datanya kurang.",
+      "Total kumulatif semua profil yang diimpor. Setiap titik menandai hari dengan impor baru. Di antara muatan, tidak ada yang bertambah.",
     growthTruncated:
       "Daftar ini belum lengkap — jumlah muatan melampaui batas penelusuran. Angka di layar adalah muatan-muatan paling awal saja.",
     growthEmpty: "Belum ada muatan.",

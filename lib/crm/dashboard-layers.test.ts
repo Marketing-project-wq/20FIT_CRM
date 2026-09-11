@@ -57,12 +57,11 @@ describe("Dashboard — the three duplicated cards are gone from the operational
     expect(SUMMARY_CODE).toContain("unitsTitle");
   });
 
-  it("GROWTH is in the summary only, as bars — the operational date card is removed", () => {
-    // The old card was `lastProfile` + a hint listing the load dates as text.
+  it("GROWTH is in the summary only, as a chart — the operational date card is removed", () => {
     expect(DASH_CODE).not.toContain("lastProfile");
     expect(DASH_CODE).not.toContain("loadsHint");
     expect(SUMMARY_CODE).toContain("growthTitle");
-    expect(SUMMARY_CODE).toContain("loadBars");
+    expect(SUMMARY_CODE).toContain("growthPoints");
   });
 
   it("what was NOT duplicated stays in the operational layer — removal, not deletion", () => {

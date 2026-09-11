@@ -1851,8 +1851,11 @@ export const en: Messages = {
       "The two channels are counted separately and never merged: some people have an email and no number, some the other way round. “Ever messaged” means the email provider accepted at least one message for that person — a message that bounced still counts, because the provider did accept it.",
 
     growthTitle: "Audience growth",
+    growthTotal: "Total profiles",
+    growthNetAdd: "Net added",
+    growthAdded: "added",
     growthNote:
-      "Each bar is one manual load. Nothing is added between loads — that is why the bars are few and far apart, not because data is missing.",
+      "Cumulative total of all profiles imported. Each dot marks a day with new imports. Nothing is added between loads.",
     growthTruncated:
       "This list is incomplete — the number of loads exceeded the discovery limit. What is shown is the earliest loads only.",
     growthEmpty: "No loads yet.",
