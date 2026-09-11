@@ -131,6 +131,29 @@ function ProgressBar({ row, labels }: { row: DeliveryRow; labels: Dict["campaign
   );
 }
 
+function CompactStats({ row, labels }: { row: DeliveryRow; labels: Dict["campaignsPage"]["deliveries"] }) {
+  const total = row.recipientCount;
+  const delivered = row.deliveredCount;
+  const sent = row.sentCount + delivered;
+  const bounced = row.bouncedCount;
+  const failed = row.failedCount;
+  const opened = row.openedCount;
+  const clicked = row.clickedCount;
+  const openRate = delivered > 0 ? ((opened / delivered) * 100).toFixed(1) : null;
+  const clickRate = delivered > 0 ? ((clicked / delivered) * 100).toFixed(1) : null;
+
+  return (
+    <div className="flex flex-wrap gap-x-4 gap-y-1 font-body text-[11px] text-ink-faint">
+      <span>{labels.statSent} {sent}/{total}</span>
+      <span>{labels.statDelivered} {delivered}</span>
+      {opened > 0 && <span>{labels.statOpened} {opened}{openRate != null && ` (${openRate}%)`}</span>}
+      {clicked > 0 && <span>{labels.statClicked} {clicked}{clickRate != null && ` (${clickRate}%)`}</span>}
+      {bounced > 0 && <span className="text-red">{labels.statBounced} {bounced}</span>}
+      {failed > 0 && <span className="text-red">{labels.statFailed} {failed}</span>}
+    </div>
+  );
+}
+
 export function DeliveriesTab({
   deliveries,
   detail,
@@ -197,18 +220,19 @@ export function DeliveriesTab({
           )}
         </section>
 
-        {/* Result report — from crm_message_log (webhook-filled). Opens/clicks NOT measured. */}
+        {/* Result report — from crm_message_log (webhook-filled). */}
         <section className="flex flex-col gap-2">
           <h3 className="font-body text-[13px] font-semibold text-ink">{d.resultTitle}</h3>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
             <Stat label={d.resSent} value={detail.result.sent} />
             <Stat label={d.resDelivered} value={detail.result.delivered} />
+            <Stat label={d.resOpened} value={detail.engagementMeasured ? detail.result.opened : "—"} />
+            <Stat label={d.resClicked} value={detail.engagementMeasured ? detail.result.clicked : "—"} />
             <Stat label={d.resBounced} value={detail.result.bounced} />
             <Stat label={d.resComplained} value={detail.result.complained} />
             <Stat label={d.resUnsub} value={detail.result.unsubscribed} />
             <Stat label={d.resFailed} value={detail.result.failed} />
           </div>
-          {/* Opens & clicks are deliberately NOT shown as a 0 stat — the webhook doesn't measure them. */}
           {!detail.engagementMeasured && (
             <p className="rounded-sm border border-dashed border-glass-border px-3 py-2 font-body text-[12px] leading-relaxed text-ink-faint">
               {d.engagementNote}
@@ -259,6 +283,8 @@ export function DeliveriesTab({
                     <th className="px-4 py-2.5 font-medium">{d.recipientStatus}</th>
                     <th className="px-4 py-2.5 font-medium">{d.recipientSentAt}</th>
                     <th className="px-4 py-2.5 font-medium">{d.recipientDeliveredAt}</th>
+                    <th className="px-4 py-2.5 font-medium">{d.recipientOpenedAt}</th>
+                    <th className="px-4 py-2.5 font-medium">{d.recipientClickedAt}</th>
                     <th className="px-4 py-2.5 font-medium">{d.recipientCause}</th>
                   </tr>
                 </thead>
@@ -281,6 +307,8 @@ export function DeliveriesTab({
                         <td className="px-4 py-2.5"><Badge tone={rst.tone}>{m[rst.key]}</Badge></td>
                         <td className="px-4 py-2.5 font-mono text-[12px]">{r.sentAt ? wibDisplay(r.sentAt) : "—"}</td>
                         <td className="px-4 py-2.5 font-mono text-[12px]">{r.deliveredAt ? wibDisplay(r.deliveredAt) : "—"}</td>
+                        <td className="px-4 py-2.5 font-mono text-[12px]">{r.openedAt ? wibDisplay(r.openedAt) : "—"}</td>
+                        <td className="px-4 py-2.5 font-mono text-[12px]">{r.clickedAt ? wibDisplay(r.clickedAt) : "—"}</td>
                         <td className="px-4 py-2.5">{r.failureCause ? m[REC_CAUSE[r.failureCause] ?? "causeUnknown"] : "—"}</td>
                       </tr>
                     );
@@ -326,7 +354,10 @@ export function DeliveriesTab({
                   <span className="font-mono">{wibDisplay(row.time)}</span>
                 </div>
                 {row.kind === "run" && row.recipientCount > 0 && (
-                  <ProgressBar row={row} labels={d} />
+                  <>
+                    <ProgressBar row={row} labels={d} />
+                    <CompactStats row={row} labels={d} />
+                  </>
                 )}
                 {row.lastError && (
                   <p className="font-body text-[12px] text-red">{d.lastError}: {row.lastError}</p>
