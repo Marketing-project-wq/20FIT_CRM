@@ -299,18 +299,51 @@ export async function listDeliveries(admin: SupabaseClient, limit = 100, nowIso 
 }
 
 export interface DeliveryRecipient {
-  name: string | null; // master_customer.full_name; null → shown as "unresolved", never a uuid fragment
+  name: string | null;
+  maskedEmail: string | null;
   channel: string;
   status: string;
   failureCause: string | null;
+  sentAt: string | null;
+  deliveredAt: string | null;
   createdAt: string;
+}
+
+function maskEmail(raw: string | null): string | null {
+  if (!raw) return null;
+  const at = raw.indexOf("@");
+  if (at < 1) return raw[0] + "***";
+  const local = raw.slice(0, at);
+  const domain = raw.slice(at);
+  if (local.length <= 2) return local[0] + "***" + domain;
+  return local[0] + "***" + local[local.length - 1] + domain;
+}
+
+async function resolveCustomerDisplay(
+  admin: SupabaseClient,
+  customerIds: string[],
+): Promise<{ names: Map<string, string | null>; emails: Map<string, string | null> }> {
+  const ids = Array.from(new Set(customerIds));
+  const names = new Map<string, string | null>();
+  const emails = new Map<string, string | null>();
+  for (let i = 0; i < ids.length; i += 500) {
+    const chunk = ids.slice(i, i + 500);
+    const { data: profs } = await admin
+      .from("master_customer")
+      .select("customer_id, full_name, email_normalized")
+      .in("customer_id", chunk);
+    for (const p of (profs ?? []) as { customer_id: string; full_name: string | null; email_normalized: string | null }[]) {
+      names.set(p.customer_id, p.full_name);
+      emails.set(p.customer_id, maskEmail(p.email_normalized));
+    }
+  }
+  return { names, emails };
 }
 
 /**
  * Per-recipient detail for one run (crm_message_log.campaign_id = runId). Resolves the customer NAME
- * (fix #1: never a uuid fragment) — contact stays out entirely (it is only stored as a keyed hash,
- * same as the old history panel, so this is not a back-door around contact masking). An unresolved id
- * is shown as such, not as a truncated id.
+ * and a MASKED email fallback — contact stays out entirely (only the masked form is shown when the
+ * name can't be resolved). An unresolved id is shown as such, not as a truncated id.
  */
 export async function deliveryRecipients(
   admin: SupabaseClient,
@@ -319,7 +352,7 @@ export async function deliveryRecipients(
 ): Promise<DeliveryRecipient[]> {
   const { data, error } = await admin
     .from("crm_message_log")
-    .select("customer_id, channel, status, failure_cause, created_at")
+    .select("customer_id, channel, status, failure_cause, sent_at, delivered_at, created_at")
     .eq("campaign_id", runId)
     .order("created_at", { ascending: false })
     .limit(limit);
@@ -329,24 +362,21 @@ export async function deliveryRecipients(
     channel: string;
     status: string;
     failure_cause: string | null;
+    sent_at: string | null;
+    delivered_at: string | null;
     created_at: string;
   }[];
 
-  const ids = Array.from(new Set(logs.map((l) => l.customer_id)));
-  const names = new Map<string, string | null>();
-  for (let i = 0; i < ids.length; i += 500) {
-    const chunk = ids.slice(i, i + 500);
-    const { data: profs } = await admin.from("master_customer").select("customer_id, full_name").in("customer_id", chunk);
-    for (const p of (profs ?? []) as { customer_id: string; full_name: string | null }[]) {
-      names.set(p.customer_id, p.full_name);
-    }
-  }
+  const resolved = await resolveCustomerDisplay(admin, logs.map((l) => l.customer_id));
 
   return logs.map((l) => ({
-    name: names.get(l.customer_id) ?? null,
+    name: resolved.names.get(l.customer_id) ?? null,
+    maskedEmail: resolved.emails.get(l.customer_id) ?? null,
     channel: l.channel,
     status: l.status,
     failureCause: l.failure_cause,
+    sentAt: l.sent_at,
+    deliveredAt: l.delivered_at,
     createdAt: l.created_at,
   }));
 }
@@ -480,19 +510,16 @@ export async function deliveryDetail(admin: SupabaseClient, runId: string): Prom
     }
   }
 
-  // Recipients (names resolved, contact never shown) — reuse the same resolver as the list view.
-  const ids = Array.from(new Set(logs.map((l) => l.customer_id)));
-  const names = new Map<string, string | null>();
-  for (let i = 0; i < ids.length; i += 500) {
-    const chunk = ids.slice(i, i + 500);
-    const { data: profs } = await admin.from("master_customer").select("customer_id, full_name").in("customer_id", chunk);
-    for (const p of (profs ?? []) as { customer_id: string; full_name: string | null }[]) names.set(p.customer_id, p.full_name);
-  }
+  // Recipients (names + masked email resolved, raw contact never shown).
+  const resolved = await resolveCustomerDisplay(admin, logs.map((l) => l.customer_id));
   const recipients: DeliveryRecipient[] = logs.map((l) => ({
-    name: names.get(l.customer_id) ?? null,
+    name: resolved.names.get(l.customer_id) ?? null,
+    maskedEmail: resolved.emails.get(l.customer_id) ?? null,
     channel: l.channel,
     status: l.status,
     failureCause: l.failure_cause,
+    sentAt: l.sent_at,
+    deliveredAt: l.delivered_at,
     createdAt: l.created_at,
   }));
 

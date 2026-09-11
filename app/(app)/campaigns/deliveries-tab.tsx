@@ -257,22 +257,31 @@ export function DeliveriesTab({
                     <th className="px-4 py-2.5 font-medium">{d.recipientName}</th>
                     <th className="px-4 py-2.5 font-medium">{d.recipientChannel}</th>
                     <th className="px-4 py-2.5 font-medium">{d.recipientStatus}</th>
+                    <th className="px-4 py-2.5 font-medium">{d.recipientSentAt}</th>
+                    <th className="px-4 py-2.5 font-medium">{d.recipientDeliveredAt}</th>
                     <th className="px-4 py-2.5 font-medium">{d.recipientCause}</th>
-                    <th className="px-4 py-2.5 font-medium">{d.recipientWhen}</th>
                   </tr>
                 </thead>
                 <tbody className="font-body text-[13px] text-ink-soft">
                   {detail.recipients.map((r, i) => {
                     const rst = REC_STATUS[r.status] ?? REC_STATUS.queued;
+                    const displayName = r.name
+                      ? r.name
+                      : r.maskedEmail
+                        ? r.maskedEmail
+                        : null;
                     return (
                       <tr key={i} className="border-b border-glass-border/50 last:border-0">
                         <td className="px-4 py-2.5">
-                          {r.name ? r.name : <span className="italic text-ink-faint">{d.recipientUnresolved}</span>}
+                          {displayName
+                            ? <span className={r.name ? "" : "italic text-ink-faint"}>{displayName}</span>
+                            : <span className="italic text-ink-faint">{d.recipientUnresolved}</span>}
                         </td>
                         <td className="px-4 py-2.5">{r.channel}</td>
                         <td className="px-4 py-2.5"><Badge tone={rst.tone}>{m[rst.key]}</Badge></td>
+                        <td className="px-4 py-2.5 font-mono text-[12px]">{r.sentAt ? wibDisplay(r.sentAt) : "—"}</td>
+                        <td className="px-4 py-2.5 font-mono text-[12px]">{r.deliveredAt ? wibDisplay(r.deliveredAt) : "—"}</td>
                         <td className="px-4 py-2.5">{r.failureCause ? m[REC_CAUSE[r.failureCause] ?? "causeUnknown"] : "—"}</td>
-                        <td className="px-4 py-2.5 font-mono text-[12px]">{wibDisplay(r.createdAt)}</td>
                       </tr>
                     );
                   })}
