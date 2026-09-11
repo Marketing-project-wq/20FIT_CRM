@@ -66,8 +66,19 @@ describe("(A) the SQL tag guard is the SAME regex as the TypeScript canon", () =
 const SHIPPED_VOCABULARY = [
   "event:hyrox-sim-full", "event:hyrox-sim-half", "event:platarox-2026-07",
   "event:platarox-racelab", "event:sportfest-2-2026-02", "event:sportfest-3-2026-05",
+  // ISS Johor 2026 — event master + day sub-tags (Sep 2026 batch).
+  "event:iss-jhr-2026",
+  "event:iss-jhr-day-fri-11sep", "event:iss-jhr-day-sat-12sep", "event:iss-jhr-day-sun-13sep",
   "format:double", "format:relay", "format:single",
   "kategori:laki-laki", "kategori:perempuan",
+  // ISS Johor 2026 — participant categories (Sep 2026 batch).
+  "kategori:iss-jhr-spectators",
+  "kategori:iss-jhr-doubles-men", "kategori:iss-jhr-doubles-women",
+  "kategori:iss-jhr-doubles-men-pro", "kategori:iss-jhr-doubles-women-pro",
+  "kategori:iss-jhr-hybrid-training", "kategori:iss-jhr-hybrid-kids-training",
+  "kategori:iss-jhr-mixed-doubles",
+  "kategori:iss-jhr-relay-men", "kategori:iss-jhr-relay-women",
+  "kategori:iss-jhr-singles-men", "kategori:iss-jhr-singles-women",
   "nilai:1jt-ke-atas", "nilai:300k-1jt", "nilai:di-bawah-300k",
   "peran:pendaftar", "produk:hybrid-race",
   "sumber:daftar-nama", "sumber:formulir-registrasi", "sumber:mayar",
@@ -75,8 +86,8 @@ const SHIPPED_VOCABULARY = [
 ];
 
 describe("(B) the canon accepts the vocabulary that actually ships", () => {
-  it("all 21 shipped tags are valid operator tags", () => {
-    expect(SHIPPED_VOCABULARY.length).toBe(21);
+  it("all 37 shipped tags are valid operator tags", () => {
+    expect(SHIPPED_VOCABULARY.length).toBe(37);
     for (const tag of SHIPPED_VOCABULARY) {
       expect(isOperatorTag(tag), `${tag} must be a legal operator tag`).toBe(true);
     }
