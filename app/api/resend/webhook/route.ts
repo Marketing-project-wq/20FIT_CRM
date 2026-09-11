@@ -88,16 +88,27 @@ export async function POST(req: Request): Promise<Response> {
   if (effect.status) patch.status = effect.status;
   if (effect.failureCause) patch.failure_cause = effect.failureCause;
 
+  // Correlation: try provider_message_id first; if 0 rows matched (Resend returns a UUID at
+  // send time but delivers a msg_… id in the webhook — a format mismatch), fall back to
+  // identity_hash + recipient email. Both passes carry the same idempotent-fill and
+  // out-of-order guards. 200 on a DB blip: don't make Resend retry forever.
   try {
-    let q = admin.from("crm_message_log").update(patch);
-    // Idempotent fill: only set this cycle column when still NULL. A replayed event matches 0 rows.
-    q = q.is(effect.column, null);
-    // A late `delivered` must not overwrite a terminal bad status (out-of-order / replay guard) — the
-    // exact guard from mailtrap-webhook route line 86.
-    if (effect.status === "delivered") q = q.not("status", "in", '("bounced","complained")');
+    let updated = 0;
+
     if (event.messageId) {
+      let q = admin.from("crm_message_log").update(patch);
+      q = q.is(effect.column, null);
+      if (effect.status === "delivered") q = q.not("status", "in", '("bounced","complained")');
       q = q.eq("provider_message_id", event.messageId);
-    } else if (event.email) {
+      const { data, error } = await q.select("id");
+      if (error) {
+        logApiFailure("/api/resend/webhook", "log_update_failed", { code: error.code });
+        return NextResponse.json({ ok: false }, { status: 200 });
+      }
+      updated = data?.length ?? 0;
+    }
+
+    if (updated === 0 && event.email) {
       let hashSecret: string | null = null;
       try {
         hashSecret = identityHashSecret();
@@ -105,17 +116,21 @@ export async function POST(req: Request): Promise<Response> {
         hashSecret = null;
       }
       const norm = normalizeEmail(event.email);
-      if (!norm || !hashSecret) return NextResponse.json({ ok: true, updated: 0 });
-      q = q.eq("identity_hash", hashIdentity("email", norm, hashSecret));
-    } else {
-      return NextResponse.json({ ok: true, updated: 0 }); // nothing to correlate on
+      if (norm && hashSecret) {
+        let q = admin.from("crm_message_log").update(patch);
+        q = q.is(effect.column, null);
+        if (effect.status === "delivered") q = q.not("status", "in", '("bounced","complained")');
+        q = q.eq("identity_hash", hashIdentity("email", norm, hashSecret));
+        const { data, error } = await q.select("id");
+        if (error) {
+          logApiFailure("/api/resend/webhook", "log_update_failed", { code: error.code });
+          return NextResponse.json({ ok: false }, { status: 200 });
+        }
+        updated = data?.length ?? 0;
+      }
     }
-    const { data, error } = await q.select("id");
-    if (error) {
-      logApiFailure("/api/resend/webhook", "log_update_failed", { code: error.code });
-      return NextResponse.json({ ok: false }, { status: 200 }); // 200: don't make Resend retry a DB blip forever
-    }
-    return NextResponse.json({ ok: true, updated: data?.length ?? 0 });
+
+    return NextResponse.json({ ok: true, updated });
   } catch (e) {
     logApiFailure("/api/resend/webhook", "update_threw", { code: (e as { code?: string })?.code });
     return NextResponse.json({ ok: false }, { status: 200 });
