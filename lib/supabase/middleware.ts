@@ -19,9 +19,11 @@ export function isPublicPath(pathname: string): boolean {
     pathname === "/reset-password" ||
     pathname === "/unsubscribe" ||
     pathname === "/api/unsubscribe" ||
-    // Mailtrap delivery webhook: an external POST with no CRM session — its authorization is the
-    // request SIGNATURE (verified in the route), the same shape as the unsubscribe token.
+    // Email delivery webhooks: external POSTs with no CRM session — their authorization is the
+    // request SIGNATURE (verified in each route), the same shape as the unsubscribe token.
+    // Both providers run side by side (see app/api/resend/webhook/route.ts header comment).
     pathname === "/api/mailtrap/webhook" ||
+    pathname === "/api/resend/webhook" ||
     // Scheduled-send executor: pg_cron POSTs here every 5 min via pg_net — no CRM session. Its
     // authorization is the x-cron-secret HEADER (verified in the route against
     // SCHEDULED_SEND_CRON_SECRET), same shape as the webhook. Before this was allowlisted the gate
