@@ -31,6 +31,8 @@ export interface ImportInput {
    *  consent evidence (not a gate). Empty/whitespace is rejected. */
   collectionSource?: string;
   filename?: string;
+  /** Tags selected via the Tag Assignment UI, applied to EVERY row in addition to per-row CSV tags. */
+  extraTags?: string[];
 }
 
 export interface CommitMeta {
@@ -97,7 +99,7 @@ export async function runImportRequest(input: ImportInput, deps: ImportDeps): Pr
 
   const { emails, phones } = candidateKeys(input.rows, mapping);
   const keys = await deps.loadKeys(emails, phones);
-  const plan = planImport(input.rows, mapping, keys);
+  const plan = planImport(input.rows, mapping, keys, input.extraTags);
 
   if (input.phase === "dry_run") {
     // NO write dep is touched here — this is the property import-audience-run.test.ts pins.

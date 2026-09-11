@@ -1161,6 +1161,19 @@ export const en: Messages = {
     empty: "No matching tags.",
     footer: "Tags added here are available as autocomplete during CSV import. Only tags marked 'Show in Event Spread' appear in the Dashboard chart.",
   },
+  tagAssignment: {
+    title: "Extra tags",
+    intro: "Tags selected here are applied to all rows — both new inserts and existing people being tagged. Tags from the CSV column still work and are merged with the ones here.",
+    loading: "Loading tags…",
+    noRegistry: "No tags registered yet.",
+    allSelected: "All already selected.",
+    searchPlaceholder: "Search…",
+    addPlaceholder: "new",
+    addLabel: "Add new tag",
+    removeLabel: "Remove",
+    summaryTitle: "Extra tags to be applied",
+    summaryHint: "Added to all rows being inserted and tagged. Go back to mapping to change.",
+  },
   // Campaigns console (send path) — compose flow + pre-launch block. Born bilingual.
   sendLimitsPage: {
     title: "Send limits",

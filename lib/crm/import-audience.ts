@@ -288,6 +288,7 @@ export function planImport(
   rows: Record<string, string>[],
   mapping: ColumnMapping,
   keys: ImportKeys,
+  extraTags?: readonly string[],
 ): ImportPlan {
   const outcomes: RowOutcome[] = [];
   const insertRows: NormalizedRow[] = [];
@@ -314,6 +315,11 @@ export function planImport(
 
   rows.forEach((raw, index) => {
     const n = normalizeMappedRow(raw, mapping);
+    if (extraTags && extraTags.length > 0) {
+      const merged = new Set(n.tags);
+      for (const t of extraTags) merged.add(t);
+      n.tags = Array.from(merged).sort();
+    }
     const email = n.emailNormalized;
 
     // Count a mangled phone once, independent of what happens to the row below (its email may be valid
