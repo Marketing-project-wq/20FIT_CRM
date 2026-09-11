@@ -160,6 +160,8 @@ export const en: Messages = {
       "This number DIFFERS from the live gap above: the source populations are different (e.g. here arena_bookings 4; the live arena gap counts a different arena table). Candidates = mirror snapshot (deduped across sources); gap = computed on page load. Both are correct; they count different things.",
     candSourceCol: "Source (raw)",
     candCountCol: "Candidates",
+    candSecondaryNote:
+      "A secondary figure. The live signal — people genuinely outside the pool — is in the summary above.",
     candAsOf: "Data as of", // + the newest candidate row's date (age of the DATA, not of the recount)
     candFrozenSince: "Frozen since", // + date · N days
     candFrozenDays: "days with no change",
