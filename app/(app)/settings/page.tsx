@@ -13,6 +13,7 @@ import { SendLimitsPanel } from "@/components/settings/send-limits-panel";
 import { getSendConfig } from "@/lib/crm/send-config";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ConsentArchivePanel } from "@/components/consent/consent-archive-panel";
+import { TagRegistryPanel } from "@/components/settings/tag-registry-panel";
 import { CoverageNotice } from "@/components/i18n/coverage-notice";
 import { getServerDict } from "@/lib/i18n/server";
 
@@ -21,7 +22,7 @@ export const metadata: Metadata = { title: "Settings" };
 // Role-dependent — never statically cached.
 export const dynamic = "force-dynamic";
 
-const TAB_KEYS = ["log", "manager", "consent", "whatsapp", "limits"] as const;
+const TAB_KEYS = ["log", "manager", "consent", "whatsapp", "tags", "limits"] as const;
 type SettingsTab = (typeof TAB_KEYS)[number];
 
 function resolveTab(raw: string | string[] | undefined): SettingsTab {
@@ -74,6 +75,7 @@ export default async function SettingsPage({
     { key: "manager", label: t.tabs.settingsManager, href: "/settings?tab=manager" },
     { key: "consent", label: t.tabs.settingsConsent, href: "/settings?tab=consent" },
     { key: "whatsapp", label: t.tabs.settingsWhatsapp, href: "/settings?tab=whatsapp" },
+    { key: "tags", label: t.tabs.settingsTags, href: "/settings?tab=tags" },
     // Send limits are SUPER-ADMIN EXCLUSIVE — the tab appears only for them; the action re-checks.
     ...(canManageRoles(role) ? [{ key: "limits", label: t.tabs.settingsLimits, href: "/settings?tab=limits" }] : []),
   ];
@@ -134,6 +136,8 @@ export default async function SettingsPage({
       )}
 
       {tab === "whatsapp" && <WhatsappPanel />}
+
+      {tab === "tags" && <TagRegistryPanel />}
 
       {tab === "limits" && (
         canManageRoles(role) && sendLimits ? (

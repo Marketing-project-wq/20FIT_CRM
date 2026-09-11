@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Upload, FileText, ArrowRight, CheckCircle2, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -274,7 +274,7 @@ export function ImportWizard() {
                     </td>
                     <td className="py-2 font-body text-[12px] text-ink-soft">
                       {mapping[h] === "tags"
-                        ? <TagSample raw={preview[0]?.[h] ?? ""} />
+                        ? <><TagSample raw={preview[0]?.[h] ?? ""} /><TagSuggestions /></>
                         : (preview[0]?.[h] ?? "")}
                     </td>
                   </tr>
@@ -549,6 +549,39 @@ function TagSample({ raw }: { raw: string }) {
             <span key={t} className="rounded-sm bg-glass px-1.5 py-0.5 font-mono text-[11px] text-amber">{t}</span>
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+function TagSuggestions() {
+  const [tags, setTags] = useState<{ slug: string; label: string | null; namespace: string }[]>([]);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    fetch("/api/tags")
+      .then((r) => r.json())
+      .then((d) => setTags(d.tags ?? []))
+      .catch(() => {});
+  }, [open]);
+  return (
+    <div className="mt-2">
+      <button
+        type="button"
+        className="font-body text-[11px] text-ink-faint underline hover:text-ink"
+        onClick={() => setOpen((o) => !o)}
+      >
+        {open ? "Sembunyikan tag terdaftar" : "Lihat tag terdaftar"}
+      </button>
+      {open && tags.length > 0 && (
+        <div className="mt-1 flex max-h-40 flex-wrap gap-1 overflow-y-auto">
+          {tags.map((t) => (
+            <span key={t.slug} className="rounded-sm bg-glass px-1.5 py-0.5 font-mono text-[10px] text-ink-soft">{t.slug}</span>
+          ))}
+        </div>
+      )}
+      {open && tags.length === 0 && (
+        <p className="mt-1 font-body text-[10px] text-ink-faint">Belum ada tag terdaftar.</p>
       )}
     </div>
   );
