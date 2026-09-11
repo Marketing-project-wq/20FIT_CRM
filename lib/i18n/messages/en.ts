@@ -1210,7 +1210,7 @@ export const en: Messages = {
       recipientClickedAt: "Clicked at",
       recipientCause: "Failure cause",
       detailEmpty: "This send has no recipient rows yet.",
-      maskNote: "Names shown; contact stays masked per your role (the address is never shown here).",
+      maskNote: "Full email addresses shown for delivery troubleshooting.",
       lastError: "Stop reason",
       notFound: "Delivery not found.",
       summaryTitle: "Summary",

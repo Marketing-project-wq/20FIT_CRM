@@ -161,7 +161,7 @@ export function RecipientTable({ recipients }: { recipients: DeliveryRecipient[]
                         : <span className="italic text-ink-faint">{d.recipientUnresolved}</span>}
                     </td>
                     <td className="px-4 py-2.5 font-mono text-[12px] text-ink-faint">
-                      {r.maskedEmail ?? "—"}
+                      {r.rawEmail ?? "—"}
                     </td>
                     <td className="px-4 py-2.5">{r.channel}</td>
                     <td className="px-4 py-2.5"><Badge tone={rst.tone}>{m[rst.key]}</Badge></td>

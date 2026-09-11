@@ -1304,7 +1304,7 @@ export const id = {
       recipientClickedAt: "Waktu klik",
       recipientCause: "Sebab gagal",
       detailEmpty: "Pengiriman ini belum punya baris penerima.",
-      maskNote: "Nama ditampilkan; kontak tetap tersamar sesuai peran (alamat tak pernah ditampilkan di sini).",
+      maskNote: "Email asli ditampilkan untuk keperluan troubleshoot pengiriman.",
       lastError: "Sebab berhenti",
       notFound: "Pengiriman tak ditemukan.",
       summaryTitle: "Ringkasan",

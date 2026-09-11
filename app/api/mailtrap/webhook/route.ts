@@ -78,27 +78,40 @@ export async function POST(req: Request): Promise<Response> {
     if (effect.failureCause) patch.failure_cause = effect.failureCause;
 
     try {
-      let q = admin.from("crm_message_log").update(patch);
-      // Idempotent fill: only set this cycle column when it is still NULL. A re-sent (replayed) event
-      // matches 0 rows, so it can never double-count for the bounce auto-stop or overwrite a value.
-      q = q.is(effect.column, null);
-      // A late `delivered` must not overwrite a terminal bad status (out-of-order / replay guard).
-      if (effect.status === "delivered") q = q.not("status", "in", '("bounced","complained")');
+      let matched = 0;
+
+      // Pass 1: correlate by provider_message_id (the provider's own id).
       if (ev.messageId) {
+        let q = admin.from("crm_message_log").update(patch);
+        q = q.is(effect.column, null);
+        if (effect.status === "delivered") q = q.not("status", "in", '("bounced","complained")');
         q = q.eq("provider_message_id", ev.messageId);
-      } else if (ev.email && hashSecret) {
+        const { data, error } = await q.select("id");
+        if (error) {
+          logApiFailure("/api/mailtrap/webhook", "log_update_failed", { code: error.code });
+          continue;
+        }
+        matched = data?.length ?? 0;
+      }
+
+      // Pass 2: if pass 1 matched nothing (id format mismatch), fall back to identity_hash.
+      if (matched === 0 && ev.email && hashSecret) {
         const norm = normalizeEmail(ev.email);
-        if (!norm) continue;
-        q = q.eq("identity_hash", hashIdentity("email", norm, hashSecret));
-      } else {
-        continue; // nothing to correlate on
+        if (norm) {
+          let q = admin.from("crm_message_log").update(patch);
+          q = q.is(effect.column, null);
+          if (effect.status === "delivered") q = q.not("status", "in", '("bounced","complained")');
+          q = q.eq("identity_hash", hashIdentity("email", norm, hashSecret));
+          const { data, error } = await q.select("id");
+          if (error) {
+            logApiFailure("/api/mailtrap/webhook", "log_update_failed", { code: error.code });
+            continue;
+          }
+          matched = data?.length ?? 0;
+        }
       }
-      const { data, error } = await q.select("id");
-      if (error) {
-        logApiFailure("/api/mailtrap/webhook", "log_update_failed", { code: error.code });
-        continue;
-      }
-      updated += data?.length ?? 0;
+
+      updated += matched;
     } catch (e) {
       logApiFailure("/api/mailtrap/webhook", "update_threw", { code: (e as { code?: string })?.code });
     }
