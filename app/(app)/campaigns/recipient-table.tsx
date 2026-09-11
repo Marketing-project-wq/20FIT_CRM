@@ -25,15 +25,17 @@ const REC_CAUSE: Record<string, keyof Dict["messagesPage"]> = {
   unknown: "causeUnknown",
 };
 
-type StatusFilter = "all" | "delivered" | "sent" | "bounced" | "failed" | "complained";
+type StatusFilter = "all" | "delivered" | "sent" | "bounced" | "failed" | "complained" | "opened" | "clicked";
 
-const FILTER_OPTIONS: { value: StatusFilter; labelKey: keyof Dict["campaignsPage"]["deliveries"] }[] = [
+const FILTER_OPTIONS: { value: StatusFilter; labelKey: keyof Dict["campaignsPage"]["deliveries"]; alwaysShow?: boolean }[] = [
   { value: "all", labelKey: "filterAll" },
   { value: "delivered", labelKey: "filterDelivered" },
   { value: "sent", labelKey: "filterSent" },
   { value: "bounced", labelKey: "filterBounced" },
   { value: "failed", labelKey: "filterFailed" },
   { value: "complained", labelKey: "filterComplained" },
+  { value: "opened", labelKey: "filterOpened", alwaysShow: true },
+  { value: "clicked", labelKey: "filterClicked", alwaysShow: true },
 ];
 
 function wibDisplay(utcIso: string): string {
@@ -60,16 +62,22 @@ export function RecipientTable({ recipients }: { recipients: DeliveryRecipient[]
   }, [query]);
 
   const statusCounts = useMemo(() => {
-    const counts: Record<StatusFilter, number> = { all: recipients.length, delivered: 0, sent: 0, bounced: 0, failed: 0, complained: 0 };
+    const counts: Record<StatusFilter, number> = { all: recipients.length, delivered: 0, sent: 0, bounced: 0, failed: 0, complained: 0, opened: 0, clicked: 0 };
     for (const r of recipients) {
       if (r.status in counts) counts[r.status as StatusFilter]++;
+      if (r.openedAt) counts.opened++;
+      if (r.clickedAt) counts.clicked++;
     }
     return counts;
   }, [recipients]);
 
   const filtered = useMemo(() => {
     let rows = recipients;
-    if (statusFilter !== "all") {
+    if (statusFilter === "opened") {
+      rows = rows.filter((r) => !!r.openedAt);
+    } else if (statusFilter === "clicked") {
+      rows = rows.filter((r) => !!r.clickedAt);
+    } else if (statusFilter !== "all") {
       rows = rows.filter((r) => r.status === statusFilter);
     }
     if (debouncedQuery.trim()) {
@@ -101,7 +109,7 @@ export function RecipientTable({ recipients }: { recipients: DeliveryRecipient[]
         <div className="flex flex-wrap gap-1">
           {FILTER_OPTIONS.map((opt) => {
             const count = statusCounts[opt.value];
-            if (opt.value !== "all" && count === 0) return null;
+            if (opt.value !== "all" && !opt.alwaysShow && count === 0) return null;
             const active = statusFilter === opt.value;
             return (
               <button

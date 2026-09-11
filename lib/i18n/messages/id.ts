@@ -1359,6 +1359,8 @@ export const id = {
       filterBounced: "Memantul",
       filterFailed: "Gagal",
       filterComplained: "Keluhan",
+      filterOpened: "Dibuka",
+      filterClicked: "Diklik",
     },
     blockNoTemplateTitle: "Belum ada template email aktif",
     blockNoTemplateBody: "Alur kirim berhenti di sini sampai ada template aktif yang memuat tautan unsubscribe. Buat dulu di Templates.",

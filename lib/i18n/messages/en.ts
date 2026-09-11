@@ -1265,6 +1265,8 @@ export const en: Messages = {
       filterBounced: "Bounced",
       filterFailed: "Failed",
       filterComplained: "Complaints",
+      filterOpened: "Opened",
+      filterClicked: "Clicked",
     },
     blockNoTemplateTitle: "No active email template yet",
     blockNoTemplateBody: "The send flow stops here until there is an active template carrying an unsubscribe link. Create one in Templates first.",
