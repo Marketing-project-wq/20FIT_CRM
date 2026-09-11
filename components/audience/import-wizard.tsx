@@ -12,7 +12,7 @@ import {
   type ImportField,
   type ImportSummary,
 } from "@/lib/crm/import-audience";
-import { parseTagCell, groupTags, namespaceLabel, tagValueLabel, isOperatorTag, normalizeTag, TAG_NAMESPACES } from "@/lib/crm/tags";
+import { parseTagCell, groupTags, namespaceLabel, tagValueLabel, isOperatorTag } from "@/lib/crm/tags";
 
 /**
  * CSV import wizard (Fase 1) — upload → map columns → review summary → confirm → report. It NEVER
