@@ -6,6 +6,7 @@ import type { Dict } from "@/lib/i18n";
 import type { DeliveryRow, DeliveryState, DeliveryDetail } from "@/lib/crm/deliveries";
 import { CancelDeliveryButton } from "./cancel-delivery-button";
 import { DrainControlButtons } from "./drain-control-buttons";
+import { RecipientTable } from "./recipient-table";
 
 /**
  * Deliveries tab (Campaigns) — one chronological list of scheduled sends + campaign runs. A run row
@@ -27,26 +28,6 @@ const STATE_META: Record<DeliveryState, { key: keyof Dict["campaignsPage"]["deli
   failed: { key: "stateFailed", tone: "red" },
   stopped: { key: "stateStopped", tone: "red" },
   cancelled: { key: "stateCancelled", tone: "neutral" },
-};
-
-// Recipient status/cause reuse the send-log vocabulary (messagesPage), the same labels the old
-// history panel used.
-const REC_STATUS: Record<string, { key: keyof Dict["messagesPage"]; tone: "green" | "red" | "blue" | "neutral" }> = {
-  queued: { key: "stQueued", tone: "blue" },
-  sent: { key: "stSent", tone: "green" },
-  delivered: { key: "stDelivered", tone: "green" },
-  bounced: { key: "stBounced", tone: "red" },
-  complained: { key: "stComplained", tone: "red" },
-  failed: { key: "stFailed", tone: "red" },
-  skipped_suppressed: { key: "stSkipped", tone: "neutral" },
-};
-const REC_CAUSE: Record<string, keyof Dict["messagesPage"]> = {
-  invalid_address: "causeInvalid",
-  hard_bounce: "causeHardBounce",
-  provider_rejected: "causeProvider",
-  provider_throttled: "causeThrottled",
-  daily_limit: "causeDaily",
-  unknown: "causeUnknown",
 };
 
 /** UTC ISO → "YYYY-MM-DD HH:mm WIB" (WIB = UTC+7). Scheduled sends are entered in WIB, so showing WIB
@@ -165,7 +146,6 @@ export function DeliveriesTab({
 }) {
   const { t } = getServerDict();
   const d = t.campaignsPage.deliveries;
-  const m = t.messagesPage;
 
   // ── DETAIL: the full picture of one delivery ──
   if (detailRequested) {
@@ -269,54 +249,7 @@ export function DeliveriesTab({
         <section className="flex flex-col gap-2">
           <h3 className="font-body text-[13px] font-semibold text-ink">{d.recipientsTitle}</h3>
           <p className="font-body text-[12px] leading-relaxed text-ink-faint">{d.maskNote}</p>
-          {detail.recipients.length === 0 ? (
-            <div className="rounded-card border border-dashed border-glass-border px-6 py-12 text-center">
-              <p className="font-body text-[13px] text-ink-soft">{d.detailEmpty}</p>
-            </div>
-          ) : (
-            <div className="glass-strong overflow-x-auto rounded-card">
-              <table className="w-full border-collapse text-left">
-                <thead>
-                  <tr className="border-b border-glass-border font-body text-[11px] uppercase tracking-wide text-ink-faint">
-                    <th className="px-4 py-2.5 font-medium">{d.recipientName}</th>
-                    <th className="px-4 py-2.5 font-medium">{d.recipientChannel}</th>
-                    <th className="px-4 py-2.5 font-medium">{d.recipientStatus}</th>
-                    <th className="px-4 py-2.5 font-medium">{d.recipientSentAt}</th>
-                    <th className="px-4 py-2.5 font-medium">{d.recipientDeliveredAt}</th>
-                    <th className="px-4 py-2.5 font-medium">{d.recipientOpenedAt}</th>
-                    <th className="px-4 py-2.5 font-medium">{d.recipientClickedAt}</th>
-                    <th className="px-4 py-2.5 font-medium">{d.recipientCause}</th>
-                  </tr>
-                </thead>
-                <tbody className="font-body text-[13px] text-ink-soft">
-                  {detail.recipients.map((r, i) => {
-                    const rst = REC_STATUS[r.status] ?? REC_STATUS.queued;
-                    const displayName = r.name
-                      ? r.name
-                      : r.maskedEmail
-                        ? r.maskedEmail
-                        : null;
-                    return (
-                      <tr key={i} className="border-b border-glass-border/50 last:border-0">
-                        <td className="px-4 py-2.5">
-                          {displayName
-                            ? <span className={r.name ? "" : "italic text-ink-faint"}>{displayName}</span>
-                            : <span className="italic text-ink-faint">{d.recipientUnresolved}</span>}
-                        </td>
-                        <td className="px-4 py-2.5">{r.channel}</td>
-                        <td className="px-4 py-2.5"><Badge tone={rst.tone}>{m[rst.key]}</Badge></td>
-                        <td className="px-4 py-2.5 font-mono text-[12px]">{r.sentAt ? wibDisplay(r.sentAt) : "—"}</td>
-                        <td className="px-4 py-2.5 font-mono text-[12px]">{r.deliveredAt ? wibDisplay(r.deliveredAt) : "—"}</td>
-                        <td className="px-4 py-2.5 font-mono text-[12px]">{r.openedAt ? wibDisplay(r.openedAt) : "—"}</td>
-                        <td className="px-4 py-2.5 font-mono text-[12px]">{r.clickedAt ? wibDisplay(r.clickedAt) : "—"}</td>
-                        <td className="px-4 py-2.5">{r.failureCause ? m[REC_CAUSE[r.failureCause] ?? "causeUnknown"] : "—"}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <RecipientTable recipients={detail.recipients} />
         </section>
       </div>
     );

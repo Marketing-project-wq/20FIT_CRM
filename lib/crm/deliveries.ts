@@ -321,6 +321,7 @@ export async function listDeliveries(admin: SupabaseClient, limit = 100, nowIso 
 export interface DeliveryRecipient {
   name: string | null;
   maskedEmail: string | null;
+  rawEmail: string | null;
   channel: string;
   status: string;
   failureCause: string | null;
@@ -339,9 +340,10 @@ interface LogEntry {
 async function resolveCustomerDisplay(
   admin: SupabaseClient,
   entries: LogEntry[],
-): Promise<{ names: Map<string, string | null>; emails: Map<string, string | null> }> {
+): Promise<{ names: Map<string, string | null>; emails: Map<string, string | null>; rawEmails: Map<string, string | null> }> {
   const names = new Map<string, string | null>();
   const emails = new Map<string, string | null>();
+  const rawEmails = new Map<string, string | null>();
 
   const ids = Array.from(new Set(entries.map((e) => e.customerId)));
   for (let i = 0; i < ids.length; i += 500) {
@@ -353,6 +355,7 @@ async function resolveCustomerDisplay(
     for (const p of (profs ?? []) as { customer_id: string; full_name: string | null; email_normalized: string | null }[]) {
       names.set(p.customer_id, p.full_name);
       emails.set(p.customer_id, maskEmail(p.email_normalized));
+      rawEmails.set(p.customer_id, p.email_normalized);
     }
   }
 
@@ -362,13 +365,13 @@ async function resolveCustomerDisplay(
       unresolvedByHash.set(e.identityHash, e.customerId);
     }
   }
-  if (unresolvedByHash.size === 0) return { names, emails };
+  if (unresolvedByHash.size === 0) return { names, emails, rawEmails };
 
   let secret: string;
   try {
     secret = identityHashSecret();
   } catch {
-    return { names, emails };
+    return { names, emails, rawEmails };
   }
 
   const PAGE = 1000;
@@ -388,12 +391,13 @@ async function resolveCustomerDisplay(
       if (logCid) {
         names.set(logCid, p.full_name);
         emails.set(logCid, maskEmail(p.email_normalized));
+        rawEmails.set(logCid, p.email_normalized);
         unresolvedByHash.delete(h);
       }
     }
   }
 
-  return { names, emails };
+  return { names, emails, rawEmails };
 }
 
 /**
@@ -434,6 +438,7 @@ export async function deliveryRecipients(
   return logs.map((l) => ({
     name: resolved.names.get(l.customer_id) ?? null,
     maskedEmail: resolved.emails.get(l.customer_id) ?? null,
+    rawEmail: resolved.rawEmails.get(l.customer_id) ?? null,
     channel: l.channel,
     status: l.status,
     failureCause: l.failure_cause,
@@ -584,6 +589,7 @@ export async function deliveryDetail(admin: SupabaseClient, runId: string): Prom
   const recipients: DeliveryRecipient[] = logs.map((l) => ({
     name: resolved.names.get(l.customer_id) ?? null,
     maskedEmail: resolved.emails.get(l.customer_id) ?? null,
+    rawEmail: resolved.rawEmails.get(l.customer_id) ?? null,
     channel: l.channel,
     status: l.status,
     failureCause: l.failure_cause,
