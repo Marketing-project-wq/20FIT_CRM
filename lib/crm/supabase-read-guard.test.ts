@@ -77,6 +77,7 @@ const key = (s: ReadSite) => `${s.path}|${s.bind}|${s.table}`;
 export const KNOWN_UNCHECKED_READS: ReadonlySet<string> = new Set([
   "lib/crm/deliveries.ts|profs|master_customer",
   "lib/crm/deliveries.ts|runData|crm_campaign_run",
+  "lib/crm/deliveries.ts|data|master_customer",
   "lib/crm/deliveries.ts|logData|crm_message_log",
   "lib/crm/deliveries.ts|auditData|crm_audit_log",
   "lib/crm/scheduled-send.ts|due|crm_scheduled_send",

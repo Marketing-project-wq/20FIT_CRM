@@ -3,6 +3,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { renderEmailDocument } from "./email-document";
 import type { RunStatus } from "./campaign-run-status";
 import { runDrainDisplay } from "./delivery-drain-state";
+import { hashIdentity, identityHashSecret } from "./identity-hash";
+import { maskEmail } from "./mask";
 
 /**
  * Deliveries read layer — the "Kiriman" tab under Campaigns. Scheduled, running, done and stopped are
@@ -309,23 +311,19 @@ export interface DeliveryRecipient {
   createdAt: string;
 }
 
-function maskEmail(raw: string | null): string | null {
-  if (!raw) return null;
-  const at = raw.indexOf("@");
-  if (at < 1) return raw[0] + "***";
-  const local = raw.slice(0, at);
-  const domain = raw.slice(at);
-  if (local.length <= 2) return local[0] + "***" + domain;
-  return local[0] + "***" + local[local.length - 1] + domain;
+interface LogEntry {
+  customerId: string;
+  identityHash: string | null;
 }
 
 async function resolveCustomerDisplay(
   admin: SupabaseClient,
-  customerIds: string[],
+  entries: LogEntry[],
 ): Promise<{ names: Map<string, string | null>; emails: Map<string, string | null> }> {
-  const ids = Array.from(new Set(customerIds));
   const names = new Map<string, string | null>();
   const emails = new Map<string, string | null>();
+
+  const ids = Array.from(new Set(entries.map((e) => e.customerId)));
   for (let i = 0; i < ids.length; i += 500) {
     const chunk = ids.slice(i, i + 500);
     const { data: profs } = await admin
@@ -337,6 +335,44 @@ async function resolveCustomerDisplay(
       emails.set(p.customer_id, maskEmail(p.email_normalized));
     }
   }
+
+  const unresolvedByHash = new Map<string, string>();
+  for (const e of entries) {
+    if (!names.has(e.customerId) && e.identityHash) {
+      unresolvedByHash.set(e.identityHash, e.customerId);
+    }
+  }
+  if (unresolvedByHash.size === 0) return { names, emails };
+
+  let secret: string;
+  try {
+    secret = identityHashSecret();
+  } catch {
+    return { names, emails };
+  }
+
+  const PAGE = 1000;
+  for (let from = 0; unresolvedByHash.size > 0; from += PAGE) {
+    const { data } = await admin
+      .from("master_customer")
+      .select("full_name, email_normalized")
+      .not("email_normalized", "is", null)
+      .order("customer_id", { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (!data || data.length === 0) break;
+
+    for (const p of data as { full_name: string | null; email_normalized: string | null }[]) {
+      if (!p.email_normalized) continue;
+      const h = hashIdentity("email", p.email_normalized, secret);
+      const logCid = unresolvedByHash.get(h);
+      if (logCid) {
+        names.set(logCid, p.full_name);
+        emails.set(logCid, maskEmail(p.email_normalized));
+        unresolvedByHash.delete(h);
+      }
+    }
+  }
+
   return { names, emails };
 }
 
@@ -352,13 +388,14 @@ export async function deliveryRecipients(
 ): Promise<DeliveryRecipient[]> {
   const { data, error } = await admin
     .from("crm_message_log")
-    .select("customer_id, channel, status, failure_cause, sent_at, delivered_at, created_at")
+    .select("customer_id, identity_hash, channel, status, failure_cause, sent_at, delivered_at, created_at")
     .eq("campaign_id", runId)
     .order("created_at", { ascending: false })
     .limit(limit);
   if (error || !data) return [];
   const logs = data as {
     customer_id: string;
+    identity_hash: string | null;
     channel: string;
     status: string;
     failure_cause: string | null;
@@ -367,7 +404,10 @@ export async function deliveryRecipients(
     created_at: string;
   }[];
 
-  const resolved = await resolveCustomerDisplay(admin, logs.map((l) => l.customer_id));
+  const resolved = await resolveCustomerDisplay(
+    admin,
+    logs.map((l) => ({ customerId: l.customer_id, identityHash: l.identity_hash })),
+  );
 
   return logs.map((l) => ({
     name: resolved.names.get(l.customer_id) ?? null,
@@ -441,12 +481,12 @@ export async function deliveryDetail(admin: SupabaseClient, runId: string): Prom
   // All log rows for this run — drives the result report, the recorded version, and the recipients.
   const { data: logData } = await admin
     .from("crm_message_log")
-    .select("customer_id, channel, status, failure_cause, template_version, sent_at, delivered_at, bounced_at, complained_at, unsubscribed_at, opened_at, clicked_at, created_at")
+    .select("customer_id, identity_hash, channel, status, failure_cause, template_version, sent_at, delivered_at, bounced_at, complained_at, unsubscribed_at, opened_at, clicked_at, created_at")
     .eq("campaign_id", runId)
     .order("created_at", { ascending: false })
     .limit(2000);
   const logs = (logData ?? []) as {
-    customer_id: string; channel: string; status: string; failure_cause: string | null;
+    customer_id: string; identity_hash: string | null; channel: string; status: string; failure_cause: string | null;
     template_version: number | null; sent_at: string | null; delivered_at: string | null;
     bounced_at: string | null; complained_at: string | null; unsubscribed_at: string | null;
     opened_at: string | null; clicked_at: string | null; created_at: string;
@@ -511,7 +551,10 @@ export async function deliveryDetail(admin: SupabaseClient, runId: string): Prom
   }
 
   // Recipients (names + masked email resolved, raw contact never shown).
-  const resolved = await resolveCustomerDisplay(admin, logs.map((l) => l.customer_id));
+  const resolved = await resolveCustomerDisplay(
+    admin,
+    logs.map((l) => ({ customerId: l.customer_id, identityHash: l.identity_hash })),
+  );
   const recipients: DeliveryRecipient[] = logs.map((l) => ({
     name: resolved.names.get(l.customer_id) ?? null,
     maskedEmail: resolved.emails.get(l.customer_id) ?? null,
