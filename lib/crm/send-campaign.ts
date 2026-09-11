@@ -10,7 +10,7 @@ import type { SegmentCriteria } from "./segment";
 import { renderTemplate } from "./template";
 import { signUnsubscribeToken, unsubscribeSecret } from "./unsubscribe-token";
 import { hashIdentity, identityHashSecret } from "./identity-hash";
-import { sendTransactionalEmail } from "@/lib/email/send";
+import { sendTransactionalEmail, sendTransactionalEmailBatch, supportsBatchSend } from "@/lib/email/send";
 import { logApiFailure } from "./failure-log";
 import { SEND_ACTION } from "./send-constants";
 import { realSendEnabled, maySendTo } from "./send-gate";
@@ -25,6 +25,7 @@ import {
   type RecordOutcome,
   type SendSummary,
   type SendConfig,
+  type BatchSendResult,
 } from "./send-run";
 import { campaignBounceStatus } from "./bounce-monitor";
 
@@ -401,6 +402,43 @@ export async function sendCampaign(input: CampaignSendInput, nowIso: string): Pr
       );
       return { providerMessageId: receipt.providerMessageId };
     },
+    // BATCH port (11 Sep 2026) — offered ONLY when the active provider has a batch endpoint, so a
+    // rollback to EMAIL_PROVIDER=mailtrap silently returns the engine to one-at-a-time sending rather
+    // than failing. The engine treats an absent port as "no batching", so this is a safe conditional.
+    ...(supportsBatchSend()
+      ? {
+          // ONE Resend request carries ONE `from` line, but the sender name is per-template-LANGUAGE
+          // (T-74) — so recipients may only share a request when their sender name matches. Declaring
+          // that here lets the ENGINE bucket by it, which is what keeps every sendBatch call below a
+          // single request. Doing the split inside sendBatch instead would force it to report partial
+          // failures, and a partial failure silently disables both the backoff and the one-by-one
+          // isolation (they only run when the call THROWS, which a partly-succeeded call must not do).
+          batchGroupKey(r: SendRecipient) {
+            const tpl = templates[r.language] ?? templates.id ?? templates.en;
+            return tpl?.senderName ?? "";
+          },
+          async sendBatch(items: readonly { recipient: SendRecipient; message: RenderedMessage }[]) {
+            // Homogeneous by construction (see batchGroupKey), so this is ONE request and any failure
+            // is a WHOLE-request failure — which is exactly what the engine's recovery paths expect.
+            const first = items[0];
+            const senderName = first ? (templates[first.recipient.language] ?? templates.id ?? templates.en)?.senderName : null;
+            const receipts = await sendTransactionalEmailBatch(
+              items.map((it: { recipient: SendRecipient; message: RenderedMessage }) => ({
+                to: it.recipient.destination,
+                subject: it.message.subject ?? "",
+                text: it.message.text,
+                html: it.message.html,
+              })),
+              "crm-campaign",
+              senderName ?? undefined,
+            );
+            return items.map((_, i: number): BatchSendResult => ({
+              ok: true,
+              providerMessageId: receipts[i]?.providerMessageId ?? null,
+            }));
+          },
+        }
+      : {}),
     async record(key, outcome: RecordOutcome) {
       const patch: Record<string, unknown> = { status: outcome.status };
       if (outcome.status === "sent") {

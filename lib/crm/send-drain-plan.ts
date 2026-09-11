@@ -6,9 +6,16 @@
 
 import type { SendSummary } from "./send-run";
 
-/** Max SEND attempts per tick — bounds one executor invocation to a few minutes so ticks never run
- *  long (200 * ~0.8s ≈ 2.7 min). The daily limit still bounds the DAY; this bounds the TICK. */
-export const DRAIN_BATCH = 200;
+/** Max SEND attempts per tick.
+ *
+ *  RAISED 200 → 50000 (11 Sep 2026). This is NOT a volume policy — the owner's instruction is explicit
+ *  that the CRM must not impose a ceiling of its own. It is a crash-recovery unit: a tick is one HTTP
+ *  request, and if the process dies mid-request everything not yet flushed has to be re-driven by a
+ *  later tick. Bounding it keeps that replay window sane. It sits FAR above any realistic campaign
+ *  (the largest known audience is ~12k), so in practice a whole campaign drains in ONE tick and the
+ *  bound never binds. A run that did exceed it is not paused or delayed — `haltedForBatch` re-arms the
+ *  drain and the NEXT tick (60 s later) continues immediately. */
+export const DRAIN_BATCH = 50000;
 
 /** A drain claim older than this is treated as stale (the tick that set it crashed): a later tick may
  *  re-claim. Generous vs a ~3-min batch, so a healthy tick is never stolen; idempotency (the unique
@@ -24,10 +31,16 @@ export const DRAIN_RUNS_PER_TICK = 5;
  *   1. an auto-stop (bounce ratio / consecutive-failure wall) → 'stopped'.
  *   2. `haltedForBatch` → 'continue': the batch cap was reached with recipients still to send RIGHT
  *      NOW → the drainer re-arms and the next tick continues.
- *   3. `deferredDailyLimit > 0` → 'paused_daily_limit': today's shared budget is spent → the run stays
- *      'sending' but drain_active is cleared, and the leftover waits for a HUMAN "Lanjutkan"
- *      (the planDailySpread decision — never a silent cross-day continue).
+ *   3. `deferredDailyLimit > 0` → 'paused_daily_limit': today's ceiling is spent.
  *   4. otherwise → 'done': every remaining recipient was handled this cycle.
+ *
+ * THE HUMAN WAIT IS GONE (11 Sep 2026). Case 3 used to clear drain_active and park the run until a
+ * person clicked "Lanjutkan" — with a 1,000/day ceiling that meant a 12k campaign took 13 days and 13
+ * clicks. The owner asked for no wait, so the ceiling now defaults to UNLIMITED, which makes case 3
+ * unreachable in normal operation: the engine never defers when there is no ceiling to defer against.
+ * Case 3 is KEPT rather than deleted because an operator may still set a finite ceiling in Settings —
+ * and when they do, the run now AUTO-CONTINUES on the next tick (see drainRunOnce) instead of waiting
+ * for a human. "Paused" now means "waiting for the clock", never "waiting for a person".
  *
  * (2) before (3) matters: `haltedForBatch` and `deferredDailyLimit` are mutually exclusive in the
  * engine — once the budget hits 0 no further sends occur so the cap can't be reached, and once the cap

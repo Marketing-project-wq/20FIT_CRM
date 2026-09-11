@@ -1149,6 +1149,9 @@ export const en: Messages = {
     rampTitle: "Recommended ramp (a suggestion, not a rule)",
     rampBody: "A few hundred per day in the first week; raise gradually (roughly doubling every ~2 days) only after seeing bounce and complaint rates stay low. You are free to ignore it.",
     bounceNote: "The 5% bounce auto-stop stays active at any limit — it matters more as volume rises, and cannot be switched off together with the daily limit.",
+    unlimitedBadge: "UNLIMITED",
+    unlimitedNote: "The daily ceiling is currently OFF by owner decision (11 Sep 2026): a campaign of any size goes out in one pass, with no pacing wait and no \"Continue\" click. The large number in this field is the \"no ceiling\" SENTINEL, not a typo — do not replace it with a small number unless you genuinely want a ceiling back. The 5% bounce auto-stop and the 20-consecutive-failure auto-stop both remain active.",
+    setUnlimited: "Set unlimited",
   },
   campaignsPage: {
     subtitle: "Compose a send: pick a segment, pick a template, see recipients after suppression, confirm, send.",

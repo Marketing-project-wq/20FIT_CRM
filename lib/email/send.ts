@@ -1,7 +1,10 @@
 import "server-only";
 import type { OutboundEmail, SendReceipt } from "./mailtrap";
 import { sendTransactionalEmail as sendViaMailtrap } from "./mailtrap";
-import { sendTransactionalEmail as sendViaResend } from "./resend";
+import {
+  sendTransactionalEmail as sendViaResend,
+  sendTransactionalEmailBatch as sendBatchViaResend,
+} from "./resend";
 
 /**
  * The email provider SWITCH, not a replacement (TUGAS 4). `EMAIL_PROVIDER=mailtrap|resend` picks the
@@ -47,4 +50,29 @@ export async function sendTransactionalEmail(
   // Pass category/senderName through as given; each adaptor applies the shared defaults
   // ("password-reset" / "20FIT CRM") when they are undefined, so behavior is identical either way.
   return send(mail, category, senderName);
+}
+
+/**
+ * Does the ACTIVE provider support batch sending? Only Resend does — Mailtrap has no equivalent
+ * endpoint on this account. The send engine asks this to decide whether to offer its `sendBatch` port,
+ * so flipping EMAIL_PROVIDER back to mailtrap silently returns to one-at-a-time sending instead of
+ * failing. Read fresh for the same reason activeEmailProvider is: no restart should be required.
+ */
+export function supportsBatchSend(): boolean {
+  return activeEmailProvider() === "resend";
+}
+
+/**
+ * Send many emails in ONE provider request. Throws if the active provider has no batch endpoint —
+ * callers must gate on supportsBatchSend() first. Receipts come back INDEX-ALIGNED with `mails`.
+ */
+export async function sendTransactionalEmailBatch(
+  mails: readonly OutboundEmail[],
+  category?: string,
+  senderName?: string,
+): Promise<SendReceipt[]> {
+  if (!supportsBatchSend()) {
+    throw new Error("The active email provider does not support batch sending.");
+  }
+  return sendBatchViaResend(mails, category, senderName);
 }

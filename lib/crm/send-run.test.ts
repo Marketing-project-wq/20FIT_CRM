@@ -18,6 +18,8 @@ import {
   type RenderedMessage,
   type ClaimMeta,
   type RecordOutcome,
+  type SendConfig,
+  type BatchSendResult,
 } from "./send-run";
 
 // ── An in-memory store implementing the ports. A "real interruption" is then just a partial call
@@ -483,10 +485,16 @@ describe("send-run — consecutive-failure auto-stop", () => {
 describe("send-run — rule 8 backoff + rule 9 pacing (8 Sep 2026)", () => {
   const RNG0 = () => 0; // deterministic: backoffDelayMs → half the base (500, 1000, 2000)
 
+  /** Pacing is OFF by default since 11 Sep 2026 (owner: campaigns must not wait), but the pacing
+   *  MECHANISM is still a supported knob an operator can turn back on — so these tests drive it
+   *  explicitly instead of leaning on the default. That keeps the behaviour covered while the
+   *  DEFAULT is pinned separately, below, at 0. */
+  const PACED: SendConfig = { ...DEFAULT_SEND_CONFIG, interRecipientDelayMs: 500 };
+
   it("throttle ONCE → the same recipient succeeds on the second attempt", async () => {
     const store = new FakeStore();
     store.failNTimesFor.set("c0", { err: { status: 429 }, remaining: 1 });
-    const s = await runSend(mk(1), store, "camp", hashFor, DEFAULT_SEND_CONFIG, RNG0);
+    const s = await runSend(mk(1), store, "camp", hashFor, PACED, RNG0);
     expect(s.sent).toBe(1);
     expect(totalFailed(s.failed)).toBe(0);
     expect(s.retriedSends).toBe(1);
@@ -499,7 +507,7 @@ describe("send-run — rule 8 backoff + rule 9 pacing (8 Sep 2026)", () => {
   it("throttle ALWAYS → fails after max attempts, recorded provider_throttled (not a recipient fault)", async () => {
     const store = new FakeStore();
     store.failFor.set("c0", { status: 503 }); // provider capacity — throttle status, thrown every time
-    const s = await runSend(mk(1), store, "camp", hashFor, DEFAULT_SEND_CONFIG, RNG0);
+    const s = await runSend(mk(1), store, "camp", hashFor, PACED, RNG0);
     expect(s.sent).toBe(0);
     expect(s.failed.provider_throttled).toBe(1);
     expect(s.retriedSends).toBe(3); // 4 attempts ⇒ 3 retries
@@ -515,7 +523,7 @@ describe("send-run — rule 8 backoff + rule 9 pacing (8 Sep 2026)", () => {
   it("backoff does NOT change the outcome for a NON-throttle failure — no retry, one attempt", async () => {
     const store = new FakeStore();
     store.failFor.set("c0", { status: 422, message: "invalid email address" });
-    const s = await runSend(mk(1), store, "camp", hashFor, DEFAULT_SEND_CONFIG, RNG0);
+    const s = await runSend(mk(1), store, "camp", hashFor, PACED, RNG0);
     expect(s.failed.invalid_address).toBe(1);
     expect(s.retriedSends).toBe(0);
     expect(store.sendAttempts.filter((c) => c === "c0")).toHaveLength(1); // recipient-level → tried once
@@ -556,16 +564,25 @@ describe("send-run — rule 8 backoff + rule 9 pacing (8 Sep 2026)", () => {
   it("pacing pauses once per REAL attempt only — suppressed/deferred recipients cost no pause", async () => {
     const store = new FakeStore();
     store.suppressed.add("c1"); // skipped_suppressed → no provider call, no pacing pause
-    const s = await runSend(mk(3), store, "camp", hashFor, DEFAULT_SEND_CONFIG, RNG0);
+    const s = await runSend(mk(3), store, "camp", hashFor, PACED, RNG0);
     expect(s.sent).toBe(2);
     expect(s.skippedSuppressed).toBe(1);
     expect(store.sleeps).toEqual([500, 500]); // two sends → two pacing pauses; the skip added none
   });
 
-  it("DEFAULT config exposes the backoff + pacing knobs at their proposed values", () => {
+  it("DEFAULT config keeps backoff, but pacing is OFF (owner decision, 11 Sep 2026)", () => {
     expect(DEFAULT_SEND_CONFIG.maxSendAttempts).toBe(4);
     expect(DEFAULT_SEND_CONFIG.backoffBaseMs).toBe(1000);
-    expect(DEFAULT_SEND_CONFIG.interRecipientDelayMs).toBe(500);
+    // 0, not 500: the owner required that campaigns never wait. Backoff is untouched — reacting to a
+    // 429 is not a delay we chose, it is the provider telling us to stop.
+    expect(DEFAULT_SEND_CONFIG.interRecipientDelayMs).toBe(0);
+  });
+
+  it("pacing is genuinely skipped at 0 — a default run performs no sleeps at all", async () => {
+    const store = new FakeStore();
+    const s = await runSend(mk(3), store, "camp", hashFor, DEFAULT_SEND_CONFIG, RNG0);
+    expect(s.sent).toBe(3);
+    expect(store.sleeps).toEqual([]); // no pacing pause, and no backoff (nothing failed)
   });
 });
 
@@ -700,5 +717,213 @@ describe("send-run — overlapping ticks send each recipient exactly once", () =
     const results = await Promise.all(Array.from({ length: 10 }, () => store.claim(key, meta)));
     expect(results.filter((r) => r === true)).toHaveLength(1); // exactly one true
     expect(results.filter((r) => r === false)).toHaveLength(9);
+  });
+});
+
+// ── BATCHING (11 Sep 2026) ────────────────────────────────────────────────────────────────────
+// The batch path is the one place where a single provider request decides the fate of up to 100
+// recipients, so these tests are written around the ways that can go wrong rather than the happy
+// path alone: a rejected chunk must not blame innocent recipients, a partially-delivered chunk must
+// never be re-sent, and a claimed recipient must never be left without an outcome.
+class BatchStore extends FakeStore {
+  batchCalls: string[][] = []; // customerIds per sendBatch request, in call order
+  failBatchWith: unknown = null; // when set, EVERY sendBatch request throws this
+  failBatchNTimes = 0; // throw from sendBatch this many times, then behave
+  shortBy = 0; // return this many FEWER results than inputs (a contract violation)
+
+  async sendBatch(
+    items: readonly { recipient: SendRecipient; message: RenderedMessage }[],
+  ): Promise<readonly BatchSendResult[]> {
+    this.batchCalls.push(items.map((i) => i.recipient.customerId));
+    if (this.failBatchNTimes > 0) {
+      this.failBatchNTimes--;
+      throw this.failBatchWith ?? { status: 429 };
+    }
+    if (this.failBatchWith) throw this.failBatchWith;
+    const out = items.map((it): BatchSendResult => {
+      // Reuse the single-send fault injection so batch and sequential tests describe faults the
+      // same way — a per-ITEM error here, never a thrown request.
+      const always = this.failFor.get(it.recipient.customerId);
+      if (always) return { ok: false, error: always };
+      this.sentCustomers.push(it.recipient.customerId);
+      return { ok: true, providerMessageId: `pm-${it.recipient.customerId}` };
+    });
+    return out.slice(0, out.length - this.shortBy);
+  }
+}
+
+describe("send-run — batch sending", () => {
+  const BATCHED: SendConfig = { ...DEFAULT_SEND_CONFIG, batchSize: 10 };
+
+  it("sends in chunks of batchSize and records every recipient individually", async () => {
+    const store = new BatchStore();
+    const s = await runSend(mk(25), store, "camp", hashFor, BATCHED);
+    expect(s.sent).toBe(25);
+    expect(store.batchCalls.map((c) => c.length)).toEqual([10, 10, 5]); // 3 requests, not 25
+    for (let i = 0; i < 25; i++) {
+      expect(store.rows.get(`camp:c${i}:email`)?.status).toBe("sent");
+    }
+  });
+
+  it("leaves NO claimed recipient without an outcome — the tail chunk is always flushed", async () => {
+    const store = new BatchStore();
+    // 23 with batchSize 10: the last 3 live only in the tail flush after the loop ends.
+    await runSend(mk(23), store, "camp", hashFor, BATCHED);
+    const stranded = Array.from(store.rows.values()).filter((r) => r.status === "queued");
+    expect(stranded).toEqual([]);
+  });
+
+  it("a REJECTED chunk falls back to one-by-one so one bad address cannot fail the other nine", async () => {
+    const store = new BatchStore();
+    store.failBatchWith = { status: 422, message: "invalid email address" }; // recipient-level, not retryable
+    store.failFor.set("c3", { status: 422, message: "invalid email address" }); // the actual culprit
+    const s = await runSend(mk(10), store, "camp", hashFor, BATCHED);
+    expect(s.sent).toBe(9); // nine innocents delivered
+    expect(s.failed.invalid_address).toBe(1); // one genuine failure
+    expect(store.rows.get("camp:c3:email")?.status).toBe("failed");
+    expect(store.rows.get("camp:c0:email")?.status).toBe("sent");
+  });
+
+  it("a THROTTLED chunk is retried whole under backoff, then recorded as provider_throttled", async () => {
+    const store = new BatchStore();
+    store.failBatchWith = { status: 429 }; // retryable, thrown every time
+    const s = await runSend(mk(5), store, "camp", hashFor, { ...BATCHED, maxSendAttempts: 2 }, () => 0);
+    expect(s.sent).toBe(0);
+    expect(s.failed.provider_throttled).toBe(5);
+    expect(s.retriedSends).toBe(1); // the REQUEST was retried once, not five recipients separately
+    expect(store.batchCalls).toHaveLength(2);
+    // Critically NOT the one-by-one fallback: a real provider wall must not be hammered per recipient.
+    expect(store.sentCustomers).toEqual([]);
+  });
+
+  it("a SHORT batch response fails the missing recipients — it never promotes them to sent", async () => {
+    const store = new BatchStore();
+    store.shortBy = 2; // adapter returns 8 results for 10 inputs
+    const s = await runSend(mk(10), store, "camp", hashFor, BATCHED);
+    expect(s.sent).toBe(8);
+    expect(s.failed.unknown).toBe(2);
+    expect(store.rows.get("camp:c9:email")?.status).toBe("failed");
+  });
+
+  it("falls back to the one-at-a-time path when the adapter offers no sendBatch port", async () => {
+    const store = new FakeStore(); // no sendBatch — e.g. Mailtrap
+    const s = await runSend(mk(5), store, "camp", hashFor, BATCHED);
+    expect(s.sent).toBe(5);
+    expect(store.sendAttempts).toHaveLength(5); // every send went through the single-send port
+  });
+
+  it("suppression is still enforced per recipient inside a batched run", async () => {
+    const store = new BatchStore();
+    store.suppressed.add("c2");
+    const s = await runSend(mk(5), store, "camp", hashFor, BATCHED);
+    expect(s.skippedSuppressed).toBe(1);
+    expect(s.sent).toBe(4);
+    expect(store.batchCalls[0]).not.toContain("c2"); // never handed to the provider
+    expect(store.rows.get("camp:c2:email")?.status).toBe("skipped_suppressed");
+  });
+
+  it("idempotency survives interruption in a batched run — a re-run sends nobody twice", async () => {
+    const store = new BatchStore();
+    await runSend(mk(10), store, "camp", hashFor, BATCHED);
+    const firstPass = store.sentCustomers.length;
+    const second = await runSend(mk(20), store, "camp", hashFor, BATCHED);
+    expect(second.skippedAlreadySent).toBe(10);
+    expect(second.sent).toBe(10); // only the NEW ten
+    expect(store.sentCustomers).toHaveLength(firstPass + 10);
+  });
+});
+
+describe("send-run — unlimited ceiling + T-43 budget accounting", () => {
+  it("an unlimited ceiling never reads the daily counter (nothing to measure against)", async () => {
+    const store = new FakeStore();
+    let reads = 0;
+    store.todaySentCount = async () => {
+      reads++;
+      return 0;
+    };
+    const s = await runSend(mk(3), store, "camp", hashFor, DEFAULT_SEND_CONFIG);
+    expect(s.sent).toBe(3);
+    expect(reads).toBe(0);
+    expect(s.deferredDailyLimit).toBe(0);
+  });
+
+  it("T-43: a FAILED attempt consumes the budget too, so failures can no longer run past the ceiling", async () => {
+    const store = new FakeStore();
+    for (const r of mk(10)) store.failFor.set(r.customerId, { status: 500 });
+    // Ceiling of 5 with everything failing. Before the fix the budget only moved on success, so all
+    // 10 were attempted; now the ceiling stops it at 5 and defers the rest.
+    const s = await runSend(mk(10), store, "camp", hashFor, {
+      ...DEFAULT_SEND_CONFIG,
+      dailyLimit: 5,
+      maxConsecutiveFailures: 999, // isolate the budget rule from the wall
+    });
+    expect(s.attempted).toBe(5);
+    expect(s.deferredDailyLimit).toBe(5);
+    expect(s.sent).toBe(0);
+  });
+});
+
+describe("send-run — batch grouping keeps every chunk sendable as ONE request", () => {
+  /** A store whose recipients may only share a request when their language matches — the shape of the
+   *  real adapter, where the `from` sender name is per template language. */
+  class GroupedStore extends BatchStore {
+    batchGroupKey(r: SendRecipient): string {
+      return r.language;
+    }
+  }
+
+  const mkMixed = (n: number): SendRecipient[] =>
+    Array.from({ length: n }, (_, i) => ({
+      customerId: `c${i}`,
+      channel: "email" as const,
+      identityKind: "email" as const,
+      destination: `c${i}@example.com`,
+      language: (i % 2 === 0 ? "id" : "en") as "id" | "en",
+    }));
+
+  it("never mixes two groups in one request", async () => {
+    const store = new GroupedStore();
+    await runSend(mkMixed(10), store, "camp", hashFor, { ...DEFAULT_SEND_CONFIG, batchSize: 10 });
+    expect(store.batchCalls.length).toBeGreaterThan(1);
+    for (const call of store.batchCalls) {
+      const langs = new Set(call.map((id) => (Number(id.slice(1)) % 2 === 0 ? "id" : "en")));
+      expect(langs.size).toBe(1); // a request is always single-language
+    }
+  });
+
+  it("a failing group still gets one-by-one isolation even when another group succeeded", async () => {
+    // THE REGRESSION THIS GUARDS (found in review, 11 Sep 2026): when a chunk held two sender groups
+    // and one failed while the other succeeded, the adapter could not throw (that would double-send
+    // the successful group), so the engine skipped its isolation pass and marked every recipient of
+    // the failing group `failed` — good addresses included, permanently, since the idempotency key is
+    // deterministic. Bucketing makes each group its own request, so isolation applies to each.
+    const store = new GroupedStore();
+    store.failBatchWith = { status: 422, message: "invalid email address" }; // rejects any batch call
+    store.failFor.set("c1", { status: 422, message: "invalid email address" }); // the only real culprit
+    const s = await runSend(mkMixed(10), store, "camp", hashFor, { ...DEFAULT_SEND_CONFIG, batchSize: 10 });
+    expect(s.sent).toBe(9); // every innocent recipient, in BOTH groups, still delivered
+    expect(s.failed.invalid_address).toBe(1);
+    expect(store.rows.get("camp:c1:email")?.status).toBe("failed");
+    expect(store.rows.get("camp:c3:email")?.status).toBe("sent"); // same group as the culprit
+  });
+
+  it("a transient throttle on one group is still retried under backoff, not recorded as permanent", async () => {
+    const store = new GroupedStore();
+    // failBatchNTimes alone: it throws the default 429 N times then recovers. (Setting failBatchWith
+    // too would make it throw FOREVER — that is the "always fails" knob, not the transient one.)
+    store.failBatchNTimes = 1; // the FIRST request throttles, then the provider recovers
+    const s = await runSend(mkMixed(4), store, "camp", hashFor, { ...DEFAULT_SEND_CONFIG, batchSize: 4 }, () => 0);
+    expect(s.sent).toBe(4); // nobody was written off as a permanent failure
+    expect(s.retriedSends).toBe(1);
+    expect(totalFailed(s.failed)).toBe(0);
+  });
+
+  it("flushes EVERY bucket at the tail — a partly-filled group is never stranded", async () => {
+    const store = new GroupedStore();
+    // batchSize 4 with 2 languages: neither bucket ever fills, so both exist only at the tail flush.
+    await runSend(mkMixed(6), store, "camp", hashFor, { ...DEFAULT_SEND_CONFIG, batchSize: 4 });
+    const stranded = Array.from(store.rows.values()).filter((r) => r.status === "queued");
+    expect(stranded).toEqual([]);
+    expect(store.sentCustomers).toHaveLength(6);
   });
 });

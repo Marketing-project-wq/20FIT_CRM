@@ -29,6 +29,10 @@ import { senderNameForWire } from "./sender-name";
  */
 
 const SEND_ENDPOINT = "https://api.resend.com/emails";
+const BATCH_ENDPOINT = "https://api.resend.com/emails/batch";
+
+/** Resend's documented ceiling for one POST /emails/batch call. */
+export const RESEND_BATCH_LIMIT = 100;
 
 /** Resend's tag values must match /^[A-Za-z0-9_-]+$/ (ASCII letters/digits/_/-). Our categories
  *  ("password-reset", "crm-campaign", "campaign-preview") already fit; anything odd is dropped rather
@@ -76,6 +80,84 @@ export async function sendTransactionalEmail(
   }
 
   return { providerMessageId: extractResendId(await safeJson(res)) };
+}
+
+/**
+ * BATCH send — POST /emails/batch, up to RESEND_BATCH_LIMIT messages in ONE request (11 Sep 2026).
+ *
+ * WHY: Resend's rate limit is 10 REQUESTS/second per team, and that team budget is shared with the
+ * eight other 20FIT systems on this account (T-75). Batching buys ~100× the email throughput while
+ * consuming the same request budget those systems are competing for — it is both the fastest and the
+ * most considerate way to send a large campaign here.
+ *
+ * ALL-OR-NOTHING, and the caller must know it. Resend validates the whole array: one malformed address
+ * among 100 rejects the entire request with a 4xx, and the response body (which could echo an address)
+ * is deliberately discarded here. So a non-2xx throws for the WHOLE chunk, exactly like the single
+ * send, and the engine falls back to sending that chunk one-by-one to isolate the real culprit.
+ *
+ * Attachments are NOT supported by this endpoint — campaigns are html+text only, so that is moot; do
+ * not add attachments to the campaign path without moving off batch.
+ *
+ * The response is `{ data: [{ id }, …] }`, INDEX-ALIGNED with the request array. That alignment is the
+ * whole contract — extractResendBatchIds preserves position and pads with null rather than shifting,
+ * because a shifted id would attach one recipient's provider_message_id to a DIFFERENT recipient and
+ * silently corrupt every webhook correlation downstream.
+ */
+export async function sendTransactionalEmailBatch(
+  mails: readonly OutboundEmail[],
+  category = "crm-campaign",
+  senderName = "20FIT CRM",
+): Promise<SendReceipt[]> {
+  const token = process.env.RESEND_API_KEY;
+  const from = process.env.RESEND_FROM;
+  if (!token || !from) {
+    throw new Error("Resend is not configured (RESEND_API_KEY / RESEND_FROM missing).");
+  }
+  if (mails.length === 0) return [];
+  if (mails.length > RESEND_BATCH_LIMIT) {
+    throw new Error(`Resend batch accepts at most ${RESEND_BATCH_LIMIT} emails per request.`);
+  }
+
+  const tag = safeCategory(category);
+  const fromLine = `${senderNameForWire(senderName)} <${from}>`;
+  const res = await fetch(BATCH_ENDPOINT, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(
+      mails.map((mail) => ({
+        from: fromLine,
+        to: [mail.to],
+        subject: mail.subject,
+        text: mail.text,
+        html: mail.html,
+        ...(tag ? { tags: [{ name: "category", value: tag }] } : {}),
+      })),
+    ),
+    cache: "no-store",
+  });
+
+  if (!res.ok) throw resendHttpError(res.status);
+
+  const ids = extractResendBatchIds(await safeJson(res), mails.length);
+  return ids.map((providerMessageId) => ({ providerMessageId }));
+}
+
+/** Pull the index-aligned ids out of `{ data: [{id}, …] }`, always returning exactly `expected`
+ *  entries. A missing/short/!string entry becomes null — recorded honestly as "sent, id unknown"
+ *  rather than inventing one or, worse, letting the array shift under the recipients. */
+export function extractResendBatchIds(body: unknown, expected: number): (string | null)[] {
+  const data =
+    body && typeof body === "object" && "data" in body ? (body as { data?: unknown }).data : null;
+  const rows = Array.isArray(data) ? data : [];
+  return Array.from({ length: expected }, (_, i) => {
+    const row = rows[i];
+    if (!row || typeof row !== "object" || !("id" in row)) return null;
+    const id = (row as { id?: unknown }).id;
+    return typeof id === "string" && id.length > 0 ? id : null;
+  });
 }
 
 /** A non-2xx from the Resend API, carrying the HTTP status as a readable property — identical shape to

@@ -1243,6 +1243,9 @@ export const id = {
     rampTitle: "Rekomendasi ramp (saran, bukan aturan)",
     rampBody: "Minggu pertama beberapa ratus per hari; naikkan bertahap (kira-kira dua kali lipat tiap ~2 hari) hanya setelah melihat tingkat bounce dan keluhan tetap rendah. Anda bebas mengabaikannya.",
     bounceNote: "Auto-stop bounce 5% tetap aktif berapa pun batasnya — ia justru makin penting saat volume naik, dan tak bisa dimatikan bersama batas harian.",
+    unlimitedBadge: "TANPA BATAS",
+    unlimitedNote: "Plafon harian saat ini DIMATIKAN atas keputusan pemilik (11 Sep 2026): kampanye berukuran berapa pun terkirim sekaligus, tanpa jeda tunggu dan tanpa klik \"Lanjutkan\". Angka besar di kolom ini adalah PENANDA \"tanpa batas\", bukan salah ketik — jangan menggantinya dengan angka kecil kecuali Anda memang ingin memasang plafon kembali. Auto-stop bounce 5% dan auto-stop 20-gagal-beruntun TETAP aktif.",
+    setUnlimited: "Setel tanpa batas",
   },
   campaignsPage: {
     subtitle: "Susun kirim: pilih segmen, pilih template, lihat penerima setelah suppression, konfirmasi, kirim.",
