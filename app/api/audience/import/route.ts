@@ -15,7 +15,6 @@ import {
 import { importFailureMessage, MAX_IMPORT_ROWS, reconcileImport } from "@/lib/crm/import-audience";
 import { loadImportKeys, type ImportReadClient } from "@/lib/crm/import-keys";
 import type { ImportKeys, ImportPlan, NormalizedRow } from "@/lib/crm/import-audience";
-import { isOperatorTag, normalizeTag } from "@/lib/crm/tags";
 
 export const dynamic = "force-dynamic";
 // Advisory ceiling; Railway does not enforce it (persistent server). The real bounds are the row cap
@@ -69,7 +68,7 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json({ error: "bad_request", message: "Body bukan JSON yang valid." }, { status: 400 });
   }
-  const b = body as { phase?: unknown; csvText?: unknown; mapping?: unknown; collectionSource?: unknown; filename?: unknown; extraTags?: unknown };
+  const b = body as { phase?: unknown; csvText?: unknown; mapping?: unknown; collectionSource?: unknown; filename?: unknown };
   const phase = String(b.phase ?? "");
   if (!PHASES.has(phase)) {
     return NextResponse.json({ error: "bad_request", message: "Fase tidak dikenal." }, { status: 400 });
@@ -147,26 +146,6 @@ export async function POST(request: NextRequest) {
     },
   };
 
-  // Validate extraTags: each must normalize to a valid operator tag. Reject the whole array if any
-  // item fails — a half-valid list is a data-quality hazard the operator should fix before retrying.
-  let extraTags: string[] | undefined;
-  if (Array.isArray(b.extraTags) && b.extraTags.length > 0) {
-    const normalized: string[] = [];
-    for (const raw of b.extraTags) {
-      if (typeof raw !== "string") continue;
-      const tag = normalizeTag(raw);
-      if (tag === "") continue;
-      if (!isOperatorTag(tag)) {
-        return NextResponse.json(
-          { error: "bad_request", message: `Tag "${tag}" tidak valid. Gunakan format namespace:value (huruf kecil, angka, tanda hubung).` },
-          { status: 400 },
-        );
-      }
-      if (!normalized.includes(tag)) normalized.push(tag);
-    }
-    if (normalized.length > 0) extraTags = normalized.sort();
-  }
-
   const input: ImportInput = {
     phase: phase as ImportPhase,
     headers,
@@ -174,7 +153,6 @@ export async function POST(request: NextRequest) {
     mapping: (b.mapping as ImportInput["mapping"]) ?? undefined,
     collectionSource: typeof b.collectionSource === "string" ? b.collectionSource : undefined,
     filename: typeof b.filename === "string" ? b.filename : undefined,
-    extraTags,
   };
 
   let result;

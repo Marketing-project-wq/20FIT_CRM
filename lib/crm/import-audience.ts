@@ -40,10 +40,10 @@ export const MAX_IMPORT_ROWS = 15_000;
 export const IMPORT_TARGET_FIELDS = ["full_name", "email", "phone", "city", "tags", "ignore"] as const;
 export type ImportField = (typeof IMPORT_TARGET_FIELDS)[number];
 
-/** The 5 namespaces available as column-mapping targets in the UI. A column mapped to `ns:kategori`
- *  turns every unique cell value into a `kategori:<slug>` tag. `format`, `nilai`, `produk` are
- *  deliberately excluded — they are per-row properties from raw Tag columns, not whole-column maps. */
-export const NAMESPACE_MAPPING_TARGETS = ["event", "kategori", "sumber", "tipe", "peran"] as const;
+/** All 8 operator namespaces, available as column-mapping targets in the import UI. A column mapped
+ *  to `ns:kategori` turns every unique cell value into a `kategori:<slug>` tag. Matches TAG_NAMESPACES
+ *  in tags.ts — the closed set an operator may use. */
+export const NAMESPACE_MAPPING_TARGETS = ["event", "format", "kategori", "nilai", "peran", "produk", "sumber", "tipe"] as const;
 
 /** A column mapping target: a standard import field OR a namespace tag mapping (`ns:event` etc.). */
 export type MappingTarget = ImportField | `ns:${(typeof NAMESPACE_MAPPING_TARGETS)[number]}`;
@@ -330,7 +330,6 @@ export function planImport(
   rows: Record<string, string>[],
   mapping: ColumnMapping,
   keys: ImportKeys,
-  extraTags?: readonly string[],
 ): ImportPlan {
   const outcomes: RowOutcome[] = [];
   const insertRows: NormalizedRow[] = [];
@@ -360,11 +359,6 @@ export function planImport(
     const n = normalizeMappedRow(raw, mapping);
     for (const [tag, label] of Object.entries(n.generatedTagLabels)) {
       if (!allGeneratedTagLabels[tag]) allGeneratedTagLabels[tag] = label;
-    }
-    if (extraTags && extraTags.length > 0) {
-      const merged = new Set(n.tags);
-      for (const t of extraTags) merged.add(t);
-      n.tags = Array.from(merged).sort();
     }
     const email = n.emailNormalized;
 

@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Upload, FileText, ArrowRight, CheckCircle2, AlertTriangle, X, ChevronDown, Plus } from "lucide-react";
+import { useState } from "react";
+import { Upload, FileText, ArrowRight, CheckCircle2, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   MAX_IMPORT_ROWS,
@@ -12,7 +12,7 @@ import {
   type MappingTarget,
   type ImportSummary,
 } from "@/lib/crm/import-audience";
-import { parseTagCell, groupTags, namespaceLabel, tagValueLabel, isOperatorTag, slugifyTagValue } from "@/lib/crm/tags";
+import { parseTagCell, groupTags, namespaceLabel, tagValueLabel, slugifyTagValue } from "@/lib/crm/tags";
 
 /**
  * CSV import wizard (Fase 1) — upload → map columns → review summary → confirm → report. It NEVER
@@ -90,7 +90,6 @@ export function ImportWizard() {
   const [dryOutcomes, setDryOutcomes] = useState<RowOutcomeView[]>([]);
   const [collectionSource, setCollectionSource] = useState("");
   const [report, setReport] = useState<ExecuteResponse | null>(null);
-  const [extraTags, setExtraTags] = useState<string[]>([]);
   const [generatedTagLabels, setGeneratedTagLabels] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -102,7 +101,7 @@ export function ImportWizard() {
       const res = await fetch("/api/audience/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phase, csvText, filename, mapping, extraTags: extraTags.length > 0 ? extraTags : undefined, ...extra }),
+        body: JSON.stringify({ phase, csvText, filename, mapping, ...extra }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -178,7 +177,6 @@ export function ImportWizard() {
     setDelimiter(",");
     setSummary(null);
     setDryOutcomes([]);
-    setExtraTags([]);
     setGeneratedTagLabels({});
     setCollectionSource("");
     setReport(null);
@@ -290,9 +288,6 @@ export function ImportWizard() {
               </tbody>
             </table>
           </div>
-          <div className="mt-5">
-            <TagAssignment selected={extraTags} onChange={setExtraTags} />
-          </div>
           <div className="mt-5 flex items-center gap-2">
             <Button variant="outline" onClick={reset}>← Ganti file</Button>
             <Button onClick={runDryRun} disabled={busy}>
@@ -384,23 +379,6 @@ export function ImportWizard() {
 
           {Object.keys(generatedTagLabels).length > 0 && (
             <NamespaceTagStats labels={generatedTagLabels} />
-          )}
-
-          {extraTags.length > 0 && (
-            <div className="mt-4 rounded-card border border-glass-border bg-glass p-3">
-              <div className="font-display text-[12px] font-bold text-ink">Tag tambahan yang akan diterapkan</div>
-              <div className="mt-1.5 flex flex-wrap gap-1.5">
-                {extraTags.map((tag) => (
-                  <span key={tag} className="rounded-sm bg-glass px-2 py-0.5 font-body text-[12px] text-ink">
-                    {tagValueLabel(tag, "id")}
-                    <span className="ml-1 font-display text-[9px] text-ink-faint">{namespaceLabel(tag.slice(0, tag.indexOf(":")), "id")}</span>
-                  </span>
-                ))}
-              </div>
-              <p className="mt-1 font-body text-[11px] text-ink-faint">
-                Ditambahkan ke semua baris yang masuk dan ditandai. Kembali ke pemetaan untuk mengubah.
-              </p>
-            </div>
           )}
 
           <div className="mt-6">
@@ -635,196 +613,6 @@ function NamespaceTagStats({ labels }: { labels: Record<string, string> }) {
           </div>
         </div>
       ))}
-    </div>
-  );
-}
-
-/** The 5 operator namespaces surfaced in the Tag Assignment UI. `format`, `nilai`, `produk` are omitted
- *  — they are per-row properties derived from the CSV, not batch-wide. */
-const TAG_ASSIGNMENT_NAMESPACES = ["event", "kategori", "sumber", "tipe", "peran"] as const;
-
-interface RegistryTag { slug: string; label: string | null; namespace: string }
-
-function TagAssignment({
-  selected,
-  onChange,
-}: {
-  selected: string[];
-  onChange: (tags: string[]) => void;
-}) {
-  const [registry, setRegistry] = useState<RegistryTag[]>([]);
-  const [loaded, setLoaded] = useState(false);
-  useEffect(() => {
-    fetch("/api/tags")
-      .then((r) => r.json())
-      .then((d) => { setRegistry(d.tags ?? []); setLoaded(true); })
-      .catch(() => setLoaded(true));
-  }, []);
-
-  function addTag(tag: string) {
-    if (!selected.includes(tag)) onChange([...selected, tag].sort());
-  }
-  function removeTag(tag: string) {
-    onChange(selected.filter((t) => t !== tag));
-  }
-
-  return (
-    <div className="rounded-card border border-glass-border bg-glass p-4">
-      <h3 className="font-display text-[13px] font-bold text-ink">Tag tambahan</h3>
-      <p className="mt-1 font-body text-[12px] text-ink-soft">
-        Tag yang dipilih di sini diterapkan ke <strong>semua</strong> baris — baik yang masuk maupun yang ditandai (sudah ada).
-        Tag dari kolom CSV tetap berfungsi dan digabung dengan tag di sini.
-      </p>
-
-      {selected.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {selected.map((tag) => (
-            <span
-              key={tag}
-              className="flex items-center gap-1 rounded-sm bg-glass px-2 py-0.5 font-body text-[12px] text-ink"
-            >
-              {tagValueLabel(tag, "id")}
-              <span className="font-display text-[9px] text-ink-faint">{namespaceLabel(tag.slice(0, tag.indexOf(":")), "id")}</span>
-              <button
-                type="button"
-                onClick={() => removeTag(tag)}
-                className="ml-0.5 rounded-sm p-0.5 text-ink-faint hover:bg-glass hover:text-ink"
-                aria-label={`Hapus ${tag}`}
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
-
-      {!loaded && <p className="mt-3 font-body text-[11px] text-ink-faint">Memuat tag…</p>}
-
-      {loaded && (
-        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {TAG_ASSIGNMENT_NAMESPACES.map((ns) => (
-            <NamespaceDropdown
-              key={ns}
-              namespace={ns}
-              registry={registry.filter((t) => t.namespace === ns)}
-              selected={selected}
-              onAdd={addTag}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function NamespaceDropdown({
-  namespace,
-  registry,
-  selected,
-  onAdd,
-}: {
-  namespace: string;
-  registry: RegistryTag[];
-  selected: string[];
-  onAdd: (tag: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
-  const [custom, setCustom] = useState("");
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [open]);
-
-  const available = registry
-    .filter((t) => !selected.includes(t.slug))
-    .filter((t) => {
-      if (search.trim() === "") return true;
-      const q = search.toLowerCase();
-      return t.slug.includes(q) || (t.label ?? "").toLowerCase().includes(q);
-    });
-
-  function addCustom() {
-    const value = custom.trim().toLowerCase().replace(/\s+/g, "-");
-    if (value === "") return;
-    const tag = `${namespace}:${value}`;
-    if (!isOperatorTag(tag)) return;
-    onAdd(tag);
-    setCustom("");
-  }
-
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex h-8 w-full items-center justify-between rounded-sm border border-glass-border bg-glass px-2 font-body text-[12px] text-ink hover:border-ink-faint"
-      >
-        <span className="truncate">{namespaceLabel(namespace, "id")}</span>
-        <ChevronDown className={`ml-1 h-3.5 w-3.5 shrink-0 text-ink-faint transition-transform ${open ? "rotate-180" : ""}`} />
-      </button>
-
-      {open && (
-        <div className="absolute left-0 top-full z-20 mt-1 w-56 rounded-card border border-glass-border bg-surface shadow-lg">
-          <div className="border-b border-glass-border p-2">
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Cari…"
-              className="h-7 w-full rounded-sm border border-glass-border bg-glass px-2 font-body text-[12px] text-ink placeholder:text-ink-faint focus:outline-none focus:ring-1 focus:ring-red"
-              autoFocus
-            />
-          </div>
-
-          <div className="max-h-40 overflow-y-auto">
-            {available.length === 0 && (
-              <p className="px-3 py-2 font-body text-[11px] text-ink-faint">
-                {registry.length === 0 ? "Belum ada tag terdaftar." : "Semua sudah dipilih."}
-              </p>
-            )}
-            {available.map((t) => (
-              <button
-                key={t.slug}
-                type="button"
-                onClick={() => { onAdd(t.slug); setSearch(""); }}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left font-body text-[12px] text-ink hover:bg-glass"
-              >
-                <span className="truncate">{t.label || tagValueLabel(t.slug, "id")}</span>
-                <span className="shrink-0 font-mono text-[10px] text-ink-faint">{t.slug.slice(t.slug.indexOf(":") + 1)}</span>
-              </button>
-            ))}
-          </div>
-
-          <div className="border-t border-glass-border p-2">
-            <div className="flex gap-1">
-              <span className="flex h-7 shrink-0 items-center rounded-l-sm border border-r-0 border-glass-border bg-glass px-1.5 font-mono text-[11px] text-ink-faint">{namespace}:</span>
-              <input
-                type="text"
-                value={custom}
-                onChange={(e) => setCustom(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCustom(); } }}
-                placeholder="baru"
-                className="h-7 min-w-0 flex-1 rounded-r-sm border border-glass-border bg-glass px-2 font-mono text-[12px] text-ink placeholder:text-ink-faint focus:outline-none focus:ring-1 focus:ring-red"
-              />
-              <button
-                type="button"
-                onClick={addCustom}
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-glass-border text-ink-faint hover:bg-glass hover:text-ink"
-                aria-label="Tambah tag baru"
-              >
-                <Plus className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
