@@ -1,16 +1,16 @@
 import "server-only";
 
 /**
- * Event analytics — all computations for the "Analisa Event" page.
+ * Event analytics — computations for the "Analisa Event" page.
  *
  * Data sources (merged per person by customer_id):
- *   1. customer_engagement WHERE unit='event' — per-person rows (customer_id + product)
- *   2. master_customer.tags[] — every "event:xxx" tag
- *   3. crm_tag_registry — labels for event tags
+ *   1. customer_engagement WHERE unit='event'
+ *   2. master_customer.tags[] event:* tags
+ *   3. crm_tag_registry for labels
  *
- * Both per-person sources are normalized to "event:xxx" slug format and unioned so a
- * person appearing in either (or both) is counted once per event. Chronological ordering
- * uses the earliest first_seen_at from customer_engagement, falling back to slug order.
+ * Related sub-events (JHM 5K/10K/HM, Sportfest v.02 Half/Single/…) are grouped
+ * by slug prefix. All KPIs, cohort retention, and churn are computed on groups.
+ * Individual events are included for the expanded view.
  */
 
 export interface EventInfo {
@@ -21,12 +21,21 @@ export interface EventInfo {
   returning: number;
 }
 
+export interface EventGroup {
+  groupKey: string;
+  groupLabel: string;
+  subEvents: { slug: string; label: string }[];
+  total: number;
+  newCount: number;
+  returning: number;
+}
+
 export interface CohortRow {
   cohortEvent: string;
   cohortLabel: string;
   cohortSize: number;
-  retention: number[]; // percentage at +1, +2, ... positions
-  retentionAbs: number[]; // absolute counts
+  retention: number[];
+  retentionAbs: number[];
 }
 
 export interface ChurnRow {
@@ -39,10 +48,12 @@ export interface ChurnRow {
 
 export interface EventAnalyticsData {
   events: EventInfo[];
+  groups: EventGroup[];
   totalPeople: number;
   returningPeople: number;
   returningPct: number;
-  allEventsPeople: number;
+  frequentPeople: number;
+  avgGroupsPerPerson: number;
   cohort: CohortRow[];
   churn: ChurnRow[];
   skipAfterOneReturn: number;
@@ -54,7 +65,8 @@ type AdminClient = any;
 const PAGE = 1000;
 
 export async function fetchEventAnalytics(admin: AdminClient): Promise<EventAnalyticsData> {
-  // 1. Fetch tag registry labels (small table — no paging needed)
+  // === FETCH ===
+
   const { data: registryRows, error: regErr } = await admin
     .from("crm_tag_registry")
     .select("slug, label")
@@ -67,7 +79,7 @@ export async function fetchEventAnalytics(admin: AdminClient): Promise<EventAnal
     labelMap.set(r.slug, r.label ?? formatSlugLabel(r.slug));
   }
 
-  // 2. Source A: master_customer event tags (paged to capture all 82K+ profiles)
+  // Source A: master_customer event tags (paged)
   const tagsByPerson = new Map<string, string[]>();
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await admin
@@ -90,8 +102,8 @@ export async function fetchEventAnalytics(admin: AdminClient): Promise<EventAnal
     if (rows.length < PAGE) break;
   }
 
-  // 3. Source B: customer_engagement WHERE unit='event' (paged — safe columns only,
-  //    NEVER raw_value / source_row_id / period)
+  // Source B: customer_engagement (paged, safe columns only —
+  // NEVER raw_value / source_row_id / period)
   const engagementByPerson = new Map<string, Set<string>>();
   const eventFirstSeen = new Map<string, string>();
   const engagementLabels = new Map<string, string>();
@@ -119,19 +131,17 @@ export async function fetchEventAnalytics(admin: AdminClient): Promise<EventAnal
     if (rows.length < PAGE) break;
   }
 
-  // Enrich label map: engagement product names as fallback for events not in registry
   engagementLabels.forEach((product, slug) => {
     if (!labelMap.has(slug)) labelMap.set(slug, product);
   });
 
-  // 4. Merge both sources per person (union of customer_ids, union of events)
+  // === MERGE per person ===
   const allCustomerIds = new Set<string>();
   tagsByPerson.forEach((_v, id) => allCustomerIds.add(id));
   engagementByPerson.forEach((_v, id) => allCustomerIds.add(id));
 
   const allEventSlugs = new Set<string>();
-  type PersonEvents = string[];
-  const peopleEvents: PersonEvents[] = [];
+  const peopleEvents: string[][] = [];
 
   Array.from(allCustomerIds).forEach((cid) => {
     const merged = new Set<string>();
@@ -145,7 +155,6 @@ export async function fetchEventAnalytics(admin: AdminClient): Promise<EventAnal
     for (const e of arr) allEventSlugs.add(e);
   });
 
-  // Sort events chronologically (first_seen_at from engagement, then slug as fallback)
   const sortedEvents = Array.from(allEventSlugs).sort((a, b) => {
     const dateA = eventFirstSeen.get(a);
     const dateB = eventFirstSeen.get(b);
@@ -155,7 +164,7 @@ export async function fetchEventAnalytics(admin: AdminClient): Promise<EventAnal
     return a.localeCompare(b);
   });
 
-  // 5. Compute per-event stats
+  // === INDIVIDUAL EVENT STATS ===
   const eventIndex = new Map<string, number>();
   sortedEvents.forEach((e, i) => eventIndex.set(e, i));
 
@@ -169,15 +178,10 @@ export async function fetchEventAnalytics(admin: AdminClient): Promise<EventAnal
     eventReturning.set(slug, 0);
   }
 
-  const totalPeopleSet = new Set<number>();
-
   for (let pi = 0; pi < peopleEvents.length; pi++) {
     const events = peopleEvents[pi];
-    totalPeopleSet.add(pi);
-
     const personEventIndices = events.map((e) => eventIndex.get(e)!).sort((a, b) => a - b);
     const firstIdx = personEventIndices[0];
-
     for (const e of events) {
       eventTotals.get(e)!.add(pi);
       const eIdx = eventIndex.get(e)!;
@@ -197,35 +201,113 @@ export async function fetchEventAnalytics(admin: AdminClient): Promise<EventAnal
     returning: eventReturning.get(slug)!,
   }));
 
-  // 6. KPIs
+  // === GROUP EVENTS ===
+  const eventToGroup = new Map<string, string>();
+  for (const slug of sortedEvents) {
+    eventToGroup.set(slug, eventGroupKey(slug));
+  }
+
+  const groupSubEvents = new Map<string, string[]>();
+  for (const slug of sortedEvents) {
+    const gk = eventToGroup.get(slug)!;
+    if (!groupSubEvents.has(gk)) groupSubEvents.set(gk, []);
+    groupSubEvents.get(gk)!.push(slug);
+  }
+
+  const sortedGroupKeys = Array.from(groupSubEvents.keys()).sort((a, b) => {
+    const dateA = earliestDate(groupSubEvents.get(a)!, eventFirstSeen);
+    const dateB = earliestDate(groupSubEvents.get(b)!, eventFirstSeen);
+    if (dateA && dateB) return dateA.localeCompare(dateB);
+    if (dateA) return -1;
+    if (dateB) return 1;
+    return a.localeCompare(b);
+  });
+
+  const groupIndex = new Map<string, number>();
+  sortedGroupKeys.forEach((gk, i) => groupIndex.set(gk, i));
+
+  // Per-person group participation + group-level new/returning
+  const groupTotals = new Map<string, Set<number>>();
+  const groupNew = new Map<string, number>();
+  const groupReturning = new Map<string, number>();
+  for (const gk of sortedGroupKeys) {
+    groupTotals.set(gk, new Set());
+    groupNew.set(gk, 0);
+    groupReturning.set(gk, 0);
+  }
+
+  const totalPeopleSet = new Set<number>();
+  const peopleGroups: string[][] = [];
+
+  for (let pi = 0; pi < peopleEvents.length; pi++) {
+    totalPeopleSet.add(pi);
+    const personGroupSet = new Set<string>();
+    for (const e of peopleEvents[pi]) personGroupSet.add(eventToGroup.get(e)!);
+    const personGroups = Array.from(personGroupSet);
+    peopleGroups.push(personGroups);
+
+    const personGroupIndices = personGroups.map((g) => groupIndex.get(g)!).sort((a, b) => a - b);
+    const firstGroupIdx = personGroupIndices[0];
+
+    for (const g of personGroups) {
+      groupTotals.get(g)!.add(pi);
+      const gIdx = groupIndex.get(g)!;
+      if (gIdx === firstGroupIdx) {
+        groupNew.set(g, groupNew.get(g)! + 1);
+      } else {
+        groupReturning.set(g, groupReturning.get(g)! + 1);
+      }
+    }
+  }
+
+  const groups: EventGroup[] = sortedGroupKeys.map((gk) => {
+    const subs = groupSubEvents.get(gk)!;
+    const subLabels = subs.map((s) => labelMap.get(s) ?? formatSlugLabel(s));
+    return {
+      groupKey: gk,
+      groupLabel: deriveGroupLabel(subLabels, gk),
+      subEvents: subs.map((s, i) => ({ slug: s, label: subLabels[i] })),
+      total: groupTotals.get(gk)!.size,
+      newCount: groupNew.get(gk)!,
+      returning: groupReturning.get(gk)!,
+    };
+  });
+
+  const groupLabelMap = new Map<string, string>();
+  for (const g of groups) groupLabelMap.set(g.groupKey, g.groupLabel);
+
+  // === GROUP-LEVEL KPIs ===
   const totalPeople = totalPeopleSet.size;
   let returningPeople = 0;
-  let allEventsPeople = 0;
+  let frequentPeople = 0;
+  let totalGroupCount = 0;
 
-  for (const events of peopleEvents) {
-    const unique = new Set(events);
+  for (const pg of peopleGroups) {
+    const unique = new Set(pg);
     if (unique.size >= 2) returningPeople++;
-    if (unique.size >= sortedEvents.length && sortedEvents.length > 0) allEventsPeople++;
+    if (unique.size >= 3) frequentPeople++;
+    totalGroupCount += unique.size;
   }
 
   const returningPct = totalPeople > 0 ? Math.round((returningPeople / totalPeople) * 1000) / 10 : 0;
+  const avgGroupsPerPerson = totalPeople > 0 ? Math.round((totalGroupCount / totalPeople) * 10) / 10 : 0;
 
-  // 7. Cohort retention matrix
+  // === GROUP-LEVEL COHORT ===
   const cohortMap = new Map<string, number[][]>();
 
-  for (const events of peopleEvents) {
-    const personEventIndices = Array.from(new Set(events.map((e) => eventIndex.get(e)!))).sort((a, b) => a - b);
-    const firstEvent = sortedEvents[personEventIndices[0]];
-    if (!cohortMap.has(firstEvent)) cohortMap.set(firstEvent, []);
-    cohortMap.get(firstEvent)!.push(personEventIndices);
+  for (const pg of peopleGroups) {
+    const indices = Array.from(new Set(pg.map((g) => groupIndex.get(g)!))).sort((a, b) => a - b);
+    const firstGroup = sortedGroupKeys[indices[0]];
+    if (!cohortMap.has(firstGroup)) cohortMap.set(firstGroup, []);
+    cohortMap.get(firstGroup)!.push(indices);
   }
 
   const cohort: CohortRow[] = [];
-  for (const slug of sortedEvents) {
-    const people = cohortMap.get(slug) ?? [];
+  for (const gk of sortedGroupKeys) {
+    const people = cohortMap.get(gk) ?? [];
     if (people.length === 0) continue;
-    const baseIdx = eventIndex.get(slug)!;
-    const maxOffset = sortedEvents.length - 1 - baseIdx;
+    const baseIdx = groupIndex.get(gk)!;
+    const maxOffset = sortedGroupKeys.length - 1 - baseIdx;
     const retention: number[] = [];
     const retentionAbs: number[] = [];
 
@@ -237,41 +319,40 @@ export async function fetchEventAnalytics(admin: AdminClient): Promise<EventAnal
     }
 
     cohort.push({
-      cohortEvent: slug,
-      cohortLabel: labelMap.get(slug) ?? formatSlugLabel(slug),
+      cohortEvent: gk,
+      cohortLabel: groupLabelMap.get(gk) ?? formatSlugLabel(gk),
       cohortSize: people.length,
       retention,
       retentionAbs,
     });
   }
 
-  // 8. Churn
+  // === GROUP-LEVEL CHURN ===
   const churn: ChurnRow[] = [];
   let skipAfterOneReturn = 0;
 
-  for (const slug of sortedEvents) {
-    const idx = eventIndex.get(slug)!;
-    if (idx >= sortedEvents.length - 1) continue;
+  for (const gk of sortedGroupKeys) {
+    const idx = groupIndex.get(gk)!;
+    if (idx >= sortedGroupKeys.length - 1) continue;
 
-    const people = eventTotals.get(slug)!;
+    const people = groupTotals.get(gk)!;
     let notReturned = 0;
     Array.from(people).forEach((pi) => {
-      const events = peopleEvents[pi];
-      const hasLater = events.some((e) => eventIndex.get(e)! > idx);
+      const hasLater = peopleGroups[pi].some((g) => groupIndex.get(g)! > idx);
       if (!hasLater) notReturned++;
     });
 
     churn.push({
-      event: slug,
-      label: labelMap.get(slug) ?? formatSlugLabel(slug),
+      event: gk,
+      label: groupLabelMap.get(gk) ?? formatSlugLabel(gk),
       total: people.size,
       notReturned,
       notReturnedPct: people.size > 0 ? Math.round((notReturned / people.size) * 1000) / 10 : 0,
     });
   }
 
-  for (const events of peopleEvents) {
-    const indices = Array.from(new Set(events.map((e) => eventIndex.get(e)!))).sort((a, b) => a - b);
+  for (const pg of peopleGroups) {
+    const indices = Array.from(new Set(pg.map((g) => groupIndex.get(g)!))).sort((a, b) => a - b);
     if (indices.length < 2) continue;
     for (let i = 0; i < indices.length - 1; i++) {
       if (indices[i + 1] - indices[i] > 1) {
@@ -283,10 +364,12 @@ export async function fetchEventAnalytics(admin: AdminClient): Promise<EventAnal
 
   return {
     events: eventInfos,
+    groups,
     totalPeople,
     returningPeople,
     returningPct,
-    allEventsPeople,
+    frequentPeople,
+    avgGroupsPerPerson,
     cohort,
     churn,
     skipAfterOneReturn,
@@ -303,4 +386,37 @@ function formatSlugLabel(slug: string): string {
     .split("-")
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(" ");
+}
+
+function eventGroupKey(slug: string): string {
+  const value = slug.startsWith("event:") ? slug.slice(6) : slug;
+  let key = value;
+  key = key.replace(/-(2\.7k|5k|10k|21k|hm)$/i, "");
+  key = key.replace(/-(half|single|doubles?|relay)$/i, "");
+  key = key.replace(/-(fri|sat|sun|mon|tue|wed|thu)(-[a-z0-9]+)*$/i, "");
+  return "event:" + key;
+}
+
+function earliestDate(slugs: string[], dateMap: Map<string, string>): string | undefined {
+  let earliest: string | undefined;
+  for (const s of slugs) {
+    const d = dateMap.get(s);
+    if (d && (!earliest || d < earliest)) earliest = d;
+  }
+  return earliest;
+}
+
+function deriveGroupLabel(subEventLabels: string[], groupKey: string): string {
+  if (subEventLabels.length <= 1) return subEventLabels[0] ?? formatSlugLabel(groupKey);
+  const first = subEventLabels[0];
+  let prefixLen = first.length;
+  for (let i = 1; i < subEventLabels.length; i++) {
+    const other = subEventLabels[i];
+    while (prefixLen > 0 && other.slice(0, prefixLen) !== first.slice(0, prefixLen)) {
+      prefixLen--;
+    }
+  }
+  const prefix = first.slice(0, prefixLen).trimEnd();
+  if (prefix.length < 2) return formatSlugLabel(groupKey);
+  return prefix;
 }

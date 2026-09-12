@@ -1,22 +1,28 @@
 "use client";
 
 import { useState } from "react";
-import { Printer, RefreshCw, ChevronDown, ChevronRight, AlertTriangle, TrendingDown } from "lucide-react";
+import { Printer, RefreshCw, ChevronDown, ChevronRight, TrendingDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { EventAnalyticsData } from "@/lib/crm/event-analytics";
+import type { EventAnalyticsData, EventGroup } from "@/lib/crm/event-analytics";
 import { useI18n } from "@/components/i18n/lang-provider";
 import { formatCount, formatPct, type Lang } from "@/lib/i18n";
 
+const DEFAULT_ROWS = 10;
+
 export function EventAnalysis({ data, nowMs }: { data: EventAnalyticsData; nowMs: number }) {
   const { lang } = useI18n() as { lang: Lang };
-  const [filterEvent, setFilterEvent] = useState("all");
+  const [viewMode, setViewMode] = useState<"groups" | "all">("groups");
+  const [showAllRows, setShowAllRows] = useState(false);
   const isId = lang === "id";
 
-  const filteredEvents = filterEvent === "all"
-    ? data.events
-    : data.events.filter((e) => e.slug === filterEvent);
+  const displayItems = viewMode === "groups"
+    ? data.groups.map((g) => ({ key: g.groupKey, label: g.groupLabel, total: g.total, newCount: g.newCount, returning: g.returning, subCount: g.subEvents.length }))
+    : data.events.map((e) => ({ key: e.slug, label: e.label, total: e.total, newCount: e.newCount, returning: e.returning, subCount: 1 }));
 
-  const maxTotal = Math.max(...data.events.map((e) => e.total), 1);
+  const sorted = displayItems.slice().sort((a, b) => b.total - a.total);
+  const visible = showAllRows ? sorted : sorted.slice(0, DEFAULT_ROWS);
+  const hasMore = sorted.length > DEFAULT_ROWS;
+  const maxTotal = Math.max(...sorted.map((e) => e.total), 1);
 
   return (
     <div className="flex flex-col gap-6 print:gap-4">
@@ -33,6 +39,7 @@ export function EventAnalysis({ data, nowMs }: { data: EventAnalyticsData; nowMs
           </p>
           <p className="mt-1 font-mono text-[11px] text-ink-faint">
             {isId ? "Dihitung" : "Computed"} {new Date(nowMs).toLocaleString(lang === "id" ? "id-ID" : "en-US")}
+            {" · "}{data.groups.length} {isId ? "grup" : "groups"}, {data.events.length} {isId ? "sub-event" : "sub-events"}
           </p>
         </div>
         <div className="flex gap-2 print:hidden">
@@ -47,19 +54,35 @@ export function EventAnalysis({ data, nowMs }: { data: EventAnalyticsData; nowMs
         </div>
       </div>
 
-      {/* Filter */}
+      {/* View Toggle */}
       <div className="flex flex-wrap items-center gap-3 print:hidden">
-        <span className="font-display text-[12px] font-semibold uppercase tracking-wide text-ink-faint">Filter</span>
-        <select
-          value={filterEvent}
-          onChange={(e) => setFilterEvent(e.target.value)}
-          className="h-9 rounded-sm border border-glass-border bg-glass px-3 font-body text-[13px] text-ink focus:outline-none focus:ring-2 focus:ring-red"
-        >
-          <option value="all">{isId ? "Semua event" : "All events"}</option>
-          {data.events.map((ev) => (
-            <option key={ev.slug} value={ev.slug}>{ev.label}</option>
-          ))}
-        </select>
+        <span className="font-display text-[12px] font-semibold uppercase tracking-wide text-ink-faint">
+          {isId ? "Tampilan" : "View"}
+        </span>
+        <div className="inline-flex overflow-hidden rounded-sm border border-glass-border">
+          <button
+            type="button"
+            onClick={() => { setViewMode("groups"); setShowAllRows(false); }}
+            className={`px-3 py-1.5 font-body text-[13px] transition-colors ${
+              viewMode === "groups"
+                ? "bg-ink text-white"
+                : "bg-glass text-ink hover:bg-surface-border"
+            }`}
+          >
+            {isId ? "Event utama" : "Grouped"} ({data.groups.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => { setViewMode("all"); setShowAllRows(false); }}
+            className={`border-l border-glass-border px-3 py-1.5 font-body text-[13px] transition-colors ${
+              viewMode === "all"
+                ? "bg-ink text-white"
+                : "bg-glass text-ink hover:bg-surface-border"
+            }`}
+          >
+            {isId ? "Semua event" : "All events"} ({data.events.length})
+          </button>
+        </div>
       </div>
 
       {/* KPI Cards */}
@@ -79,9 +102,15 @@ export function EventAnalysis({ data, nowMs }: { data: EventAnalyticsData; nowMs
             tone="green"
           />
           <KpiCard
-            value={formatCount(data.allEventsPeople, lang)}
-            label={isId ? "ikut semua event" : "attended all events"}
-            tone="green"
+            value={data.frequentPeople > 0
+              ? formatCount(data.frequentPeople, lang)
+              : `${data.avgGroupsPerPerson}`
+            }
+            label={data.frequentPeople > 0
+              ? (isId ? `ikut ≥3 event · rata-rata ${data.avgGroupsPerPerson} event/orang` : `attended ≥3 events · avg ${data.avgGroupsPerPerson} events/person`)
+              : (isId ? "rata-rata event per orang" : "avg events per person")
+            }
+            tone={data.frequentPeople > 0 ? "green" : "amber"}
           />
         </div>
       </section>
@@ -95,36 +124,54 @@ export function EventAnalysis({ data, nowMs }: { data: EventAnalyticsData; nowMs
           <table className="w-full border-collapse text-left">
             <thead>
               <tr className="border-b border-surface-border">
-                <th className="px-4 py-3 font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">Event</th>
+                <th className="px-4 py-3 font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+                  {viewMode === "groups" ? "Event" : (isId ? "Sub-event" : "Sub-event")}
+                </th>
+                {viewMode === "groups" && (
+                  <th className="px-4 py-3 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+                    {isId ? "Varian" : "Variants"}
+                  </th>
+                )}
                 <th className="px-4 py-3 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">Total</th>
                 <th className="px-4 py-3 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{isId ? "Baru" : "New"}</th>
                 <th className="px-4 py-3 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{isId ? "Kembali" : "Returning"}</th>
               </tr>
             </thead>
             <tbody>
-              {filteredEvents.map((ev, i) => (
-                <tr key={ev.slug} className={i < filteredEvents.length - 1 ? "border-b border-surface-border/50" : ""}>
-                  <td className="px-4 py-2.5 font-body text-[13px] font-semibold text-ink">{ev.label}</td>
-                  <td className="px-4 py-2.5 text-right font-mono text-[13px] tabular-nums text-ink">{formatCount(ev.total, lang)}</td>
-                  <td className="px-4 py-2.5 text-right font-mono text-[13px] tabular-nums text-ink">{formatCount(ev.newCount, lang)}</td>
-                  <td className="px-4 py-2.5 text-right font-mono text-[13px] tabular-nums text-ink">
-                    {i === 0 && ev.returning === 0
-                      ? <span className="text-ink-faint">&mdash;</span>
-                      : <span className="font-semibold text-green">{formatCount(ev.returning, lang)}</span>
-                    }
-                  </td>
-                </tr>
+              {visible.map((ev, i) => (
+                <AttendanceRow
+                  key={ev.key}
+                  item={ev}
+                  group={viewMode === "groups" ? data.groups.find((g) => g.groupKey === ev.key) : undefined}
+                  isLast={i === visible.length - 1}
+                  isFirst={sorted.indexOf(ev) === 0}
+                  showVariants={viewMode === "groups"}
+                  lang={lang}
+                />
               ))}
             </tbody>
           </table>
         </div>
 
+        {hasMore && (
+          <button
+            type="button"
+            onClick={() => setShowAllRows(!showAllRows)}
+            className="mt-2 font-body text-[13px] font-semibold text-green hover:underline print:hidden"
+          >
+            {showAllRows
+              ? (isId ? `Tampilkan ${DEFAULT_ROWS} teratas` : `Show top ${DEFAULT_ROWS}`)
+              : (isId ? `Tampilkan semua (${sorted.length})` : `Show all (${sorted.length})`)
+            }
+          </button>
+        )}
+
         {/* Horizontal stacked bars */}
-        <div className="mt-4 space-y-3">
-          {filteredEvents.map((ev) => (
-            <div key={ev.slug} className="grid grid-cols-[8rem_1fr_auto] items-center gap-3 sm:grid-cols-[10rem_1fr_auto]">
+        <div className="mt-4 space-y-2">
+          {visible.map((ev) => (
+            <div key={ev.key} className="grid grid-cols-[7rem_1fr_auto] items-center gap-2 sm:grid-cols-[10rem_1fr_auto]">
               <span className="truncate font-body text-[12px] font-semibold text-ink" title={ev.label}>{ev.label}</span>
-              <div className="flex h-5 overflow-hidden rounded-full bg-surface-border">
+              <div className="flex h-4 overflow-hidden rounded-full bg-surface-border">
                 {ev.returning > 0 && (
                   <span
                     className="block h-full bg-green"
@@ -139,14 +186,12 @@ export function EventAnalysis({ data, nowMs }: { data: EventAnalyticsData; nowMs
                 />
               </div>
               <span className="whitespace-nowrap font-mono text-[11px] text-ink-faint">
-                {formatCount(ev.total, lang)} {isId ? "orang" : "people"}
-                {ev.returning > 0 && ` · ${formatCount(ev.returning, lang)} ${isId ? "kembali" : "returning"}`}
+                {formatCount(ev.total, lang)}
               </span>
             </div>
           ))}
         </div>
 
-        {/* Legend */}
         <div className="mt-3 flex gap-4">
           <span className="flex items-center gap-1.5 font-body text-[11px] text-ink-soft">
             <span className="inline-block h-3 w-3 rounded-sm bg-green" aria-hidden /> {isId ? "Kembali" : "Returning"}
@@ -155,15 +200,6 @@ export function EventAnalysis({ data, nowMs }: { data: EventAnalyticsData; nowMs
             <span className="inline-block h-3 w-3 rounded-sm bg-surface-border" aria-hidden /> {isId ? "Baru" : "New"}
           </span>
         </div>
-
-        {data.events.length > 0 && data.events[0].returning === 0 && (
-          <p className="mt-2 font-mono text-[11px] text-ink-faint">
-            &mdash; {isId
-              ? `di kolom Kembali pada ${data.events[0].label}: event pertama, tidak ada "event sebelumnya" untuk dibandingkan (batas data).`
-              : `Returning is blank for ${data.events[0].label}: it is the first event — no prior event to compare against (data boundary).`
-            }
-          </p>
-        )}
       </section>
 
       {/* Cohort Retention */}
@@ -174,21 +210,21 @@ export function EventAnalysis({ data, nowMs }: { data: EventAnalyticsData; nowMs
         <div className="card p-4">
           <p className="mb-3 font-body text-[13px] text-ink-soft">
             {isId
-              ? "Kohort retensi — dari peserta yang event pertamanya di baris ini, berapa persen muncul lagi di event berikutnya."
-              : "Retention cohort — of attendees whose first event is this row, what percent appeared at the next events."}
+              ? `Kohort retensi per grup event — dari peserta yang event pertamanya di baris ini, berapa persen muncul lagi di event berikutnya.`
+              : `Retention cohort by event group — of attendees whose first event is this row, what percent appeared at the next events.`}
           </p>
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-left">
               <thead>
                 <tr className="border-b border-surface-border">
-                  <th className="px-3 py-2 font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+                  <th className="sticky left-0 z-10 min-w-[8rem] bg-white px-3 py-2 font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint dark:bg-[var(--card-bg,#1a1a1a)]">
                     {isId ? "Event pertama" : "First event"}
                   </th>
                   <th className="px-3 py-2 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
-                    {isId ? "Orang event itu" : "People"}
+                    {isId ? "Orang" : "People"}
                   </th>
-                  {data.events.slice(1).map((_, i) => (
-                    <th key={i} className="px-3 py-2 text-center font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+                  {data.groups.slice(1).map((g, i) => (
+                    <th key={i} className="px-3 py-2 text-center font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint" title={g.groupLabel}>
                       +{i + 1}
                     </th>
                   ))}
@@ -197,26 +233,27 @@ export function EventAnalysis({ data, nowMs }: { data: EventAnalyticsData; nowMs
               <tbody>
                 {data.cohort.map((row, ri) => (
                   <tr key={row.cohortEvent} className={ri < data.cohort.length - 1 ? "border-b border-surface-border/50" : ""}>
-                    <td className="px-3 py-2 font-body text-[13px] font-semibold text-ink">{row.cohortLabel}</td>
+                    <td className="sticky left-0 z-10 bg-white px-3 py-2 font-body text-[13px] font-semibold text-ink dark:bg-[var(--card-bg,#1a1a1a)]">
+                      {row.cohortLabel}
+                    </td>
                     <td className="px-3 py-2 text-right font-mono text-[13px] tabular-nums text-ink">{formatCount(row.cohortSize, lang)}</td>
-                    {data.events.slice(1).map((_, i) => {
+                    {data.groups.slice(1).map((g, i) => {
                       if (i >= row.retention.length) return <td key={i} className="px-3 py-2" />;
                       const pct = row.retention[i];
+                      const abs = row.retentionAbs[i];
+                      const tooltip = `${abs} ${isId ? "dari" : "of"} ${row.cohortSize} ${isId ? "peserta" : "attendees"} ${row.cohortLabel} ${isId ? "juga ikut" : "also attended"} ${g.groupLabel} (${formatPct(pct, lang)})`;
                       return (
                         <td key={i} className="px-3 py-2 text-center">
-                          {i === -1 ? (
-                            <span className="inline-block rounded-sm bg-green px-2 py-0.5 font-display text-[12px] font-bold text-white">100%</span>
-                          ) : (
-                            <span
-                              className="inline-block rounded-sm px-2 py-0.5 font-display text-[12px] font-bold"
-                              style={{
-                                backgroundColor: pct > 0 ? `rgba(28, 138, 75, ${Math.max(pct / 100 * 0.6, 0.08)})` : undefined,
-                                color: pct >= 50 ? "white" : pct > 0 ? "var(--green)" : "var(--ink-faint)",
-                              }}
-                            >
-                              {pct > 0 ? formatPct(pct, lang) : <span className="text-ink-faint">&mdash;</span>}
-                            </span>
-                          )}
+                          <span
+                            className="inline-block cursor-default rounded-sm px-2 py-0.5 font-display text-[12px] font-bold"
+                            title={tooltip}
+                            style={{
+                              backgroundColor: cohortCellBg(pct),
+                              color: cohortCellFg(pct),
+                            }}
+                          >
+                            {pct > 0 ? formatPct(pct, lang) : <span className="text-ink-faint">&mdash;</span>}
+                          </span>
                         </td>
                       );
                     })}
@@ -225,6 +262,18 @@ export function EventAnalysis({ data, nowMs }: { data: EventAnalyticsData; nowMs
               </tbody>
             </table>
           </div>
+          {/* Color legend */}
+          <div className="mt-3 flex flex-wrap gap-3 font-body text-[11px] text-ink-faint">
+            <span className="flex items-center gap-1">
+              <span className="inline-block h-3 w-3 rounded-sm" style={{ backgroundColor: "rgba(239, 68, 68, 0.25)" }} aria-hidden /> 0–5%
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="inline-block h-3 w-3 rounded-sm" style={{ backgroundColor: "rgba(245, 158, 11, 0.3)" }} aria-hidden /> 5–15%
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="inline-block h-3 w-3 rounded-sm" style={{ backgroundColor: "rgba(28, 138, 75, 0.35)" }} aria-hidden /> &gt;15%
+            </span>
+          </div>
         </div>
       </section>
 
@@ -232,84 +281,124 @@ export function EventAnalysis({ data, nowMs }: { data: EventAnalyticsData; nowMs
       <InsightBox data={data} lang={lang} isId={isId} />
 
       {/* Churn */}
-      <section>
-        <h2 className="mb-3 font-display text-[16px] font-bold text-ink">
-          <TrendingDown className="mr-1.5 inline h-5 w-5 text-red" aria-hidden />
-          {isId ? "Sisi sebaliknya: berapa yang TIDAK kembali" : "The other side: who did NOT return"}
-        </h2>
-        <div className="card p-5">
-          <div className="space-y-3">
-            {data.churn.map((row) => (
-              <p key={row.event} className="font-body text-[13px] leading-relaxed text-ink">
-                <strong>{formatCount(row.notReturned, lang)}</strong> {isId ? "dari" : "of"}{" "}
-                {formatCount(row.total, lang)} {isId ? "peserta" : "attendees"} {row.label}{" "}
-                (<strong>{formatPct(row.notReturnedPct, lang)}</strong>) {isId ? "tidak kembali." : "did not return."}
-              </p>
-            ))}
+      {data.churn.length > 0 && (
+        <section>
+          <h2 className="mb-3 font-display text-[16px] font-bold text-ink">
+            <TrendingDown className="mr-1.5 inline h-5 w-5 text-red" aria-hidden />
+            {isId ? "Siapa yang tidak kembali" : "Who did not return"}
+          </h2>
+          <div className="card overflow-x-auto p-0">
+            <table className="w-full border-collapse text-left">
+              <thead>
+                <tr className="border-b border-surface-border">
+                  <th className="px-4 py-3 font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">Event</th>
+                  <th className="px-4 py-3 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">Total</th>
+                  <th className="px-4 py-3 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{isId ? "Tidak kembali" : "Not returned"}</th>
+                  <th className="px-4 py-3 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">%</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.churn.map((row, i) => (
+                  <tr key={row.event} className={i < data.churn.length - 1 ? "border-b border-surface-border/50" : ""}>
+                    <td className="px-4 py-2.5 font-body text-[13px] font-semibold text-ink">{row.label}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-[13px] tabular-nums text-ink">{formatCount(row.total, lang)}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-[13px] tabular-nums text-red">{formatCount(row.notReturned, lang)}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-[13px] tabular-nums text-ink-soft">{formatPct(row.notReturnedPct, lang)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
           {data.skipAfterOneReturn > 0 && (
-            <p className="mt-4 font-body text-[13px] text-ink-soft">
+            <p className="mt-3 font-body text-[13px] text-ink-soft">
               {isId
                 ? `Sisi baiknya: ${formatCount(data.skipAfterOneReturn, lang)} orang kembali setelah melewatkan satu event — reaktivasi mungkin dilakukan.`
                 : `On the bright side: ${formatCount(data.skipAfterOneReturn, lang)} people returned after skipping an event — reactivation is possible.`
               }
             </p>
           )}
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* Expandable sections */}
-      <ExpandableSection
-        title={isId ? "Berapa nilainya" : "What's the value"}
-        defaultOpen={false}
-      >
-        <p className="font-body text-[13px] text-ink-soft">
-          {isId
-            ? "Data revenue per event belum tersedia. Jika lifetime_value atau data transaksi event tersedia di masa depan, bagian ini akan menampilkan estimasi nilai per event dan ROI retensi."
-            : "Per-event revenue data is not yet available. When lifetime_value or event transaction data becomes available, this section will display per-event value estimates and retention ROI."
-          }
-        </p>
-      </ExpandableSection>
-
-      <ExpandableSection
-        title={isId ? "Apa yang harus dilakukan" : "What to do"}
-        defaultOpen={false}
-      >
+      <ExpandableSection title={isId ? "Apa yang harus dilakukan" : "What to do"} defaultOpen={false}>
         <Recommendations data={data} isId={isId} lang={lang} />
       </ExpandableSection>
 
-      <ExpandableSection
-        title={isId ? "Catatan Data" : "Data Notes"}
-        defaultOpen={false}
-      >
+      <ExpandableSection title={isId ? "Catatan Data" : "Data Notes"} defaultOpen={false}>
         <div className="space-y-2 font-body text-[13px] text-ink-soft">
           <p>
             {isId
-              ? "Sumber data digabung dari dua sumber per orang (customer_id): (1) customer_engagement WHERE unit='event' dan (2) tag event:* di master_customer.tags[]. Orang yang muncul di salah satu atau kedua sumber dihitung sekali per event."
-              : "Data merged from two per-person sources (by customer_id): (1) customer_engagement WHERE unit='event' and (2) event:* tags in master_customer.tags[]. A person appearing in either or both sources is counted once per event."
-            }
+              ? "Sumber data digabung dari dua sumber per orang (customer_id): (1) customer_engagement WHERE unit='event' dan (2) tag event:* di master_customer.tags[]."
+              : "Data merged from two per-person sources (by customer_id): (1) customer_engagement WHERE unit='event' and (2) event:* tags in master_customer.tags[]."}
           </p>
           <p>
             {isId
-              ? "Label event dari crm_tag_registry (prioritas), nama produk dari customer_engagement (fallback), atau format otomatis dari slug."
-              : "Event labels from crm_tag_registry (priority), product name from customer_engagement (fallback), or auto-formatted from slug."
-            }
+              ? `Sub-event terkait (JHM 5K/10K/HM, dll.) dikelompokkan otomatis berdasarkan prefix slug. Semua KPI, kohort, dan churn dihitung per grup (${data.groups.length} grup dari ${data.events.length} sub-event).`
+              : `Related sub-events (JHM 5K/10K/HM, etc.) are auto-grouped by slug prefix. All KPIs, cohort, and churn are computed per group (${data.groups.length} groups from ${data.events.length} sub-events).`}
           </p>
           <p>
             {isId
-              ? "Urutan event berdasarkan first_seen_at dari customer_engagement (kronologis). Event tanpa data tanggal diurutkan berdasarkan slug."
-              : "Event order uses first_seen_at from customer_engagement (chronological). Events without date data fall back to slug order."
-            }
-          </p>
-          <p>
-            {isId
-              ? "Angka &quot;Baru&quot; dan &quot;Kembali&quot; dihitung berdasarkan urutan kronologis: event pertama seseorang = Baru, event berikutnya = Kembali."
-              : "\"New\" and \"Returning\" are computed from chronological order: a person's first event = New, subsequent events = Returning."
-            }
+              ? "Urutan kronologis dari first_seen_at (customer_engagement). Angka &quot;Baru&quot; = event pertama seseorang, &quot;Kembali&quot; = event berikutnya."
+              : "Chronological order from first_seen_at (customer_engagement). \"New\" = a person's first event, \"Returning\" = subsequent events."}
           </p>
         </div>
       </ExpandableSection>
     </div>
+  );
+}
+
+function AttendanceRow({ item, group, isLast, isFirst, showVariants, lang }: {
+  item: { key: string; label: string; total: number; newCount: number; returning: number; subCount: number };
+  group?: EventGroup;
+  isLast: boolean;
+  isFirst: boolean;
+  showVariants: boolean;
+  lang: Lang;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const hasSubEvents = group && group.subEvents.length > 1;
+
+  return (
+    <>
+      <tr className={isLast ? "" : "border-b border-surface-border/50"}>
+        <td className="px-4 py-2.5 font-body text-[13px] font-semibold text-ink">
+          {hasSubEvents ? (
+            <button
+              type="button"
+              onClick={() => setExpanded(!expanded)}
+              className="flex items-center gap-1 text-left hover:text-green"
+            >
+              {expanded
+                ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-ink-faint" aria-hidden />
+                : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-ink-faint" aria-hidden />
+              }
+              {item.label}
+            </button>
+          ) : item.label}
+        </td>
+        {showVariants && (
+          <td className="px-4 py-2.5 text-right font-mono text-[12px] tabular-nums text-ink-faint">
+            {item.subCount > 1 ? item.subCount : ""}
+          </td>
+        )}
+        <td className="px-4 py-2.5 text-right font-mono text-[13px] tabular-nums text-ink">{formatCount(item.total, lang)}</td>
+        <td className="px-4 py-2.5 text-right font-mono text-[13px] tabular-nums text-ink">{formatCount(item.newCount, lang)}</td>
+        <td className="px-4 py-2.5 text-right font-mono text-[13px] tabular-nums text-ink">
+          {isFirst && item.returning === 0
+            ? <span className="text-ink-faint">&mdash;</span>
+            : <span className="font-semibold text-green">{formatCount(item.returning, lang)}</span>
+          }
+        </td>
+      </tr>
+      {expanded && hasSubEvents && group.subEvents.map((sub, si) => (
+        <tr key={sub.slug} className={si < group.subEvents.length - 1 ? "border-b border-surface-border/30" : (isLast ? "" : "border-b border-surface-border/50")}>
+          <td className="py-1.5 pl-10 pr-4 font-body text-[12px] text-ink-soft">{sub.label}</td>
+          {showVariants && <td />}
+          <td colSpan={3} />
+        </tr>
+      ))}
+    </>
   );
 }
 
@@ -323,47 +412,54 @@ function KpiCard({ value, label, tone }: { value: string; label: string; tone: "
   );
 }
 
+function cohortCellBg(pct: number): string | undefined {
+  if (pct === 0) return undefined;
+  if (pct <= 5) return `rgba(239, 68, 68, ${Math.max(pct / 5 * 0.3, 0.08)})`;
+  if (pct <= 15) return `rgba(245, 158, 11, ${Math.max((pct - 5) / 10 * 0.3 + 0.1, 0.1)})`;
+  return `rgba(28, 138, 75, ${Math.max(pct / 100 * 0.6, 0.15)})`;
+}
+
+function cohortCellFg(pct: number): string {
+  if (pct === 0) return "var(--ink-faint)";
+  if (pct <= 5) return "var(--red)";
+  if (pct <= 15) return "var(--amber, #b45309)";
+  if (pct >= 50) return "white";
+  return "var(--green)";
+}
+
 function InsightBox({ data, lang, isId }: { data: EventAnalyticsData; lang: Lang; isId: boolean }) {
   if (data.cohort.length < 2) return null;
 
   const insights: string[] = [];
 
-  // Compare retention rates between first and second cohort
   const first = data.cohort[0];
   const second = data.cohort[1];
 
   if (first.retention.length > 0 && second.retention.length > 0) {
     const firstRet = first.retention[0];
     const secondRet = second.retention[0];
-
     if (secondRet < firstRet) {
       insights.push(
         isId
-          ? `Retensi angkatan melemah: dari peserta yang event pertamanya ${first.cohortLabel}, ${formatPct(firstRet, lang)} kembali di event berikutnya; dari peserta ${second.cohortLabel}, ${formatPct(secondRet, lang)}.`
-          : `Cohort retention is weakening: of attendees whose first event was ${first.cohortLabel}, ${formatPct(firstRet, lang)} returned; from ${second.cohortLabel}, ${formatPct(secondRet, lang)}.`
+          ? `Retensi melemah: ${first.cohortLabel} → ${formatPct(firstRet, lang)} kembali, ${second.cohortLabel} → ${formatPct(secondRet, lang)}.`
+          : `Retention weakening: ${first.cohortLabel} → ${formatPct(firstRet, lang)} returned, ${second.cohortLabel} → ${formatPct(secondRet, lang)}.`
       );
     } else if (secondRet > firstRet) {
       insights.push(
         isId
-          ? `Retensi angkatan menguat: dari peserta ${second.cohortLabel}, ${formatPct(secondRet, lang)} kembali (naik dari ${formatPct(firstRet, lang)} di ${first.cohortLabel}).`
-          : `Cohort retention is strengthening: from ${second.cohortLabel} attendees, ${formatPct(secondRet, lang)} returned (up from ${formatPct(firstRet, lang)} at ${first.cohortLabel}).`
+          ? `Retensi menguat: ${second.cohortLabel} → ${formatPct(secondRet, lang)} kembali (naik dari ${formatPct(firstRet, lang)}).`
+          : `Retention strengthening: ${second.cohortLabel} → ${formatPct(secondRet, lang)} returned (up from ${formatPct(firstRet, lang)}).`
       );
     }
   }
 
-  // Compare absolute returning vs percentage
-  if (data.events.length >= 2) {
-    const lastTwo = data.events.slice(-2);
-    const prev = lastTwo[0];
-    const curr = lastTwo[1];
-    const prevRetPct = prev.total > 0 ? (prev.returning / prev.total) * 100 : 0;
-    const currRetPct = curr.total > 0 ? (curr.returning / curr.total) * 100 : 0;
-
-    if (currRetPct > prevRetPct && curr.returning < prev.returning) {
+  if (data.churn.length > 0) {
+    const worst = data.churn.reduce((a, b) => (a.notReturnedPct > b.notReturnedPct ? a : b));
+    if (worst.notReturnedPct > 80) {
       insights.push(
         isId
-          ? `Porsi peserta kembali naik dari ${formatPct(prevRetPct, lang)} di ${prev.label} ke ${formatPct(currRetPct, lang)} di ${curr.label} — tetapi jumlah orangnya justru turun dari ${formatCount(prev.returning, lang)} ke ${formatCount(curr.returning, lang)}. Ini karena ${curr.label} jauh lebih kecil (${formatCount(curr.total, lang)} vs ${formatCount(prev.total, lang)} peserta): porsi lebih tinggi di atas basis lebih kecil tetap berarti lebih sedikit orang.`
-          : `Returning rate rose from ${formatPct(prevRetPct, lang)} at ${prev.label} to ${formatPct(currRetPct, lang)} at ${curr.label} — yet the absolute count dropped from ${formatCount(prev.returning, lang)} to ${formatCount(curr.returning, lang)}. ${curr.label} had a smaller base (${formatCount(curr.total, lang)} vs ${formatCount(prev.total, lang)}): a higher rate on a smaller base still means fewer people.`
+          ? `Churn tertinggi: ${worst.label} (${formatPct(worst.notReturnedPct, lang)} tidak kembali).`
+          : `Highest churn: ${worst.label} (${formatPct(worst.notReturnedPct, lang)} did not return).`
       );
     }
   }
@@ -372,11 +468,7 @@ function InsightBox({ data, lang, isId }: { data: EventAnalyticsData; lang: Lang
 
   return (
     <section className="tint-amber rounded-card px-5 py-4">
-      <h3 className="mb-2 flex items-center gap-2 font-display text-[14px] font-bold text-ink">
-        <AlertTriangle className="h-4 w-4" aria-hidden />
-        {isId ? "Yang perlu dibaca hati-hati" : "Read carefully"}
-      </h3>
-      <div className="space-y-3">
+      <div className="space-y-1.5">
         {insights.map((text, i) => (
           <p key={i} className="font-body text-[13px] leading-relaxed text-ink">{text}</p>
         ))}
@@ -391,16 +483,16 @@ function Recommendations({ data, isId, lang }: { data: EventAnalyticsData; isId:
   if (data.returningPct < 15) {
     recs.push(
       isId
-        ? `Hanya ${formatPct(data.returningPct, lang)} yang kembali. Pertimbangkan program follow-up pasca-event (email, WhatsApp) untuk mendorong kehadiran ulang.`
-        : `Only ${formatPct(data.returningPct, lang)} returned. Consider post-event follow-up programs (email, WhatsApp) to drive repeat attendance.`
+        ? `Hanya ${formatPct(data.returningPct, lang)} yang kembali. Pertimbangkan program follow-up pasca-event (email, WhatsApp).`
+        : `Only ${formatPct(data.returningPct, lang)} returned. Consider post-event follow-up programs (email, WhatsApp).`
     );
   }
 
   if (data.skipAfterOneReturn > 0) {
     recs.push(
       isId
-        ? `${formatCount(data.skipAfterOneReturn, lang)} orang melewatkan satu event lalu kembali — ada potensi reaktivasi. Target segmen ini dengan penawaran khusus.`
-        : `${formatCount(data.skipAfterOneReturn, lang)} people skipped an event then returned — there is reactivation potential. Target this segment with special offers.`
+        ? `${formatCount(data.skipAfterOneReturn, lang)} orang melewatkan satu event lalu kembali — target segmen ini dengan penawaran khusus.`
+        : `${formatCount(data.skipAfterOneReturn, lang)} people skipped an event then returned — target this segment with special offers.`
     );
   }
 
@@ -408,16 +500,16 @@ function Recommendations({ data, isId, lang }: { data: EventAnalyticsData; isId:
     const worstChurn = data.churn.reduce((a, b) => (a.notReturnedPct > b.notReturnedPct ? a : b));
     recs.push(
       isId
-        ? `${worstChurn.label} memiliki tingkat churn tertinggi (${formatPct(worstChurn.notReturnedPct, lang)}). Lakukan survey peserta yang tidak kembali.`
-        : `${worstChurn.label} has the highest churn rate (${formatPct(worstChurn.notReturnedPct, lang)}). Survey attendees who did not return.`
+        ? `${worstChurn.label} memiliki churn tertinggi (${formatPct(worstChurn.notReturnedPct, lang)}). Lakukan survey peserta yang tidak kembali.`
+        : `${worstChurn.label} has the highest churn (${formatPct(worstChurn.notReturnedPct, lang)}). Survey attendees who did not return.`
     );
   }
 
   if (recs.length === 0) {
     recs.push(
       isId
-        ? "Belum cukup data untuk menghasilkan rekomendasi spesifik. Tambahkan lebih banyak event untuk melihat tren."
-        : "Not enough data to generate specific recommendations. Add more events to see trends."
+        ? "Belum cukup data untuk rekomendasi spesifik. Tambahkan lebih banyak event untuk melihat tren."
+        : "Not enough data for specific recommendations. Add more events to see trends."
     );
   }
 
