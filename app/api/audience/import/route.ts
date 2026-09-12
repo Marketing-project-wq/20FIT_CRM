@@ -104,7 +104,10 @@ export async function POST(request: NextRequest) {
         email_normalized: r.emailNormalized,
         phone_normalized: r.phoneNormalized,
         city: r.city,
-        tags: r.tags, // per row — even one event file carries different format:/kategori:/nilai: tags
+        gender: r.gender,
+        date_of_birth: r.dateOfBirth,
+        blood_type: r.bloodType,
+        tags: r.tags,
       }));
       const { data, error } = await admin.rpc("crm_ingest_csv_people", {
         p_rows: payload,
