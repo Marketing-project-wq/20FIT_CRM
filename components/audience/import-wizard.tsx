@@ -376,7 +376,7 @@ export function ImportWizard() {
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
               <span>
                 {summary.phoneExcelBroken.toLocaleString("id-ID")} baris punya telepon yang Excel ubah jadi notasi
-                ilmiah (mis. "6,28129E+12") — angka aslinya <strong>hilang permanen</strong>, jadi teleponnya
+                ilmiah (mis. &quot;6,28129E+12&quot;) — angka aslinya <strong>hilang permanen</strong>, jadi teleponnya
                 dikosongkan (tidak ditebak). Barisnya tetap masuk kalau emailnya valid. Untuk memperbaiki: di Excel,
                 format kolom telepon sebagai <strong>Teks</strong> dulu sebelum menyimpan CSV, lalu ekspor ulang.
               </span>
@@ -398,7 +398,7 @@ export function ImportWizard() {
               Sumber pengumpulan <span className="text-red">*</span>
             </label>
             <p className="mb-2 font-body text-[12px] text-ink-soft">
-              Wajib. Dari mana daftar ini berasal — mis. "Pendaftaran Sportfest 2 — formulir cetak". Disimpan sebagai
+              Wajib. Dari mana daftar ini berasal — mis. &quot;Pendaftaran Sportfest 2 — formulir cetak&quot;. Disimpan sebagai
               bukti consent (bukan gerbang).
             </p>
             <input
@@ -432,7 +432,7 @@ export function ImportWizard() {
               </span>
             )}
             {importActionableTotal(summary) > 0 && collectionSource.trim() === "" && (
-              <span className="font-body text-[12px] text-ink-faint">Isi "sumber pengumpulan" untuk mengaktifkan.</span>
+              <span className="font-body text-[12px] text-ink-faint">Isi &quot;sumber pengumpulan&quot; untuk mengaktifkan.</span>
             )}
           </div>
         </div>
