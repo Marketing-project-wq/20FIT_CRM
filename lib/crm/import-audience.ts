@@ -35,9 +35,7 @@ import { isOperatorTag, parseTagCell, slugifyTagValue } from "./tags";
  *  One constant, referenced everywhere. */
 export const MAX_IMPORT_ROWS = 15_000;
 
-/** Safe columns only (Fase 0 honored, same class as the activity ingest). DOB / gender / NIK / health
- *  are deliberately NOT importable here — they need their own legal basis. */
-export const IMPORT_TARGET_FIELDS = ["full_name", "email", "phone", "city", "tags", "ignore"] as const;
+export const IMPORT_TARGET_FIELDS = ["full_name", "email", "phone", "city", "gender", "date_of_birth", "blood_type", "tags", "ignore"] as const;
 export type ImportField = (typeof IMPORT_TARGET_FIELDS)[number];
 
 /** The 5 namespaces available as column-mapping targets in the UI. A column mapped to `ns:kategori`
@@ -51,20 +49,32 @@ export type MappingTarget = ImportField | `ns:${(typeof NAMESPACE_MAPPING_TARGET
 /** Maps a CSV header (verbatim) to the destination field or namespace it fills, or "ignore". */
 export type ColumnMapping = Record<string, MappingTarget>;
 
-/** Header-name heuristics for the auto-guess. Phone and city were removed — the UI maps those to
- *  namespace tags instead. The operator can always override in the UI. */
+/** Header-name heuristics for the auto-guess. The operator can always override in the UI. */
 const GUESS: { field: ImportField; re: RegExp }[] = [
   { field: "email", re: /\b(e-?mail|surel|alamat\s*e-?mail)\b/i },
-  { field: "tags", re: /\b(tags?|label|penanda)\b/i },
   { field: "full_name", re: /\b(full[_\s]*name|nama\s*lengkap|nama|name)\b/i },
+  { field: "phone", re: /\b(phone|telepon|telp|hp|no[_\s]*hp|no[_\s]*telp|no[_\s]*telepon|handphone|mobile)\b/i },
+  { field: "gender", re: /\b(gender|jenis[_\s]*kelamin|sex|kelamin)\b/i },
+  { field: "city", re: /\b(city|kota|domisili|kabupaten)\b/i },
+  { field: "date_of_birth", re: /\b(dob|date[_\s]*of[_\s]*birth|tanggal[_\s]*lahir|tgl[_\s]*lahir|birth[_\s]*date|ttl)\b/i },
+  { field: "blood_type", re: /\b(blood[_\s]*type|golongan[_\s]*darah|gol[_\s]*darah)\b/i },
+  { field: "tags", re: /\b(tags?|label|penanda)\b/i },
 ];
 
 const EMAIL_CONTENT_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const TAG_VALUE_RE = /^[a-z][a-z0-9_-]*:[a-z0-9][a-z0-9_-]*$/i;
+
+function looksLikeTagCell(raw: string): boolean {
+  const trimmed = raw.trim();
+  if (trimmed === "") return false;
+  const parts = trimmed.split("|").map((p) => p.trim()).filter((p) => p !== "");
+  return parts.length > 0 && parts.every((p) => TAG_VALUE_RE.test(p));
+}
 
 /** Best-effort header→field guess. First matching pattern wins; each field is used at most once
- *  (the first header that matches it), the rest default to "ignore". When `rows` are provided and
- *  no header matched "email", a content-based pass detects a column where ≥80% of non-empty values
- *  look like email addresses. */
+ *  (the first header that matches it), the rest default to "ignore". When `rows` are provided,
+ *  content-based passes detect: (1) a column where ≥80% of non-empty values look like email
+ *  addresses, and (2) a column where ≥80% of non-empty values are namespace:value tags. */
 export function guessColumnMapping(headers: string[], rows?: Record<string, string>[]): ColumnMapping {
   const mapping: ColumnMapping = {};
   const used = new Set<string>();
@@ -77,15 +87,31 @@ export function guessColumnMapping(headers: string[], rows?: Record<string, stri
       mapping[h] = "ignore";
     }
   }
-  if (!used.has("email") && rows && rows.length > 0) {
-    for (const h of headers) {
-      if (mapping[h] !== "ignore") continue;
-      const nonEmpty = rows.filter((r) => (r[h] ?? "").trim() !== "");
-      if (nonEmpty.length === 0) continue;
-      const emailCount = nonEmpty.filter((r) => EMAIL_CONTENT_RE.test((r[h] ?? "").trim())).length;
-      if (emailCount / nonEmpty.length >= 0.8) {
-        mapping[h] = "email";
-        break;
+  if (rows && rows.length > 0) {
+    if (!used.has("email")) {
+      for (const h of headers) {
+        if (mapping[h] !== "ignore") continue;
+        const nonEmpty = rows.filter((r) => (r[h] ?? "").trim() !== "");
+        if (nonEmpty.length === 0) continue;
+        const emailCount = nonEmpty.filter((r) => EMAIL_CONTENT_RE.test((r[h] ?? "").trim())).length;
+        if (emailCount / nonEmpty.length >= 0.8) {
+          mapping[h] = "email";
+          used.add("email");
+          break;
+        }
+      }
+    }
+    if (!used.has("tags")) {
+      for (const h of headers) {
+        if (mapping[h] !== "ignore") continue;
+        const nonEmpty = rows.filter((r) => (r[h] ?? "").trim() !== "");
+        if (nonEmpty.length === 0) continue;
+        const tagCount = nonEmpty.filter((r) => looksLikeTagCell(r[h] ?? "")).length;
+        if (tagCount / nonEmpty.length >= 0.8) {
+          mapping[h] = "tags";
+          used.add("tags");
+          break;
+        }
       }
     }
   }
@@ -98,6 +124,9 @@ export interface NormalizedRow {
   emailNormalized: string | null; // canonical, for dedup + suppression match
   phoneNormalized: string | null; // canonical 62… (no +), for dedup + suppression match
   city: string | null;
+  gender: string | null;
+  dateOfBirth: string | null;
+  bloodType: string | null;
   /** True when the raw phone was mangled by Excel into scientific notation (e.g. "6,28129E+12") — the
    *  original digits are GONE and unrecoverable, so the phone is dropped (never guessed-fixed) and the
    *  operator is told, not left in the dark. The row can still import on its email. */
@@ -127,6 +156,9 @@ export function normalizeMappedRow(raw: Record<string, string>, mapping: ColumnM
   let email: string | null = null;
   let phone: string | null = null;
   let city: string | null = null;
+  let gender: string | null = null;
+  let dateOfBirth: string | null = null;
+  let bloodType: string | null = null;
   let tagCell: string | null = null;
   const nsTags: string[] = [];
   const nsInvalid: string[] = [];
@@ -138,6 +170,9 @@ export function normalizeMappedRow(raw: Record<string, string>, mapping: ColumnM
     else if (field === "email") email = v;
     else if (field === "phone") phone = v;
     else if (field === "city") city = v;
+    else if (field === "gender") gender = v;
+    else if (field === "date_of_birth") dateOfBirth = v;
+    else if (field === "blood_type") bloodType = v;
     else if (field === "tags") tagCell = v;
     else if (typeof field === "string" && field.startsWith("ns:")) {
       const ns = field.slice(3);
@@ -162,6 +197,9 @@ export function normalizeMappedRow(raw: Record<string, string>, mapping: ColumnM
     emailNormalized: normalizeEmail(email),
     phoneNormalized: phoneExcelBroken ? null : normalizePhoneID(phone),
     city: city || null,
+    gender: gender || null,
+    dateOfBirth: dateOfBirth || null,
+    bloodType: bloodType || null,
     phoneExcelBroken,
     tags: Array.from(new Set([...parsed.tags, ...nsTags])).sort(),
     invalidTags: [...parsed.invalid, ...nsInvalid],
@@ -477,6 +515,22 @@ export function planImport(
  * So the class is named, and each message says plainly whether retrying can help. `code` is already
  * shape-guarded (safeCode) before it reaches here — never prose, never a row value.
  */
+const FIELD_LABELS: Record<ImportField, { id: string; en: string }> = {
+  email: { id: "Email", en: "Email" },
+  full_name: { id: "Nama lengkap", en: "Full name" },
+  phone: { id: "No. Telepon", en: "Phone" },
+  city: { id: "Domisili / Kota", en: "City / Domicile" },
+  gender: { id: "Gender", en: "Gender" },
+  date_of_birth: { id: "Tanggal Lahir", en: "Date of Birth" },
+  blood_type: { id: "Golongan Darah", en: "Blood Type" },
+  tags: { id: "Tag (mentah)", en: "Tags (raw)" },
+  ignore: { id: "— abaikan —", en: "— ignore —" },
+};
+
+export function importFieldLabel(field: ImportField, lang: "id" | "en" = "id"): string {
+  return FIELD_LABELS[field]?.[lang] ?? field;
+}
+
 export function importFailureMessage(code: string | null): string {
   switch (code) {
     case "PGRST202":

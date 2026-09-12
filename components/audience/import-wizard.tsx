@@ -1,18 +1,19 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Upload, FileText, ArrowRight, CheckCircle2, AlertTriangle, X, Plus } from "lucide-react";
+import { useState } from "react";
+import { Upload, FileText, ArrowRight, CheckCircle2, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   MAX_IMPORT_ROWS,
   NAMESPACE_MAPPING_TARGETS,
   importActionableTotal,
   canRunImport,
+  importFieldLabel,
   type ColumnMapping,
   type MappingTarget,
   type ImportSummary,
 } from "@/lib/crm/import-audience";
-import { parseTagCell, groupTags, namespaceLabel, tagValueLabel, isOperatorTag, slugifyTagValue } from "@/lib/crm/tags";
+import { parseTagCell, groupTags, namespaceLabel, tagValueLabel, slugifyTagValue } from "@/lib/crm/tags";
 
 /**
  * CSV import wizard (Fase 1) — upload → map columns → review summary → confirm → report. It NEVER
@@ -90,7 +91,6 @@ export function ImportWizard() {
   const [dryOutcomes, setDryOutcomes] = useState<RowOutcomeView[]>([]);
   const [collectionSource, setCollectionSource] = useState("");
   const [report, setReport] = useState<ExecuteResponse | null>(null);
-  const [extraTags, setExtraTags] = useState<string[]>([]);
   const [generatedTagLabels, setGeneratedTagLabels] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -102,7 +102,7 @@ export function ImportWizard() {
       const res = await fetch("/api/audience/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phase, csvText, filename, mapping, extraTags: extraTags.length > 0 ? extraTags : undefined, ...extra }),
+        body: JSON.stringify({ phase, csvText, filename, mapping, ...extra }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -178,7 +178,6 @@ export function ImportWizard() {
     setDelimiter(",");
     setSummary(null);
     setDryOutcomes([]);
-    setExtraTags([]);
     setGeneratedTagLabels({});
     setCollectionSource("");
     setReport(null);
@@ -267,15 +266,26 @@ export function ImportWizard() {
                         value={mapping[h] ?? "ignore"}
                         onChange={(e) => setMapping((m) => ({ ...m, [h]: e.target.value as MappingTarget }))}
                       >
-                        <option value="email">Email</option>
-                        <option value="full_name">Nama lengkap</option>
-                        <option value="tags">Tag (mentah)</option>
-                        <option value="ignore">— abaikan —</option>
-                        <optgroup label="Petakan ke namespace tag">
+                        <optgroup label="Data Identitas">
+                          <option value="email">{importFieldLabel("email")}</option>
+                          <option value="full_name">{importFieldLabel("full_name")}</option>
+                          <option value="phone">{importFieldLabel("phone")}</option>
+                        </optgroup>
+                        <optgroup label="Profil">
+                          <option value="gender">{importFieldLabel("gender")}</option>
+                          <option value="city">{importFieldLabel("city")}</option>
+                          <option value="date_of_birth">{importFieldLabel("date_of_birth")}</option>
+                          <option value="blood_type">{importFieldLabel("blood_type")}</option>
+                        </optgroup>
+                        <optgroup label="Pengelompokan">
                           {NAMESPACE_MAPPING_TARGETS.map((ns) => (
-                            <option key={ns} value={`ns:${ns}`}>→ Tag {namespaceLabel(ns, "id")} ({ns}:)</option>
+                            <option key={ns} value={`ns:${ns}`}>{namespaceLabel(ns, "id")} ({ns}:)</option>
                           ))}
                         </optgroup>
+                        {mapping[h] === "tags" && (
+                          <option value="tags">Tag otomatis (namespace:value)</option>
+                        )}
+                        <option value="ignore">{importFieldLabel("ignore")}</option>
                       </select>
                     </td>
                     <td className="py-2 font-body text-[12px] text-ink-soft">
@@ -289,9 +299,6 @@ export function ImportWizard() {
                 ))}
               </tbody>
             </table>
-          </div>
-          <div className="mt-5">
-            <TagAssignment selected={extraTags} onChange={setExtraTags} />
           </div>
           <div className="mt-5 flex items-center gap-2">
             <Button variant="outline" onClick={reset}>← Ganti file</Button>
@@ -369,7 +376,7 @@ export function ImportWizard() {
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
               <span>
                 {summary.phoneExcelBroken.toLocaleString("id-ID")} baris punya telepon yang Excel ubah jadi notasi
-                ilmiah (mis. “6,28129E+12”) — angka aslinya <strong>hilang permanen</strong>, jadi teleponnya
+                ilmiah (mis. "6,28129E+12") — angka aslinya <strong>hilang permanen</strong>, jadi teleponnya
                 dikosongkan (tidak ditebak). Barisnya tetap masuk kalau emailnya valid. Untuk memperbaiki: di Excel,
                 format kolom telepon sebagai <strong>Teks</strong> dulu sebelum menyimpan CSV, lalu ekspor ulang.
               </span>
@@ -386,29 +393,12 @@ export function ImportWizard() {
             <NamespaceTagStats labels={generatedTagLabels} />
           )}
 
-          {extraTags.length > 0 && (
-            <div className="mt-4 rounded-card border border-glass-border bg-glass p-3">
-              <div className="font-display text-[12px] font-bold text-ink">Tag tambahan yang akan diterapkan</div>
-              <div className="mt-1.5 flex flex-wrap gap-1.5">
-                {extraTags.map((tag) => (
-                  <span key={tag} className="rounded-sm bg-glass px-2 py-0.5 font-body text-[12px] text-ink">
-                    {tagValueLabel(tag, "id")}
-                    <span className="ml-1 font-display text-[9px] text-ink-faint">{namespaceLabel(tag.slice(0, tag.indexOf(":")), "id")}</span>
-                  </span>
-                ))}
-              </div>
-              <p className="mt-1 font-body text-[11px] text-ink-faint">
-                Ditambahkan ke semua baris yang masuk dan ditandai. Kembali ke pemetaan untuk mengubah.
-              </p>
-            </div>
-          )}
-
           <div className="mt-6">
             <label className="mb-1 block font-display text-[13px] font-bold text-ink">
               Sumber pengumpulan <span className="text-red">*</span>
             </label>
             <p className="mb-2 font-body text-[12px] text-ink-soft">
-              Wajib. Dari mana daftar ini berasal — mis. “Pendaftaran Sportfest 2 — formulir cetak”. Disimpan sebagai
+              Wajib. Dari mana daftar ini berasal — mis. "Pendaftaran Sportfest 2 — formulir cetak". Disimpan sebagai
               bukti consent (bukan gerbang).
             </p>
             <input
@@ -442,7 +432,7 @@ export function ImportWizard() {
               </span>
             )}
             {importActionableTotal(summary) > 0 && collectionSource.trim() === "" && (
-              <span className="font-body text-[12px] text-ink-faint">Isi “sumber pengumpulan” untuk mengaktifkan.</span>
+              <span className="font-body text-[12px] text-ink-faint">Isi "sumber pengumpulan" untuk mengaktifkan.</span>
             )}
           </div>
         </div>
@@ -635,187 +625,6 @@ function NamespaceTagStats({ labels }: { labels: Record<string, string> }) {
           </div>
         </div>
       ))}
-    </div>
-  );
-}
-
-interface RegistryTag { slug: string; label: string | null; namespace: string }
-
-function TagAssignment({
-  selected,
-  onChange,
-}: {
-  selected: string[];
-  onChange: (tags: string[]) => void;
-}) {
-  const [registry, setRegistry] = useState<RegistryTag[]>([]);
-  const [loaded, setLoaded] = useState(false);
-  const [adding, setAdding] = useState(false);
-  useEffect(() => {
-    fetch("/api/tags")
-      .then((r) => r.json())
-      .then((d) => { setRegistry(d.tags ?? []); setLoaded(true); })
-      .catch(() => setLoaded(true));
-  }, []);
-
-  function addTag(tag: string) {
-    if (!selected.includes(tag)) onChange([...selected, tag].sort());
-  }
-  function removeTag(tag: string) {
-    onChange(selected.filter((t) => t !== tag));
-  }
-
-  return (
-    <div>
-      {selected.length > 0 && (
-        <div className="mb-3">
-          <div className="font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">Tag tetap untuk semua baris</div>
-          <div className="mt-1.5 flex flex-wrap gap-1.5">
-            {selected.map((tag) => (
-              <span
-                key={tag}
-                className="flex items-center gap-1 rounded-sm bg-glass px-2 py-1 font-mono text-[12px] text-ink"
-              >
-                {tag}
-                <button
-                  type="button"
-                  onClick={() => removeTag(tag)}
-                  className="ml-0.5 rounded-sm p-0.5 text-ink-faint hover:text-ink"
-                  aria-label={`Hapus ${tag}`}
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {adding ? (
-        <FixedTagInput
-          registry={registry}
-          loaded={loaded}
-          selected={selected}
-          onAdd={(tag) => { addTag(tag); setAdding(false); }}
-          onCancel={() => setAdding(false)}
-        />
-      ) : (
-        <button
-          type="button"
-          onClick={() => setAdding(true)}
-          className="flex items-center gap-1.5 font-body text-[13px] text-ink-soft hover:text-ink"
-        >
-          <Plus className="h-4 w-4" />
-          Tambah tag untuk semua baris
-        </button>
-      )}
-    </div>
-  );
-}
-
-function FixedTagInput({
-  registry,
-  loaded,
-  selected,
-  onAdd,
-  onCancel,
-}: {
-  registry: RegistryTag[];
-  loaded: boolean;
-  selected: string[];
-  onAdd: (tag: string) => void;
-  onCancel: () => void;
-}) {
-  const [ns, setNs] = useState<string>(NAMESPACE_MAPPING_TARGETS[0]);
-  const [value, setValue] = useState("");
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setShowSuggestions(false);
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, []);
-
-  const slug = slugifyTagValue(value);
-  const preview = slug ? `${ns}:${slug}` : "";
-
-  const suggestions = loaded
-    ? registry
-        .filter((t) => t.namespace === ns && !selected.includes(t.slug))
-        .filter((t) => {
-          if (value.trim() === "") return true;
-          const q = value.toLowerCase();
-          return t.slug.includes(q) || (t.label ?? "").toLowerCase().includes(q);
-        })
-        .slice(0, 8)
-    : [];
-
-  function confirm() {
-    if (!preview || !isOperatorTag(preview)) return;
-    if (selected.includes(preview)) return;
-    onAdd(preview);
-  }
-
-  return (
-    <div className="flex flex-wrap items-start gap-2" ref={ref}>
-      <select
-        className="h-9 rounded-sm border border-glass-border bg-glass px-2 font-body text-[13px] text-ink focus:outline-none focus:ring-2 focus:ring-red"
-        value={ns}
-        onChange={(e) => { setNs(e.target.value); setValue(""); setShowSuggestions(false); }}
-      >
-        {NAMESPACE_MAPPING_TARGETS.map((n) => (
-          <option key={n} value={n}>{namespaceLabel(n, "id")} ({n}:)</option>
-        ))}
-      </select>
-
-      <div className="relative flex-1">
-        <input
-          type="text"
-          value={value}
-          onChange={(e) => { setValue(e.target.value); setShowSuggestions(true); }}
-          onFocus={() => setShowSuggestions(true)}
-          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); confirm(); } }}
-          placeholder="Ketik nilai tag…"
-          className="h-9 w-full min-w-[140px] rounded-sm border border-glass-border bg-glass px-3 font-body text-[13px] text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-red"
-          autoFocus
-        />
-        {showSuggestions && suggestions.length > 0 && (
-          <div className="absolute left-0 top-full z-20 mt-1 w-full rounded-card border border-glass-border bg-surface shadow-lg">
-            <div className="max-h-40 overflow-y-auto">
-              {suggestions.map((t) => (
-                <button
-                  key={t.slug}
-                  type="button"
-                  onClick={() => { onAdd(t.slug); setShowSuggestions(false); }}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left font-body text-[12px] text-ink hover:bg-glass"
-                >
-                  <span className="truncate">{t.label || tagValueLabel(t.slug, "id")}</span>
-                  <span className="shrink-0 font-mono text-[10px] text-ink-faint">{t.slug}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {preview && (
-        <span className="flex h-9 items-center font-mono text-[12px] text-ink-soft">{preview}</span>
-      )}
-
-      <Button onClick={confirm} disabled={!preview || !isOperatorTag(preview) || selected.includes(preview)} className="h-9">
-        <Plus className="mr-1 h-4 w-4" /> Tambah
-      </Button>
-      <button
-        type="button"
-        onClick={onCancel}
-        className="flex h-9 items-center rounded-sm px-2 text-ink-faint hover:text-ink"
-        aria-label="Batal"
-      >
-        <X className="h-4 w-4" />
-      </button>
     </div>
   );
 }

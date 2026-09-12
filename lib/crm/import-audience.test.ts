@@ -24,15 +24,34 @@ const noKeys: ImportKeys = {
 };
 
 describe("guessColumnMapping", () => {
-  it("guesses name, email, and tags from headers — phone and city are not auto-guessed", () => {
+  it("guesses name, email, phone, city from headers", () => {
     const m = guessColumnMapping(["Nama Lengkap", "Email", "No HP", "Kota", "Catatan"]);
     expect(m).toEqual({
       "Nama Lengkap": "full_name",
       Email: "email",
-      "No HP": "ignore",
-      Kota: "ignore",
+      "No HP": "phone",
+      Kota: "city",
       Catatan: "ignore",
     });
+  });
+  it("auto-detects gender, date_of_birth, blood_type from headers", () => {
+    const m = guessColumnMapping(["Email", "Jenis Kelamin", "Tanggal Lahir", "Golongan Darah"]);
+    expect(m).toEqual({
+      Email: "email",
+      "Jenis Kelamin": "gender",
+      "Tanggal Lahir": "date_of_birth",
+      "Golongan Darah": "blood_type",
+    });
+  });
+  it("auto-detects domisili as city", () => {
+    const m = guessColumnMapping(["Email", "Domisili"]);
+    expect(m["Domisili"]).toBe("city");
+  });
+  it("auto-detects telepon/hp variants as phone", () => {
+    for (const h of ["Telepon", "HP", "No Telp", "No HP", "Handphone", "Mobile"]) {
+      const m = guessColumnMapping(["Email", h]);
+      expect(m[h], `header "${h}"`).toBe("phone");
+    }
   });
   it("does not map a second header to an already-used field", () => {
     const m = guessColumnMapping(["email", "email cadangan"]);
@@ -68,6 +87,29 @@ describe("guessColumnMapping", () => {
     expect(m["Email"]).toBe("email");
     expect(m["Other"]).toBe("ignore");
   });
+  it("content-based tag detection: ≥80% namespace:value → tags column", () => {
+    const rows = [
+      { Data: "event:hyrox-2026", Nama: "A" },
+      { Data: "event:sportfest-3|format:relay", Nama: "B" },
+      { Data: "kategori:doubles-men", Nama: "C" },
+      { Data: "sumber:formulir", Nama: "D" },
+      { Data: "not a tag", Nama: "E" },
+    ];
+    const m = guessColumnMapping(["Data", "Nama"], rows);
+    expect(m["Data"]).toBe("tags");
+    expect(m["Nama"]).toBe("full_name");
+  });
+  it("content-based tag detection does NOT fire when <80%", () => {
+    const rows = [
+      { Data: "event:hyrox", Nama: "A" },
+      { Data: "random text", Nama: "B" },
+      { Data: "not a tag", Nama: "C" },
+      { Data: "also not", Nama: "D" },
+      { Data: "nope", Nama: "E" },
+    ];
+    const m = guessColumnMapping(["Data", "Nama"], rows);
+    expect(m["Data"]).toBe("ignore");
+  });
 });
 
 describe("normalizeMappedRow", () => {
@@ -95,6 +137,32 @@ describe("normalizeMappedRow", () => {
     const n = normalizeMappedRow({ Nama: "X", Surel: "x@x.com", HP: "0812-3456-7890", Kota: "", X: "" }, mapping);
     expect(n.phoneExcelBroken).toBe(false);
     expect(n.phoneNormalized).toBe("6281234567890");
+  });
+});
+
+describe("normalizeMappedRow — profile fields", () => {
+  it("maps gender, date_of_birth, blood_type through to NormalizedRow", () => {
+    const mapping: ColumnMapping = {
+      email: "email",
+      gender: "gender",
+      dob: "date_of_birth",
+      blood: "blood_type",
+    };
+    const n = normalizeMappedRow(
+      { email: "a@x.com", gender: "Male", dob: "1990-01-15", blood: "O+" },
+      mapping,
+    );
+    expect(n.gender).toBe("Male");
+    expect(n.dateOfBirth).toBe("1990-01-15");
+    expect(n.bloodType).toBe("O+");
+  });
+
+  it("nulls empty profile fields", () => {
+    const mapping: ColumnMapping = { email: "email", gender: "gender", dob: "date_of_birth", blood: "blood_type" };
+    const n = normalizeMappedRow({ email: "a@x.com", gender: "", dob: "  ", blood: "" }, mapping);
+    expect(n.gender).toBeNull();
+    expect(n.dateOfBirth).toBeNull();
+    expect(n.bloodType).toBeNull();
   });
 });
 
