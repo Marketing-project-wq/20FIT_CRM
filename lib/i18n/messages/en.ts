@@ -36,6 +36,7 @@ export const en: Messages = {
     messages: "Messages",
     consent: "Consent",
     quality: "Quality",
+    eventAnalysis: "Event Analysis",
     settings: "Settings",
     darkMode: "Dark mode",
     lightMode: "Light mode",

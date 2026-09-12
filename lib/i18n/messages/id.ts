@@ -46,6 +46,7 @@ export const id = {
     messages: "Messages",
     consent: "Consent",
     quality: "Quality",
+    eventAnalysis: "Analisa Event",
     settings: "Settings",
     darkMode: "Mode gelap",
     lightMode: "Mode terang",
