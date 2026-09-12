@@ -285,26 +285,26 @@ export function EventAnalysis({ data, nowMs }: { data: EventAnalyticsData; nowMs
         <div className="space-y-2 font-body text-[13px] text-ink-soft">
           <p>
             {isId
-              ? "Sumber data: tag event:* di master_customer.tags[]. Setiap tag menunjukkan orang tersebut pernah berpartisipasi di event itu."
-              : "Data source: event:* tags in master_customer.tags[]. Each tag indicates the person participated in that event."
+              ? "Sumber data digabung dari dua sumber per orang (customer_id): (1) customer_engagement WHERE unit='event' dan (2) tag event:* di master_customer.tags[]. Orang yang muncul di salah satu atau kedua sumber dihitung sekali per event."
+              : "Data merged from two per-person sources (by customer_id): (1) customer_engagement WHERE unit='event' and (2) event:* tags in master_customer.tags[]. A person appearing in either or both sources is counted once per event."
             }
           </p>
           <p>
             {isId
-              ? "Label event diambil dari crm_tag_registry. Jika label belum diisi, ditampilkan versi otomatis dari slug."
-              : "Event labels come from crm_tag_registry. If no label is set, an auto-formatted version of the slug is shown."
+              ? "Label event dari crm_tag_registry (prioritas), nama produk dari customer_engagement (fallback), atau format otomatis dari slug."
+              : "Event labels from crm_tag_registry (priority), product name from customer_engagement (fallback), or auto-formatted from slug."
             }
           </p>
           <p>
             {isId
-              ? "Urutan event berdasarkan slug (biasanya mengandung informasi waktu). Angka \"Baru\" dan \"Kembali\" dihitung berdasarkan urutan ini."
-              : "Event order is based on slug (which typically contains date info). \"New\" and \"Returning\" are computed from this order."
+              ? "Urutan event berdasarkan first_seen_at dari customer_engagement (kronologis). Event tanpa data tanggal diurutkan berdasarkan slug."
+              : "Event order uses first_seen_at from customer_engagement (chronological). Events without date data fall back to slug order."
             }
           </p>
           <p>
             {isId
-              ? "Profil yang sudah digabung (merged_into IS NOT NULL) tidak dihitung — datanya sudah pindah ke profil utama."
-              : "Merged profiles (merged_into IS NOT NULL) are excluded — their data has moved to the primary profile."
+              ? "Angka &quot;Baru&quot; dan &quot;Kembali&quot; dihitung berdasarkan urutan kronologis: event pertama seseorang = Baru, event berikutnya = Kembali."
+              : "\"New\" and \"Returning\" are computed from chronological order: a person's first event = New, subsequent events = Returning."
             }
           </p>
         </div>
