@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Upload, FileText, ArrowRight, CheckCircle2, AlertTriangle, X, ChevronDown, Plus } from "lucide-react";
+import { Upload, FileText, ArrowRight, CheckCircle2, AlertTriangle, X, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   MAX_IMPORT_ROWS,
@@ -639,10 +639,6 @@ function NamespaceTagStats({ labels }: { labels: Record<string, string> }) {
   );
 }
 
-/** The 5 operator namespaces surfaced in the Tag Assignment UI. `format`, `nilai`, `produk` are omitted
- *  — they are per-row properties derived from the CSV, not batch-wide. */
-const TAG_ASSIGNMENT_NAMESPACES = ["event", "kategori", "sumber", "tipe", "peran"] as const;
-
 interface RegistryTag { slug: string; label: string | null; namespace: string }
 
 function TagAssignment({
@@ -654,6 +650,7 @@ function TagAssignment({
 }) {
   const [registry, setRegistry] = useState<RegistryTag[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [adding, setAdding] = useState(false);
   useEffect(() => {
     fetch("/api/tags")
       .then((r) => r.json())
@@ -669,162 +666,156 @@ function TagAssignment({
   }
 
   return (
-    <div className="rounded-card border border-glass-border bg-glass p-4">
-      <h3 className="font-display text-[13px] font-bold text-ink">Tag tambahan</h3>
-      <p className="mt-1 font-body text-[12px] text-ink-soft">
-        Tag yang dipilih di sini diterapkan ke <strong>semua</strong> baris — baik yang masuk maupun yang ditandai (sudah ada).
-        Tag dari kolom CSV tetap berfungsi dan digabung dengan tag di sini.
-      </p>
-
+    <div>
       {selected.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {selected.map((tag) => (
-            <span
-              key={tag}
-              className="flex items-center gap-1 rounded-sm bg-glass px-2 py-0.5 font-body text-[12px] text-ink"
-            >
-              {tagValueLabel(tag, "id")}
-              <span className="font-display text-[9px] text-ink-faint">{namespaceLabel(tag.slice(0, tag.indexOf(":")), "id")}</span>
-              <button
-                type="button"
-                onClick={() => removeTag(tag)}
-                className="ml-0.5 rounded-sm p-0.5 text-ink-faint hover:bg-glass hover:text-ink"
-                aria-label={`Hapus ${tag}`}
+        <div className="mb-3">
+          <div className="font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">Tag tetap untuk semua baris</div>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {selected.map((tag) => (
+              <span
+                key={tag}
+                className="flex items-center gap-1 rounded-sm bg-glass px-2 py-1 font-mono text-[12px] text-ink"
               >
-                <X className="h-3 w-3" />
-              </button>
-            </span>
-          ))}
+                {tag}
+                <button
+                  type="button"
+                  onClick={() => removeTag(tag)}
+                  className="ml-0.5 rounded-sm p-0.5 text-ink-faint hover:text-ink"
+                  aria-label={`Hapus ${tag}`}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+          </div>
         </div>
       )}
 
-      {!loaded && <p className="mt-3 font-body text-[11px] text-ink-faint">Memuat tag…</p>}
-
-      {loaded && (
-        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {TAG_ASSIGNMENT_NAMESPACES.map((ns) => (
-            <NamespaceDropdown
-              key={ns}
-              namespace={ns}
-              registry={registry.filter((t) => t.namespace === ns)}
-              selected={selected}
-              onAdd={addTag}
-            />
-          ))}
-        </div>
+      {adding ? (
+        <FixedTagInput
+          registry={registry}
+          loaded={loaded}
+          selected={selected}
+          onAdd={(tag) => { addTag(tag); setAdding(false); }}
+          onCancel={() => setAdding(false)}
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={() => setAdding(true)}
+          className="flex items-center gap-1.5 font-body text-[13px] text-ink-soft hover:text-ink"
+        >
+          <Plus className="h-4 w-4" />
+          Tambah tag untuk semua baris
+        </button>
       )}
     </div>
   );
 }
 
-function NamespaceDropdown({
-  namespace,
+function FixedTagInput({
   registry,
+  loaded,
   selected,
   onAdd,
+  onCancel,
 }: {
-  namespace: string;
   registry: RegistryTag[];
+  loaded: boolean;
   selected: string[];
   onAdd: (tag: string) => void;
+  onCancel: () => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
-  const [custom, setCustom] = useState("");
+  const [ns, setNs] = useState<string>(NAMESPACE_MAPPING_TARGETS[0]);
+  const [value, setValue] = useState("");
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!open) return;
     function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node)) setShowSuggestions(false);
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
-  }, [open]);
+  }, []);
 
-  const available = registry
-    .filter((t) => !selected.includes(t.slug))
-    .filter((t) => {
-      if (search.trim() === "") return true;
-      const q = search.toLowerCase();
-      return t.slug.includes(q) || (t.label ?? "").toLowerCase().includes(q);
-    });
+  const slug = slugifyTagValue(value);
+  const preview = slug ? `${ns}:${slug}` : "";
 
-  function addCustom() {
-    const value = custom.trim().toLowerCase().replace(/\s+/g, "-");
-    if (value === "") return;
-    const tag = `${namespace}:${value}`;
-    if (!isOperatorTag(tag)) return;
-    onAdd(tag);
-    setCustom("");
+  const suggestions = loaded
+    ? registry
+        .filter((t) => t.namespace === ns && !selected.includes(t.slug))
+        .filter((t) => {
+          if (value.trim() === "") return true;
+          const q = value.toLowerCase();
+          return t.slug.includes(q) || (t.label ?? "").toLowerCase().includes(q);
+        })
+        .slice(0, 8)
+    : [];
+
+  function confirm() {
+    if (!preview || !isOperatorTag(preview)) return;
+    if (selected.includes(preview)) return;
+    onAdd(preview);
   }
 
   return (
-    <div className="relative" ref={ref}>
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex h-8 w-full items-center justify-between rounded-sm border border-glass-border bg-glass px-2 font-body text-[12px] text-ink hover:border-ink-faint"
+    <div className="flex flex-wrap items-start gap-2" ref={ref}>
+      <select
+        className="h-9 rounded-sm border border-glass-border bg-glass px-2 font-body text-[13px] text-ink focus:outline-none focus:ring-2 focus:ring-red"
+        value={ns}
+        onChange={(e) => { setNs(e.target.value); setValue(""); setShowSuggestions(false); }}
       >
-        <span className="truncate">{namespaceLabel(namespace, "id")}</span>
-        <ChevronDown className={`ml-1 h-3.5 w-3.5 shrink-0 text-ink-faint transition-transform ${open ? "rotate-180" : ""}`} />
-      </button>
+        {NAMESPACE_MAPPING_TARGETS.map((n) => (
+          <option key={n} value={n}>{namespaceLabel(n, "id")} ({n}:)</option>
+        ))}
+      </select>
 
-      {open && (
-        <div className="absolute left-0 top-full z-20 mt-1 w-56 rounded-card border border-glass-border bg-surface shadow-lg">
-          <div className="border-b border-glass-border p-2">
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Cari…"
-              className="h-7 w-full rounded-sm border border-glass-border bg-glass px-2 font-body text-[12px] text-ink placeholder:text-ink-faint focus:outline-none focus:ring-1 focus:ring-red"
-              autoFocus
-            />
-          </div>
-
-          <div className="max-h-40 overflow-y-auto">
-            {available.length === 0 && (
-              <p className="px-3 py-2 font-body text-[11px] text-ink-faint">
-                {registry.length === 0 ? "Belum ada tag terdaftar." : "Semua sudah dipilih."}
-              </p>
-            )}
-            {available.map((t) => (
-              <button
-                key={t.slug}
-                type="button"
-                onClick={() => { onAdd(t.slug); setSearch(""); }}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left font-body text-[12px] text-ink hover:bg-glass"
-              >
-                <span className="truncate">{t.label || tagValueLabel(t.slug, "id")}</span>
-                <span className="shrink-0 font-mono text-[10px] text-ink-faint">{t.slug.slice(t.slug.indexOf(":") + 1)}</span>
-              </button>
-            ))}
-          </div>
-
-          <div className="border-t border-glass-border p-2">
-            <div className="flex gap-1">
-              <span className="flex h-7 shrink-0 items-center rounded-l-sm border border-r-0 border-glass-border bg-glass px-1.5 font-mono text-[11px] text-ink-faint">{namespace}:</span>
-              <input
-                type="text"
-                value={custom}
-                onChange={(e) => setCustom(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCustom(); } }}
-                placeholder="baru"
-                className="h-7 min-w-0 flex-1 rounded-r-sm border border-glass-border bg-glass px-2 font-mono text-[12px] text-ink placeholder:text-ink-faint focus:outline-none focus:ring-1 focus:ring-red"
-              />
-              <button
-                type="button"
-                onClick={addCustom}
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-glass-border text-ink-faint hover:bg-glass hover:text-ink"
-                aria-label="Tambah tag baru"
-              >
-                <Plus className="h-3.5 w-3.5" />
-              </button>
+      <div className="relative flex-1">
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => { setValue(e.target.value); setShowSuggestions(true); }}
+          onFocus={() => setShowSuggestions(true)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); confirm(); } }}
+          placeholder="Ketik nilai tag…"
+          className="h-9 w-full min-w-[140px] rounded-sm border border-glass-border bg-glass px-3 font-body text-[13px] text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-red"
+          autoFocus
+        />
+        {showSuggestions && suggestions.length > 0 && (
+          <div className="absolute left-0 top-full z-20 mt-1 w-full rounded-card border border-glass-border bg-surface shadow-lg">
+            <div className="max-h-40 overflow-y-auto">
+              {suggestions.map((t) => (
+                <button
+                  key={t.slug}
+                  type="button"
+                  onClick={() => { onAdd(t.slug); setShowSuggestions(false); }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left font-body text-[12px] text-ink hover:bg-glass"
+                >
+                  <span className="truncate">{t.label || tagValueLabel(t.slug, "id")}</span>
+                  <span className="shrink-0 font-mono text-[10px] text-ink-faint">{t.slug}</span>
+                </button>
+              ))}
             </div>
           </div>
-        </div>
+        )}
+      </div>
+
+      {preview && (
+        <span className="flex h-9 items-center font-mono text-[12px] text-ink-soft">{preview}</span>
       )}
+
+      <Button onClick={confirm} disabled={!preview || !isOperatorTag(preview) || selected.includes(preview)} className="h-9">
+        <Plus className="mr-1 h-4 w-4" /> Tambah
+      </Button>
+      <button
+        type="button"
+        onClick={onCancel}
+        className="flex h-9 items-center rounded-sm px-2 text-ink-faint hover:text-ink"
+        aria-label="Batal"
+      >
+        <X className="h-4 w-4" />
+      </button>
     </div>
   );
 }
