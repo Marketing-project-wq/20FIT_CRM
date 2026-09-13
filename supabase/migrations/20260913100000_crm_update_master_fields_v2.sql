@@ -176,3 +176,7 @@ revoke all on function public.crm_update_master_fields(uuid,text,text,text,text,
   from public, anon, authenticated;
 grant execute on function public.crm_update_master_fields(uuid,text,text,text,text,text,numeric,text,date,text,uuid,text)
   to service_role;
+
+-- PostgREST menyimpan cache schema. Setelah DROP+CREATE fungsi dengan signature baru,
+-- cache HARUS di-reload agar .rpc() bisa menemukan fungsi baru.
+notify pgrst, 'reload schema';

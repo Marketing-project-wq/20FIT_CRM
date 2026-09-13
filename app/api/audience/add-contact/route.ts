@@ -5,6 +5,7 @@ import { getCurrentUserRole } from "@/lib/auth/current-role";
 import { canImportAudience } from "@/lib/auth/roles";
 import { normalizeEmail, normalizePhoneID } from "@/lib/crm/normalize";
 import { isOperatorTag } from "@/lib/crm/tags";
+import { logApiFailure } from "@/lib/crm/failure-log";
 
 export const dynamic = "force-dynamic";
 
@@ -92,44 +93,56 @@ export async function POST(req: Request) {
   const admin = createAdminClient();
   const batchId = crypto.randomUUID();
 
-  const { data: existing } = await admin
+  const { data: existing, error: selectErr } = await admin
     .from("master_customer")
     .select("customer_id")
     .eq("email_normalized", emailNorm)
     .limit(1)
     .maybeSingle();
 
+  if (selectErr) {
+    logApiFailure("/audience/add-contact", "select_failed", { code: selectErr.code });
+    return NextResponse.json({ error: "lookup_failed" }, { status: 500 });
+  }
+
   let outcome: "inserted" | "updated";
 
   if (existing) {
-    const rpcParams: Record<string, unknown> = {
-      p_customer_id: existing.customer_id,
-      p_actor_id: userId,
-      p_actor_email: userEmail,
-    };
-    if (fullName) rpcParams.p_full_name = fullName;
-    if (phoneNorm && body.phone) rpcParams.p_phone_raw = body.phone.trim();
-    if (gender) rpcParams.p_gender = gender;
-    if (city) rpcParams.p_city = city;
-    if (dateOfBirth) rpcParams.p_date_of_birth = dateOfBirth;
-    if (bloodType) rpcParams.p_blood_type = bloodType;
-
-    const hasFields = fullName || phoneNorm || gender || city || dateOfBirth || bloodType;
-    if (hasFields) {
-      const { data: result, error: upErr } = await admin.rpc(
-        "crm_update_master_fields",
-        rpcParams,
-      );
+    try {
+      const { data, error: upErr } = await admin.rpc("crm_update_master_fields", {
+        p_customer_id: existing.customer_id,
+        p_full_name: fullName,
+        p_phone_raw: phoneNorm ? body.phone!.trim() : null,
+        p_city: city,
+        p_first_unit: null,
+        p_segment: null,
+        p_lifetime_value: null,
+        p_gender: gender,
+        p_date_of_birth: dateOfBirth,
+        p_blood_type: bloodType,
+        p_actor_id: userId,
+        p_actor_email: userEmail,
+      });
       if (upErr) {
+        logApiFailure("/audience/add-contact", "rpc_raised", { code: upErr.code });
         return NextResponse.json({ error: "update_failed" }, { status: 500 });
       }
-      const res = result as Record<string, unknown> | null;
-      if (res?.error === "row_merged") {
-        return NextResponse.json({ error: "row_merged" }, { status: 409 });
+      const res = (data ?? {}) as { error?: string; changed?: string[]; corrected?: string[] };
+      if (res.error === "row_merged") {
+        return NextResponse.json(
+          { error: "row_merged", message: "Profil sudah digabung ke profil lain." },
+          { status: 409 },
+        );
       }
-      if (res?.error === "phone_taken") {
-        return NextResponse.json({ error: "phone_taken" }, { status: 409 });
+      if (res.error === "phone_taken") {
+        return NextResponse.json(
+          { error: "phone_taken", message: "Nomor telepon sudah dipakai kontak lain." },
+          { status: 409 },
+        );
       }
+    } catch (e) {
+      logApiFailure("/audience/add-contact", "rpc_threw", { code: (e as { code?: string })?.code });
+      return NextResponse.json({ error: "update_failed" }, { status: 500 });
     }
 
     if (tags.length > 0) {
