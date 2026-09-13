@@ -59,14 +59,14 @@ export function EventAnalysis({ data, nowMs }: { data: EventAnalyticsData; nowMs
         <span className="font-display text-[12px] font-semibold uppercase tracking-wide text-ink-faint">
           {isId ? "Tampilan" : "View"}
         </span>
-        <div className="inline-flex overflow-hidden rounded-sm border border-glass-border">
+        <div className="inline-flex overflow-hidden rounded-sm border border-surface-border">
           <button
             type="button"
             onClick={() => { setViewMode("groups"); setShowAllRows(false); }}
-            className={`px-3 py-1.5 font-body text-[13px] transition-colors ${
+            className={`px-3 py-1.5 font-body text-[13px] font-semibold transition-colors ${
               viewMode === "groups"
-                ? "bg-ink text-white"
-                : "bg-glass text-ink hover:bg-surface-border"
+                ? "bg-red text-white"
+                : "bg-surface-2 text-ink hover:bg-surface-border"
             }`}
           >
             {isId ? "Event utama" : "Grouped"} ({data.groups.length})
@@ -74,10 +74,10 @@ export function EventAnalysis({ data, nowMs }: { data: EventAnalyticsData; nowMs
           <button
             type="button"
             onClick={() => { setViewMode("all"); setShowAllRows(false); }}
-            className={`border-l border-glass-border px-3 py-1.5 font-body text-[13px] transition-colors ${
+            className={`border-l border-surface-border px-3 py-1.5 font-body text-[13px] font-semibold transition-colors ${
               viewMode === "all"
-                ? "bg-ink text-white"
-                : "bg-glass text-ink hover:bg-surface-border"
+                ? "bg-red text-white"
+                : "bg-surface-2 text-ink hover:bg-surface-border"
             }`}
           >
             {isId ? "Semua event" : "All events"} ({data.events.length})
