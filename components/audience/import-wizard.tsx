@@ -14,6 +14,7 @@ import {
   type ImportSummary,
 } from "@/lib/crm/import-audience";
 import { parseTagCell, groupTags, namespaceLabel, tagValueLabel, slugifyTagValue } from "@/lib/crm/tags";
+import * as XLSX from "xlsx";
 
 /**
  * CSV import wizard (Fase 1) — upload → map columns → review summary → confirm → report. It NEVER
@@ -118,14 +119,49 @@ export function ImportWizard() {
     }
   }
 
+  function isExcelFile(name: string): boolean {
+    const lower = name.toLowerCase();
+    return lower.endsWith(".xlsx") || lower.endsWith(".xls");
+  }
+
+  function excelToCsv(buffer: ArrayBuffer): string {
+    const wb = XLSX.read(buffer, { type: "array" });
+    const sheetName = wb.SheetNames[0];
+    if (!sheetName) throw new Error("empty_workbook");
+    const sheet = wb.Sheets[sheetName];
+    if (!sheet) throw new Error("empty_sheet");
+    return XLSX.utils.sheet_to_csv(sheet);
+  }
+
+  const MAX_FILE_BYTES = 10 * 1024 * 1024;
+
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const text = await file.text();
+    if (file.size > MAX_FILE_BYTES) {
+      setError("File terlalu besar (maks 10 MB).");
+      return;
+    }
+    let text: string;
+    const excel = isExcelFile(file.name);
+    try {
+      if (excel) {
+        const buffer = await file.arrayBuffer();
+        text = excelToCsv(buffer);
+      } else {
+        text = await file.text();
+      }
+    } catch {
+      setError(excel ? "File Excel tidak valid atau rusak." : "Gagal membaca file.");
+      return;
+    }
+    if (text.trim() === "") {
+      setError(excel ? "File Excel kosong atau sheet pertama kosong." : "File kosong atau tidak terbaca.");
+      return;
+    }
     setFilename(file.name);
     setCsvText(text);
     setError(null);
-    // Analyze uses csvText directly (state may not be flushed yet), so post inline.
     setBusy(true);
     try {
       const res = await fetch("/api/audience/import", {
@@ -189,8 +225,8 @@ export function ImportWizard() {
       <header>
         <h1 className="font-display text-[32px] font-black uppercase leading-none text-ink">Impor Audiens</h1>
         <p className="mt-2 max-w-3xl font-body text-[14px] text-ink-soft">
-          Unggah CSV berisi kontak yang consent-nya sudah diberikan di titik pengumpulan. Anda memetakan kolom,
-          melihat ringkasan, lalu mengonfirmasi — impor tidak berjalan otomatis.
+          Unggah file CSV atau Excel (.xlsx) berisi kontak yang consent-nya sudah diberikan di titik pengumpulan.
+          Anda memetakan kolom, melihat ringkasan, lalu mengonfirmasi — impor tidak berjalan otomatis.
         </p>
       </header>
 
@@ -207,11 +243,11 @@ export function ImportWizard() {
         <div className="glass rounded-card p-6">
           <label className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-card border border-dashed border-glass-border px-6 py-16 text-center hover:border-red">
             <Upload className="h-8 w-8 text-ink-faint" aria-hidden />
-            <span className="font-display text-[14px] font-bold text-ink">Pilih file CSV</span>
+            <span className="font-display text-[14px] font-bold text-ink">Pilih file CSV atau Excel</span>
             <span className="font-body text-[12px] text-ink-soft">
-              Kolom yang didukung: nama, email, telepon, kota. Email wajib. Excel menyusul.
+              Kolom yang didukung: nama, email, telepon, kota. Email wajib. File .xlsx dibaca dari sheet pertama.
             </span>
-            <input type="file" accept=".csv,text/csv" className="hidden" onChange={onFile} disabled={busy} />
+            <input type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" className="hidden" onChange={onFile} disabled={busy} />
           </label>
           {/* Batas dinyatakan DI LANGKAH UNGGAH, bukan hanya di pesan galat — supaya pemilik tahu
               file terlalu besar SEBELUM menunggu. Angka + alasannya (anggaran 8 detik) sengaja
@@ -275,7 +311,6 @@ export function ImportWizard() {
                           <option value="gender">{importFieldLabel("gender")}</option>
                           <option value="city">{importFieldLabel("city")}</option>
                           <option value="date_of_birth">{importFieldLabel("date_of_birth")}</option>
-                          <option value="blood_type">{importFieldLabel("blood_type")}</option>
                         </optgroup>
                         <optgroup label="Pengelompokan">
                           {NAMESPACE_MAPPING_TARGETS.map((ns) => (
