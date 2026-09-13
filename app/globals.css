@@ -132,6 +132,9 @@
 
   ::selection { background: var(--red); color: #fff; }
 
+  select { color-scheme: inherit; }
+  select option { background: var(--surface); color: var(--ink); }
+
   /* Mono numerals align in tables and KPI rows. */
   .font-mono { font-variant-numeric: tabular-nums; }
 }
