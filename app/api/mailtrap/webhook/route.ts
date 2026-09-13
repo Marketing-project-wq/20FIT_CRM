@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { normalizeEmail } from "@/lib/crm/normalize";
 import { hashIdentity, identityHashSecret } from "@/lib/crm/identity-hash";
 import { logApiFailure } from "@/lib/crm/failure-log";
+import { recordSuppression } from "@/lib/crm/suppression-write";
 import {
   verifyWebhookSignature,
   readSignatureHeader,
@@ -108,6 +109,27 @@ export async function POST(req: Request): Promise<Response> {
             continue;
           }
           matched = data?.length ?? 0;
+        }
+      }
+
+      // P0-4: auto-suppress on hard bounce (idempotent — RPC returns "noop" if already suppressed).
+      if (matched > 0 && effect.failureCause === "hard_bounce" && ev.email) {
+        const norm = normalizeEmail(ev.email);
+        if (norm) {
+          try {
+            await recordSuppression(admin, {
+              identityKind: "email",
+              identityKey: norm,
+              reasonCode: "bounce",
+              reasonDetail: "Hard bounce auto-detected by Mailtrap webhook",
+              customerId: null,
+              source: "webhook_auto",
+              actorId: null,
+              actorEmail: null,
+            });
+          } catch {
+            logApiFailure("/api/mailtrap/webhook", "auto_suppress_failed", {});
+          }
         }
       }
 

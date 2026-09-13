@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { normalizeEmail } from "@/lib/crm/normalize";
 import { hashIdentity, identityHashSecret } from "@/lib/crm/identity-hash";
 import { logApiFailure } from "@/lib/crm/failure-log";
+import { recordSuppression } from "@/lib/crm/suppression-write";
 import { isEventTooOld } from "@/lib/crm/mailtrap-webhook";
 import {
   verifyResendSignature,
@@ -127,6 +128,28 @@ export async function POST(req: Request): Promise<Response> {
           return NextResponse.json({ ok: false }, { status: 200 });
         }
         updated = data?.length ?? 0;
+      }
+    }
+
+    // P0-4: auto-suppress on hard bounce — only when we actually updated a row (idempotent: the
+    // RPC returns action:"noop" if already suppressed, so replayed events are harmless).
+    if (updated > 0 && effect.failureCause === "hard_bounce" && event.email) {
+      const norm = normalizeEmail(event.email);
+      if (norm) {
+        try {
+          await recordSuppression(admin, {
+            identityKind: "email",
+            identityKey: norm,
+            reasonCode: "bounce",
+            reasonDetail: "Hard bounce auto-detected by Resend webhook",
+            customerId: null,
+            source: "webhook_auto",
+            actorId: null,
+            actorEmail: null,
+          });
+        } catch {
+          logApiFailure("/api/resend/webhook", "auto_suppress_failed", {});
+        }
       }
     }
 
