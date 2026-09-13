@@ -171,7 +171,7 @@ export function EventAnalysis({ data, nowMs }: { data: EventAnalyticsData; nowMs
           {visible.map((ev) => (
             <div key={ev.key} className="grid grid-cols-[7rem_1fr_auto] items-center gap-2 sm:grid-cols-[10rem_1fr_auto]">
               <span className="truncate font-body text-[12px] font-semibold text-ink" title={ev.label}>{ev.label}</span>
-              <div className="flex h-4 overflow-hidden rounded-full bg-surface-border">
+              <div className="flex h-4 overflow-hidden rounded-full bg-surface-2">
                 {ev.returning > 0 && (
                   <span
                     className="block h-full bg-green"
@@ -180,7 +180,7 @@ export function EventAnalysis({ data, nowMs }: { data: EventAnalyticsData; nowMs
                   />
                 )}
                 <span
-                  className="block h-full bg-surface-border"
+                  className="block h-full bg-ink-faint/30"
                   style={{ width: `${(ev.newCount / maxTotal) * 100}%` }}
                   title={`${isId ? "Baru" : "New"}: ${ev.newCount}`}
                 />
@@ -197,7 +197,7 @@ export function EventAnalysis({ data, nowMs }: { data: EventAnalyticsData; nowMs
             <span className="inline-block h-3 w-3 rounded-sm bg-green" aria-hidden /> {isId ? "Kembali" : "Returning"}
           </span>
           <span className="flex items-center gap-1.5 font-body text-[11px] text-ink-soft">
-            <span className="inline-block h-3 w-3 rounded-sm bg-surface-border" aria-hidden /> {isId ? "Baru" : "New"}
+            <span className="inline-block h-3 w-3 rounded-sm bg-ink-faint/30" aria-hidden /> {isId ? "Baru" : "New"}
           </span>
         </div>
       </section>
@@ -217,7 +217,7 @@ export function EventAnalysis({ data, nowMs }: { data: EventAnalyticsData; nowMs
             <table className="w-full border-collapse text-left">
               <thead>
                 <tr className="border-b border-surface-border">
-                  <th className="sticky left-0 z-10 min-w-[8rem] bg-white px-3 py-2 font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint dark:bg-[var(--card-bg,#1a1a1a)]">
+                  <th className="sticky left-0 z-10 min-w-[8rem] bg-surface px-3 py-2 font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
                     {isId ? "Event pertama" : "First event"}
                   </th>
                   <th className="px-3 py-2 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
@@ -233,7 +233,7 @@ export function EventAnalysis({ data, nowMs }: { data: EventAnalyticsData; nowMs
               <tbody>
                 {data.cohort.map((row, ri) => (
                   <tr key={row.cohortEvent} className={ri < data.cohort.length - 1 ? "border-b border-surface-border/50" : ""}>
-                    <td className="sticky left-0 z-10 bg-white px-3 py-2 font-body text-[13px] font-semibold text-ink dark:bg-[var(--card-bg,#1a1a1a)]">
+                    <td className="sticky left-0 z-10 bg-surface px-3 py-2 font-body text-[13px] font-semibold text-ink">
                       {row.cohortLabel}
                     </td>
                     <td className="px-3 py-2 text-right font-mono text-[13px] tabular-nums text-ink">{formatCount(row.cohortSize, lang)}</td>
@@ -265,13 +265,13 @@ export function EventAnalysis({ data, nowMs }: { data: EventAnalyticsData; nowMs
           {/* Color legend */}
           <div className="mt-3 flex flex-wrap gap-3 font-body text-[11px] text-ink-faint">
             <span className="flex items-center gap-1">
-              <span className="inline-block h-3 w-3 rounded-sm" style={{ backgroundColor: "rgba(239, 68, 68, 0.25)" }} aria-hidden /> 0–5%
+              <span className="inline-block h-3 w-3 rounded-sm bg-red/25" aria-hidden /> 0–5%
             </span>
             <span className="flex items-center gap-1">
-              <span className="inline-block h-3 w-3 rounded-sm" style={{ backgroundColor: "rgba(245, 158, 11, 0.3)" }} aria-hidden /> 5–15%
+              <span className="inline-block h-3 w-3 rounded-sm bg-amber/30" aria-hidden /> 5–15%
             </span>
             <span className="flex items-center gap-1">
-              <span className="inline-block h-3 w-3 rounded-sm" style={{ backgroundColor: "rgba(28, 138, 75, 0.35)" }} aria-hidden /> &gt;15%
+              <span className="inline-block h-3 w-3 rounded-sm bg-green/35" aria-hidden /> &gt;15%
             </span>
           </div>
         </div>
@@ -414,15 +414,15 @@ function KpiCard({ value, label, tone }: { value: string; label: string; tone: "
 
 function cohortCellBg(pct: number): string | undefined {
   if (pct === 0) return undefined;
-  if (pct <= 5) return `rgba(239, 68, 68, ${Math.max(pct / 5 * 0.3, 0.08)})`;
-  if (pct <= 15) return `rgba(245, 158, 11, ${Math.max((pct - 5) / 10 * 0.3 + 0.1, 0.1)})`;
-  return `rgba(28, 138, 75, ${Math.max(pct / 100 * 0.6, 0.15)})`;
+  if (pct <= 5) return `color-mix(in srgb, var(--red) ${Math.max(Math.round(pct / 5 * 30), 8)}%, transparent)`;
+  if (pct <= 15) return `color-mix(in srgb, var(--amber) ${Math.max(Math.round((pct - 5) / 10 * 30 + 10), 10)}%, transparent)`;
+  return `color-mix(in srgb, var(--green) ${Math.max(Math.round(pct / 100 * 60), 15)}%, transparent)`;
 }
 
 function cohortCellFg(pct: number): string {
   if (pct === 0) return "var(--ink-faint)";
   if (pct <= 5) return "var(--red)";
-  if (pct <= 15) return "var(--amber, #b45309)";
+  if (pct <= 15) return "var(--amber)";
   if (pct >= 50) return "white";
   return "var(--green)";
 }
