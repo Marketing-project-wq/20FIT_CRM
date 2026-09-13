@@ -59,12 +59,18 @@ export interface EventAnalyticsData {
   skipAfterOneReturn: number;
 }
 
+export interface EventAnalyticsFilter {
+  eventSlugs?: string[];
+  dateFrom?: string;
+  dateTo?: string;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AdminClient = any;
 
 const PAGE = 1000;
 
-export async function fetchEventAnalytics(admin: AdminClient): Promise<EventAnalyticsData> {
+export async function fetchEventAnalytics(admin: AdminClient, filter?: EventAnalyticsFilter): Promise<EventAnalyticsData> {
   // === FETCH ===
 
   const { data: registryRows, error: regErr } = await admin
@@ -109,11 +115,13 @@ export async function fetchEventAnalytics(admin: AdminClient): Promise<EventAnal
   const engagementLabels = new Map<string, string>();
 
   for (let from = 0; ; from += PAGE) {
-    const { data, error } = await admin
+    let ceQuery = admin
       .from("customer_engagement")
       .select("customer_id, product, first_seen_at")
-      .eq("unit", "event")
-      .range(from, from + PAGE - 1);
+      .eq("unit", "event");
+    if (filter?.dateFrom) ceQuery = ceQuery.gte("first_seen_at", filter.dateFrom);
+    if (filter?.dateTo) ceQuery = ceQuery.lte("first_seen_at", filter.dateTo + "T23:59:59");
+    const { data, error } = await ceQuery.range(from, from + PAGE - 1);
     if (error) throw new Error("Failed to fetch customer_engagement");
     const rows = (data ?? []) as { customer_id: string; product: string | null; first_seen_at: string | null }[];
     for (const r of rows) {
@@ -136,6 +144,10 @@ export async function fetchEventAnalytics(admin: AdminClient): Promise<EventAnal
   });
 
   // === MERGE per person ===
+  const filterGroupSet = filter?.eventSlugs?.length
+    ? new Set(filter.eventSlugs.map((s) => s.startsWith("event:") ? s : "event:" + s))
+    : null;
+
   const allCustomerIds = new Set<string>();
   tagsByPerson.forEach((_v, id) => allCustomerIds.add(id));
   engagementByPerson.forEach((_v, id) => allCustomerIds.add(id));
@@ -150,7 +162,11 @@ export async function fetchEventAnalytics(admin: AdminClient): Promise<EventAnal
     const engEvents = engagementByPerson.get(cid);
     if (engEvents) engEvents.forEach((e) => merged.add(e));
     if (merged.size === 0) return;
-    const arr = Array.from(merged);
+    let arr = Array.from(merged);
+    if (filterGroupSet) {
+      arr = arr.filter((e) => filterGroupSet.has(eventGroupKey(e)));
+      if (arr.length === 0) return;
+    }
     peopleEvents.push(arr);
     for (const e of arr) allEventSlugs.add(e);
   });
@@ -375,6 +391,8 @@ export async function fetchEventAnalytics(admin: AdminClient): Promise<EventAnal
     skipAfterOneReturn,
   };
 }
+
+export { eventGroupKey };
 
 function productToSlug(product: string): string {
   return "event:" + product.toLowerCase().replace(/\s+/g, "-");

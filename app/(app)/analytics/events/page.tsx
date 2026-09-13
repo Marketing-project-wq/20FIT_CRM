@@ -33,5 +33,10 @@ export default async function EventAnalyticsPage() {
   const admin = createAdminClient();
   const data = await fetchEventAnalytics(admin);
 
-  return <EventAnalysis data={data} nowMs={Date.now()} />;
+  const allGroups = data.groups.map((g) => ({
+    key: g.groupKey,
+    label: g.groupLabel,
+  }));
+
+  return <EventAnalysis data={data} nowMs={Date.now()} allGroups={allGroups} />;
 }
