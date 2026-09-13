@@ -1,9 +1,5 @@
-import { PageSkeleton, GenericSkeleton } from "@/components/shell/page-skeleton";
+import { LoadingBallServer } from "@/components/shared/loading-ball";
 
 export default function Loading() {
-  return (
-    <PageSkeleton>
-      <GenericSkeleton />
-    </PageSkeleton>
-  );
+  return <LoadingBallServer />;
 }
