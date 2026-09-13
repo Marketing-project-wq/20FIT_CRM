@@ -46,6 +46,32 @@ export interface ChurnRow {
   notReturnedPct: number;
 }
 
+export interface DemographicBreakdown {
+  gender: { male: number; female: number; unknown: number };
+  ageBrackets: { label: string; count: number }[];
+  topCities: { city: string; count: number }[];
+  otherCities: number;
+  total: number;
+}
+
+export interface EventDemographic {
+  groupKey: string;
+  groupLabel: string;
+  demographics: DemographicBreakdown;
+}
+
+export interface EventComparison {
+  eventA: { key: string; label: string; total: number; newCount: number; returning: number; returningPct: number };
+  eventB: { key: string; label: string; total: number; newCount: number; returning: number; returningPct: number };
+  overlap: number;
+  onlyA: number;
+  onlyB: number;
+  overlapPctA: number;
+  overlapPctB: number;
+  demographicsA: DemographicBreakdown;
+  demographicsB: DemographicBreakdown;
+}
+
 export interface EventAnalyticsData {
   events: EventInfo[];
   groups: EventGroup[];
@@ -57,6 +83,8 @@ export interface EventAnalyticsData {
   cohort: CohortRow[];
   churn: ChurnRow[];
   skipAfterOneReturn: number;
+  demographics: EventDemographic[];
+  comparison: EventComparison | null;
 }
 
 export interface EventAnalyticsFilter {
@@ -85,17 +113,22 @@ export async function fetchEventAnalytics(admin: AdminClient, filter?: EventAnal
     labelMap.set(r.slug, r.label ?? formatSlugLabel(r.slug));
   }
 
-  // Source A: master_customer event tags (paged)
+  // Source A: master_customer event tags + demographics (paged)
   const tagsByPerson = new Map<string, string[]>();
+  const personDemo = new Map<string, { gender: string | null; dob: string | null; city: string | null }>();
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await admin
       .from("master_customer")
-      .select("customer_id, tags")
+      .select("customer_id, tags, gender, date_of_birth, city")
       .range(from, from + PAGE - 1);
     if (error) throw new Error("Failed to fetch master_customer");
-    const rows = (data ?? []) as { customer_id: string; tags: string[] | null }[];
+    const rows = (data ?? []) as { customer_id: string; tags: string[] | null; gender: string | null; date_of_birth: string | null; city: string | null }[];
     for (const row of rows) {
-      if (!row.tags || !row.customer_id) continue;
+      if (!row.customer_id) continue;
+      if (row.gender || row.date_of_birth || row.city) {
+        personDemo.set(row.customer_id, { gender: row.gender, dob: row.date_of_birth, city: row.city });
+      }
+      if (!row.tags) continue;
       const events = row.tags.filter((t: string) => t.startsWith("event:"));
       if (events.length === 0) continue;
       const existing = tagsByPerson.get(row.customer_id);
@@ -154,6 +187,7 @@ export async function fetchEventAnalytics(admin: AdminClient, filter?: EventAnal
 
   const allEventSlugs = new Set<string>();
   const peopleEvents: string[][] = [];
+  const peopleCids: string[] = [];
 
   Array.from(allCustomerIds).forEach((cid) => {
     const merged = new Set<string>();
@@ -168,6 +202,7 @@ export async function fetchEventAnalytics(admin: AdminClient, filter?: EventAnal
       if (arr.length === 0) return;
     }
     peopleEvents.push(arr);
+    peopleCids.push(cid);
     for (const e of arr) allEventSlugs.add(e);
   });
 
@@ -378,6 +413,55 @@ export async function fetchEventAnalytics(admin: AdminClient, filter?: EventAnal
     }
   }
 
+  // === DEMOGRAPHICS PER GROUP ===
+  const demographics: EventDemographic[] = [];
+  const today = new Date();
+
+  for (const gk of sortedGroupKeys) {
+    const peoplePIs = groupTotals.get(gk)!;
+    const demo = computeDemographics(peoplePIs, peopleCids, personDemo, today);
+    demographics.push({
+      groupKey: gk,
+      groupLabel: groupLabelMap.get(gk) ?? formatSlugLabel(gk),
+      demographics: demo,
+    });
+  }
+
+  // === CROSS-EVENT COMPARISON (exactly 2 groups filtered) ===
+  let comparison: EventComparison | null = null;
+
+  if (sortedGroupKeys.length === 2) {
+    const gkA = sortedGroupKeys[0];
+    const gkB = sortedGroupKeys[1];
+    const setA = groupTotals.get(gkA)!;
+    const setB = groupTotals.get(gkB)!;
+
+    let overlap = 0;
+    setA.forEach((pi) => { if (setB.has(pi)) overlap++; });
+    const onlyA = setA.size - overlap;
+    const onlyB = setB.size - overlap;
+
+    const gA = groups.find((g) => g.groupKey === gkA)!;
+    const gB = groups.find((g) => g.groupKey === gkB)!;
+    const retPctA = gA.total > 0 ? Math.round((gA.returning / gA.total) * 1000) / 10 : 0;
+    const retPctB = gB.total > 0 ? Math.round((gB.returning / gB.total) * 1000) / 10 : 0;
+
+    const demoA = computeDemographics(setA, peopleCids, personDemo, today);
+    const demoB = computeDemographics(setB, peopleCids, personDemo, today);
+
+    comparison = {
+      eventA: { key: gkA, label: gA.groupLabel, total: gA.total, newCount: gA.newCount, returning: gA.returning, returningPct: retPctA },
+      eventB: { key: gkB, label: gB.groupLabel, total: gB.total, newCount: gB.newCount, returning: gB.returning, returningPct: retPctB },
+      overlap,
+      onlyA,
+      onlyB,
+      overlapPctA: setA.size > 0 ? Math.round((overlap / setA.size) * 1000) / 10 : 0,
+      overlapPctB: setB.size > 0 ? Math.round((overlap / setB.size) * 1000) / 10 : 0,
+      demographicsA: demoA,
+      demographicsB: demoB,
+    };
+  }
+
   return {
     events: eventInfos,
     groups,
@@ -389,6 +473,8 @@ export async function fetchEventAnalytics(admin: AdminClient, filter?: EventAnal
     cohort,
     churn,
     skipAfterOneReturn,
+    demographics,
+    comparison,
   };
 }
 
@@ -428,6 +514,80 @@ function earliestDate(slugs: string[], dateMap: Map<string, string>): string | u
     if (d && (!earliest || d < earliest)) earliest = d;
   }
   return earliest;
+}
+
+const AGE_BRACKETS: { label: string; min: number; max: number }[] = [
+  { label: "<18", min: 0, max: 17 },
+  { label: "18-24", min: 18, max: 24 },
+  { label: "25-34", min: 25, max: 34 },
+  { label: "35-44", min: 35, max: 44 },
+  { label: "45-54", min: 45, max: 54 },
+  { label: "55+", min: 55, max: 999 },
+];
+
+function computeAge(dob: string, today: Date): number {
+  const birth = new Date(dob);
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+  return age;
+}
+
+function computeDemographics(
+  peoplePIs: Set<number>,
+  peopleCids: string[],
+  personDemo: Map<string, { gender: string | null; dob: string | null; city: string | null }>,
+  today: Date,
+): DemographicBreakdown {
+  let male = 0, female = 0, gUnknown = 0;
+  const ageCounts = new Array(AGE_BRACKETS.length).fill(0);
+  let ageUnknown = 0;
+  const cityCounts = new Map<string, number>();
+
+  peoplePIs.forEach((pi) => {
+    const cid = peopleCids[pi];
+    const d = cid ? personDemo.get(cid) : undefined;
+
+    if (d?.gender === "L") male++;
+    else if (d?.gender === "P") female++;
+    else gUnknown++;
+
+    if (d?.dob) {
+      const age = computeAge(d.dob, today);
+      let placed = false;
+      for (let i = 0; i < AGE_BRACKETS.length; i++) {
+        if (age >= AGE_BRACKETS[i].min && age <= AGE_BRACKETS[i].max) {
+          ageCounts[i]++;
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) ageUnknown++;
+    } else {
+      ageUnknown++;
+    }
+
+    if (d?.city) {
+      const c = d.city.trim();
+      if (c) cityCounts.set(c, (cityCounts.get(c) ?? 0) + 1);
+    }
+  });
+
+  const sortedCities = Array.from(cityCounts.entries())
+    .sort((a, b) => b[1] - a[1]);
+  const top10 = sortedCities.slice(0, 10).map(([city, count]) => ({ city, count }));
+  const otherCities = sortedCities.slice(10).reduce((sum, [, c]) => sum + c, 0);
+
+  return {
+    gender: { male, female, unknown: gUnknown },
+    ageBrackets: [
+      ...AGE_BRACKETS.map((b, i) => ({ label: b.label, count: ageCounts[i] })),
+      { label: "Unknown", count: ageUnknown },
+    ],
+    topCities: top10,
+    otherCities,
+    total: peoplePIs.size,
+  };
 }
 
 function deriveGroupLabel(subEventLabels: string[], groupKey: string): string {

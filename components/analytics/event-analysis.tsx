@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { Printer, RefreshCw, ChevronDown, ChevronRight, TrendingDown, X, Search, Check, Filter } from "lucide-react";
+import { Printer, RefreshCw, ChevronDown, ChevronRight, TrendingDown, X, Search, Check, Filter, ArrowUpRight, ArrowDownRight, Equal } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { EventAnalyticsData, EventGroup } from "@/lib/crm/event-analytics";
+import type { EventAnalyticsData, EventGroup, EventComparison, DemographicBreakdown } from "@/lib/crm/event-analytics";
 import { useI18n } from "@/components/i18n/lang-provider";
 import { formatCount, formatPct, type Lang } from "@/lib/i18n";
 
@@ -186,8 +186,36 @@ export function EventAnalysis({
 
   return (
     <div className="flex flex-col gap-6 print:gap-4">
+      {/* Print-only styles */}
+      <style>{`
+        @media print {
+          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          nav, header, [data-sidebar], [data-shell-header] { display: none !important; }
+          .print-header { display: block !important; }
+          table { page-break-inside: avoid; }
+          section { page-break-inside: avoid; }
+          .card { border: 1px solid #ddd !important; box-shadow: none !important; }
+        }
+      `}</style>
+
+      {/* Print-only header */}
+      <div className="print-header mb-4 hidden border-b-2 border-ink pb-3 print:block">
+        <h1 className="font-display text-[24px] font-black uppercase text-ink">{te.printTitle}</h1>
+        <p className="mt-1 font-body text-[12px] text-ink-soft">
+          {te.printGenerated} {new Date().toLocaleString(lang === "id" ? "id-ID" : "en-US")}
+        </p>
+        {hasFilter && (
+          <p className="mt-0.5 font-body text-[11px] text-ink-faint">
+            {te.printFilterLabel}{" "}
+            {selectedEvents.size > 0 && `${selectedEvents.size} events`}
+            {dateFrom && ` | ${te.filterFrom}: ${dateFrom}`}
+            {dateTo && ` | ${te.filterTo}: ${dateTo}`}
+          </p>
+        )}
+      </div>
+
       {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3 print:hidden">
         <div>
           <h1 className="font-display text-[32px] font-black uppercase leading-none text-ink">
             {te.title}
@@ -539,6 +567,16 @@ export function EventAnalysis({
             </p>
           )}
         </section>
+      )}
+
+      {/* Demographics */}
+      {data.demographics.length > 0 && (
+        <DemographicsSection demographics={data.demographics} lang={lang} te={te} loading={loading} />
+      )}
+
+      {/* Cross-Event Comparison */}
+      {data.comparison && (
+        <ComparisonSection comparison={data.comparison} lang={lang} te={te} loading={loading} />
       )}
 
       {/* Expandable sections */}
@@ -1034,6 +1072,393 @@ function ExpandableSection({
         )}
       </button>
       {open && <div className="border-t border-surface-border px-5 py-4">{children}</div>}
+    </section>
+  );
+}
+
+/* ── Demographics Section ── */
+
+function GenderBar({ demo, te }: { demo: DemographicBreakdown; te: Te }) {
+  if (demo.total === 0) return null;
+  const mPct = Math.round((demo.gender.male / demo.total) * 1000) / 10;
+  const fPct = Math.round((demo.gender.female / demo.total) * 1000) / 10;
+  const uPct = Math.round((demo.gender.unknown / demo.total) * 1000) / 10;
+  return (
+    <div className="flex h-6 w-full overflow-hidden rounded-full">
+      {demo.gender.male > 0 && (
+        <span
+          className="flex items-center justify-center bg-green font-mono text-[10px] font-bold text-white"
+          style={{ width: `${mPct}%`, minWidth: mPct > 3 ? undefined : "1.5rem" }}
+          title={`${te.demoMale}: ${demo.gender.male}`}
+        >
+          {mPct >= 8 ? `${mPct}%` : ""}
+        </span>
+      )}
+      {demo.gender.female > 0 && (
+        <span
+          className="flex items-center justify-center bg-red font-mono text-[10px] font-bold text-white"
+          style={{ width: `${fPct}%`, minWidth: fPct > 3 ? undefined : "1.5rem" }}
+          title={`${te.demoFemale}: ${demo.gender.female}`}
+        >
+          {fPct >= 8 ? `${fPct}%` : ""}
+        </span>
+      )}
+      {demo.gender.unknown > 0 && (
+        <span
+          className="flex items-center justify-center bg-ink-faint/30 font-mono text-[10px] font-bold text-ink-soft"
+          style={{ width: `${uPct}%`, minWidth: uPct > 3 ? undefined : "1.5rem" }}
+          title={`${te.demoUnknown}: ${demo.gender.unknown}`}
+        >
+          {uPct >= 8 ? `${uPct}%` : ""}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function DemographicsSection({
+  demographics,
+  lang,
+  te,
+  loading,
+}: {
+  demographics: EventAnalyticsData["demographics"];
+  lang: Lang;
+  te: Te;
+  loading: boolean;
+}) {
+  if (demographics.length === 0) return null;
+
+  const totals = demographics.reduce(
+    (acc, d) => ({
+      male: acc.male + d.demographics.gender.male,
+      female: acc.female + d.demographics.gender.female,
+      unknown: acc.unknown + d.demographics.gender.unknown,
+      total: acc.total + d.demographics.total,
+    }),
+    { male: 0, female: 0, unknown: 0, total: 0 },
+  );
+
+  const mPct = totals.total > 0 ? formatPct(Math.round((totals.male / totals.total) * 1000) / 10, lang) : "0%";
+  const fPct = totals.total > 0 ? formatPct(Math.round((totals.female / totals.total) * 1000) / 10, lang) : "0%";
+  const uPct = totals.total > 0 ? formatPct(Math.round((totals.unknown / totals.total) * 1000) / 10, lang) : "0%";
+
+  const ageTotals: number[] = [];
+  if (demographics.length > 0) {
+    for (let i = 0; i < demographics[0].demographics.ageBrackets.length; i++) {
+      ageTotals.push(demographics.reduce((sum, d) => sum + d.demographics.ageBrackets[i].count, 0));
+    }
+  }
+
+  const cityTotals = new Map<string, number>();
+  for (const d of demographics) {
+    for (const c of d.demographics.topCities) {
+      cityTotals.set(c.city, (cityTotals.get(c.city) ?? 0) + c.count);
+    }
+  }
+  const sortedCities = Array.from(cityTotals.entries()).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  const maxCityCount = sortedCities.length > 0 ? sortedCities[0][1] : 1;
+
+  return (
+    <section className={loading ? "pointer-events-none opacity-50" : ""}>
+      <h2 className="mb-3 font-display text-[16px] font-bold text-ink">{te.demoTitle}</h2>
+
+      {/* Gender */}
+      <div className="card mb-4 p-4">
+        <h3 className="mb-2 font-display text-[14px] font-semibold text-ink">{te.demoGenderTitle}</h3>
+        <p className="mb-3 font-body text-[12px] text-ink-soft">
+          {te.demoGenderSummary.replace("{malePct}", mPct).replace("{femalePct}", fPct).replace("{unknownPct}", uPct)}
+        </p>
+        <div className="space-y-2">
+          {demographics.map((d) => (
+            <div key={d.groupKey} className="grid grid-cols-[8rem_1fr] items-center gap-3 sm:grid-cols-[12rem_1fr]">
+              <span className="truncate font-body text-[12px] font-semibold text-ink" title={d.groupLabel}>
+                {d.groupLabel}
+              </span>
+              <GenderBar demo={d.demographics} te={te} />
+            </div>
+          ))}
+        </div>
+        <div className="mt-3 flex gap-4">
+          <span className="flex items-center gap-1.5 font-body text-[11px] text-ink-soft">
+            <span className="inline-block h-3 w-3 rounded-sm bg-green" aria-hidden /> {te.demoMale}
+          </span>
+          <span className="flex items-center gap-1.5 font-body text-[11px] text-ink-soft">
+            <span className="inline-block h-3 w-3 rounded-sm bg-red" aria-hidden /> {te.demoFemale}
+          </span>
+          <span className="flex items-center gap-1.5 font-body text-[11px] text-ink-soft">
+            <span className="inline-block h-3 w-3 rounded-sm bg-ink-faint/30" aria-hidden /> {te.demoUnknown}
+          </span>
+        </div>
+      </div>
+
+      {/* Age */}
+      <div className="card mb-4 p-4">
+        <h3 className="mb-3 font-display text-[14px] font-semibold text-ink">{te.demoAgeTitle}</h3>
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-left">
+            <thead>
+              <tr className="border-b border-surface-border">
+                <th className="px-3 py-2 font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+                  Event
+                </th>
+                {demographics.length > 0 &&
+                  demographics[0].demographics.ageBrackets.map((b) => (
+                    <th key={b.label} className="px-3 py-2 text-center font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+                      {b.label}
+                    </th>
+                  ))}
+              </tr>
+            </thead>
+            <tbody>
+              {demographics.map((d, ri) => (
+                <tr key={d.groupKey} className={ri < demographics.length - 1 ? "border-b border-surface-border/50" : ""}>
+                  <td className="px-3 py-2 font-body text-[12px] font-semibold text-ink">{d.groupLabel}</td>
+                  {d.demographics.ageBrackets.map((b) => {
+                    const pct = d.demographics.total > 0 ? Math.round((b.count / d.demographics.total) * 100) : 0;
+                    return (
+                      <td key={b.label} className="px-3 py-2 text-center">
+                        {b.count > 0 ? (
+                          <span
+                            className="inline-block rounded-sm px-1.5 py-0.5 font-mono text-[11px] font-semibold"
+                            style={{
+                              backgroundColor: pct > 20 ? "color-mix(in srgb, var(--green) 25%, transparent)" : pct > 10 ? "color-mix(in srgb, var(--amber) 20%, transparent)" : undefined,
+                              color: pct > 20 ? "var(--green)" : pct > 10 ? "var(--amber)" : "var(--ink-soft)",
+                            }}
+                            title={`${b.count} (${pct}%)`}
+                          >
+                            {formatCount(b.count, lang)}
+                          </span>
+                        ) : (
+                          <span className="font-mono text-[11px] text-ink-faint">&mdash;</span>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+              {demographics.length > 1 && (
+                <tr className="border-t border-surface-border bg-surface-2/50">
+                  <td className="px-3 py-2 font-display text-[11px] font-bold uppercase text-ink-faint">Total</td>
+                  {ageTotals.map((count, i) => (
+                    <td key={i} className="px-3 py-2 text-center font-mono text-[11px] font-bold text-ink-soft">
+                      {count > 0 ? formatCount(count, lang) : "—"}
+                    </td>
+                  ))}
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Cities */}
+      {sortedCities.length > 0 && (
+        <div className="card p-4">
+          <h3 className="mb-3 font-display text-[14px] font-semibold text-ink">{te.demoCityTitle}</h3>
+          <div className="space-y-1.5">
+            {sortedCities.map(([city, count]) => (
+              <div key={city} className="grid grid-cols-[8rem_1fr_3rem] items-center gap-2 sm:grid-cols-[12rem_1fr_4rem]">
+                <span className="truncate font-body text-[12px] font-semibold text-ink">{city}</span>
+                <div className="h-4 overflow-hidden rounded-full bg-surface-2">
+                  <span
+                    className="block h-full rounded-full bg-green/60"
+                    style={{ width: `${(count / maxCityCount) * 100}%` }}
+                  />
+                </div>
+                <span className="text-right font-mono text-[11px] tabular-nums text-ink-faint">
+                  {formatCount(count, lang)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/* ── Comparison Section ── */
+
+function ComparisonSection({
+  comparison: c,
+  lang,
+  te,
+  loading,
+}: {
+  comparison: EventComparison;
+  lang: Lang;
+  te: Te;
+  loading: boolean;
+}) {
+  const delta = (a: number, b: number) => {
+    if (a === 0 && b === 0) return { pct: 0, direction: "equal" as const };
+    if (a === 0) return { pct: 100, direction: "up" as const };
+    const d = Math.round(((b - a) / a) * 1000) / 10;
+    return { pct: Math.abs(d), direction: d > 0 ? "up" as const : d < 0 ? "down" as const : "equal" as const };
+  };
+
+  const rows = [
+    { label: te.compareTotal, a: c.eventA.total, b: c.eventB.total },
+    { label: te.compareNew, a: c.eventA.newCount, b: c.eventB.newCount },
+    { label: te.compareReturning, a: c.eventA.returning, b: c.eventB.returning },
+  ];
+
+  function DemoCompare({ dA, dB, label }: { dA: DemographicBreakdown; dB: DemographicBreakdown; label: string }) {
+    return (
+      <div>
+        <h4 className="mb-2 font-display text-[12px] font-semibold uppercase tracking-wide text-ink-faint">
+          {label}
+        </h4>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <p className="mb-1 font-body text-[11px] text-ink-faint">{c.eventA.label}</p>
+            <GenderBar demo={dA} te={te} />
+          </div>
+          <div>
+            <p className="mb-1 font-body text-[11px] text-ink-faint">{c.eventB.label}</p>
+            <GenderBar demo={dB} te={te} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <section className={`transition-opacity ${loading ? "pointer-events-none opacity-50" : ""}`}>
+      <h2 className="mb-3 font-display text-[16px] font-bold text-ink">{te.compareTitle}</h2>
+
+      {/* Side-by-side KPIs */}
+      <div className="card mb-4 overflow-x-auto p-0">
+        <table className="w-full border-collapse text-left">
+          <thead>
+            <tr className="border-b border-surface-border">
+              <th className="px-4 py-3 font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint" />
+              <th className="px-4 py-3 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink">
+                {c.eventA.label}
+              </th>
+              <th className="px-4 py-3 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink">
+                {c.eventB.label}
+              </th>
+              <th className="px-4 py-3 text-center font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+                {te.compareDelta}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const d = delta(r.a, r.b);
+              return (
+                <tr key={r.label} className="border-b border-surface-border/50">
+                  <td className="px-4 py-2.5 font-body text-[13px] font-semibold text-ink">{r.label}</td>
+                  <td className="px-4 py-2.5 text-right font-mono text-[13px] tabular-nums text-ink">
+                    {formatCount(r.a, lang)}
+                  </td>
+                  <td className="px-4 py-2.5 text-right font-mono text-[13px] tabular-nums text-ink">
+                    {formatCount(r.b, lang)}
+                  </td>
+                  <td className="px-4 py-2.5 text-center">
+                    <span className={`inline-flex items-center gap-0.5 font-mono text-[12px] font-semibold ${d.direction === "up" ? "text-green" : d.direction === "down" ? "text-red" : "text-ink-faint"}`}>
+                      {d.direction === "up" && <ArrowUpRight className="h-3.5 w-3.5" />}
+                      {d.direction === "down" && <ArrowDownRight className="h-3.5 w-3.5" />}
+                      {d.direction === "equal" && <Equal className="h-3.5 w-3.5" />}
+                      {d.pct > 0 ? `${d.direction === "up" ? "+" : "-"}${formatPct(d.pct, lang)}` : "—"}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Overlap */}
+      <div className="card mb-4 p-4">
+        <h3 className="mb-3 font-display text-[14px] font-semibold text-ink">{te.compareOverlap}</h3>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="rounded-sm border border-surface-border p-3 text-center">
+            <div className="font-display text-[24px] font-semibold tabular-nums text-green">
+              {formatCount(c.overlap, lang)}
+            </div>
+            <p className="mt-1 font-body text-[11px] text-ink-soft">
+              {te.compareBothAttended.replace("{n}", formatCount(c.overlap, lang))}
+            </p>
+          </div>
+          <div className="rounded-sm border border-surface-border p-3 text-center">
+            <div className="font-display text-[24px] font-semibold tabular-nums text-ink">
+              {formatCount(c.onlyA, lang)}
+            </div>
+            <p className="mt-1 font-body text-[11px] text-ink-soft">
+              {te.compareOnlyA.replace("{n}", formatCount(c.onlyA, lang)).replace("{label}", c.eventA.label)}
+            </p>
+          </div>
+          <div className="rounded-sm border border-surface-border p-3 text-center">
+            <div className="font-display text-[24px] font-semibold tabular-nums text-ink">
+              {formatCount(c.onlyB, lang)}
+            </div>
+            <p className="mt-1 font-body text-[11px] text-ink-soft">
+              {te.compareOnlyB.replace("{n}", formatCount(c.onlyB, lang)).replace("{label}", c.eventB.label)}
+            </p>
+          </div>
+        </div>
+        <div className="mt-3 space-y-1 font-body text-[12px] text-ink-soft">
+          <p>{te.compareOverlapPct.replace("{pct}", formatPct(c.overlapPctA, lang)).replace("{label}", c.eventA.label).replace("{other}", c.eventB.label)}</p>
+          <p>{te.compareOverlapPct.replace("{pct}", formatPct(c.overlapPctB, lang)).replace("{label}", c.eventB.label).replace("{other}", c.eventA.label)}</p>
+        </div>
+      </div>
+
+      {/* Demographic comparison */}
+      <div className="card space-y-4 p-4">
+        <DemoCompare dA={c.demographicsA} dB={c.demographicsB} label={te.compareDemoGender} />
+
+        <div>
+          <h4 className="mb-2 font-display text-[12px] font-semibold uppercase tracking-wide text-ink-faint">
+            {te.compareDemoAge}
+          </h4>
+          <div className="grid grid-cols-2 gap-4">
+            {[{ d: c.demographicsA, label: c.eventA.label }, { d: c.demographicsB, label: c.eventB.label }].map((side) => (
+              <div key={side.label}>
+                <p className="mb-1 font-body text-[11px] text-ink-faint">{side.label}</p>
+                <div className="space-y-1">
+                  {side.d.ageBrackets.filter((b) => b.count > 0).map((b) => {
+                    const pct = side.d.total > 0 ? Math.round((b.count / side.d.total) * 100) : 0;
+                    return (
+                      <div key={b.label} className="flex items-center gap-2">
+                        <span className="w-12 font-mono text-[10px] text-ink-faint">{b.label}</span>
+                        <div className="h-3 flex-1 overflow-hidden rounded-full bg-surface-2">
+                          <span className="block h-full rounded-full bg-amber/60" style={{ width: `${pct}%` }} />
+                        </div>
+                        <span className="w-8 text-right font-mono text-[10px] text-ink-faint">{pct}%</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <h4 className="mb-2 font-display text-[12px] font-semibold uppercase tracking-wide text-ink-faint">
+            {te.compareDemoCities}
+          </h4>
+          <div className="grid grid-cols-2 gap-4">
+            {[{ d: c.demographicsA, label: c.eventA.label }, { d: c.demographicsB, label: c.eventB.label }].map((side) => (
+              <div key={side.label}>
+                <p className="mb-1 font-body text-[11px] text-ink-faint">{side.label}</p>
+                <div className="space-y-0.5">
+                  {side.d.topCities.slice(0, 5).map((ct) => (
+                    <div key={ct.city} className="flex justify-between font-body text-[11px]">
+                      <span className="truncate text-ink">{ct.city}</span>
+                      <span className="ml-2 tabular-nums text-ink-faint">{formatCount(ct.count, lang)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
     </section>
   );
 }
