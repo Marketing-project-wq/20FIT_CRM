@@ -5,67 +5,63 @@ import { useI18n } from "@/components/i18n/lang-provider";
 
 const PHASE_INTERVAL_MS = 2400;
 
-function RunningPerson({ size = 64 }: { size?: number }) {
+function RunningPerson({ size = 80 }: { size?: number }) {
+  const h = Math.round(size * 1.15);
   return (
     <svg
       width={size}
-      height={size}
-      viewBox="0 0 64 64"
-      fill="none"
+      height={h}
+      viewBox="0 0 80 92"
       className="ea-runner"
       aria-hidden
     >
-      {/* Head */}
-      <circle cx="32" cy="12" r="5" fill="var(--red)" />
-
-      {/* Torso — slight forward lean */}
-      <line
-        x1="32" y1="17" x2="30" y2="34"
-        stroke="var(--red)" strokeWidth="3" strokeLinecap="round"
+      {/* Ground shadow */}
+      <ellipse
+        cx="40" cy="89" rx="14" ry="2.5"
+        fill="var(--red)" opacity="0.15"
+        className="ea-shadow"
+        style={{ transformOrigin: "40px 89px" }}
       />
 
-      {/* Left arm */}
-      <g className="ea-arm-left" style={{ transformOrigin: "31px 20px" }}>
-        <line
-          x1="31" y1="20" x2="22" y2="30"
-          stroke="var(--red)" strokeWidth="2.5" strokeLinecap="round"
-        />
-      </g>
+      {/* Body group — 5° forward lean */}
+      <g transform="rotate(5, 40, 44)">
+        {/* Back leg (depth layer — lower opacity) */}
+        <g className="ea-thigh-b" style={{ transformOrigin: "40px 44px" }}>
+          <rect x="36.5" y="44" width="7" height="20" rx="3.5" fill="var(--red)" opacity="0.6" />
+          <g className="ea-shin-b" style={{ transformOrigin: "40px 62px" }}>
+            <rect x="37" y="61" width="6" height="18" rx="3" fill="var(--red)" opacity="0.55" />
+          </g>
+        </g>
 
-      {/* Right arm */}
-      <g className="ea-arm-right" style={{ transformOrigin: "31px 20px" }}>
-        <line
-          x1="31" y1="20" x2="40" y2="30"
-          stroke="var(--red)" strokeWidth="2.5" strokeLinecap="round"
-        />
-      </g>
+        {/* Back arm (depth layer) */}
+        <g className="ea-arm-b" style={{ transformOrigin: "40px 22px" }}>
+          <rect x="37.75" y="22" width="4.5" height="14" rx="2.25" fill="var(--red)" opacity="0.6" />
+          <g className="ea-forearm-b" style={{ transformOrigin: "40px 35px" }}>
+            <rect x="38" y="34" width="4" height="12" rx="2" fill="var(--red)" opacity="0.55" />
+          </g>
+        </g>
 
-      {/* Left leg (upper + lower) */}
-      <g className="ea-leg-left" style={{ transformOrigin: "30px 34px" }}>
-        <line
-          x1="30" y1="34" x2="22" y2="46"
-          stroke="var(--red)" strokeWidth="3" strokeLinecap="round"
-        />
-        <line
-          x1="22" y1="46" x2="18" y2="56"
-          stroke="var(--red)" strokeWidth="2.5" strokeLinecap="round"
-          className="ea-shin-left"
-          style={{ transformOrigin: "22px 46px" }}
-        />
-      </g>
+        {/* Torso */}
+        <rect x="33.5" y="19" width="13" height="27" rx="5" fill="var(--red)" />
 
-      {/* Right leg (upper + lower) */}
-      <g className="ea-leg-right" style={{ transformOrigin: "30px 34px" }}>
-        <line
-          x1="30" y1="34" x2="38" y2="46"
-          stroke="var(--red)" strokeWidth="3" strokeLinecap="round"
-        />
-        <line
-          x1="38" y1="46" x2="42" y2="56"
-          stroke="var(--red)" strokeWidth="2.5" strokeLinecap="round"
-          className="ea-shin-right"
-          style={{ transformOrigin: "38px 46px" }}
-        />
+        {/* Head */}
+        <circle cx="40" cy="13" r="6" fill="var(--red)" />
+
+        {/* Front leg */}
+        <g className="ea-thigh-f" style={{ transformOrigin: "40px 44px" }}>
+          <rect x="36.5" y="44" width="7" height="20" rx="3.5" fill="var(--red)" />
+          <g className="ea-shin-f" style={{ transformOrigin: "40px 62px" }}>
+            <rect x="37" y="61" width="6" height="18" rx="3" fill="var(--red)" />
+          </g>
+        </g>
+
+        {/* Front arm */}
+        <g className="ea-arm-f" style={{ transformOrigin: "40px 22px" }}>
+          <rect x="37.75" y="22" width="4.5" height="14" rx="2.25" fill="var(--red)" />
+          <g className="ea-forearm-f" style={{ transformOrigin: "40px 35px" }}>
+            <rect x="38" y="34" width="4" height="12" rx="2" fill="var(--red)" />
+          </g>
+        </g>
       </g>
     </svg>
   );
@@ -91,7 +87,7 @@ export function EventAnalysisLoader({ variant = "full" }: { variant?: "full" | "
   if (variant === "inline") {
     return (
       <div className="flex items-center justify-center gap-3 py-8">
-        <RunningPerson size={28} />
+        <RunningPerson size={32} />
         <span className="ea-phase-text font-body text-[13px] font-semibold text-ink-soft">
           {phases[phase]}
         </span>
@@ -102,7 +98,7 @@ export function EventAnalysisLoader({ variant = "full" }: { variant?: "full" | "
 
   return (
     <div className="flex min-h-[50vh] flex-col items-center justify-center gap-5">
-      <RunningPerson size={64} />
+      <RunningPerson size={80} />
 
       <div className="flex flex-col items-center gap-2.5">
         <span className="ea-phase-text font-display text-[15px] font-bold text-ink" key={phase}>
@@ -121,7 +117,7 @@ export function EventAnalysisLoader({ variant = "full" }: { variant?: "full" | "
 export function EventAnalysisLoaderServer() {
   return (
     <div className="flex min-h-[50vh] flex-col items-center justify-center gap-5">
-      <RunningPerson size={64} />
+      <RunningPerson size={80} />
 
       <div className="flex flex-col items-center gap-2.5">
         <span className="ea-phase-text font-display text-[15px] font-bold text-ink">
@@ -138,52 +134,86 @@ export function EventAnalysisLoaderServer() {
 }
 
 const sharedStyles = `
-  /* Running cycle: legs and arms swing in opposition */
-  .ea-leg-left  { animation: ea-leg-fwd 0.5s ease-in-out infinite alternate; }
-  .ea-leg-right { animation: ea-leg-bwd 0.5s ease-in-out infinite alternate; }
-  .ea-arm-left  { animation: ea-arm-bwd 0.5s ease-in-out infinite alternate; }
-  .ea-arm-right { animation: ea-arm-fwd 0.5s ease-in-out infinite alternate; }
+  /* ── Stride cycle: 0.6s, 8-keyframe sinusoidal ── */
 
-  .ea-shin-left  { animation: ea-shin-fwd 0.5s ease-in-out infinite alternate; }
-  .ea-shin-right { animation: ea-shin-bwd 0.5s ease-in-out infinite alternate; }
+  .ea-thigh-f { animation: ea-leg 0.6s cubic-bezier(0.37,0,0.63,1) infinite; }
+  .ea-thigh-b { animation: ea-leg 0.6s cubic-bezier(0.37,0,0.63,1) -0.3s infinite; }
 
-  @keyframes ea-leg-fwd {
-    0%   { transform: rotate(-30deg); }
-    100% { transform: rotate(30deg); }
-  }
-  @keyframes ea-leg-bwd {
-    0%   { transform: rotate(30deg); }
-    100% { transform: rotate(-30deg); }
-  }
-  @keyframes ea-arm-fwd {
-    0%   { transform: rotate(-25deg); }
-    100% { transform: rotate(25deg); }
-  }
-  @keyframes ea-arm-bwd {
-    0%   { transform: rotate(25deg); }
-    100% { transform: rotate(-25deg); }
-  }
-  @keyframes ea-shin-fwd {
-    0%   { transform: rotate(0deg); }
-    50%  { transform: rotate(-20deg); }
-    100% { transform: rotate(0deg); }
-  }
-  @keyframes ea-shin-bwd {
-    0%   { transform: rotate(0deg); }
-    50%  { transform: rotate(20deg); }
-    100% { transform: rotate(0deg); }
+  @keyframes ea-leg {
+    0%      { transform: rotate(-28deg); }
+    12.5%   { transform: rotate(-15deg); }
+    25%     { transform: rotate(4deg); }
+    37.5%   { transform: rotate(20deg); }
+    50%     { transform: rotate(28deg); }
+    62.5%   { transform: rotate(15deg); }
+    75%     { transform: rotate(-4deg); }
+    87.5%   { transform: rotate(-20deg); }
+    100%    { transform: rotate(-28deg); }
   }
 
-  /* Subtle bounce on the whole runner */
+  /* Knee bend: folds during swing, straight during stance */
+  .ea-shin-f { animation: ea-knee 0.6s cubic-bezier(0.37,0,0.63,1) infinite; }
+  .ea-shin-b { animation: ea-knee 0.6s cubic-bezier(0.37,0,0.63,1) -0.3s infinite; }
+
+  @keyframes ea-knee {
+    0%      { transform: rotate(0deg); }
+    12.5%   { transform: rotate(5deg); }
+    25%     { transform: rotate(3deg); }
+    37.5%   { transform: rotate(0deg); }
+    50%     { transform: rotate(10deg); }
+    62.5%   { transform: rotate(35deg); }
+    75%     { transform: rotate(25deg); }
+    87.5%   { transform: rotate(8deg); }
+    100%    { transform: rotate(0deg); }
+  }
+
+  /* Arm swing: contralateral to legs, smaller amplitude */
+  .ea-arm-f { animation: ea-arm 0.6s cubic-bezier(0.37,0,0.63,1) infinite; }
+  .ea-arm-b { animation: ea-arm 0.6s cubic-bezier(0.37,0,0.63,1) -0.3s infinite; }
+
+  @keyframes ea-arm {
+    0%      { transform: rotate(-22deg); }
+    12.5%   { transform: rotate(-12deg); }
+    25%     { transform: rotate(3deg); }
+    37.5%   { transform: rotate(15deg); }
+    50%     { transform: rotate(22deg); }
+    62.5%   { transform: rotate(12deg); }
+    75%     { transform: rotate(-3deg); }
+    87.5%   { transform: rotate(-15deg); }
+    100%    { transform: rotate(-22deg); }
+  }
+
+  /* Elbow: subtle oscillation around ~30° bend */
+  .ea-forearm-f { animation: ea-elbow 0.6s cubic-bezier(0.37,0,0.63,1) infinite; }
+  .ea-forearm-b { animation: ea-elbow 0.6s cubic-bezier(0.37,0,0.63,1) -0.3s infinite; }
+
+  @keyframes ea-elbow {
+    0%      { transform: rotate(-30deg); }
+    25%     { transform: rotate(-38deg); }
+    50%     { transform: rotate(-30deg); }
+    75%     { transform: rotate(-22deg); }
+    100%    { transform: rotate(-30deg); }
+  }
+
+  /* Body vertical bounce (2× stride frequency) */
   .ea-runner {
-    animation: ea-bounce 0.25s ease-in-out infinite alternate;
+    animation: ea-bounce 0.3s cubic-bezier(0.37,0,0.63,1) infinite alternate;
   }
   @keyframes ea-bounce {
-    0%   { transform: translateY(1px); }
-    100% { transform: translateY(-1px); }
+    from { transform: translateY(1px); }
+    to   { transform: translateY(-1.5px); }
   }
 
-  /* Phase text fade */
+  /* Ground shadow pulses with stride */
+  .ea-shadow {
+    animation: ea-shadow 0.3s ease-in-out infinite alternate;
+  }
+  @keyframes ea-shadow {
+    from { transform: scaleX(0.85); opacity: 0.12; }
+    to   { transform: scaleX(1.15); opacity: 0.22; }
+  }
+
+  /* Phase text crossfade */
   .ea-phase-text {
     animation: ea-fade-in 400ms ease-out;
   }
@@ -205,11 +235,22 @@ const sharedStyles = `
     height: 100%;
     border-radius: 2px;
     background: var(--red);
-    animation: ea-progress-slide 1.8s ease-in-out infinite;
+    animation: ea-slide 1.8s ease-in-out infinite;
   }
-  @keyframes ea-progress-slide {
+  @keyframes ea-slide {
     0%   { transform: translateX(-100%); }
     50%  { transform: translateX(200%); }
     100% { transform: translateX(-100%); }
+  }
+
+  /* Accessibility: pause for reduced-motion preference */
+  @media (prefers-reduced-motion: reduce) {
+    .ea-runner, .ea-shadow, .ea-progress-fill,
+    .ea-thigh-f, .ea-thigh-b,
+    .ea-shin-f, .ea-shin-b,
+    .ea-arm-f, .ea-arm-b,
+    .ea-forearm-f, .ea-forearm-b {
+      animation-duration: 0s !important;
+    }
   }
 `;
