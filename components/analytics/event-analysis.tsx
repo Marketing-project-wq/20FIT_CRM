@@ -5,6 +5,7 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Printer, RefreshCw, ChevronDown, ChevronRight, TrendingDown, X, Search, Check, Filter, ArrowUpRight, ArrowDownRight, Equal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { EventAnalyticsData, EventGroup, EventComparison, DemographicBreakdown } from "@/lib/crm/event-analytics";
+import { EventAnalysisLoader } from "@/components/analytics/event-analysis-loader";
 import { useI18n } from "@/components/i18n/lang-provider";
 import { formatCount, formatPct, type Lang } from "@/lib/i18n";
 
@@ -254,6 +255,11 @@ export function EventAnalysis({
         loading={loading}
         te={te}
       />
+
+      {/* Inline loader overlay for refetch */}
+      {loading && (
+        <EventAnalysisLoader variant="inline" />
+      )}
 
       {/* View Toggle */}
       <div className="flex flex-wrap items-center gap-3 print:hidden">

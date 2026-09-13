@@ -2193,6 +2193,9 @@ export const id = {
     compareDemoGender: "Gender",
     compareDemoAge: "Usia",
     compareDemoCities: "Kota",
+    loadingPhase1: "Memuat data peserta...",
+    loadingPhase2: "Menghitung statistik...",
+    loadingPhase3: "Menyusun analisis...",
   },
   ai: {
     replyLanguageName: "Bahasa Indonesia",

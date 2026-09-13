@@ -2069,6 +2069,9 @@ export const en: Messages = {
     compareDemoGender: "Gender",
     compareDemoAge: "Age",
     compareDemoCities: "Cities",
+    loadingPhase1: "Loading participant data...",
+    loadingPhase2: "Crunching the numbers...",
+    loadingPhase3: "Building your analysis...",
   },
   ai: {
     replyLanguageName: "English",
