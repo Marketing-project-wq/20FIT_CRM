@@ -640,10 +640,10 @@ function FilterBar({
           <button
             type="button"
             onClick={() => setEventDropdownOpen(!eventDropdownOpen)}
-            className={`flex h-10 min-w-[12rem] items-center gap-2 rounded-md border px-3 font-body text-[13px] transition-colors ${
+            className={`flex h-10 min-w-[12rem] items-center gap-2 rounded-sm border px-3 font-body text-[13px] transition-colors ${
               selectedEvents.size > 0
                 ? "border-red/40 bg-red/5 text-ink"
-                : "border-surface-border bg-surface text-ink"
+                : "border-glass-border bg-glass text-ink"
             }`}
           >
             <span className="flex-1 text-left">{eventButtonLabel}</span>
@@ -651,8 +651,8 @@ function FilterBar({
           </button>
 
           {eventDropdownOpen && (
-            <div className="absolute left-0 top-full z-30 mt-1 w-72 rounded-md border border-surface-border bg-surface shadow-lg">
-              <div className="border-b border-surface-border p-2">
+            <div className="glass-strong absolute left-0 top-full z-50 mt-1 w-72 shadow-[var(--shadow-glass-lg)]">
+              <div className="border-b border-glass-border p-2">
                 <div className="relative">
                   <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-faint" aria-hidden />
                   <input
@@ -660,7 +660,7 @@ function FilterBar({
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder={te.filterSearchEvents}
-                    className="h-8 w-full rounded-sm border border-surface-border bg-surface-2 pl-8 pr-3 font-body text-[13px] text-ink placeholder:text-ink-faint focus:border-green focus:outline-none"
+                    className="h-8 w-full rounded-sm border border-glass-border bg-glass pl-8 pr-3 font-body text-[13px] text-ink placeholder:text-ink-faint focus:border-green focus:outline-none"
                   />
                 </div>
               </div>
@@ -673,13 +673,13 @@ function FilterBar({
                       key={g.key}
                       type="button"
                       onClick={() => onToggleEvent(g.key)}
-                      className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left font-body text-[13px] text-ink hover:bg-surface-2"
+                      className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left font-body text-[13px] text-ink hover:bg-glass"
                     >
                       <span
                         className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border ${
                           checked
                             ? "border-green bg-green text-white"
-                            : "border-surface-border bg-surface"
+                            : "border-glass-border bg-transparent"
                         }`}
                       >
                         {checked && <Check className="h-3 w-3" />}
@@ -693,7 +693,7 @@ function FilterBar({
                 )}
               </div>
               {selectedEvents.size > 0 && (
-                <div className="border-t border-surface-border p-2">
+                <div className="border-t border-glass-border p-2">
                   <button
                     type="button"
                     onClick={() => {
@@ -718,7 +718,7 @@ function FilterBar({
               type="date"
               value={dateFrom}
               onChange={(e) => onDateFrom(e.target.value)}
-              className="h-10 rounded-md border border-surface-border bg-surface px-3 font-body text-[13px] text-ink focus:border-green focus:outline-none"
+              className="h-10 rounded-sm border border-glass-border bg-glass px-3 font-body text-[13px] text-ink focus:border-green focus:outline-none"
             />
           </label>
           <label className="flex items-center gap-1.5">
@@ -727,7 +727,7 @@ function FilterBar({
               type="date"
               value={dateTo}
               onChange={(e) => onDateTo(e.target.value)}
-              className="h-10 rounded-md border border-surface-border bg-surface px-3 font-body text-[13px] text-ink focus:border-green focus:outline-none"
+              className="h-10 rounded-sm border border-glass-border bg-glass px-3 font-body text-[13px] text-ink focus:border-green focus:outline-none"
             />
           </label>
           {(dateFrom || dateTo) && (
@@ -761,7 +761,7 @@ function FilterBar({
                 key={p}
                 type="button"
                 onClick={() => onPreset(p)}
-                className="rounded-full border border-surface-border bg-surface-2 px-2.5 py-1 font-body text-[11px] font-semibold text-ink-soft hover:border-green hover:text-green"
+                className="rounded-full border border-glass-border bg-glass px-2.5 py-1 font-body text-[11px] font-semibold text-ink-soft hover:border-green hover:text-green"
               >
                 {label}
               </button>
