@@ -6,6 +6,14 @@ import {
   type ApplyMaster,
 } from "./contactability-read";
 import { SEGMENT_NULL, EMPTY_CRITERIA, hasExclusion, type SegmentCriteria } from "./segment";
+
+/** Compute the date that is `years` years before today (YYYY-MM-DD). Used to convert age criteria
+ *  to date_of_birth comparisons: "age > N" → "date_of_birth < ageCutoffDate(N)". */
+function ageCutoffDate(years: number): string {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() - years);
+  return d.toISOString().slice(0, 10);
+}
 import { resolveEcosystemCustomerIds } from "./engagement";
 import { resolveEnrichmentCustomerIds } from "./enrichment";
 import { resolveClinicTxnCustomerIds } from "./clinic-source";
@@ -60,6 +68,46 @@ function applyCriteria(q: any, c: SegmentCriteria, masterFilterExpr?: string | n
     if (c.hasPhone) out = out.not("phone_normalized", "is", null);
     if (c.hasEmail) out = out.not("email_normalized", "is", null);
   }
+  // PROFILE criteria (P2-2) — gender, blood_type, profileCity on master_customer directly.
+  // date_of_birth is used for both age and DOB filters; NULL date_of_birth rows are excluded.
+  if (c.gender) out = out.eq("gender", c.gender);
+  if (c.bloodType) out = out.eq("blood_type", c.bloodType);
+  if (c.profileCity && c.profileCity.trim() !== "") {
+    const esc = c.profileCity.replace(/[%_\\]/g, (m) => `\\${m}`);
+    out = out.ilike("city", `%${esc}%`);
+  }
+  // AGE criteria: converted to date_of_birth date-range comparisons. "age > 25" means the person
+  // was born MORE THAN 25 years ago, i.e. date_of_birth < (today - 25 years). The conversion uses
+  // ageCutoffDate which subtracts years from today.
+  if (c.ageOp && c.ageMin != null) {
+    out = out.not("date_of_birth", "is", null);
+    if (c.ageOp === "gt") {
+      out = out.lt("date_of_birth", ageCutoffDate(c.ageMin));
+    } else if (c.ageOp === "lt") {
+      out = out.gt("date_of_birth", ageCutoffDate(c.ageMin));
+    } else if (c.ageOp === "eq") {
+      out = out.gte("date_of_birth", ageCutoffDate(c.ageMin + 1));
+      out = out.lt("date_of_birth", ageCutoffDate(c.ageMin));
+    } else if (c.ageOp === "between" && c.ageMax != null) {
+      const lo = Math.min(c.ageMin, c.ageMax);
+      const hi = Math.max(c.ageMin, c.ageMax);
+      out = out.gte("date_of_birth", ageCutoffDate(hi + 1));
+      out = out.lt("date_of_birth", ageCutoffDate(lo));
+    }
+  }
+  // DOB criteria: direct date_of_birth comparisons.
+  if (c.dobOp && c.dobStart) {
+    out = out.not("date_of_birth", "is", null);
+    if (c.dobOp === "before") {
+      out = out.lt("date_of_birth", c.dobStart);
+    } else if (c.dobOp === "after") {
+      out = out.gt("date_of_birth", c.dobStart);
+    } else if (c.dobOp === "between" && c.dobEnd) {
+      const [lo, hi] = c.dobStart <= c.dobEnd ? [c.dobStart, c.dobEnd] : [c.dobEnd, c.dobStart];
+      out = out.gte("date_of_birth", lo);
+      out = out.lte("date_of_birth", hi);
+    }
+  }
   // TAG criteria (TUGAS D) — master_customer.tags is a GIN-indexed text[], so these run on the SAME
   // parent query as everything else (no id-set round-trip, no mirror). tagsAny = overlap, tagsAll =
   // contains, exclude.tagsAny = negated overlap. Values are pre-validated operator tags (safe chars:
@@ -89,7 +137,13 @@ function hasMasterCriteria(c: SegmentCriteria, masterFilterExpr?: string | null)
       // Tag criteria are master_customer.tags columns — they narrow the master query directly.
       c.tagsAny.length ||
       c.tagsAll.length ||
-      c.exclude?.tagsAny?.length,
+      c.exclude?.tagsAny?.length ||
+      // Profile criteria (P2-2): master_customer columns.
+      c.gender ||
+      c.bloodType ||
+      (c.profileCity && c.profileCity.trim() !== "") ||
+      (c.ageOp && c.ageMin != null) ||
+      (c.dobOp && c.dobStart),
   );
 }
 

@@ -5,7 +5,11 @@ import { type LeafField } from "@/lib/crm/filter-tree";
 import { AUDIENCE_UNITS, AUDIENCE_SEGMENTS, SEGMENT_NULL } from "@/lib/crm/audience-constants";
 import { ECOSYSTEM_UNITS, ECOSYSTEM_PRODUCTS_BY_UNIT } from "@/lib/crm/engagement-constants";
 import { STAGING_RFM_VALUES, STAGING_PROGRAMS } from "@/lib/crm/staging-constants";
-import { type SegmentCriteria, MAX_CRITERION_VALUES } from "@/lib/crm/segment";
+import {
+  type SegmentCriteria, type AgeOperator, type DobOperator,
+  MAX_CRITERION_VALUES, BLOOD_TYPE_VALUES,
+  isAgeOperator, isDobOperator,
+} from "@/lib/crm/segment";
 import { useI18n } from "@/components/i18n/lang-provider";
 import type { Row } from "@/components/segments/filter-tree-builder";
 
@@ -29,7 +33,8 @@ const selectCls =
 type CatKey =
   | "m:city" | "m:unit" | "m:segment" | "m:revenue" | "m:hasEmail" | "m:hasPhone"
   | "c:ecoUnit" | "c:ecoProduct" | "c:srcHyrox" | "c:srcMy20fit" | "c:srcRecency"
-  | "c:srcArena" | "c:srcGym" | "c:srcClinicPatient" | "c:srcClinicTxn" | "c:srcRfm" | "c:srcProgram";
+  | "c:srcArena" | "c:srcGym" | "c:srcClinicPatient" | "c:srcClinicTxn" | "c:srcRfm" | "c:srcProgram"
+  | "c:age" | "c:dob" | "c:gender" | "c:bloodType" | "c:profileCity";
 
 export function UnifiedFilterBuilder({
   rows, setRows, criteria, setCriterion, canViewHealth,
@@ -71,6 +76,11 @@ export function UnifiedFilterBuilder({
   if (criteria.srcClinicTxn) activeCriteria.push("c:srcClinicTxn");
   if (criteria.srcRfm.length) activeCriteria.push("c:srcRfm");
   if (criteria.srcProgram.length) activeCriteria.push("c:srcProgram");
+  if (criteria.ageOp) activeCriteria.push("c:age");
+  if (criteria.dobOp) activeCriteria.push("c:dob");
+  if (criteria.gender) activeCriteria.push("c:gender");
+  if (criteria.bloodType) activeCriteria.push("c:bloodType");
+  if (criteria.profileCity && criteria.profileCity.trim() !== "") activeCriteria.push("c:profileCity");
 
   function addCategory(key: CatKey) {
     if (key.startsWith("m:")) {
@@ -83,13 +93,23 @@ export function UnifiedFilterBuilder({
     else if (field === "ecoProduct") setCriterion("ecoProduct", ECOSYSTEM_PRODUCTS_BY_UNIT[ECOSYSTEM_UNITS[0]][0]);
     else if (field === "srcRfm") setCriterion("srcRfm", [STAGING_RFM_VALUES[0]]);
     else if (field === "srcProgram") setCriterion("srcProgram", [STAGING_PROGRAMS.find((p) => !p.clinical)!.key]);
+    else if (key === "c:age") { setCriterion("ageOp", "gt"); setCriterion("ageMin", 25); }
+    else if (key === "c:dob") { setCriterion("dobOp", "before"); setCriterion("dobStart", "2000-01-01"); }
+    else if (key === "c:gender") setCriterion("gender", "L");
+    else if (key === "c:bloodType") setCriterion("bloodType", "A");
+    else if (key === "c:profileCity") setCriterion("profileCity", "");
     else setCriterion(field, true as never);
   }
 
   function removeCriterion(key: CatKey) {
+    if (key === "c:age") { setCriterion("ageOp", null); setCriterion("ageMin", null); setCriterion("ageMax", null); return; }
+    if (key === "c:dob") { setCriterion("dobOp", null); setCriterion("dobStart", null); setCriterion("dobEnd", null); return; }
+    if (key === "c:gender") { setCriterion("gender", null); return; }
+    if (key === "c:bloodType") { setCriterion("bloodType", null); return; }
+    if (key === "c:profileCity") { setCriterion("profileCity", null); return; }
     const field = key.slice(2) as keyof SegmentCriteria;
     if (field === "srcRfm" || field === "srcProgram") {
-      setCriterion(field, [] as never); // multi-value → clear the whole list
+      setCriterion(field, [] as never);
     } else if (field === "ecoUnit" || field === "ecoProduct") {
       setCriterion(field, null as never);
     } else {
@@ -107,6 +127,8 @@ export function UnifiedFilterBuilder({
       "c:srcArena": s.srcArenaLabel, "c:srcGym": s.srcGymLabel,
       "c:srcClinicPatient": s.srcClinicPatientLabel, "c:srcClinicTxn": s.srcClinicTxnLabel,
       "c:srcRfm": s.rfmLabel, "c:srcProgram": s.programLabel,
+      "c:age": s.profileAge, "c:dob": s.profileDob, "c:gender": s.profileGender,
+      "c:bloodType": s.profileBloodType, "c:profileCity": s.profileCityLabel,
     };
     return map[key];
   };
@@ -211,6 +233,31 @@ function CriterionValue({
       addLabel={t.segments.programAddMore}
     />
   );
+  if (keyName === "c:gender") return (
+    <select className={selectCls} value={criteria.gender ?? ""} onChange={(e) => setCriterion("gender", (e.target.value || null) as SegmentCriteria["gender"])}>
+      <option value="L">{t.segments.genderL}</option>
+      <option value="P">{t.segments.genderP}</option>
+    </select>
+  );
+  if (keyName === "c:bloodType") return (
+    <select className={selectCls} value={criteria.bloodType ?? ""} onChange={(e) => setCriterion("bloodType", (e.target.value || null) as SegmentCriteria["bloodType"])}>
+      {BLOOD_TYPE_VALUES.map((v) => <option key={v} value={v}>{v}</option>)}
+    </select>
+  );
+  if (keyName === "c:profileCity") return (
+    <input
+      className={`${selectCls} placeholder:text-ink-faint`}
+      value={criteria.profileCity ?? ""}
+      onChange={(e) => setCriterion("profileCity", e.target.value || null)}
+      placeholder={t.segments.cityInputPlaceholder}
+    />
+  );
+  if (keyName === "c:age") return (
+    <AgeInput criteria={criteria} setCriterion={setCriterion} />
+  );
+  if (keyName === "c:dob") return (
+    <DobInput criteria={criteria} setCriterion={setCriterion} />
+  );
   // Boolean presence criteria — just show "ya".
   return <span className="font-body text-[13px] text-ink">{t.segments.unifiedYes}</span>;
 }
@@ -272,6 +319,78 @@ function MultiSelectChips({
   );
 }
 
+function AgeInput({
+  criteria, setCriterion,
+}: {
+  criteria: SegmentCriteria;
+  setCriterion: <K extends keyof SegmentCriteria>(k: K, v: SegmentCriteria[K]) => void;
+}) {
+  const { t } = useI18n();
+  const s = t.segments;
+  const numCls = `${selectCls} w-20`;
+  const parseNum = (v: string): number | null => {
+    const n = parseInt(v, 10);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <select className={selectCls} value={criteria.ageOp ?? "gt"} onChange={(e) => {
+        const op = e.target.value as AgeOperator;
+        setCriterion("ageOp", isAgeOperator(op) ? op : "gt");
+      }}>
+        <option value="gt">{s.ageOpGt}</option>
+        <option value="lt">{s.ageOpLt}</option>
+        <option value="eq">{s.ageOpEq}</option>
+        <option value="between">{s.ageOpBetween}</option>
+      </select>
+      <input type="number" min={0} max={150} className={numCls} value={criteria.ageMin ?? ""}
+        onChange={(e) => setCriterion("ageMin", parseNum(e.target.value))}
+        placeholder="25" />
+      {criteria.ageOp === "between" && (
+        <>
+          <span className="font-body text-[13px] text-ink-faint">–</span>
+          <input type="number" min={0} max={150} className={numCls} value={criteria.ageMax ?? ""}
+            onChange={(e) => setCriterion("ageMax", parseNum(e.target.value))}
+            placeholder="40" />
+        </>
+      )}
+      <span className="font-body text-[12px] text-ink-faint">{s.ageUnit}</span>
+    </div>
+  );
+}
+
+function DobInput({
+  criteria, setCriterion,
+}: {
+  criteria: SegmentCriteria;
+  setCriterion: <K extends keyof SegmentCriteria>(k: K, v: SegmentCriteria[K]) => void;
+}) {
+  const { t } = useI18n();
+  const s = t.segments;
+  const dateCls = `${selectCls} w-40`;
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <select className={selectCls} value={criteria.dobOp ?? "before"} onChange={(e) => {
+        const op = e.target.value as DobOperator;
+        setCriterion("dobOp", isDobOperator(op) ? op : "before");
+      }}>
+        <option value="before">{s.dobOpBefore}</option>
+        <option value="after">{s.dobOpAfter}</option>
+        <option value="between">{s.dobOpBetween}</option>
+      </select>
+      <input type="date" className={dateCls} value={criteria.dobStart ?? ""}
+        onChange={(e) => setCriterion("dobStart", e.target.value || null)} />
+      {criteria.dobOp === "between" && (
+        <>
+          <span className="font-body text-[13px] text-ink-faint">–</span>
+          <input type="date" className={dateCls} value={criteria.dobEnd ?? ""}
+            onChange={(e) => setCriterion("dobEnd", e.target.value || null)} />
+        </>
+      )}
+    </div>
+  );
+}
+
 function AddConditionSelect({ canViewHealth, onAdd }: { canViewHealth: boolean; onAdd: (k: CatKey) => void }) {
   const { t } = useI18n();
   const s = t.segments;
@@ -287,6 +406,13 @@ function AddConditionSelect({ canViewHealth, onAdd }: { canViewHealth: boolean; 
         <optgroup label={s.groupKontak}>
           <option value="m:hasEmail">{s.kontakHasEmail}</option>
           <option value="m:hasPhone">{s.kontakHasPhone}</option>
+        </optgroup>
+        <optgroup label={s.groupProfil}>
+          <option value="c:age">{s.profileAge}</option>
+          <option value="c:dob">{s.profileDob}</option>
+          <option value="c:gender">{s.profileGender}</option>
+          <option value="c:profileCity">{s.profileCityLabel}</option>
+          <option value="c:bloodType">{s.profileBloodType}</option>
         </optgroup>
         <optgroup label={s.groupDemografi}>
           <option value="m:city">{s.fieldCity}</option>

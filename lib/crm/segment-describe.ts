@@ -45,9 +45,42 @@ function tagList(tags: string[], joiner: string, labelFor: LabelFor, more: (n: n
   return tags.length > MAX ? `${head}${joiner}${more(tags.length - MAX)}` : head;
 }
 
+const AGE_OP: Record<string, { id: string; en: string }> = {
+  gt: { id: "lebih dari", en: "older than" },
+  lt: { id: "kurang dari", en: "younger than" },
+  eq: { id: "berusia", en: "aged" },
+  between: { id: "usia", en: "aged" },
+};
+
+const DOB_OP: Record<string, { id: string; en: string }> = {
+  before: { id: "lahir sebelum", en: "born before" },
+  after: { id: "lahir sesudah", en: "born after" },
+  between: { id: "lahir antara", en: "born between" },
+};
+
 /** The positive presence phrases (has X). */
 function positiveParts(c: SegmentCriteria, lang: Lang, labelFor: LabelFor): string[] {
   const parts: string[] = [];
+  if (c.gender) parts.push(lang === "id" ? `gender ${c.gender === "L" ? "laki-laki" : "perempuan"}` : `gender ${c.gender === "L" ? "male" : "female"}`);
+  if (c.bloodType) parts.push(lang === "id" ? `golongan darah ${c.bloodType}` : `blood type ${c.bloodType}`);
+  if (c.profileCity) parts.push(lang === "id" ? `domisili memuat "${c.profileCity}"` : `city contains "${c.profileCity}"`);
+  if (c.ageOp && c.ageMin != null) {
+    const op = AGE_OP[c.ageOp]?.[lang] ?? c.ageOp;
+    const unit = lang === "id" ? "tahun" : "years";
+    if (c.ageOp === "between" && c.ageMax != null) {
+      parts.push(`${op} ${c.ageMin}–${c.ageMax} ${unit}`);
+    } else {
+      parts.push(`${op} ${c.ageMin} ${unit}`);
+    }
+  }
+  if (c.dobOp && c.dobStart) {
+    const op = DOB_OP[c.dobOp]?.[lang] ?? c.dobOp;
+    if (c.dobOp === "between" && c.dobEnd) {
+      parts.push(`${op} ${c.dobStart} – ${c.dobEnd}`);
+    } else {
+      parts.push(`${op} ${c.dobStart}`);
+    }
+  }
   if (c.ecoUnit) parts.push(lang === "id" ? ecoName(c.ecoUnit, lang) : ecoName(c.ecoUnit, lang));
   if (c.srcHyrox) parts.push(lang === "id" ? SRC.srcHyrox.id : SRC.srcHyrox.en);
   if (c.srcMy20fit) parts.push(lang === "id" ? SRC.srcMy20fit.id : SRC.srcMy20fit.en);

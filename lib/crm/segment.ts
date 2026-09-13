@@ -22,6 +22,30 @@ export function isRevenueCriterion(v: unknown): v is RevenueCriterion {
   return v === "all" || v === "has" || v === "none" || v === "negative";
 }
 
+export type AgeOperator = "gt" | "lt" | "eq" | "between";
+
+export function isAgeOperator(v: unknown): v is AgeOperator {
+  return v === "gt" || v === "lt" || v === "eq" || v === "between";
+}
+
+export type DobOperator = "before" | "after" | "between";
+
+export function isDobOperator(v: unknown): v is DobOperator {
+  return v === "before" || v === "after" || v === "between";
+}
+
+export const GENDER_VALUES = ["L", "P"] as const;
+export type GenderValue = (typeof GENDER_VALUES)[number];
+export function isGenderValue(v: unknown): v is GenderValue {
+  return v === "L" || v === "P";
+}
+
+export const BLOOD_TYPE_VALUES = ["A", "B", "AB", "O"] as const;
+export type BloodTypeValue = (typeof BLOOD_TYPE_VALUES)[number];
+export function isBloodTypeValue(v: unknown): v is BloodTypeValue {
+  return v === "A" || v === "B" || v === "AB" || v === "O";
+}
+
 /** A segment definition — only columns that actually carry information (PRD data reality). */
 export interface SegmentCriteria {
   /** first_unit exact match, or null for any. */
@@ -104,6 +128,26 @@ export interface SegmentCriteria {
   tagsAny: string[];
   tagsAll: string[];
   /**
+   * PROFILE criteria (P2-2, 13 Sep 2026). Filter on master_customer profile columns: gender,
+   * date_of_birth (as age or as a date range), blood_type, and profileCity (ILIKE, separate from the
+   * tree-based `city` leaf). These are ALL master_customer columns, applied inline in applyCriteria.
+   * NULL handling: a profile with no date_of_birth does NOT match age or DOB filters; a profile with
+   * no gender does NOT match the gender filter — honest behaviour, never a silent inclusion.
+   *
+   * AGE is converted to date_of_birth comparisons at query time: "age > 25" becomes
+   * "date_of_birth < (today - 25 years)" so it uses standard date operators (indexable, no computed
+   * column needed). The conversion happens in segment-read.ts applyCriteria.
+   */
+  ageOp: AgeOperator | null;
+  ageMin: number | null;
+  ageMax: number | null;
+  dobOp: DobOperator | null;
+  dobStart: string | null;
+  dobEnd: string | null;
+  gender: GenderValue | null;
+  bloodType: BloodTypeValue | null;
+  profileCity: string | null;
+  /**
    * EXCLUSION (Track A). The builder is otherwise AND-of-positive-presence; these NEGATE a presence
    * dimension — "has event engagement but is NOT a member and has NEVER been to arena". Each set
    * exclusion resolves to a customer_id set and is SUBTRACTED from the result (removing the UNION of
@@ -177,6 +221,15 @@ export const EMPTY_CRITERIA: SegmentCriteria = {
   inactiveForDays: null,
   tagsAny: [],
   tagsAll: [],
+  ageOp: null,
+  ageMin: null,
+  ageMax: null,
+  dobOp: null,
+  dobStart: null,
+  dobEnd: null,
+  gender: null,
+  bloodType: null,
+  profileCity: null,
   exclude: {
     ecoUnit: null,
     srcArena: false,
@@ -212,6 +265,11 @@ export function activeCriteriaCount(c: SegmentCriteria): number {
   if (c.inactiveForDays != null) n++;
   if (c.tagsAny.length) n++;
   if (c.tagsAll.length) n++;
+  if (c.ageOp) n++;
+  if (c.dobOp) n++;
+  if (c.gender) n++;
+  if (c.bloodType) n++;
+  if (c.profileCity && c.profileCity.trim() !== "") n++;
   // Exclusions narrow the pool too — an exclusion-only segment is NOT "the whole pool".
   const e = c.exclude;
   if (e) {
@@ -259,6 +317,17 @@ export function parseCriteria(raw: unknown): SegmentCriteria {
   // malformed tag is DROPPED, never guessed (the AI assistant's refusal depends on this too).
   const tagsAny = parseTagList(o.tagsAny);
   const tagsAll = parseTagList(o.tagsAll);
+  // PROFILE criteria (P2-2): age, DOB, gender, blood type, profile city.
+  const ageOp = isAgeOperator(o.ageOp) ? o.ageOp : null;
+  const ageMin = clampAge(o.ageMin);
+  const ageMax = clampAge(o.ageMax);
+  const dobOp = isDobOperator(o.dobOp) ? o.dobOp : null;
+  const dobStart = parseDate(o.dobStart);
+  const dobEnd = parseDate(o.dobEnd);
+  const gender = isGenderValue(o.gender) ? o.gender : null;
+  const bloodType = isBloodTypeValue(o.bloodType) ? o.bloodType : null;
+  const profileCityRaw = typeof o.profileCity === "string" ? o.profileCity.trim() : "";
+  const profileCity = profileCityRaw === "" ? null : capFilterValue(profileCityRaw, FILTER_VALUE_MAX).value;
   // EXCLUSION: same closed validation as the positive twins. ecoUnit must be a known eco unit;
   // the source flags are booleans. Clinical dimensions are intentionally NOT negatable here.
   const ex = (o.exclude ?? {}) as Record<string, unknown>;
@@ -293,6 +362,15 @@ export function parseCriteria(raw: unknown): SegmentCriteria {
     inactiveForDays,
     tagsAny,
     tagsAll,
+    ageOp: ageOp && ageMin != null ? ageOp : null,
+    ageMin: ageOp ? ageMin : null,
+    ageMax: ageOp === "between" ? ageMax : null,
+    dobOp: dobOp && dobStart ? dobOp : null,
+    dobStart: dobOp ? dobStart : null,
+    dobEnd: dobOp === "between" ? dobEnd : null,
+    gender,
+    bloodType,
+    profileCity,
     exclude,
   };
 }
@@ -330,6 +408,23 @@ function parseClosedList(v: unknown, valid: (x: unknown) => boolean): string[] {
     if (out.length >= MAX_CRITERION_VALUES) break;
   }
   return out;
+}
+
+/** An age criterion: positive integer years, capped at 150. Anything else → null. */
+function clampAge(v: unknown): number | null {
+  const n = typeof v === "number" ? v : typeof v === "string" ? Number(v) : NaN;
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0) return null;
+  return Math.min(n, 150);
+}
+
+/** Parse a date string (YYYY-MM-DD). Returns the string if valid, null otherwise. */
+function parseDate(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const trimmed = v.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
+  const d = new Date(trimmed + "T00:00:00Z");
+  if (isNaN(d.getTime())) return null;
+  return trimmed;
 }
 
 /** A time criterion is a positive whole number of days, capped at 3650 (10y). Anything else → null. */
