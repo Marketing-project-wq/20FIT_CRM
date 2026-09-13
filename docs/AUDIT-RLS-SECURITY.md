@@ -2,7 +2,7 @@
 
 > **Tanggal audit:** 13 September 2026
 > **Cakupan:** Semua tabel CRM di Supabase PostgreSQL
-> **Status:** AUDIT SAJA — nol perubahan kode atau database
+> **Status:** P0-6 SELESAI (13 Sep 2026) — lihat §C.2
 
 ---
 
@@ -15,10 +15,11 @@ Sistem CRM memiliki **dua postur keamanan** yang berbeda tajam:
    `createAdminClient()` (service role) di server-side. Anon dan authenticated tidak bisa
    mengakses tabel-tabel ini sama sekali.
 
-2. **Tabel warisan `master_customer` & `customer_engagement`** — **BERISIKO (T-17, P0-6).**
-   RLS aktif TAPI ada policy `authenticated_full_access` (ALL / USING true / WITH CHECK true).
-   Seluruh 1.358 akun authenticated bisa SELECT/INSERT/UPDATE/DELETE langsung. Grant TRUNCATE
-   ke anon juga ada (pertahanan: RLS saja, tapi satu policy ceroboh = bencana).
+2. **Tabel warisan `master_customer` & `customer_engagement`** — **SELESAI (13 Sep 2026).**
+   Policy `authenticated_full_access` telah di-DROP, grant anon/authenticated telah di-REVOKE,
+   grant eksplisit ke service_role telah diberikan. Kedua tabel sekarang mengikuti pola
+   doctor_bookings: RLS ON, 0 policy, hanya service_role yang bisa akses.
+   Lihat `sql/20260913_fix_rls_master_customer_engagement.sql`.
 
 **Kabar baiknya:** kode aplikasi CRM **tidak pernah** mengekspos client-auth Supabase ke
 operasi CRM. Semua baca/tulis data CRM melalui `createAdminClient()` (service role) di
@@ -34,20 +35,12 @@ ke Supabase API (PostgREST/realtime) menggunakan anon key + auth token.**
 
 | Tabel | RLS | Policy | Operation | USING | WITH CHECK | Risiko |
 |---|---|---|---|---|---|---|
-| `master_customer` | ON | `authenticated_full_access` | ALL | `true` | `true` | **KRITIS** — 1.358 akun bisa CRUD langsung. Grant TRUNCATE ke anon juga ada. |
-| `customer_engagement` | ON | `authenticated_full_access` (serupa) | ALL | `true` | `true` | **KRITIS** — data engagement terbuka sepenuhnya ke semua authenticated user. |
+| `master_customer` | ON | ~~`authenticated_full_access`~~ DI-DROP 13 Sep | — | — | — | **SELESAI** — policy dihapus, grant dicabut, service_role di-grant eksplisit |
+| `customer_engagement` | ON | ~~`authenticated_full_access`~~ DI-DROP 13 Sep | — | — | — | **SELESAI** — policy dihapus, grant dicabut, service_role di-grant eksplisit |
 
-**Dampak konkret:**
-- Siapa pun dengan akun Supabase project ini bisa memanggil REST API Supabase langsung
-  (tanpa lewat aplikasi CRM) dan:
-  - **Membaca** seluruh 82.830 profil beserta PII (nama, email, telepon, kota, LTV)
-  - **Mengubah** data profil siapa pun (nama, telepon, email, tags)
-  - **Menghapus** profil dari pool
-  - **Menyisipkan** profil palsu
-  - **Membaca/mengubah/menghapus** data engagement
-- Ini termasuk akun non-CRM (misal: akun untuk aplikasi lain yang berbagi project Supabase)
-- anon key saja tidak cukup (RLS menolak anon karena policy mensyaratkan `authenticated`),
-  tapi TRUNCATE grant ke anon adalah bom waktu — satu policy `anon_access` = data terhapus
+**Status 13 Sep 2026:** Policy telah di-DROP, grant telah di-REVOKE, service_role di-GRANT
+eksplisit. Kedua tabel sekarang default-deny untuk anon/authenticated, sama seperti tabel
+`crm_*`. Lihat `sql/20260913_fix_rls_master_customer_engagement.sql`.
 
 ### A.2 Tabel CRM Baru — Postur "doctor_bookings" (AMAN)
 
@@ -177,7 +170,7 @@ operasi WRITE:
 |---|---|---|---|
 | `app/api/audience/import/route.ts` | INSERT (batch CSV) | RPC `crm_ingest_csv_people` via admin | **Aman** — SECURITY DEFINER, service_role |
 | `app/api/audience/add-contact/route.ts` | INSERT (satu orang) | RPC `crm_ingest_csv_people` via admin | **Aman** — SECURITY DEFINER, service_role |
-| `app/api/audience/add-contact/route.ts:115` | UPDATE (existing contact) | `admin.from("master_customer").update(...)` | **Perlu dicek** — tulis langsung, tapi via admin (bypass RLS), dan gated `canImportAudience(role)` |
+| `app/api/audience/add-contact/route.ts` | UPDATE (existing contact) | RPC `crm_update_master_fields` v2 via admin | **Aman** — SECURITY DEFINER, gated `canImportAudience` (dimigrasikan 13 Sep 2026) |
 | `app/api/audience/[id]/core/route.ts` | UPDATE (core fields) | RPC `crm_update_master_fields` via admin | **Aman** — SECURITY DEFINER, gated `profile.edit_core` |
 
 #### Tulis ke tabel `crm_*`
@@ -221,11 +214,11 @@ operasi-operasi ini karena service role bypass RLS.
 | 11 RPC functions | Semua SECURITY DEFINER, EXECUTE hanya service_role |
 | 0 operasi client-side ke data CRM | Benar — semua server-side |
 
-#### 2. PERLU DICEK — Satu Jalur Tulis Langsung
+#### 2. SELESAI — Jalur Tulis Langsung Dimigrasikan (13 Sep 2026)
 
-| File | Operasi | Catatan |
-|---|---|---|
-| `app/api/audience/add-contact/route.ts:114-117` | `admin.from("master_customer").update(...)` | Tulis langsung (bukan RPC), tapi via admin client + gated `canImportAudience`. Saat ini **aman** karena pakai service role. Idealnya dimigrasikan ke RPC untuk konsistensi dengan jalur tulis lain. |
+`app/api/audience/add-contact/route.ts` — direct `.update()` dimigrasikan ke RPC
+`crm_update_master_fields` v2. Semua jalur tulis ke `master_customer` sekarang lewat
+RPC SECURITY DEFINER.
 
 #### 3. BERISIKO — Bukan dari Kode CRM, tapi dari Akses Langsung
 
@@ -241,10 +234,10 @@ operasi-operasi ini karena service role bypass RLS.
 
 ### C.1 Tabel yang Perlu RLS Policy Diperketat
 
-| # | Tabel | Urgensi | Aksi |
-|---|---|---|---|
-| 1 | `master_customer` | **P0 — KRITIS** | Drop policy `authenticated_full_access`, cabut grant anon/authenticated |
-| 2 | `customer_engagement` | **P0 — KRITIS** | Drop policy `authenticated_full_access`, cabut grant anon/authenticated |
+| # | Tabel | Urgensi | Aksi | Status |
+|---|---|---|---|---|
+| 1 | `master_customer` | ~~P0 — KRITIS~~ | Drop policy, cabut grant, grant service_role | **SELESAI 13 Sep 2026** |
+| 2 | `customer_engagement` | ~~P0 — KRITIS~~ | Drop policy, cabut grant, grant service_role | **SELESAI 13 Sep 2026** |
 
 ### C.2 SQL yang Disarankan
 
@@ -297,10 +290,7 @@ WHERE tablename IN ('master_customer', 'customer_engagement');
 
 | # | File | Operasi Saat Ini | Rekomendasi |
 |---|---|---|---|
-| 1 | `app/api/audience/add-contact/route.ts:114-117` | `admin.from("master_customer").update(updates)` — tulis langsung | Migrasikan ke RPC `crm_update_master_fields` atau buat RPC baru `crm_update_contact_on_add` yang menangani update saat kontak sudah ada. Ini menjaga konsistensi: semua tulis ke `master_customer` lewat RPC SECURITY DEFINER. |
-
-**Catatan:** Ini bukan kerentanan aktif (sudah pakai admin client), tapi mengurangi
-permukaan serangan di masa depan dan membuat audit lebih mudah (semua tulis = RPC).
+| 1 | `app/api/audience/add-contact/route.ts` | ~~`admin.from("master_customer").update(updates)`~~ | **SELESAI 13 Sep 2026** — dimigrasikan ke RPC `crm_update_master_fields` (v2, dengan p_gender/p_date_of_birth/p_blood_type). Semua tulis ke master_customer sekarang lewat RPC SECURITY DEFINER. |
 
 ### C.4 Urutan Eksekusi yang Aman
 
@@ -424,3 +414,4 @@ terhadap state aktual database produksi (dengan menjalankan query di C.2 Langkah
 dilakukan sebelum eksekusi perubahan.*
 
 ⏱ DIUKUR: 13 September 2026
+⏱ DIPERBARUI: 13 September 2026 — P0-6 SELESAI, add-contact dimigrasikan ke RPC

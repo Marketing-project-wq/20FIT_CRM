@@ -102,21 +102,33 @@ export async function POST(req: Request) {
   let outcome: "inserted" | "updated";
 
   if (existing) {
-    const updates: Record<string, unknown> = {};
-    if (fullName) updates.full_name = fullName;
-    if (phoneNorm) updates.phone_normalized = phoneNorm;
-    if (gender) updates.gender = gender;
-    if (city) updates.city = city;
-    if (dateOfBirth) updates.date_of_birth = dateOfBirth;
-    if (bloodType) updates.blood_type = bloodType;
+    const rpcParams: Record<string, unknown> = {
+      p_customer_id: existing.customer_id,
+      p_actor_id: userId,
+      p_actor_email: userEmail,
+    };
+    if (fullName) rpcParams.p_full_name = fullName;
+    if (phoneNorm && body.phone) rpcParams.p_phone_raw = body.phone.trim();
+    if (gender) rpcParams.p_gender = gender;
+    if (city) rpcParams.p_city = city;
+    if (dateOfBirth) rpcParams.p_date_of_birth = dateOfBirth;
+    if (bloodType) rpcParams.p_blood_type = bloodType;
 
-    if (Object.keys(updates).length > 0) {
-      const { error: upErr } = await admin
-        .from("master_customer")
-        .update(updates)
-        .eq("customer_id", existing.customer_id);
+    const hasFields = fullName || phoneNorm || gender || city || dateOfBirth || bloodType;
+    if (hasFields) {
+      const { data: result, error: upErr } = await admin.rpc(
+        "crm_update_master_fields",
+        rpcParams,
+      );
       if (upErr) {
         return NextResponse.json({ error: "update_failed" }, { status: 500 });
+      }
+      const res = result as Record<string, unknown> | null;
+      if (res?.error === "row_merged") {
+        return NextResponse.json({ error: "row_merged" }, { status: 409 });
+      }
+      if (res?.error === "phone_taken") {
+        return NextResponse.json({ error: "phone_taken" }, { status: 409 });
       }
     }
 
