@@ -67,7 +67,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "invalid_email" }, { status: 400 });
   }
 
-  const phoneNorm = body.phone ? normalizePhoneID(body.phone) : null;
+  const phoneRaw = typeof body.phone === "string" ? body.phone.trim() || null : null;
+  const phoneNorm = phoneRaw ? normalizePhoneID(phoneRaw) : null;
   const gender = body.gender === "L" || body.gender === "P" ? body.gender : null;
   const city = typeof body.city === "string" ? body.city.trim() || null : null;
   const bloodType =
@@ -112,7 +113,7 @@ export async function POST(req: Request) {
       const { data, error: upErr } = await admin.rpc("crm_update_master_fields", {
         p_customer_id: existing.customer_id,
         p_full_name: fullName,
-        p_phone_raw: phoneNorm ? body.phone!.trim() : null,
+        p_phone_raw: phoneNorm ? phoneRaw : null,
         p_city: city,
         p_first_unit: null,
         p_segment: null,
@@ -125,6 +126,10 @@ export async function POST(req: Request) {
       });
       if (upErr) {
         logApiFailure("/audience/add-contact", "rpc_raised", { code: upErr.code });
+        console.error("[api /audience/add-contact] rpc_raised detail", {
+          message: (upErr as { message?: string }).message,
+          hint: (upErr as { hint?: string }).hint,
+        });
         return NextResponse.json({ error: "update_failed" }, { status: 500 });
       }
       const res = (data ?? {}) as { error?: string; changed?: string[]; corrected?: string[] };
@@ -142,6 +147,9 @@ export async function POST(req: Request) {
       }
     } catch (e) {
       logApiFailure("/audience/add-contact", "rpc_threw", { code: (e as { code?: string })?.code });
+      console.error("[api /audience/add-contact] rpc_threw detail", {
+        message: (e as { message?: string })?.message,
+      });
       return NextResponse.json({ error: "update_failed" }, { status: 500 });
     }
 
@@ -180,6 +188,11 @@ export async function POST(req: Request) {
       p_tag_rows: [],
     });
     if (rpcErr) {
+      logApiFailure("/audience/add-contact", "insert_rpc_raised", { code: rpcErr.code });
+      console.error("[api /audience/add-contact] insert_rpc_raised detail", {
+        message: (rpcErr as { message?: string }).message,
+        hint: (rpcErr as { hint?: string }).hint,
+      });
       return NextResponse.json({ error: "insert_failed", code: rpcErr.code }, { status: 500 });
     }
 
