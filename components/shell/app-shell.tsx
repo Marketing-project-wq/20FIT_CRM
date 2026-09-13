@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { Sidebar } from "./sidebar";
 import { TopBar } from "./top-bar";
+import { NavProgress } from "./nav-progress";
 import { NAV_ITEMS } from "./nav";
 import { THEME_COOKIE, resolveTheme } from "@/lib/theme";
 import { getCurrentUserRole } from "@/lib/auth/current-role";
@@ -43,7 +44,7 @@ export async function AppShell({
 
   return (
     <LangProvider lang={getLang()}>
-      {/* Column on mobile (top bar stacked above content), row on desktop (rail beside content). */}
+      <NavProgress />
       <div className="flex min-h-[100dvh] flex-col md:flex-row">
         <Sidebar
           userEmail={userEmail}

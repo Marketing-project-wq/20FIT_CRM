@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useTransition } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { LogOut, Menu, X, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BrandLogo } from "@/components/brand/logo";
@@ -43,30 +43,40 @@ function ThemeLogo({ height, priority = false }: { height: number; priority?: bo
 function SidebarNav({
   items,
   isActive,
+  pendingHref,
   onNavigate,
 }: {
   items: typeof NAV_ITEMS;
   isActive: (href: string) => boolean;
-  onNavigate?: () => void;
+  pendingHref: string | null;
+  onNavigate?: (href: string) => void;
 }) {
   const { t } = useI18n();
   return (
     <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-2">
       {items.map((item) => {
         const active = isActive(item.href);
+        const pending = pendingHref === item.href && !active;
         const Icon = item.icon;
         return (
           <Link
             key={item.href}
             href={item.href}
             aria-current={active ? "page" : undefined}
-            onClick={onNavigate}
+            onClick={(e) => {
+              e.preventDefault();
+              onNavigate?.(item.href);
+            }}
             className={cn(
               "flex min-h-[44px] items-center gap-3 rounded-full px-3 py-2 font-display text-[14px] font-bold uppercase tracking-wide transition-colors",
-              active ? "bg-red text-white" : "text-ink-soft hover:bg-surface-2 hover:text-ink",
+              active
+                ? "bg-red text-white"
+                : pending
+                  ? "bg-red/20 text-red"
+                  : "text-ink-soft hover:bg-surface-2 hover:text-ink",
             )}
           >
-            <Icon className="h-4 w-4 shrink-0" />
+            <Icon className={cn("h-4 w-4 shrink-0", pending && "animate-pulse")} />
             <span>{navLabel(t, item.href, item.label)}</span>
           </Link>
         );
@@ -125,13 +135,29 @@ export function Sidebar({
 }) {
   const livePath = usePathname();
   const pathname = activePath ?? livePath;
+  const router = useRouter();
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
+  const [isPending, startTransition] = useTransition();
+  const [pendingHref, setPendingHref] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isPending) setPendingHref(null);
+  }, [isPending]);
 
   const allowed = new Set(allowedHrefs);
   const items = NAV_ITEMS.filter((item) => allowed.has(item.href));
   const isActive = (href: string) =>
     href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/");
+
+  const navigate = (href: string) => {
+    if (isActive(href)) return;
+    setPendingHref(href);
+    setOpen(false);
+    startTransition(() => {
+      router.push(href);
+    });
+  };
 
   return (
     <>
@@ -140,11 +166,11 @@ export function Sidebar({
         <div className="flex h-16 items-center px-5">
           <ThemeLogo height={28} priority />
         </div>
-        <SidebarNav items={items} isActive={isActive} />
+        <SidebarNav items={items} isActive={isActive} pendingHref={pendingHref} onNavigate={navigate} />
         <SidebarAccount userEmail={userEmail} />
       </aside>
 
-      {/* Mobile top strip (below md) — brand + hamburger, on the translucent topbar surface. */}
+      {/* Mobile top strip (below md) */}
       <div className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-surface-border bg-topbar px-4 backdrop-blur-glass md:hidden">
         <button
           type="button"
@@ -157,7 +183,7 @@ export function Sidebar({
         <ThemeLogo height={24} />
       </div>
 
-      {/* Mobile drawer + backdrop — nav + controls footer. */}
+      {/* Mobile drawer */}
       {open && (
         <div className="fixed inset-0 z-40 md:hidden" role="dialog" aria-modal="true">
           <button
@@ -178,7 +204,7 @@ export function Sidebar({
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <SidebarNav items={items} isActive={isActive} onNavigate={() => setOpen(false)} />
+            <SidebarNav items={items} isActive={isActive} pendingHref={pendingHref} onNavigate={navigate} />
             <SidebarControls initialTheme={initialTheme} userEmail={userEmail} />
           </aside>
         </div>
