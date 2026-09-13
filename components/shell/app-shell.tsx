@@ -52,7 +52,7 @@ export async function AppShell({
           allowedHrefs={allowedHrefs}
         />
         <main className="min-w-0 flex-1">
-          <TopBar userEmail={userEmail} initialTheme={theme} />
+          <TopBar initialTheme={theme} />
           <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 md:px-10 md:py-8">{children}</div>
         </main>
       </div>

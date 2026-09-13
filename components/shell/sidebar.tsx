@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LogOut, Menu, X } from "lucide-react";
+import { LogOut, Menu, X, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BrandLogo } from "@/components/brand/logo";
 import { NAV_ITEMS, navLabel } from "./nav";
@@ -75,27 +75,39 @@ function SidebarNav({
   );
 }
 
-/** Controls footer — only the mobile drawer renders this (desktop uses the TopBar). */
 function SidebarControls({ initialTheme, userEmail }: { initialTheme: Theme; userEmail: string }) {
   const { t } = useI18n();
   return (
     <div className="space-y-2 border-t border-sidebar-border p-3">
       <LangSwitcher />
       <ThemeToggle initialTheme={initialTheme} labels={{ toDark: t.nav.darkMode, toLight: t.nav.lightMode }} />
-      <div className="flex items-center justify-between gap-2 px-3">
+      <SidebarAccount userEmail={userEmail} />
+    </div>
+  );
+}
+
+function SidebarAccount({ userEmail }: { userEmail: string }) {
+  const { t } = useI18n();
+  return (
+    <div className="space-y-1 border-t border-sidebar-border px-3 pt-3 pb-2">
+      <Link
+        href="/settings"
+        className="flex min-h-[40px] items-center gap-3 rounded-full px-3 py-2 transition-colors hover:bg-surface-2"
+      >
+        <User className="h-4 w-4 shrink-0 text-ink-faint" />
         <span className="min-w-0 truncate font-mono text-[11px] text-ink-faint" title={userEmail}>
           {userEmail}
         </span>
-        <form action="/logout" method="post">
-          <button
-            type="submit"
-            className="flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-sm px-2 py-1 font-display text-[12px] font-bold uppercase tracking-wide text-ink-soft transition-colors hover:bg-surface-2 hover:text-ink"
-          >
-            <LogOut className="h-3.5 w-3.5" />
-            {t.nav.signOut}
-          </button>
-        </form>
-      </div>
+      </Link>
+      <form action="/logout" method="post">
+        <button
+          type="submit"
+          className="flex min-h-[40px] w-full items-center gap-3 rounded-full px-3 py-2 font-display text-[13px] font-bold uppercase tracking-wide text-red transition-colors hover:bg-red/10"
+        >
+          <LogOut className="h-4 w-4 shrink-0" />
+          {t.nav.signOut}
+        </button>
+      </form>
     </div>
   );
 }
@@ -123,12 +135,13 @@ export function Sidebar({
 
   return (
     <>
-      {/* Desktop rail (md+) — light solid surface, nav only (controls live in the TopBar). */}
+      {/* Desktop rail (md+) */}
       <aside className="sticky top-0 hidden h-[100dvh] w-64 shrink-0 flex-col self-start border-r border-sidebar-border bg-sidebar md:flex">
         <div className="flex h-16 items-center px-5">
           <ThemeLogo height={28} priority />
         </div>
         <SidebarNav items={items} isActive={isActive} />
+        <SidebarAccount userEmail={userEmail} />
       </aside>
 
       {/* Mobile top strip (below md) — brand + hamburger, on the translucent topbar surface. */}
