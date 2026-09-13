@@ -206,7 +206,6 @@ export const id = {
     fldGender: "Gender",
     fldCity: "Domisili / Kota",
     fldDob: "Tanggal Lahir",
-    fldBloodType: "Golongan Darah",
     fldTags: "Tag",
     genderL: "Laki-laki (L)",
     genderP: "Perempuan (P)",

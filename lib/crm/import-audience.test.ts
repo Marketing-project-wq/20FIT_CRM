@@ -34,13 +34,13 @@ describe("guessColumnMapping", () => {
       Catatan: "ignore",
     });
   });
-  it("auto-detects gender, date_of_birth, blood_type from headers", () => {
+  it("auto-detects gender, date_of_birth from headers", () => {
     const m = guessColumnMapping(["Email", "Jenis Kelamin", "Tanggal Lahir", "Golongan Darah"]);
     expect(m).toEqual({
       Email: "email",
       "Jenis Kelamin": "gender",
       "Tanggal Lahir": "date_of_birth",
-      "Golongan Darah": "blood_type",
+      "Golongan Darah": "ignore",
     });
   });
   it("auto-detects domisili as city", () => {
@@ -141,25 +141,24 @@ describe("normalizeMappedRow", () => {
 });
 
 describe("normalizeMappedRow — profile fields", () => {
-  it("maps gender, date_of_birth, blood_type through to NormalizedRow", () => {
+  it("maps gender, date_of_birth through to NormalizedRow", () => {
     const mapping: ColumnMapping = {
       email: "email",
       gender: "gender",
       dob: "date_of_birth",
-      blood: "blood_type",
     };
     const n = normalizeMappedRow(
-      { email: "a@x.com", gender: "Male", dob: "1990-01-15", blood: "O+" },
+      { email: "a@x.com", gender: "Male", dob: "1990-01-15" },
       mapping,
     );
     expect(n.gender).toBe("Male");
     expect(n.dateOfBirth).toBe("1990-01-15");
-    expect(n.bloodType).toBe("O+");
+    expect(n.bloodType).toBeNull();
   });
 
   it("nulls empty profile fields", () => {
-    const mapping: ColumnMapping = { email: "email", gender: "gender", dob: "date_of_birth", blood: "blood_type" };
-    const n = normalizeMappedRow({ email: "a@x.com", gender: "", dob: "  ", blood: "" }, mapping);
+    const mapping: ColumnMapping = { email: "email", gender: "gender", dob: "date_of_birth" };
+    const n = normalizeMappedRow({ email: "a@x.com", gender: "", dob: "  " }, mapping);
     expect(n.gender).toBeNull();
     expect(n.dateOfBirth).toBeNull();
     expect(n.bloodType).toBeNull();

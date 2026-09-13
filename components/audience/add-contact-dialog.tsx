@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { TAG_NAMESPACES, TAG_NAMESPACE_LABELS } from "@/lib/crm/tags";
 
 interface TagOption {
@@ -36,7 +37,6 @@ export function AddContactDialog() {
   const [gender, setGender] = useState("");
   const [city, setCity] = useState("");
   const [dob, setDob] = useState("");
-  const [bloodType, setBloodType] = useState("");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
   const [tagOptions, setTagOptions] = useState<TagOption[]>([]);
@@ -49,7 +49,6 @@ export function AddContactDialog() {
     setGender("");
     setCity("");
     setDob("");
-    setBloodType("");
     setSelectedTags([]);
     setResult(null);
     setError(null);
@@ -114,7 +113,6 @@ export function AddContactDialog() {
             gender: gender || undefined,
             city: city.trim() || undefined,
             dateOfBirth: dob || undefined,
-            bloodType: bloodType || undefined,
             tags: selectedTags.length > 0 ? selectedTags : undefined,
           }),
         });
@@ -130,7 +128,7 @@ export function AddContactDialog() {
         setLoading(false);
       }
     },
-    [email, fullName, phone, gender, city, dob, bloodType, selectedTags, t],
+    [email, fullName, phone, gender, city, dob, selectedTags, t],
   );
 
   const nsLabel = (ns: string) => {
@@ -203,36 +201,17 @@ export function AddContactDialog() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label htmlFor="ac-gender">{t.audience.fldGender}</Label>
-                  <select
-                    id="ac-gender"
-                    className="flex h-10 w-full rounded-sm border border-glass-border bg-glass px-3 py-2 font-body text-[13px] text-ink focus:outline-none focus:ring-2 focus:ring-red"
-                    value={gender}
-                    onChange={(e) => setGender(e.target.value)}
-                  >
-                    <option value="">{t.audience.selectPlaceholder}</option>
-                    <option value="L">{t.audience.genderL}</option>
-                    <option value="P">{t.audience.genderP}</option>
-                  </select>
-                </div>
-
-                <div>
-                  <Label htmlFor="ac-blood">{t.audience.fldBloodType}</Label>
-                  <select
-                    id="ac-blood"
-                    className="flex h-10 w-full rounded-sm border border-glass-border bg-glass px-3 py-2 font-body text-[13px] text-ink focus:outline-none focus:ring-2 focus:ring-red"
-                    value={bloodType}
-                    onChange={(e) => setBloodType(e.target.value)}
-                  >
-                    <option value="">{t.audience.selectPlaceholder}</option>
-                    <option value="A">A</option>
-                    <option value="B">B</option>
-                    <option value="AB">AB</option>
-                    <option value="O">O</option>
-                  </select>
-                </div>
+              <div>
+                <Label>{t.audience.fldGender}</Label>
+                <Select value={gender || undefined} onValueChange={setGender}>
+                  <SelectTrigger className="h-10 font-body text-[13px]">
+                    <SelectValue placeholder={t.audience.selectPlaceholder} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="L">{t.audience.genderL}</SelectItem>
+                    <SelectItem value="P">{t.audience.genderP}</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="grid grid-cols-2 gap-3">

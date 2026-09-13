@@ -186,7 +186,6 @@ export const en: Messages = {
     fldGender: "Gender",
     fldCity: "City",
     fldDob: "Date of birth",
-    fldBloodType: "Blood type",
     fldTags: "Tags",
     genderL: "Male (L)",
     genderP: "Female (P)",

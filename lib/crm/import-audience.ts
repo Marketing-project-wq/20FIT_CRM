@@ -35,7 +35,7 @@ import { isOperatorTag, parseTagCell, slugifyTagValue } from "./tags";
  *  One constant, referenced everywhere. */
 export const MAX_IMPORT_ROWS = 15_000;
 
-export const IMPORT_TARGET_FIELDS = ["full_name", "email", "phone", "city", "gender", "date_of_birth", "blood_type", "tags", "ignore"] as const;
+export const IMPORT_TARGET_FIELDS = ["full_name", "email", "phone", "city", "gender", "date_of_birth", "tags", "ignore"] as const;
 export type ImportField = (typeof IMPORT_TARGET_FIELDS)[number];
 
 /** All 8 operator namespaces, available as column-mapping targets in the import UI. A column mapped
@@ -57,7 +57,6 @@ const GUESS: { field: ImportField; re: RegExp }[] = [
   { field: "gender", re: /\b(gender|jenis[_\s]*kelamin|sex|kelamin)\b/i },
   { field: "city", re: /\b(city|kota|domisili|kabupaten)\b/i },
   { field: "date_of_birth", re: /\b(dob|date[_\s]*of[_\s]*birth|tanggal[_\s]*lahir|tgl[_\s]*lahir|birth[_\s]*date|ttl)\b/i },
-  { field: "blood_type", re: /\b(blood[_\s]*type|golongan[_\s]*darah|gol[_\s]*darah)\b/i },
   { field: "tags", re: /\b(tags?|label|penanda)\b/i },
 ];
 
@@ -158,7 +157,6 @@ export function normalizeMappedRow(raw: Record<string, string>, mapping: ColumnM
   let city: string | null = null;
   let gender: string | null = null;
   let dateOfBirth: string | null = null;
-  let bloodType: string | null = null;
   let tagCell: string | null = null;
   const nsTags: string[] = [];
   const nsInvalid: string[] = [];
@@ -172,7 +170,6 @@ export function normalizeMappedRow(raw: Record<string, string>, mapping: ColumnM
     else if (field === "city") city = v;
     else if (field === "gender") gender = v;
     else if (field === "date_of_birth") dateOfBirth = v;
-    else if (field === "blood_type") bloodType = v;
     else if (field === "tags") tagCell = v;
     else if (typeof field === "string" && field.startsWith("ns:")) {
       const ns = field.slice(3);
@@ -199,7 +196,7 @@ export function normalizeMappedRow(raw: Record<string, string>, mapping: ColumnM
     city: city || null,
     gender: gender || null,
     dateOfBirth: dateOfBirth || null,
-    bloodType: bloodType || null,
+    bloodType: null,
     phoneExcelBroken,
     tags: Array.from(new Set([...parsed.tags, ...nsTags])).sort(),
     invalidTags: [...parsed.invalid, ...nsInvalid],
@@ -516,7 +513,6 @@ const FIELD_LABELS: Record<ImportField, { id: string; en: string }> = {
   city: { id: "Domisili / Kota", en: "City / Domicile" },
   gender: { id: "Gender", en: "Gender" },
   date_of_birth: { id: "Tanggal Lahir", en: "Date of Birth" },
-  blood_type: { id: "Golongan Darah", en: "Blood Type" },
   tags: { id: "Tag (mentah)", en: "Tags (raw)" },
   ignore: { id: "— abaikan —", en: "— ignore —" },
 };
