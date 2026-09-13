@@ -388,12 +388,18 @@ function formatSlugLabel(slug: string): string {
     .join(" ");
 }
 
+const EVENT_ALIASES: Record<string, string> = {
+  "sportfest-v-02": "sportfest-2",
+  "platarox-racelab": "platarox-2026-07",
+};
+
 function eventGroupKey(slug: string): string {
   const value = slug.startsWith("event:") ? slug.slice(6) : slug;
   let key = value;
   key = key.replace(/-(2\.7k|5k|10k|21k|hm)$/i, "");
   key = key.replace(/-(half|single|doubles?|relay)$/i, "");
   key = key.replace(/-(fri|sat|sun|mon|tue|wed|thu)(-[a-z0-9]+)*$/i, "");
+  if (EVENT_ALIASES[key]) key = EVENT_ALIASES[key];
   return "event:" + key;
 }
 
