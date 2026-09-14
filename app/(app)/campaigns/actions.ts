@@ -25,6 +25,7 @@ import { unsubscribeHostServable, missingSendEnv } from "@/lib/crm/send-env";
 import { headers } from "next/headers";
 import { runInternalSendTest, cleanupInternalSendTest, type SendTestResult, type SendTestCleanupResult } from "@/lib/crm/send-test-harness";
 import { extractVariables } from "@/lib/crm/template";
+import { normalizeEmail } from "@/lib/crm/normalize";
 import {
   wibToUtcIso,
   insertScheduledSend,
@@ -242,8 +243,9 @@ export async function sendCampaignAction(args: {
   segmentId: string;
   templateKey: string;
   confirmedLargeSend: boolean;
-  shownSendable: number; // the number the operator saw when they pressed send
-  run: RunChoice; // resume an existing instance or open a new one — required, never implied
+  shownSendable: number;
+  run: RunChoice;
+  mergeData?: { email: string; fields: Record<string, string> }[];
 }): Promise<SendResult> {
   const role = await getCurrentUserRole();
   if (grantFor(role, "send.at_or_below_threshold") === "deny") return { ok: false, error: "denied" };
@@ -343,6 +345,24 @@ export async function sendCampaignAction(args: {
     runId = created.id;
     runLabel = created.label;
     isNewRun = true;
+  }
+
+  // Upload merge data (mail-merge custom placeholders) for this run before enqueueing the drain.
+  if (args.mergeData && args.mergeData.length > 0) {
+    const admin = createAdminClient();
+    await admin.from("crm_campaign_merge_data").delete().eq("run_id", runId);
+    const insertRows: { run_id: string; email_normalized: string; field_name: string; field_value: string }[] = [];
+    for (const row of args.mergeData) {
+      const email = normalizeEmail(row.email);
+      if (!email) continue;
+      for (const [fieldName, fieldValue] of Object.entries(row.fields)) {
+        insertRows.push({ run_id: runId, email_normalized: email, field_name: fieldName, field_value: fieldValue ?? "" });
+      }
+    }
+    for (let i = 0; i < insertRows.length; i += 500) {
+      const chunk = insertRows.slice(i, i + 500);
+      await admin.from("crm_campaign_merge_data").insert(chunk);
+    }
   }
 
   let actorEmail: string | null = null;

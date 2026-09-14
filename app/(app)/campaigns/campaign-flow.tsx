@@ -11,6 +11,8 @@ import { validateCampaignName } from "@/lib/crm/campaign-name";
 import { saveCampaignDraft, loadCampaignDraft, clearCampaignDraft } from "@/lib/crm/campaign-draft";
 import { segmentBuilderUrlFromCompose } from "@/lib/crm/campaign-nav";
 import { PreviewEmailPanel } from "./preview-email-panel";
+import { MergeDataPanel, type MergeRow } from "./merge-data-panel";
+import { detectMergePlaceholders } from "@/lib/crm/merge-fields";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -120,6 +122,9 @@ export function CampaignFlow({
   const [scheduledMsg, setScheduledMsg] = useState<string | null>(null);
   // A short-lived "segment created & selected" confirmation shown after the bounce-back.
   const [toast, setToast] = useState<string | null>(null);
+  // Mail merge: parsed CSV data stored locally until a run is created, then uploaded.
+  const [mergeRows, setMergeRows] = useState<MergeRow[] | null>(null);
+  const mergeReady = mergeRows !== null && mergeRows.length > 0;
 
   // Restore a draft saved before jumping to the Segmen tab, and auto-select a just-created segment.
   // In an effect (not render) so it never causes a hydration mismatch, and runs once on mount.
@@ -175,7 +180,9 @@ export function CampaignFlow({
   const showNameError = nameTouched && !nameValid;
   const step0Done = channel === "email";
   const step1Done = !!segment && nameValid;
-  const step2Done = !!(template);
+  const templateMergeFields = template ? detectMergePlaceholders(template.subject, template.body) : [];
+  const needsMergeData = templateMergeFields.length > 0;
+  const step2Done = !!(template) && (!needsMergeData || mergeReady);
   const step3Done = !!(preview?.ok);
 
   function nameErrText(): string {
@@ -266,7 +273,7 @@ export function CampaignFlow({
       : { kind: "new", label: newLabel.trim() };
     setSending(true); setNotice(null);
     try {
-      const r = await sendCampaignAction({ segmentId, templateKey, confirmedLargeSend: confirmLarge, shownSendable, run });
+      const r = await sendCampaignAction({ segmentId, templateKey, confirmedLargeSend: confirmLarge, shownSendable, run, mergeData: mergeRows ?? undefined });
       if (!r.ok) {
         if (r.error === "count_changed" && typeof r.freshSendable === "number") {
           setShownSendable(r.freshSendable);
@@ -492,8 +499,15 @@ export function CampaignFlow({
             </div>
           )}
           {template && (
+            <MergeDataPanel
+              templateSubject={template.subject}
+              templateBody={template.body}
+              onParsed={setMergeRows}
+            />
+          )}
+          {template && (
             <div className="flex justify-end">
-              <Button size="sm" onClick={() => setOpen(3)}>{c.toStep3}</Button>
+              <Button size="sm" onClick={() => setOpen(3)} disabled={needsMergeData && !mergeReady}>{c.toStep3}</Button>
             </div>
           )}
         </div>

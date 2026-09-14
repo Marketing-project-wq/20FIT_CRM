@@ -28,6 +28,7 @@ import {
   type BatchSendResult,
 } from "./send-run";
 import { campaignBounceStatus } from "./bounce-monitor";
+import { replaceMergePlaceholders } from "./merge-fields";
 
 /**
  * Server adapter that wires the pure send engine (lib/crm/send-run.ts) to Supabase + Mailtrap. It
@@ -320,6 +321,22 @@ export async function sendCampaign(input: CampaignSendInput, nowIso: string): Pr
     else withheldPrelaunch++;
   }
 
+  // Load per-recipient merge data (mail-merge custom placeholders) for this run.
+  const mergeDataMap = new Map<string, Record<string, string>>();
+  {
+    const { data: mergeRows } = await admin
+      .from("crm_campaign_merge_data")
+      .select("email_normalized, field_name, field_value")
+      .eq("run_id", input.campaignId);
+    if (mergeRows) {
+      for (const row of mergeRows as { email_normalized: string; field_name: string; field_value: string }[]) {
+        let rec = mergeDataMap.get(row.email_normalized);
+        if (!rec) { rec = {}; mergeDataMap.set(row.email_normalized, rec); }
+        rec[row.field_name] = row.field_value;
+      }
+    }
+  }
+
   const identitySecret = identityHashSecret();
   const unsubSecret = unsubscribeSecret();
   const baseUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "https://crm.20fit.id").replace(/\/$/, "");
@@ -374,13 +391,12 @@ export async function sendCampaign(input: CampaignSendInput, nowIso: string): Pr
       const token = signUnsubscribeToken({ customerId: r.customerId, kind: "email" }, unsubSecret);
       const unsubscribeUrl = `${baseUrl}/unsubscribe?token=${encodeURIComponent(token)}`;
       const values = { unsubscribe_url: unsubscribeUrl };
-      // Compose the email through the shared skeleton: an HTML template is sent VERBATIM (never
-      // <br/>-mangled — that was T-37, the desktop-Gmail mess), a fragment/plain body is wrapped in
-      // the bulletproof 600px table frame. Same function the composer preview uses (one rule).
-      const renderedBody = renderTemplate(tpl.body, values);
+      const mergeValues = mergeDataMap.get(r.destination) ?? {};
+      const renderedBody = replaceMergePlaceholders(renderTemplate(tpl.body, values), mergeValues);
+      const renderedSubject = tpl.subject ? replaceMergePlaceholders(tpl.subject, mergeValues) : tpl.subject;
       const { html, text } = renderEmailDocument(renderedBody, unsubscribeUrl);
       const message: RenderedMessage = {
-        subject: tpl.subject,
+        subject: renderedSubject,
         text,
         html,
         unsubscribeUrl,

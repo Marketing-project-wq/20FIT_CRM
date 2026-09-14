@@ -350,6 +350,68 @@ function StarterGallery({ onPick }: { onPick: (id: string) => void }) {
   );
 }
 
+function InsertPlaceholder({ onInsert, subject, htmlContent }: { onInsert: (tag: string) => void; subject: string; htmlContent: string }) {
+  const [open, setOpen] = useState(false);
+  const [custom, setCustom] = useState("");
+
+  const builtIn = [
+    { label: "first_name", tag: "{{first_name}}" },
+    { label: "full_name", tag: "{{full_name}}" },
+    { label: "city", tag: "{{city}}" },
+  ];
+
+  const existing = Array.from(
+    new Set(
+      Array.from(`${subject}\n${htmlContent}`.matchAll(/\{\{\s*([A-Z][A-Z0-9_]*)\s*\}\}/g))
+        .map((m) => m[1])
+    )
+  );
+
+  return (
+    <div className="relative inline-block">
+      <Button size="sm" variant="outline" onClick={() => setOpen(!open)}>
+        + Sisipkan placeholder
+      </Button>
+      {open && (
+        <div className="absolute left-0 top-full z-50 mt-1 w-64 rounded-md border border-glass-border bg-surface p-3 shadow-lg">
+          <p className="mb-2 font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">Built-in</p>
+          <div className="flex flex-wrap gap-1 mb-3">
+            {builtIn.map((b) => (
+              <button key={b.label} type="button" onClick={() => { onInsert(b.tag); setOpen(false); }}
+                className="rounded border border-glass-border px-2 py-1 font-mono text-[11px] text-ink hover:bg-glass">
+                {b.tag}
+              </button>
+            ))}
+          </div>
+          {existing.length > 0 && (
+            <>
+              <p className="mb-2 font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">Kustom (sudah ada)</p>
+              <div className="flex flex-wrap gap-1 mb-3">
+                {existing.map((name) => (
+                  <button key={name} type="button" onClick={() => { onInsert(`{{${name}}}`); setOpen(false); }}
+                    className="rounded border border-glass-border px-2 py-1 font-mono text-[11px] text-ink hover:bg-glass">
+                    {`{{${name}}}`}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          <p className="mb-1 font-display text-[11px] font-bold uppercase tracking-wide text-ink-faint">Buat baru (HURUF_BESAR)</p>
+          <div className="flex gap-1">
+            <input type="text" value={custom} onChange={(e) => setCustom(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ""))}
+              placeholder="NAMA_FIELD" className="flex-1 rounded border border-glass-border bg-glass px-2 py-1 font-mono text-[11px] text-ink focus:outline-none" />
+            <button type="button" disabled={!custom || !/^[A-Z][A-Z0-9_]*$/.test(custom)}
+              onClick={() => { onInsert(`{{${custom}}}`); setCustom(""); setOpen(false); }}
+              className="rounded bg-red px-2 py-1 font-body text-[11px] font-bold text-white disabled:opacity-40">
+              +
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function EditorBody(p: any) {
   const autoKey = p.displayName?.trim()
@@ -408,6 +470,19 @@ function EditorBody(p: any) {
         </div>
       </div>
       <p className="font-mono text-[11px] text-ink-faint">Variabel: {"{{first_name}}"}, {"{{full_name}}"}, {"{{city}}"} · link unsubscribe otomatis</p>
+      <p className="font-mono text-[11px] text-ink-faint">Placeholder kustom mail merge: gunakan HURUF_BESAR, mis. {"{{KODE_UNIK}}"}, {"{{VOUCHER}}"}</p>
+      <InsertPlaceholder onInsert={(tag) => {
+        if (p.mode === "html" && p.textareaRef?.current) {
+          const ta = p.textareaRef.current;
+          const start = ta.selectionStart;
+          const end = ta.selectionEnd;
+          const val = ta.value;
+          p.setHtmlContent(val.slice(0, start) + tag + val.slice(end));
+          requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = start + tag.length; ta.focus(); });
+        } else {
+          p.setHtmlContent(p.htmlContent + tag);
+        }
+      }} subject={p.subject} htmlContent={p.htmlContent} />
 
       <div className="flex flex-wrap items-center gap-2">
         <Button size="sm" variant={p.mode === "blocks" ? "primary" : "outline"} onClick={() => p.switchMode("blocks")} disabled={p.htmlEdited} title={p.htmlEdited ? "Sudah diedit sebagai HTML" : undefined}>

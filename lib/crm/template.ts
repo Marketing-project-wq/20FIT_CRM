@@ -41,7 +41,10 @@ export const TEMPLATE_VARIABLES = [
 
 export type TemplateVariable = (typeof TEMPLATE_VARIABLES)[number];
 
-const VAR_PATTERN = /\{\{\s*([a-z_][a-z0-9_]*)\s*\}\}/gi;
+const VAR_PATTERN = /\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
+
+/** Pattern matching only UPPERCASE merge placeholders (custom mail-merge fields). */
+const MERGE_FIELD_PATTERN = /^[A-Z][A-Z0-9_]*$/;
 
 /** Every distinct `{{name}}` referenced in the text, lower-cased, in first-seen order. */
 export function extractVariables(text: string): string[] {
@@ -71,8 +74,13 @@ export interface TemplateValidation {
  */
 export function validateTemplateVariables(...parts: (string | null | undefined)[]): TemplateValidation {
   const allowed = new Set<string>(TEMPLATE_VARIABLES);
-  const refs = extractVariables(parts.filter((p): p is string => typeof p === "string").join("\n"));
-  const unknown = refs.filter((r) => !allowed.has(r));
+  const text = parts.filter((p): p is string => typeof p === "string").join("\n");
+  const refs = extractVariables(text);
+  // UPPERCASE custom merge placeholders are allowed through — they are replaced at send time
+  // from per-recipient merge data, not from the built-in vocabulary.
+  const allMatches = Array.from(text.matchAll(VAR_PATTERN)).map((m) => m[1]);
+  const mergeFields = new Set(allMatches.filter((n) => MERGE_FIELD_PATTERN.test(n)));
+  const unknown = refs.filter((r) => !allowed.has(r) && !mergeFields.has(r) && !mergeFields.has(r.toUpperCase()));
   const used = refs.filter((r): r is TemplateVariable => allowed.has(r));
   return { ok: unknown.length === 0, unknown, used };
 }
