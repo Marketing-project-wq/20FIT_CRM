@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { Printer, RefreshCw, ChevronDown, ChevronRight, TrendingDown, TrendingUp, X, Search, Check, Filter, ArrowUpRight, ArrowDownRight, Equal, Trophy, AlertTriangle, Heart, Users, BarChart3, Lightbulb, Target, MessageCircle } from "lucide-react";
+import { Printer, RefreshCw, ChevronDown, ChevronRight, TrendingDown, TrendingUp, X, Search, Check, Filter, ArrowUpRight, ArrowDownRight, Equal, Trophy, AlertTriangle, Heart, Users, BarChart3, Lightbulb, Target, MessageCircle, MapPin, DollarSign } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { EventAnalyticsData, EventGroup, EventComparison, DemographicBreakdown, Insight, InsightCategory } from "@/lib/crm/event-analytics";
+import type { EventAnalyticsData, EventGroup, EventComparison, DemographicBreakdown, Insight, InsightCategory, LifecycleFunnel, CategoryGrowthRow, OverlapMatrix, RevenueAnalysis, GeoExpansion } from "@/lib/crm/event-analytics";
 import { EventAnalysisLoader } from "@/components/analytics/event-analysis-loader";
 import { useI18n } from "@/components/i18n/lang-provider";
 import { formatCount, formatPct, type Lang } from "@/lib/i18n";
@@ -583,6 +583,31 @@ export function EventAnalysis({
       {/* Cross-Event Comparison */}
       {data.comparison && (
         <ComparisonSection comparison={data.comparison} lang={lang} te={te} loading={loading} />
+      )}
+
+      {/* A: Lifecycle Funnel */}
+      {data.funnel.stages.length > 0 && (
+        <FunnelSection funnel={data.funnel} lang={lang} te={te} loading={loading} />
+      )}
+
+      {/* B: Category Growth */}
+      {data.categoryGrowth.length > 0 && (
+        <CategoryGrowthSection rows={data.categoryGrowth} lang={lang} te={te} loading={loading} />
+      )}
+
+      {/* C: Overlap Matrix */}
+      {data.overlapMatrix.groupKeys.length >= 2 && (
+        <OverlapSection matrix={data.overlapMatrix} lang={lang} te={te} loading={loading} />
+      )}
+
+      {/* D: Revenue */}
+      {data.revenue && (
+        <RevenueSection revenue={data.revenue} lang={lang} te={te} loading={loading} />
+      )}
+
+      {/* E: Geographic Expansion */}
+      {data.geoExpansion.groups.length > 0 && (
+        <GeoExpansionSection geo={data.geoExpansion} lang={lang} te={te} loading={loading} />
       )}
 
       {/* Expandable sections */}
@@ -1482,6 +1507,464 @@ function ComparisonSection({
               </div>
             ))}
           </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ── A: Lifecycle Funnel ── */
+
+const FUNNEL_COLORS: Record<string, { bg: string; text: string; bar: string }> = {
+  new: { bg: "bg-blue/10", text: "text-blue", bar: "bg-blue" },
+  returning: { bg: "bg-green/10", text: "text-green", bar: "bg-green" },
+  loyal: { bg: "bg-amber/10", text: "text-amber", bar: "bg-amber" },
+  churned: { bg: "bg-red/10", text: "text-red", bar: "bg-red" },
+};
+
+function FunnelSection({
+  funnel,
+  lang,
+  te,
+  loading,
+}: {
+  funnel: LifecycleFunnel;
+  lang: Lang;
+  te: Te;
+  loading: boolean;
+}) {
+  const total = funnel.stages.reduce((s, st) => s + (st.key === "churned" ? 0 : st.count), 0);
+  const labelMap: Record<string, { name: string; desc: string }> = {
+    new: { name: te.funnelNew, desc: te.funnelNewDesc },
+    returning: { name: te.funnelReturning, desc: te.funnelReturningDesc },
+    loyal: { name: te.funnelLoyal, desc: te.funnelLoyalDesc },
+    churned: { name: te.funnelChurned, desc: te.funnelChurnedDesc },
+  };
+
+  const mainStages = funnel.stages.filter((s) => s.key !== "churned");
+  const churnedStage = funnel.stages.find((s) => s.key === "churned");
+
+  return (
+    <section className={loading ? "pointer-events-none opacity-50" : ""}>
+      <h2 className="mb-3 font-display text-[16px] font-bold text-ink">{te.funnelTitle}</h2>
+      <div className="card p-4">
+        {/* Horizontal funnel bars */}
+        <div className="space-y-3">
+          {mainStages.map((stage, i) => {
+            const colors = FUNNEL_COLORS[stage.key];
+            const widthPct = total > 0 ? Math.max((stage.count / total) * 100, 4) : 0;
+            const conv = funnel.conversions[i];
+            return (
+              <div key={stage.key}>
+                <div className="mb-1 flex items-baseline justify-between">
+                  <span className={`font-display text-[13px] font-semibold ${colors.text}`}>
+                    {labelMap[stage.key].name}
+                  </span>
+                  <span className="font-mono text-[12px] tabular-nums text-ink-faint">
+                    {formatCount(stage.count, lang)} ({formatPct(stage.pct, lang)})
+                  </span>
+                </div>
+                <div className="flex h-7 items-center overflow-hidden rounded-md bg-surface-2">
+                  <span
+                    className={`flex h-full items-center rounded-md px-2 font-mono text-[11px] font-bold text-white ${colors.bar}`}
+                    style={{ width: `${widthPct}%`, minWidth: "2rem" }}
+                  >
+                    {stage.pct >= 10 ? formatPct(stage.pct, lang) : ""}
+                  </span>
+                </div>
+                <p className="mt-0.5 font-body text-[11px] text-ink-faint">{labelMap[stage.key].desc}</p>
+                {conv && (
+                  <p className="mt-1 font-body text-[11px] font-semibold text-ink-soft">
+                    → {te.funnelConversion.replace("{pct}", String(conv.rate))}
+                  </p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Churned indicator */}
+        {churnedStage && churnedStage.count > 0 && (
+          <div className="mt-4 rounded-md border border-red/20 bg-red/5 px-3 py-2">
+            <div className="flex items-baseline justify-between">
+              <span className="font-display text-[13px] font-semibold text-red">
+                {labelMap.churned.name}
+              </span>
+              <span className="font-mono text-[12px] tabular-nums text-red">
+                {formatCount(churnedStage.count, lang)} ({formatPct(churnedStage.pct, lang)})
+              </span>
+            </div>
+            <p className="mt-0.5 font-body text-[11px] text-ink-faint">{labelMap.churned.desc}</p>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/* ── B: Category Growth ── */
+
+function CategoryGrowthSection({
+  rows,
+  lang,
+  te,
+  loading,
+}: {
+  rows: CategoryGrowthRow[];
+  lang: Lang;
+  te: Te;
+  loading: boolean;
+}) {
+  const maxTotal = Math.max(...rows.map((r) => r.total), 1);
+
+  return (
+    <section className={loading ? "pointer-events-none opacity-50" : ""}>
+      <h2 className="mb-3 font-display text-[16px] font-bold text-ink">
+        <TrendingUp className="mr-1.5 inline h-5 w-5 text-green" aria-hidden />
+        {te.categoryGrowthTitle}
+      </h2>
+      <div className="card overflow-x-auto p-0">
+        <table className="w-full border-collapse text-left">
+          <thead>
+            <tr className="border-b border-surface-border">
+              <th className="px-4 py-3 font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+                Event
+              </th>
+              <th className="px-4 py-3 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+                Total
+              </th>
+              <th className="px-4 py-3 text-center font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+                {te.compareDelta}
+              </th>
+              <th className="w-1/3 px-4 py-3 font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint" />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={r.groupKey} className={i < rows.length - 1 ? "border-b border-surface-border/50" : ""}>
+                <td className="px-4 py-2.5 font-body text-[13px] font-semibold text-ink">{r.groupLabel}</td>
+                <td className="px-4 py-2.5 text-right font-mono text-[13px] tabular-nums text-ink">
+                  {formatCount(r.total, lang)}
+                </td>
+                <td className="px-4 py-2.5 text-center">
+                  {r.growthPct != null ? (
+                    <span
+                      className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 font-mono text-[11px] font-bold ${
+                        r.growthPct > 0
+                          ? "bg-green/10 text-green"
+                          : r.growthPct < 0
+                            ? "bg-red/10 text-red"
+                            : "bg-ink-faint/10 text-ink-faint"
+                      }`}
+                    >
+                      {r.growthPct > 0 && <ArrowUpRight className="h-3 w-3" />}
+                      {r.growthPct < 0 && <ArrowDownRight className="h-3 w-3" />}
+                      {r.growthPct > 0 ? `+${r.growthPct}%` : `${r.growthPct}%`}
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-surface-2 px-2 py-0.5 font-body text-[11px] text-ink-faint">
+                      {te.categoryGrowthFirst}
+                    </span>
+                  )}
+                </td>
+                <td className="px-4 py-2.5">
+                  <div className="h-4 overflow-hidden rounded-full bg-surface-2">
+                    <span
+                      className="block h-full rounded-full bg-green/60"
+                      style={{ width: `${(r.total / maxTotal) * 100}%` }}
+                    />
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+/* ── C: Overlap Matrix ── */
+
+function overlapCellBg(pct: number): string | undefined {
+  if (pct === 0) return undefined;
+  if (pct >= 100) return "color-mix(in srgb, var(--green) 20%, transparent)";
+  if (pct >= 30) return `color-mix(in srgb, var(--green) ${Math.round((pct / 100) * 40)}%, transparent)`;
+  if (pct >= 10) return `color-mix(in srgb, var(--amber) ${Math.round((pct / 30) * 25 + 5)}%, transparent)`;
+  return `color-mix(in srgb, var(--red) ${Math.max(Math.round((pct / 10) * 20), 5)}%, transparent)`;
+}
+
+function OverlapSection({
+  matrix,
+  lang,
+  te,
+  loading,
+}: {
+  matrix: OverlapMatrix;
+  lang: Lang;
+  te: Te;
+  loading: boolean;
+}) {
+  const n = matrix.groupKeys.length;
+
+  return (
+    <section className={loading ? "pointer-events-none opacity-50" : ""}>
+      <h2 className="mb-3 font-display text-[16px] font-bold text-ink">{te.overlapTitle}</h2>
+      <div className="card p-4">
+        <p className="mb-3 font-body text-[13px] text-ink-soft">{te.overlapDesc}</p>
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-left">
+            <thead>
+              <tr className="border-b border-surface-border">
+                <th className="sticky left-0 z-10 min-w-[8rem] bg-surface px-3 py-2 font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint" />
+                {matrix.groupLabels.map((label, j) => (
+                  <th
+                    key={j}
+                    className="px-3 py-2 text-center font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint"
+                    title={label}
+                  >
+                    <span className="inline-block max-w-[5rem] truncate">{label}</span>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {matrix.groupLabels.map((label, i) => (
+                <tr key={i} className={i < n - 1 ? "border-b border-surface-border/50" : ""}>
+                  <td className="sticky left-0 z-10 bg-surface px-3 py-2 font-body text-[12px] font-semibold text-ink">
+                    {label}
+                  </td>
+                  {matrix.cells[i].map((count, j) => {
+                    const pct = matrix.pcts[i][j];
+                    const isDialogal = i === j;
+                    return (
+                      <td key={j} className="px-3 py-2 text-center">
+                        <span
+                          className={`inline-block cursor-default rounded-sm px-2 py-0.5 font-mono text-[11px] font-semibold ${isDialogal ? "text-ink-faint" : ""}`}
+                          style={{
+                            backgroundColor: isDialogal ? undefined : overlapCellBg(pct),
+                            color: isDialogal ? undefined : pct >= 30 ? "var(--green)" : pct >= 10 ? "var(--amber)" : pct > 0 ? "var(--red)" : "var(--ink-faint)",
+                          }}
+                          title={isDialogal ? `${count}` : te.overlapPeople.replace("{n}", String(count)) + ` (${formatPct(pct, lang)})`}
+                        >
+                          {isDialogal ? formatCount(count, lang) : pct > 0 ? formatPct(pct, lang) : "—"}
+                        </span>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-3 font-body text-[11px] text-ink-faint">
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-3 w-3 rounded-sm bg-red/20" aria-hidden /> &lt;10%
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-3 w-3 rounded-sm bg-amber/25" aria-hidden /> 10–30%
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-3 w-3 rounded-sm bg-green/30" aria-hidden /> &gt;30%
+          </span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ── D: Revenue Section ── */
+
+function formatIdr(value: number, lang: Lang): string {
+  return `Rp ${formatCount(value, lang)}`;
+}
+
+function RevenueSection({
+  revenue,
+  lang,
+  te,
+  loading,
+}: {
+  revenue: RevenueAnalysis;
+  lang: Lang;
+  te: Te;
+  loading: boolean;
+}) {
+  return (
+    <section className={loading ? "pointer-events-none opacity-50" : ""}>
+      <h2 className="mb-3 font-display text-[16px] font-bold text-ink">
+        <DollarSign className="mr-1.5 inline h-5 w-5 text-green" aria-hidden />
+        {te.revenueTitle}
+      </h2>
+
+      {/* Overall KPIs */}
+      <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <KpiCard value={formatIdr(revenue.overallTotal, lang)} label={te.revenueTotal} tone="green" />
+        <KpiCard value={formatIdr(revenue.overallAvg, lang)} label={te.revenueAvg} tone="green" />
+        <KpiCard value={formatIdr(revenue.overallMedian, lang)} label={te.revenueMedian} tone="green" />
+      </div>
+
+      {/* Per-group table */}
+      <div className="card overflow-x-auto p-0">
+        <table className="w-full border-collapse text-left">
+          <thead>
+            <tr className="border-b border-surface-border">
+              <th className="px-4 py-3 font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+                Event
+              </th>
+              <th className="px-4 py-3 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+                {te.revenueTotal}
+              </th>
+              <th className="px-4 py-3 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+                {te.revenueAvg}
+              </th>
+              <th className="px-4 py-3 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+                {te.revenueMedian}
+              </th>
+              <th className="px-4 py-3 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+                {te.revenueNew}
+              </th>
+              <th className="px-4 py-3 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+                {te.revenueReturning}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {revenue.groups.map((g, i) => (
+              <tr key={g.groupKey} className={i < revenue.groups.length - 1 ? "border-b border-surface-border/50" : ""}>
+                <td className="px-4 py-2.5 font-body text-[13px] font-semibold text-ink">{g.groupLabel}</td>
+                <td className="px-4 py-2.5 text-right font-mono text-[13px] tabular-nums text-ink">
+                  {g.totalRevenue > 0 ? formatIdr(g.totalRevenue, lang) : "—"}
+                </td>
+                <td className="px-4 py-2.5 text-right font-mono text-[12px] tabular-nums text-ink-soft">
+                  {g.avgRevenue > 0 ? formatIdr(g.avgRevenue, lang) : "—"}
+                </td>
+                <td className="px-4 py-2.5 text-right font-mono text-[12px] tabular-nums text-ink-soft">
+                  {g.medianRevenue > 0 ? formatIdr(g.medianRevenue, lang) : "—"}
+                </td>
+                <td className="px-4 py-2.5 text-right font-mono text-[12px] tabular-nums text-ink-soft">
+                  {g.newRevenue > 0 ? formatIdr(g.newRevenue, lang) : "—"}
+                </td>
+                <td className="px-4 py-2.5 text-right font-mono text-[12px] tabular-nums text-green">
+                  {g.returningRevenue > 0 ? formatIdr(g.returningRevenue, lang) : "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-2 font-body text-[11px] text-ink-faint">
+        {te.revenuePeople.replace("{n}", formatCount(revenue.groups.reduce((s, g) => s + g.count, 0), lang))}
+      </p>
+    </section>
+  );
+}
+
+/* ── E: Geographic Expansion ── */
+
+function GeoExpansionSection({
+  geo,
+  lang,
+  te,
+  loading,
+}: {
+  geo: GeoExpansion;
+  lang: Lang;
+  te: Te;
+  loading: boolean;
+}) {
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+
+  return (
+    <section className={loading ? "pointer-events-none opacity-50" : ""}>
+      <h2 className="mb-3 font-display text-[16px] font-bold text-ink">
+        <MapPin className="mr-1.5 inline h-5 w-5 text-green" aria-hidden />
+        {te.geoTitle}
+      </h2>
+      <div className="card p-4">
+        <p className="mb-3 font-body text-[13px] text-ink-soft">{te.geoDesc}</p>
+        <div className="space-y-4">
+          {geo.groups.map((g) => {
+            const isOpen = expanded[g.groupKey] ?? (geo.groups.length <= 4);
+            const maxCount = g.topCities.length > 0 ? Math.max(...g.topCities.map((c) => c.count)) : 1;
+            const activeCities = g.topCities.filter((c) => c.badge !== "lost");
+
+            return (
+              <div key={g.groupKey} className="rounded-lg border border-surface-border">
+                <button
+                  type="button"
+                  onClick={() => setExpanded((prev) => ({ ...prev, [g.groupKey]: !isOpen }))}
+                  className="flex w-full items-center justify-between px-4 py-3 text-left"
+                >
+                  <span className="font-display text-[13px] font-semibold text-ink">{g.groupLabel}</span>
+                  <div className="flex items-center gap-3">
+                    {g.concentrationTop1Pct >= 50 && (
+                      <span className="rounded-full bg-amber/10 px-2 py-0.5 font-body text-[10px] font-semibold text-amber">
+                        {te.geoHighConcentration}
+                      </span>
+                    )}
+                    <span className="font-body text-[11px] text-ink-faint">
+                      {te.geoTop1.replace("{pct}", String(g.concentrationTop1Pct))}
+                    </span>
+                    {isOpen ? (
+                      <ChevronDown className="h-4 w-4 text-ink-faint" aria-hidden />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 text-ink-faint" aria-hidden />
+                    )}
+                  </div>
+                </button>
+                {isOpen && (
+                  <div className="border-t border-surface-border/50 px-4 py-3">
+                    <div className="mb-2 flex gap-4 font-body text-[11px] text-ink-faint">
+                      <span>{te.geoTop1.replace("{pct}", String(g.concentrationTop1Pct))}</span>
+                      <span>{te.geoTop3.replace("{pct}", String(g.concentrationTop3Pct))}</span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {activeCities.map((c) => (
+                        <div
+                          key={c.city}
+                          className="grid grid-cols-[8rem_1fr_auto] items-center gap-2 sm:grid-cols-[12rem_1fr_auto]"
+                        >
+                          <span className="flex items-center gap-1.5 truncate font-body text-[12px] font-semibold text-ink">
+                            {c.city}
+                            {c.badge === "new" && (
+                              <span className="rounded bg-green/15 px-1 py-0.5 font-mono text-[9px] font-bold text-green">
+                                {te.geoNew}
+                              </span>
+                            )}
+                          </span>
+                          <div className="h-4 overflow-hidden rounded-full bg-surface-2">
+                            <span
+                              className="block h-full rounded-full bg-green/60"
+                              style={{ width: `${(c.count / maxCount) * 100}%` }}
+                            />
+                          </div>
+                          <span className="text-right font-mono text-[11px] tabular-nums text-ink-faint">
+                            {formatCount(c.count, lang)}
+                          </span>
+                        </div>
+                      ))}
+                      {g.topCities.filter((c) => c.badge === "lost").map((c) => (
+                        <div
+                          key={`lost-${c.city}`}
+                          className="grid grid-cols-[8rem_1fr_auto] items-center gap-2 opacity-50 sm:grid-cols-[12rem_1fr_auto]"
+                        >
+                          <span className="flex items-center gap-1.5 truncate font-body text-[12px] text-ink-faint line-through">
+                            {c.city}
+                            <span className="rounded bg-red/15 px-1 py-0.5 font-mono text-[9px] font-bold text-red no-underline">
+                              {te.geoLost}
+                            </span>
+                          </span>
+                          <div />
+                          <span />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     </section>

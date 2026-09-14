@@ -84,6 +84,62 @@ export interface Insight {
   sentiment: InsightSentiment;
 }
 
+export interface LifecycleFunnel {
+  stages: { key: "new" | "returning" | "loyal" | "churned"; count: number; pct: number }[];
+  conversions: { from: string; to: string; rate: number }[];
+}
+
+export interface CategoryGrowthRow {
+  groupKey: string;
+  groupLabel: string;
+  total: number;
+  growthPct: number | null;
+}
+
+export interface OverlapMatrix {
+  groupKeys: string[];
+  groupLabels: string[];
+  cells: number[][];
+  pcts: number[][];
+}
+
+export interface RevenueGroup {
+  groupKey: string;
+  groupLabel: string;
+  totalRevenue: number;
+  avgRevenue: number;
+  medianRevenue: number;
+  newRevenue: number;
+  returningRevenue: number;
+  count: number;
+}
+
+export interface RevenueAnalysis {
+  groups: RevenueGroup[];
+  overallTotal: number;
+  overallAvg: number;
+  overallMedian: number;
+}
+
+export interface GeoCity {
+  city: string;
+  count: number;
+  badge: "new" | "lost" | null;
+}
+
+export interface GeoGroupData {
+  groupKey: string;
+  groupLabel: string;
+  topCities: GeoCity[];
+  concentrationTop1Pct: number;
+  concentrationTop3Pct: number;
+  totalWithCity: number;
+}
+
+export interface GeoExpansion {
+  groups: GeoGroupData[];
+}
+
 export interface EventAnalyticsData {
   events: EventInfo[];
   groups: EventGroup[];
@@ -98,6 +154,11 @@ export interface EventAnalyticsData {
   demographics: EventDemographic[];
   comparison: EventComparison | null;
   insights: Insight[];
+  funnel: LifecycleFunnel;
+  categoryGrowth: CategoryGrowthRow[];
+  overlapMatrix: OverlapMatrix;
+  revenue: RevenueAnalysis | null;
+  geoExpansion: GeoExpansion;
 }
 
 export interface EventAnalyticsFilter {
@@ -129,17 +190,21 @@ export async function fetchEventAnalytics(admin: AdminClient, filter?: EventAnal
   // Source A: master_customer event tags + demographics (paged)
   const tagsByPerson = new Map<string, string[]>();
   const personDemo = new Map<string, { gender: string | null; dob: string | null; city: string | null }>();
+  const personRevenue = new Map<string, number>();
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await admin
       .from("master_customer")
-      .select("customer_id, tags, gender, date_of_birth, city")
+      .select("customer_id, tags, gender, date_of_birth, city, lifetime_value")
       .range(from, from + PAGE - 1);
     if (error) throw new Error("Failed to fetch master_customer");
-    const rows = (data ?? []) as { customer_id: string; tags: string[] | null; gender: string | null; date_of_birth: string | null; city: string | null }[];
+    const rows = (data ?? []) as { customer_id: string; tags: string[] | null; gender: string | null; date_of_birth: string | null; city: string | null; lifetime_value: number | null }[];
     for (const row of rows) {
       if (!row.customer_id) continue;
       if (row.gender || row.date_of_birth || row.city) {
         personDemo.set(row.customer_id, { gender: row.gender, dob: row.date_of_birth, city: row.city });
+      }
+      if (row.lifetime_value != null && row.lifetime_value > 0) {
+        personRevenue.set(row.customer_id, row.lifetime_value);
       }
       if (!row.tags) continue;
       const events = row.tags.filter((t: string) => t.startsWith("event:"));
@@ -475,6 +540,12 @@ export async function fetchEventAnalytics(admin: AdminClient, filter?: EventAnal
     };
   }
 
+  const funnel = computeLifecycleFunnel(peopleGroups, sortedGroupKeys, groupIndex);
+  const categoryGrowth = computeCategoryGrowth(groups);
+  const overlapMatrix = computeOverlapMatrix(sortedGroupKeys, groupTotals, groupLabelMap);
+  const revenue = computeRevenueAnalysis(sortedGroupKeys, groupTotals, peopleGroups, groupIndex, peopleCids, personRevenue, groupLabelMap);
+  const geoExpansion = computeGeoExpansion(sortedGroupKeys, groupTotals, peopleCids, personDemo, groupLabelMap);
+
   const analyticsBase = {
     events: eventInfos,
     groups,
@@ -488,6 +559,11 @@ export async function fetchEventAnalytics(admin: AdminClient, filter?: EventAnal
     skipAfterOneReturn,
     demographics,
     comparison,
+    funnel,
+    categoryGrowth,
+    overlapMatrix,
+    revenue,
+    geoExpansion,
   };
 
   return { ...analyticsBase, insights: generateInsights(analyticsBase) };
@@ -690,6 +766,226 @@ function generateInsights(data: Omit<EventAnalyticsData, "insights">): Insight[]
   }
 
   return insights.slice(0, MAX_INSIGHTS);
+}
+
+function computeLifecycleFunnel(
+  peopleGroups: string[][],
+  sortedGroupKeys: string[],
+  groupIndex: Map<string, number>,
+): LifecycleFunnel {
+  const total = peopleGroups.length;
+  if (total === 0) return { stages: [], conversions: [] };
+
+  const lastIdx = sortedGroupKeys.length - 1;
+  let newCount = 0;
+  let returningCount = 0;
+  let loyalCount = 0;
+  let churnedCount = 0;
+
+  for (const pg of peopleGroups) {
+    const unique = new Set(pg);
+    const maxIdx = Math.max(...Array.from(unique).map((g) => groupIndex.get(g) ?? 0));
+
+    if (unique.size === 1) newCount++;
+    else if (unique.size === 2) returningCount++;
+    else loyalCount++;
+
+    if (maxIdx < lastIdx) churnedCount++;
+  }
+
+  const stages: LifecycleFunnel["stages"] = [
+    { key: "new", count: newCount, pct: total > 0 ? Math.round((newCount / total) * 1000) / 10 : 0 },
+    { key: "returning", count: returningCount, pct: total > 0 ? Math.round((returningCount / total) * 1000) / 10 : 0 },
+    { key: "loyal", count: loyalCount, pct: total > 0 ? Math.round((loyalCount / total) * 1000) / 10 : 0 },
+    { key: "churned", count: churnedCount, pct: total > 0 ? Math.round((churnedCount / total) * 1000) / 10 : 0 },
+  ];
+
+  const returningPlus = returningCount + loyalCount;
+  const conversions: LifecycleFunnel["conversions"] = [
+    { from: "new", to: "returning", rate: total > 0 ? Math.round((returningPlus / total) * 1000) / 10 : 0 },
+    { from: "returning", to: "loyal", rate: returningPlus > 0 ? Math.round((loyalCount / returningPlus) * 1000) / 10 : 0 },
+  ];
+
+  return { stages, conversions };
+}
+
+function computeCategoryGrowth(groups: EventGroup[]): CategoryGrowthRow[] {
+  return groups.map((g, i) => ({
+    groupKey: g.groupKey,
+    groupLabel: g.groupLabel,
+    total: g.total,
+    growthPct: i > 0 && groups[i - 1].total > 0
+      ? Math.round(((g.total - groups[i - 1].total) / groups[i - 1].total) * 1000) / 10
+      : null,
+  }));
+}
+
+function computeOverlapMatrix(
+  sortedGroupKeys: string[],
+  groupTotals: Map<string, Set<number>>,
+  groupLabelMap: Map<string, string>,
+): OverlapMatrix {
+  const n = sortedGroupKeys.length;
+  const cells: number[][] = Array.from({ length: n }, () => new Array(n).fill(0));
+  const pcts: number[][] = Array.from({ length: n }, () => new Array(n).fill(0));
+
+  for (let i = 0; i < n; i++) {
+    const setI = groupTotals.get(sortedGroupKeys[i])!;
+    cells[i][i] = setI.size;
+    pcts[i][i] = 100;
+    for (let j = i + 1; j < n; j++) {
+      const setJ = groupTotals.get(sortedGroupKeys[j])!;
+      let overlap = 0;
+      setI.forEach((pi) => { if (setJ.has(pi)) overlap++; });
+      cells[i][j] = overlap;
+      cells[j][i] = overlap;
+      pcts[i][j] = setI.size > 0 ? Math.round((overlap / setI.size) * 1000) / 10 : 0;
+      pcts[j][i] = setJ.size > 0 ? Math.round((overlap / setJ.size) * 1000) / 10 : 0;
+    }
+  }
+
+  return {
+    groupKeys: sortedGroupKeys,
+    groupLabels: sortedGroupKeys.map((k) => groupLabelMap.get(k) ?? formatSlugLabel(k)),
+    cells,
+    pcts,
+  };
+}
+
+function computeRevenueAnalysis(
+  sortedGroupKeys: string[],
+  groupTotals: Map<string, Set<number>>,
+  peopleGroups: string[][],
+  groupIndex: Map<string, number>,
+  peopleCids: string[],
+  personRevenue: Map<string, number>,
+  groupLabelMap: Map<string, string>,
+): RevenueAnalysis | null {
+  if (personRevenue.size === 0) return null;
+
+  const allValues: number[] = [];
+  const revenueGroups: RevenueGroup[] = [];
+
+  for (const gk of sortedGroupKeys) {
+    const people = groupTotals.get(gk)!;
+    const values: number[] = [];
+    let newRev = 0;
+    let retRev = 0;
+    const gIdx = groupIndex.get(gk) ?? 0;
+
+    people.forEach((pi) => {
+      const cid = peopleCids[pi];
+      const rev = cid ? personRevenue.get(cid) : undefined;
+      if (rev == null || rev <= 0) return;
+      values.push(rev);
+      allValues.push(rev);
+
+      const pg = peopleGroups[pi];
+      const firstIdx = Math.min(...pg.map((g) => groupIndex.get(g) ?? Infinity));
+      if (gIdx === firstIdx) newRev += rev;
+      else retRev += rev;
+    });
+
+    const totalRev = values.reduce((s, v) => s + v, 0);
+    const sorted = values.slice().sort((a, b) => a - b);
+    const median = sorted.length > 0
+      ? sorted.length % 2 === 1
+        ? sorted[Math.floor(sorted.length / 2)]
+        : Math.round((sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2)
+      : 0;
+
+    revenueGroups.push({
+      groupKey: gk,
+      groupLabel: groupLabelMap.get(gk) ?? formatSlugLabel(gk),
+      totalRevenue: totalRev,
+      avgRevenue: values.length > 0 ? Math.round(totalRev / values.length) : 0,
+      medianRevenue: median,
+      newRevenue: newRev,
+      returningRevenue: retRev,
+      count: values.length,
+    });
+  }
+
+  if (allValues.length === 0) return null;
+
+  const overallTotal = allValues.reduce((s, v) => s + v, 0);
+  const overallSorted = allValues.slice().sort((a, b) => a - b);
+  const overallMedian = overallSorted.length % 2 === 1
+    ? overallSorted[Math.floor(overallSorted.length / 2)]
+    : Math.round((overallSorted[overallSorted.length / 2 - 1] + overallSorted[overallSorted.length / 2]) / 2);
+
+  return {
+    groups: revenueGroups,
+    overallTotal,
+    overallAvg: Math.round(overallTotal / allValues.length),
+    overallMedian,
+  };
+}
+
+function computeGeoExpansion(
+  sortedGroupKeys: string[],
+  groupTotals: Map<string, Set<number>>,
+  peopleCids: string[],
+  personDemo: Map<string, { gender: string | null; dob: string | null; city: string | null }>,
+  groupLabelMap: Map<string, string>,
+): GeoExpansion {
+  const prevCityMaps: Map<string, number>[] = [];
+  const result: GeoGroupData[] = [];
+
+  for (let gi = 0; gi < sortedGroupKeys.length; gi++) {
+    const gk = sortedGroupKeys[gi];
+    const people = groupTotals.get(gk)!;
+    const cityCounts = new Map<string, number>();
+    const citySet = new Set<string>();
+
+    people.forEach((pi) => {
+      const cid = peopleCids[pi];
+      const d = cid ? personDemo.get(cid) : undefined;
+      if (d?.city) {
+        const c = d.city.trim();
+        if (c) {
+          cityCounts.set(c, (cityCounts.get(c) ?? 0) + 1);
+          citySet.add(c);
+        }
+      }
+    });
+
+    const totalWithCity = Array.from(cityCounts.values()).reduce((s, v) => s + v, 0);
+    const sorted = Array.from(cityCounts.entries()).sort((a, b) => b[1] - a[1]);
+    const top10 = sorted.slice(0, 10);
+
+    const prevCitySet = gi > 0 ? new Set(prevCityMaps[gi - 1].keys()) : null;
+    const topCities: GeoCity[] = top10.map(([city, count]) => ({
+      city,
+      count,
+      badge: prevCitySet ? (prevCitySet.has(city) ? null : "new") : null,
+    }));
+
+    if (prevCitySet && gi > 0) {
+      const prevSorted = Array.from(prevCityMaps[gi - 1].entries()).sort((a, b) => b[1] - a[1]).slice(0, 10);
+      for (const [city] of prevSorted) {
+        if (!citySet.has(city)) {
+          topCities.push({ city, count: 0, badge: "lost" });
+        }
+      }
+    }
+
+    prevCityMaps.push(cityCounts);
+
+    const top1Count = sorted.length > 0 ? sorted[0][1] : 0;
+    const top3Count = sorted.slice(0, 3).reduce((s, [, c]) => s + c, 0);
+
+    result.push({
+      groupKey: gk,
+      groupLabel: groupLabelMap.get(gk) ?? formatSlugLabel(gk),
+      topCities,
+      concentrationTop1Pct: totalWithCity > 0 ? Math.round((top1Count / totalWithCity) * 1000) / 10 : 0,
+      concentrationTop3Pct: totalWithCity > 0 ? Math.round((top3Count / totalWithCity) * 1000) / 10 : 0,
+      totalWithCity,
+    });
+  }
+
+  return { groups: result };
 }
 
 function productToSlug(product: string): string {
