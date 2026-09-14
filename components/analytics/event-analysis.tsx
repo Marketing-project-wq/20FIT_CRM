@@ -2,15 +2,23 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { Printer, RefreshCw, ChevronDown, ChevronRight, TrendingDown, TrendingUp, X, Search, Check, Filter, ArrowUpRight, ArrowDownRight, Equal, Trophy, AlertTriangle, Heart, Users, BarChart3, Lightbulb, Target, MessageCircle, MapPin, DollarSign } from "lucide-react";
+import { Printer, RefreshCw, ChevronDown, ChevronRight, TrendingDown, TrendingUp, X, Search, Check, Filter, ArrowUpRight, ArrowDownRight, Equal, Trophy, AlertTriangle, Heart, Users, BarChart3, Lightbulb, Target, MessageCircle, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { EventAnalyticsData, EventGroup, EventComparison, DemographicBreakdown, Insight, InsightCategory, LifecycleFunnel, CategoryGrowthRow, OverlapMatrix, RevenueAnalysis, GeoExpansion } from "@/lib/crm/event-analytics";
+import type { EventAnalyticsData, EventGroup, EventComparison, DemographicBreakdown, Insight, InsightCategory, LifecycleFunnel, CategoryGrowthRow, OverlapMatrix, GeoExpansion } from "@/lib/crm/event-analytics";
 import { EventAnalysisLoader } from "@/components/analytics/event-analysis-loader";
 import { useI18n } from "@/components/i18n/lang-provider";
 import { formatCount, formatPct, type Lang } from "@/lib/i18n";
 
 const DEFAULT_ROWS = 10;
 const DEBOUNCE_MS = 500;
+
+type TabKey = "overview" | "retention" | "demographics" | "trends";
+const TABS: { key: TabKey; labelKey: string }[] = [
+  { key: "overview", labelKey: "tabOverview" },
+  { key: "retention", labelKey: "tabRetention" },
+  { key: "demographics", labelKey: "tabDemographics" },
+  { key: "trends", labelKey: "tabTrends" },
+];
 
 interface GroupOption {
   key: string;
@@ -37,6 +45,13 @@ export function EventAnalysis({
   const [viewMode, setViewMode] = useState<"groups" | "all">("groups");
   const [showAllRows, setShowAllRows] = useState(false);
 
+  const tabParam = searchParams.get("tab");
+  const [activeTab, setActiveTab] = useState<TabKey>(
+    (["overview", "retention", "demographics", "trends"] as TabKey[]).includes(tabParam as TabKey)
+      ? (tabParam as TabKey)
+      : "overview",
+  );
+
   const eventsParam = searchParams.get("events");
   const fromParam = searchParams.get("from");
   const toParam = searchParams.get("to");
@@ -54,6 +69,20 @@ export function EventAnalysis({
       if (events.size > 0) p.set("events", Array.from(events).join(","));
       if (from) p.set("from", from);
       if (to) p.set("to", to);
+      const currentTab = new URLSearchParams(window.location.search).get("tab");
+      if (currentTab) p.set("tab", currentTab);
+      const qs = p.toString();
+      router.replace(`${pathname}${qs ? "?" + qs : ""}`, { scroll: false });
+    },
+    [router, pathname],
+  );
+
+  const switchTab = useCallback(
+    (tab: TabKey) => {
+      setActiveTab(tab);
+      const p = new URLSearchParams(window.location.search);
+      if (tab === "overview") p.delete("tab");
+      else p.set("tab", tab);
       const qs = p.toString();
       router.replace(`${pathname}${qs ? "?" + qs : ""}`, { scroll: false });
     },
@@ -261,356 +290,387 @@ export function EventAnalysis({
         <EventAnalysisLoader variant="inline" />
       )}
 
-      {/* View Toggle */}
-      <div className="flex flex-wrap items-center gap-3 print:hidden">
-        <span className="font-display text-[12px] font-semibold uppercase tracking-wide text-ink-faint">
-          {te.viewLabel}
-        </span>
-        <div className="inline-flex overflow-hidden rounded-sm border border-surface-border">
-          <button
-            type="button"
-            onClick={() => {
-              setViewMode("groups");
-              setShowAllRows(false);
-            }}
-            className={`px-3 py-1.5 font-body text-[13px] font-semibold transition-colors ${
-              viewMode === "groups"
-                ? "bg-red text-white"
-                : "bg-surface-2 text-ink hover:bg-surface-border"
-            }`}
-          >
-            {te.viewGrouped} ({data.groups.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setViewMode("all");
-              setShowAllRows(false);
-            }}
-            className={`border-l border-surface-border px-3 py-1.5 font-body text-[13px] font-semibold transition-colors ${
-              viewMode === "all"
-                ? "bg-red text-white"
-                : "bg-surface-2 text-ink hover:bg-surface-border"
-            }`}
-          >
-            {te.viewAll} ({data.events.length})
-          </button>
-        </div>
-      </div>
-
-      {/* KPI Cards */}
-      <section className={loading ? "pointer-events-none opacity-50" : ""}>
-        <h2 className="mb-3 font-display text-[16px] font-bold text-ink">{te.quickAnswers}</h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <KpiCard
-            value={formatCount(data.totalPeople, lang)}
-            label={te.kpiAttended}
-            tone="green"
-          />
-          <KpiCard
-            value={`${formatCount(data.returningPeople, lang)} (${formatPct(data.returningPct, lang)})`}
-            label={te.kpiReturned}
-            tone="green"
-          />
-          <KpiCard
-            value={
-              data.frequentPeople > 0
-                ? formatCount(data.frequentPeople, lang)
-                : `${data.avgGroupsPerPerson}`
-            }
-            label={
-              data.frequentPeople > 0
-                ? te.kpiFrequent.replace("{avg}", String(data.avgGroupsPerPerson))
-                : te.kpiAvgEvents
-            }
-            tone={data.frequentPeople > 0 ? "green" : "amber"}
-          />
-        </div>
-      </section>
-
-      {/* Attendance Table */}
-      <section className={loading ? "pointer-events-none opacity-50" : ""}>
-        <h2 className="mb-3 font-display text-[16px] font-bold text-ink">{te.attendance}</h2>
-        <div className="card overflow-x-auto p-0">
-          <table className="w-full border-collapse text-left">
-            <thead>
-              <tr className="border-b border-surface-border">
-                <th className="px-4 py-3 font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
-                  {viewMode === "groups" ? te.thEvent : te.thSubEvent}
-                </th>
-                {viewMode === "groups" && (
-                  <th className="px-4 py-3 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
-                    {te.thVariants}
-                  </th>
-                )}
-                <th className="px-4 py-3 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
-                  Total
-                </th>
-                <th className="px-4 py-3 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
-                  {te.thNew}
-                </th>
-                <th className="px-4 py-3 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
-                  {te.thReturning}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {visible.map((ev, i) => (
-                <AttendanceRow
-                  key={ev.key}
-                  item={ev}
-                  group={
-                    viewMode === "groups" ? data.groups.find((g) => g.groupKey === ev.key) : undefined
-                  }
-                  isLast={i === visible.length - 1}
-                  isFirst={sorted.indexOf(ev) === 0}
-                  showVariants={viewMode === "groups"}
-                  lang={lang}
-                />
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {hasMore && (
-          <button
-            type="button"
-            onClick={() => setShowAllRows(!showAllRows)}
-            className="mt-2 font-body text-[13px] font-semibold text-green hover:underline print:hidden"
-          >
-            {showAllRows
-              ? te.showTop.replace("{n}", String(DEFAULT_ROWS))
-              : te.showAll.replace("{n}", String(sorted.length))}
-          </button>
-        )}
-
-        {/* Horizontal stacked bars */}
-        <div className="mt-4 space-y-2">
-          {visible.map((ev) => (
-            <div
-              key={ev.key}
-              className="grid grid-cols-[7rem_1fr_auto] items-center gap-2 sm:grid-cols-[10rem_1fr_auto]"
+      {/* Tab Bar */}
+      <nav className="sticky top-0 z-20 -mx-4 overflow-x-auto border-b border-surface-border bg-surface px-4 print:hidden sm:-mx-6 sm:px-6">
+        <div className="flex gap-0">
+          {TABS.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => switchTab(tab.key)}
+              className={`whitespace-nowrap border-b-2 px-4 py-2.5 font-display text-[13px] font-semibold transition-colors ${
+                activeTab === tab.key
+                  ? "border-red text-red"
+                  : "border-transparent text-ink-faint hover:text-ink"
+              }`}
             >
-              <span
-                className="truncate font-body text-[12px] font-semibold text-ink"
-                title={ev.label}
-              >
-                {ev.label}
-              </span>
-              <div className="flex h-4 overflow-hidden rounded-full bg-surface-2">
-                {ev.returning > 0 && (
-                  <span
-                    className="block h-full bg-green"
-                    style={{ width: `${(ev.returning / maxTotal) * 100}%` }}
-                    title={`${te.legendReturning}: ${ev.returning}`}
-                  />
-                )}
-                <span
-                  className="block h-full bg-ink-faint/30"
-                  style={{ width: `${(ev.newCount / maxTotal) * 100}%` }}
-                  title={`${te.legendNew}: ${ev.newCount}`}
-                />
-              </div>
-              <span className="whitespace-nowrap font-mono text-[11px] text-ink-faint">
-                {formatCount(ev.total, lang)}
-              </span>
-            </div>
+              {(te as Record<string, string>)[tab.labelKey]}
+            </button>
           ))}
         </div>
+      </nav>
 
-        <div className="mt-3 flex gap-4">
-          <span className="flex items-center gap-1.5 font-body text-[11px] text-ink-soft">
-            <span className="inline-block h-3 w-3 rounded-sm bg-green" aria-hidden />{" "}
-            {te.legendReturning}
-          </span>
-          <span className="flex items-center gap-1.5 font-body text-[11px] text-ink-soft">
-            <span className="inline-block h-3 w-3 rounded-sm bg-ink-faint/30" aria-hidden />{" "}
-            {te.legendNew}
-          </span>
-        </div>
-      </section>
+      {/* ── Tab: Overview ── */}
+      {activeTab === "overview" && (
+        <>
+          {/* View Toggle */}
+          <div className="flex flex-wrap items-center gap-3 print:hidden">
+            <span className="font-display text-[12px] font-semibold uppercase tracking-wide text-ink-faint">
+              {te.viewLabel}
+            </span>
+            <div className="inline-flex overflow-hidden rounded-sm border border-surface-border">
+              <button
+                type="button"
+                onClick={() => {
+                  setViewMode("groups");
+                  setShowAllRows(false);
+                }}
+                className={`px-3 py-1.5 font-body text-[13px] font-semibold transition-colors ${
+                  viewMode === "groups"
+                    ? "bg-red text-white"
+                    : "bg-surface-2 text-ink hover:bg-surface-border"
+                }`}
+              >
+                {te.viewGrouped} ({data.groups.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setViewMode("all");
+                  setShowAllRows(false);
+                }}
+                className={`border-l border-surface-border px-3 py-1.5 font-body text-[13px] font-semibold transition-colors ${
+                  viewMode === "all"
+                    ? "bg-red text-white"
+                    : "bg-surface-2 text-ink hover:bg-surface-border"
+                }`}
+              >
+                {te.viewAll} ({data.events.length})
+              </button>
+            </div>
+          </div>
 
-      {/* Cohort Retention */}
-      <section className={loading ? "pointer-events-none opacity-50" : ""}>
-        <h2 className="mb-3 font-display text-[16px] font-bold text-ink">{te.cohortTitle}</h2>
-        <div className="card p-4">
-          <p className="mb-3 font-body text-[13px] text-ink-soft">{te.cohortDesc}</p>
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-left">
-              <thead>
-                <tr className="border-b border-surface-border">
-                  <th className="sticky left-0 z-10 min-w-[8rem] bg-surface px-3 py-2 font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
-                    {te.cohortFirstEvent}
-                  </th>
-                  <th className="px-3 py-2 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
-                    {te.cohortPeople}
-                  </th>
-                  {data.groups.slice(1).map((g, i) => (
-                    <th
-                      key={i}
-                      className="px-3 py-2 text-center font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint"
-                      title={g.groupLabel}
-                    >
-                      +{i + 1}
+          {/* KPI Cards */}
+          <section className={loading ? "pointer-events-none opacity-50" : ""}>
+            <h2 className="mb-3 font-display text-[16px] font-bold text-ink">{te.quickAnswers}</h2>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <KpiCard
+                value={formatCount(data.totalPeople, lang)}
+                label={te.kpiAttended}
+                tone="green"
+              />
+              <KpiCard
+                value={`${formatCount(data.returningPeople, lang)} (${formatPct(data.returningPct, lang)})`}
+                label={te.kpiReturned}
+                tone="green"
+              />
+              <KpiCard
+                value={
+                  data.frequentPeople > 0
+                    ? formatCount(data.frequentPeople, lang)
+                    : `${data.avgGroupsPerPerson}`
+                }
+                label={
+                  data.frequentPeople > 0
+                    ? te.kpiFrequent.replace("{avg}", String(data.avgGroupsPerPerson))
+                    : te.kpiAvgEvents
+                }
+                tone={data.frequentPeople > 0 ? "green" : "amber"}
+              />
+            </div>
+          </section>
+
+          {/* Attendance Table */}
+          <section className={loading ? "pointer-events-none opacity-50" : ""}>
+            <h2 className="mb-3 font-display text-[16px] font-bold text-ink">{te.attendance}</h2>
+            <div className="card overflow-x-auto p-0">
+              <table className="w-full border-collapse text-left">
+                <thead>
+                  <tr className="border-b border-surface-border">
+                    <th className="px-4 py-3 font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+                      {viewMode === "groups" ? te.thEvent : te.thSubEvent}
                     </th>
+                    {viewMode === "groups" && (
+                      <th className="px-4 py-3 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+                        {te.thVariants}
+                      </th>
+                    )}
+                    <th className="px-4 py-3 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+                      Total
+                    </th>
+                    <th className="px-4 py-3 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+                      {te.thNew}
+                    </th>
+                    <th className="px-4 py-3 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+                      {te.thReturning}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visible.map((ev, i) => (
+                    <AttendanceRow
+                      key={ev.key}
+                      item={ev}
+                      group={
+                        viewMode === "groups" ? data.groups.find((g) => g.groupKey === ev.key) : undefined
+                      }
+                      isLast={i === visible.length - 1}
+                      isFirst={sorted.indexOf(ev) === 0}
+                      showVariants={viewMode === "groups"}
+                      lang={lang}
+                    />
                   ))}
-                </tr>
-              </thead>
-              <tbody>
-                {data.cohort.map((row, ri) => (
-                  <tr
-                    key={row.cohortEvent}
-                    className={
-                      ri < data.cohort.length - 1 ? "border-b border-surface-border/50" : ""
-                    }
+                </tbody>
+              </table>
+            </div>
+
+            {hasMore && (
+              <button
+                type="button"
+                onClick={() => setShowAllRows(!showAllRows)}
+                className="mt-2 font-body text-[13px] font-semibold text-green hover:underline print:hidden"
+              >
+                {showAllRows
+                  ? te.showTop.replace("{n}", String(DEFAULT_ROWS))
+                  : te.showAll.replace("{n}", String(sorted.length))}
+              </button>
+            )}
+
+            {/* Horizontal stacked bars */}
+            <div className="mt-4 space-y-2">
+              {visible.map((ev) => (
+                <div
+                  key={ev.key}
+                  className="grid grid-cols-[7rem_1fr_auto] items-center gap-2 sm:grid-cols-[10rem_1fr_auto]"
+                >
+                  <span
+                    className="truncate font-body text-[12px] font-semibold text-ink"
+                    title={ev.label}
                   >
-                    <td className="sticky left-0 z-10 bg-surface px-3 py-2 font-body text-[13px] font-semibold text-ink">
-                      {row.cohortLabel}
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono text-[13px] tabular-nums text-ink">
-                      {formatCount(row.cohortSize, lang)}
-                    </td>
-                    {data.groups.slice(1).map((g, i) => {
-                      if (i >= row.retention.length)
-                        return <td key={i} className="px-3 py-2" />;
-                      const pct = row.retention[i];
-                      const abs = row.retentionAbs[i];
-                      const tooltip = `${abs} ${te.cohortOf} ${row.cohortSize} ${te.cohortAttendees} ${row.cohortLabel} ${te.cohortAlsoAttended} ${g.groupLabel} (${formatPct(pct, lang)})`;
-                      return (
-                        <td key={i} className="px-3 py-2 text-center">
-                          <span
-                            className="inline-block cursor-default rounded-sm px-2 py-0.5 font-display text-[12px] font-bold"
-                            title={tooltip}
-                            style={{
-                              backgroundColor: cohortCellBg(pct),
-                              color: cohortCellFg(pct),
-                            }}
-                          >
-                            {pct > 0 ? (
-                              formatPct(pct, lang)
-                            ) : (
-                              <span className="text-ink-faint">&mdash;</span>
-                            )}
-                          </span>
+                    {ev.label}
+                  </span>
+                  <div className="flex h-4 overflow-hidden rounded-full bg-surface-2">
+                    {ev.returning > 0 && (
+                      <span
+                        className="block h-full bg-green"
+                        style={{ width: `${(ev.returning / maxTotal) * 100}%` }}
+                        title={`${te.legendReturning}: ${ev.returning}`}
+                      />
+                    )}
+                    <span
+                      className="block h-full bg-ink-faint/30"
+                      style={{ width: `${(ev.newCount / maxTotal) * 100}%` }}
+                      title={`${te.legendNew}: ${ev.newCount}`}
+                    />
+                  </div>
+                  <span className="whitespace-nowrap font-mono text-[11px] text-ink-faint">
+                    {formatCount(ev.total, lang)}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-3 flex gap-4">
+              <span className="flex items-center gap-1.5 font-body text-[11px] text-ink-soft">
+                <span className="inline-block h-3 w-3 rounded-sm bg-green" aria-hidden />{" "}
+                {te.legendReturning}
+              </span>
+              <span className="flex items-center gap-1.5 font-body text-[11px] text-ink-soft">
+                <span className="inline-block h-3 w-3 rounded-sm bg-ink-faint/30" aria-hidden />{" "}
+                {te.legendNew}
+              </span>
+            </div>
+          </section>
+
+          {/* Key Insights */}
+          <KeyInsights insights={data.insights} te={te} />
+        </>
+      )}
+
+      {/* ── Tab: Retention ── */}
+      {activeTab === "retention" && (
+        <>
+          {/* Cohort Retention */}
+          <section className={loading ? "pointer-events-none opacity-50" : ""}>
+            <h2 className="mb-3 font-display text-[16px] font-bold text-ink">{te.cohortTitle}</h2>
+            <div className="card p-4">
+              <p className="mb-3 font-body text-[13px] text-ink-soft">{te.cohortDesc}</p>
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-left">
+                  <thead>
+                    <tr className="border-b border-surface-border">
+                      <th className="sticky left-0 z-10 min-w-[8rem] bg-surface px-3 py-2 font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+                        {te.cohortFirstEvent}
+                      </th>
+                      <th className="px-3 py-2 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+                        {te.cohortPeople}
+                      </th>
+                      {data.groups.slice(1).map((g, i) => (
+                        <th
+                          key={i}
+                          className="px-3 py-2 text-center font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint"
+                          title={g.groupLabel}
+                        >
+                          +{i + 1}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.cohort.map((row, ri) => (
+                      <tr
+                        key={row.cohortEvent}
+                        className={
+                          ri < data.cohort.length - 1 ? "border-b border-surface-border/50" : ""
+                        }
+                      >
+                        <td className="sticky left-0 z-10 bg-surface px-3 py-2 font-body text-[13px] font-semibold text-ink">
+                          {row.cohortLabel}
                         </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="mt-3 flex flex-wrap gap-3 font-body text-[11px] text-ink-faint">
-            <span className="flex items-center gap-1">
-              <span className="inline-block h-3 w-3 rounded-sm bg-red/25" aria-hidden /> 0–5%
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="inline-block h-3 w-3 rounded-sm bg-amber/30" aria-hidden /> 5–15%
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="inline-block h-3 w-3 rounded-sm bg-green/35" aria-hidden /> &gt;15%
-            </span>
-          </div>
-        </div>
-      </section>
+                        <td className="px-3 py-2 text-right font-mono text-[13px] tabular-nums text-ink">
+                          {formatCount(row.cohortSize, lang)}
+                        </td>
+                        {data.groups.slice(1).map((g, i) => {
+                          if (i >= row.retention.length)
+                            return <td key={i} className="px-3 py-2" />;
+                          const pct = row.retention[i];
+                          const abs = row.retentionAbs[i];
+                          const tooltip = `${abs} ${te.cohortOf} ${row.cohortSize} ${te.cohortAttendees} ${row.cohortLabel} ${te.cohortAlsoAttended} ${g.groupLabel} (${formatPct(pct, lang)})`;
+                          return (
+                            <td key={i} className="px-3 py-2 text-center">
+                              <span
+                                className="inline-block cursor-default rounded-sm px-2 py-0.5 font-display text-[12px] font-bold"
+                                title={tooltip}
+                                style={{
+                                  backgroundColor: cohortCellBg(pct),
+                                  color: cohortCellFg(pct),
+                                }}
+                              >
+                                {pct > 0 ? (
+                                  formatPct(pct, lang)
+                                ) : (
+                                  <span className="text-ink-faint">&mdash;</span>
+                                )}
+                              </span>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-3 font-body text-[11px] text-ink-faint">
+                <span className="flex items-center gap-1">
+                  <span className="inline-block h-3 w-3 rounded-sm bg-red/25" aria-hidden /> 0–5%
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="inline-block h-3 w-3 rounded-sm bg-amber/30" aria-hidden /> 5–15%
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="inline-block h-3 w-3 rounded-sm bg-green/35" aria-hidden /> &gt;15%
+                </span>
+              </div>
+            </div>
+          </section>
 
-      {/* Key Insights */}
-      <KeyInsights insights={data.insights} te={te} />
-
-      {/* Churn */}
-      {data.churn.length > 0 && (
-        <section className={loading ? "pointer-events-none opacity-50" : ""}>
-          <h2 className="mb-3 font-display text-[16px] font-bold text-ink">
-            <TrendingDown className="mr-1.5 inline h-5 w-5 text-red" aria-hidden />
-            {te.churnTitle}
-          </h2>
-          <div className="card overflow-x-auto p-0">
-            <table className="w-full border-collapse text-left">
-              <thead>
-                <tr className="border-b border-surface-border">
-                  <th className="px-4 py-3 font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
-                    Event
-                  </th>
-                  <th className="px-4 py-3 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
-                    Total
-                  </th>
-                  <th className="px-4 py-3 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
-                    {te.churnNotReturned}
-                  </th>
-                  <th className="px-4 py-3 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
-                    %
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.churn.map((row, i) => (
-                  <tr
-                    key={row.event}
-                    className={
-                      i < data.churn.length - 1 ? "border-b border-surface-border/50" : ""
-                    }
-                  >
-                    <td className="px-4 py-2.5 font-body text-[13px] font-semibold text-ink">
-                      {row.label}
-                    </td>
-                    <td className="px-4 py-2.5 text-right font-mono text-[13px] tabular-nums text-ink">
-                      {formatCount(row.total, lang)}
-                    </td>
-                    <td className="px-4 py-2.5 text-right font-mono text-[13px] tabular-nums text-red">
-                      {formatCount(row.notReturned, lang)}
-                    </td>
-                    <td className="px-4 py-2.5 text-right font-mono text-[13px] tabular-nums text-ink-soft">
-                      {formatPct(row.notReturnedPct, lang)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {data.skipAfterOneReturn > 0 && (
-            <p className="mt-3 font-body text-[13px] text-ink-soft">
-              {te.churnSkipReturn.replace("{n}", formatCount(data.skipAfterOneReturn, lang))}
-            </p>
+          {/* Lifecycle Funnel */}
+          {data.funnel.stages.length > 0 && (
+            <FunnelSection funnel={data.funnel} lang={lang} te={te} loading={loading} />
           )}
-        </section>
+
+          {/* Churn */}
+          {data.churn.length > 0 && (
+            <section className={loading ? "pointer-events-none opacity-50" : ""}>
+              <h2 className="mb-3 font-display text-[16px] font-bold text-ink">
+                <TrendingDown className="mr-1.5 inline h-5 w-5 text-red" aria-hidden />
+                {te.churnTitle}
+              </h2>
+              <div className="card overflow-x-auto p-0">
+                <table className="w-full border-collapse text-left">
+                  <thead>
+                    <tr className="border-b border-surface-border">
+                      <th className="px-4 py-3 font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+                        Event
+                      </th>
+                      <th className="px-4 py-3 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+                        Total
+                      </th>
+                      <th className="px-4 py-3 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+                        {te.churnNotReturned}
+                      </th>
+                      <th className="px-4 py-3 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+                        %
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.churn.map((row, i) => (
+                      <tr
+                        key={row.event}
+                        className={
+                          i < data.churn.length - 1 ? "border-b border-surface-border/50" : ""
+                        }
+                      >
+                        <td className="px-4 py-2.5 font-body text-[13px] font-semibold text-ink">
+                          {row.label}
+                        </td>
+                        <td className="px-4 py-2.5 text-right font-mono text-[13px] tabular-nums text-ink">
+                          {formatCount(row.total, lang)}
+                        </td>
+                        <td className="px-4 py-2.5 text-right font-mono text-[13px] tabular-nums text-red">
+                          {formatCount(row.notReturned, lang)}
+                        </td>
+                        <td className="px-4 py-2.5 text-right font-mono text-[13px] tabular-nums text-ink-soft">
+                          {formatPct(row.notReturnedPct, lang)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {data.skipAfterOneReturn > 0 && (
+                <p className="mt-3 font-body text-[13px] text-ink-soft">
+                  {te.churnSkipReturn.replace("{n}", formatCount(data.skipAfterOneReturn, lang))}
+                </p>
+              )}
+            </section>
+          )}
+
+          {/* Overlap Matrix */}
+          {data.overlapMatrix.groupKeys.length >= 2 && (
+            <OverlapSection matrix={data.overlapMatrix} lang={lang} te={te} loading={loading} />
+          )}
+        </>
       )}
 
-      {/* Demographics */}
-      {data.demographics.length > 0 && (
-        <DemographicsSection demographics={data.demographics} lang={lang} te={te} loading={loading} />
+      {/* ── Tab: Demographics ── */}
+      {activeTab === "demographics" && (
+        <>
+          {data.demographics.length > 0 && (
+            <DemographicsSection demographics={data.demographics} lang={lang} te={te} loading={loading} />
+          )}
+
+          {data.geoExpansion.groups.length > 0 && (
+            <GeoExpansionSection geo={data.geoExpansion} lang={lang} te={te} loading={loading} />
+          )}
+        </>
       )}
 
-      {/* Cross-Event Comparison */}
-      {data.comparison && (
-        <ComparisonSection comparison={data.comparison} lang={lang} te={te} loading={loading} />
+      {/* ── Tab: Trends ── */}
+      {activeTab === "trends" && (
+        <>
+          {data.categoryGrowth.length > 0 && (
+            <CategoryGrowthSection rows={data.categoryGrowth} lang={lang} te={te} loading={loading} />
+          )}
+
+          {data.comparison && (
+            <ComparisonSection comparison={data.comparison} lang={lang} te={te} loading={loading} />
+          )}
+        </>
       )}
 
-      {/* A: Lifecycle Funnel */}
-      {data.funnel.stages.length > 0 && (
-        <FunnelSection funnel={data.funnel} lang={lang} te={te} loading={loading} />
-      )}
-
-      {/* B: Category Growth */}
-      {data.categoryGrowth.length > 0 && (
-        <CategoryGrowthSection rows={data.categoryGrowth} lang={lang} te={te} loading={loading} />
-      )}
-
-      {/* C: Overlap Matrix */}
-      {data.overlapMatrix.groupKeys.length >= 2 && (
-        <OverlapSection matrix={data.overlapMatrix} lang={lang} te={te} loading={loading} />
-      )}
-
-      {/* D: Revenue */}
-      {data.revenue && (
-        <RevenueSection revenue={data.revenue} lang={lang} te={te} loading={loading} />
-      )}
-
-      {/* E: Geographic Expansion */}
-      {data.geoExpansion.groups.length > 0 && (
-        <GeoExpansionSection geo={data.geoExpansion} lang={lang} te={te} loading={loading} />
-      )}
-
-      {/* Expandable sections */}
+      {/* Data Notes */}
       <ExpandableSection title={te.dataNotes} defaultOpen={false}>
         <div className="space-y-2 font-body text-[13px] text-ink-soft">
           <p>{te.dataNote1}</p>
@@ -1769,93 +1829,6 @@ function OverlapSection({
           </span>
         </div>
       </div>
-    </section>
-  );
-}
-
-/* ── D: Revenue Section ── */
-
-function formatIdr(value: number, lang: Lang): string {
-  return `Rp ${formatCount(value, lang)}`;
-}
-
-function RevenueSection({
-  revenue,
-  lang,
-  te,
-  loading,
-}: {
-  revenue: RevenueAnalysis;
-  lang: Lang;
-  te: Te;
-  loading: boolean;
-}) {
-  return (
-    <section className={loading ? "pointer-events-none opacity-50" : ""}>
-      <h2 className="mb-3 font-display text-[16px] font-bold text-ink">
-        <DollarSign className="mr-1.5 inline h-5 w-5 text-green" aria-hidden />
-        {te.revenueTitle}
-      </h2>
-
-      {/* Overall KPIs */}
-      <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <KpiCard value={formatIdr(revenue.overallTotal, lang)} label={te.revenueTotal} tone="green" />
-        <KpiCard value={formatIdr(revenue.overallAvg, lang)} label={te.revenueAvg} tone="green" />
-        <KpiCard value={formatIdr(revenue.overallMedian, lang)} label={te.revenueMedian} tone="green" />
-      </div>
-
-      {/* Per-group table */}
-      <div className="card overflow-x-auto p-0">
-        <table className="w-full border-collapse text-left">
-          <thead>
-            <tr className="border-b border-surface-border">
-              <th className="px-4 py-3 font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
-                Event
-              </th>
-              <th className="px-4 py-3 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
-                {te.revenueTotal}
-              </th>
-              <th className="px-4 py-3 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
-                {te.revenueAvg}
-              </th>
-              <th className="px-4 py-3 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
-                {te.revenueMedian}
-              </th>
-              <th className="px-4 py-3 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
-                {te.revenueNew}
-              </th>
-              <th className="px-4 py-3 text-right font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
-                {te.revenueReturning}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {revenue.groups.map((g, i) => (
-              <tr key={g.groupKey} className={i < revenue.groups.length - 1 ? "border-b border-surface-border/50" : ""}>
-                <td className="px-4 py-2.5 font-body text-[13px] font-semibold text-ink">{g.groupLabel}</td>
-                <td className="px-4 py-2.5 text-right font-mono text-[13px] tabular-nums text-ink">
-                  {g.totalRevenue > 0 ? formatIdr(g.totalRevenue, lang) : "—"}
-                </td>
-                <td className="px-4 py-2.5 text-right font-mono text-[12px] tabular-nums text-ink-soft">
-                  {g.avgRevenue > 0 ? formatIdr(g.avgRevenue, lang) : "—"}
-                </td>
-                <td className="px-4 py-2.5 text-right font-mono text-[12px] tabular-nums text-ink-soft">
-                  {g.medianRevenue > 0 ? formatIdr(g.medianRevenue, lang) : "—"}
-                </td>
-                <td className="px-4 py-2.5 text-right font-mono text-[12px] tabular-nums text-ink-soft">
-                  {g.newRevenue > 0 ? formatIdr(g.newRevenue, lang) : "—"}
-                </td>
-                <td className="px-4 py-2.5 text-right font-mono text-[12px] tabular-nums text-green">
-                  {g.returningRevenue > 0 ? formatIdr(g.returningRevenue, lang) : "—"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p className="mt-2 font-body text-[11px] text-ink-faint">
-        {te.revenuePeople.replace("{n}", formatCount(revenue.groups.reduce((s, g) => s + g.count, 0), lang))}
-      </p>
     </section>
   );
 }

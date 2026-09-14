@@ -103,24 +103,6 @@ export interface OverlapMatrix {
   pcts: number[][];
 }
 
-export interface RevenueGroup {
-  groupKey: string;
-  groupLabel: string;
-  totalRevenue: number;
-  avgRevenue: number;
-  medianRevenue: number;
-  newRevenue: number;
-  returningRevenue: number;
-  count: number;
-}
-
-export interface RevenueAnalysis {
-  groups: RevenueGroup[];
-  overallTotal: number;
-  overallAvg: number;
-  overallMedian: number;
-}
-
 export interface GeoCity {
   city: string;
   count: number;
@@ -157,7 +139,6 @@ export interface EventAnalyticsData {
   funnel: LifecycleFunnel;
   categoryGrowth: CategoryGrowthRow[];
   overlapMatrix: OverlapMatrix;
-  revenue: RevenueAnalysis | null;
   geoExpansion: GeoExpansion;
 }
 
@@ -190,21 +171,17 @@ export async function fetchEventAnalytics(admin: AdminClient, filter?: EventAnal
   // Source A: master_customer event tags + demographics (paged)
   const tagsByPerson = new Map<string, string[]>();
   const personDemo = new Map<string, { gender: string | null; dob: string | null; city: string | null }>();
-  const personRevenue = new Map<string, number>();
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await admin
       .from("master_customer")
-      .select("customer_id, tags, gender, date_of_birth, city, lifetime_value")
+      .select("customer_id, tags, gender, date_of_birth, city")
       .range(from, from + PAGE - 1);
     if (error) throw new Error("Failed to fetch master_customer");
-    const rows = (data ?? []) as { customer_id: string; tags: string[] | null; gender: string | null; date_of_birth: string | null; city: string | null; lifetime_value: number | null }[];
+    const rows = (data ?? []) as { customer_id: string; tags: string[] | null; gender: string | null; date_of_birth: string | null; city: string | null }[];
     for (const row of rows) {
       if (!row.customer_id) continue;
       if (row.gender || row.date_of_birth || row.city) {
         personDemo.set(row.customer_id, { gender: row.gender, dob: row.date_of_birth, city: row.city });
-      }
-      if (row.lifetime_value != null && row.lifetime_value > 0) {
-        personRevenue.set(row.customer_id, row.lifetime_value);
       }
       if (!row.tags) continue;
       const events = row.tags.filter((t: string) => t.startsWith("event:"));
@@ -543,7 +520,6 @@ export async function fetchEventAnalytics(admin: AdminClient, filter?: EventAnal
   const funnel = computeLifecycleFunnel(peopleGroups, sortedGroupKeys, groupIndex);
   const categoryGrowth = computeCategoryGrowth(groups);
   const overlapMatrix = computeOverlapMatrix(sortedGroupKeys, groupTotals, groupLabelMap);
-  const revenue = computeRevenueAnalysis(sortedGroupKeys, groupTotals, peopleGroups, groupIndex, peopleCids, personRevenue, groupLabelMap);
   const geoExpansion = computeGeoExpansion(sortedGroupKeys, groupTotals, peopleCids, personDemo, groupLabelMap);
 
   const analyticsBase = {
@@ -562,7 +538,6 @@ export async function fetchEventAnalytics(admin: AdminClient, filter?: EventAnal
     funnel,
     categoryGrowth,
     overlapMatrix,
-    revenue,
     geoExpansion,
   };
 
@@ -849,76 +824,6 @@ function computeOverlapMatrix(
     groupLabels: sortedGroupKeys.map((k) => groupLabelMap.get(k) ?? formatSlugLabel(k)),
     cells,
     pcts,
-  };
-}
-
-function computeRevenueAnalysis(
-  sortedGroupKeys: string[],
-  groupTotals: Map<string, Set<number>>,
-  peopleGroups: string[][],
-  groupIndex: Map<string, number>,
-  peopleCids: string[],
-  personRevenue: Map<string, number>,
-  groupLabelMap: Map<string, string>,
-): RevenueAnalysis | null {
-  if (personRevenue.size === 0) return null;
-
-  const allValues: number[] = [];
-  const revenueGroups: RevenueGroup[] = [];
-
-  for (const gk of sortedGroupKeys) {
-    const people = groupTotals.get(gk)!;
-    const values: number[] = [];
-    let newRev = 0;
-    let retRev = 0;
-    const gIdx = groupIndex.get(gk) ?? 0;
-
-    people.forEach((pi) => {
-      const cid = peopleCids[pi];
-      const rev = cid ? personRevenue.get(cid) : undefined;
-      if (rev == null || rev <= 0) return;
-      values.push(rev);
-      allValues.push(rev);
-
-      const pg = peopleGroups[pi];
-      const firstIdx = Math.min(...pg.map((g) => groupIndex.get(g) ?? Infinity));
-      if (gIdx === firstIdx) newRev += rev;
-      else retRev += rev;
-    });
-
-    const totalRev = values.reduce((s, v) => s + v, 0);
-    const sorted = values.slice().sort((a, b) => a - b);
-    const median = sorted.length > 0
-      ? sorted.length % 2 === 1
-        ? sorted[Math.floor(sorted.length / 2)]
-        : Math.round((sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2)
-      : 0;
-
-    revenueGroups.push({
-      groupKey: gk,
-      groupLabel: groupLabelMap.get(gk) ?? formatSlugLabel(gk),
-      totalRevenue: totalRev,
-      avgRevenue: values.length > 0 ? Math.round(totalRev / values.length) : 0,
-      medianRevenue: median,
-      newRevenue: newRev,
-      returningRevenue: retRev,
-      count: values.length,
-    });
-  }
-
-  if (allValues.length === 0) return null;
-
-  const overallTotal = allValues.reduce((s, v) => s + v, 0);
-  const overallSorted = allValues.slice().sort((a, b) => a - b);
-  const overallMedian = overallSorted.length % 2 === 1
-    ? overallSorted[Math.floor(overallSorted.length / 2)]
-    : Math.round((overallSorted[overallSorted.length / 2 - 1] + overallSorted[overallSorted.length / 2]) / 2);
-
-  return {
-    groups: revenueGroups,
-    overallTotal,
-    overallAvg: Math.round(overallTotal / allValues.length),
-    overallMedian,
   };
 }
 
