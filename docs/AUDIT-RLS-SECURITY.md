@@ -85,7 +85,7 @@ adalah satu-satunya yang bisa mengakses.
 
 | Tabel | RLS | Risiko | Catatan |
 |---|---|---|---|
-| `staging_20fit_data` | **OFF** | **Sedang (T-02)** — 88.536 baris PII (email, nama, RFM, tanggal lahir) bisa dibaca siapa pun dengan anon key. Bypass masking dan audit CRM. | Terdokumentasi di `docs/RISIKO-masking-bypass.md` |
+| `staging_20fit_data` | **OFF** | **Sedang (T-02)** — 88.536 baris PII (email, nama, RFM, tanggal lahir) bisa dibaca siapa pun dengan anon key. Bypass masking dan audit CRM. | Audit detail di §E. Memo risiko di `docs/RISIKO-masking-bypass.md` |
 
 ### A.5 Storage Bucket Policy
 
@@ -414,4 +414,255 @@ terhadap state aktual database produksi (dengan menjalankan query di C.2 Langkah
 dilakukan sebelum eksekusi perubahan.*
 
 ⏱ DIUKUR: 13 September 2026
-⏱ DIPERBARUI: 13 September 2026 — P0-6 SELESAI, add-contact dimigrasikan ke RPC
+⏱ DIPERBARUI: 14 September 2026 — T-02 audit detail `staging_20fit_data`
+
+---
+
+## E. Audit Detail T-02 — `staging_20fit_data`
+
+> **Tanggal audit:** 14 September 2026
+> **Auditor:** Codebase static analysis (grep seluruh repo)
+> **Status:** AUDIT SAJA — tidak ada perubahan kode, RLS, atau grant
+
+### E.1 Status RLS dan Grants Saat Ini
+
+| Aspek | Status |
+|---|---|
+| **RLS** | **OFF** — `staging_20fit_data` tidak pernah menjalankan `ALTER TABLE … ENABLE ROW LEVEL SECURITY` di migrasi mana pun. Tidak ada `CREATE TABLE` untuk tabel ini di codebase CRM — tabel dibuat di luar repo ini (impor eksternal). |
+| **Policies** | **0** — tidak ada policy sama sekali (konsekuensi dari RLS OFF) |
+| **Grant anon** | **Diasumsikan SELECT** — RLS OFF + tabel di schema `public` = PostgREST mengekspos tabel ke role `anon` secara default. Terdokumentasi di `docs/RISIKO-masking-bypass.md` dan diverifikasi via PoC `GET /rest/v1/staging_20fit_data` (11 Agu 2026) |
+| **Grant authenticated** | **Diasumsikan SELECT** — sama seperti anon, authenticated juga bisa baca |
+| **Grant service_role** | **BYPASSRLS** — service_role selalu bisa akses (bawaan Supabase) |
+
+**Catatan:** Karena tabel ini dibuat di luar migrasi CRM, grant eksak harus diverifikasi langsung di database produksi:
+```sql
+SELECT grantee, privilege_type
+FROM information_schema.table_privileges
+WHERE table_name = 'staging_20fit_data'
+  AND grantee IN ('anon', 'authenticated', 'service_role');
+
+SELECT relname, relrowsecurity
+FROM pg_class
+WHERE relname = 'staging_20fit_data';
+```
+
+### E.2 Semua Penggunaan `staging_20fit_data` di Codebase
+
+#### E.2.1 Kode Aplikasi (Runtime)
+
+| # | File | Operasi | Client | Fungsi |
+|---|---|---|---|---|
+| 1 | `lib/crm/staging.ts` | **SELECT** (count, select kolom, paged read) | `createAdminClient()` (service role) | Layer baca utama: `fetchProfileImport()`, `fetchStagingImportCoverage()`, `fetchStagingDashboard()`, `fetchStagingImportDob()`, `fetchStagingRfm()` |
+| 2 | `lib/crm/staging.ts` | **SELECT** via RPC `crm_staging_segment_ids` | `createAdminClient()` (service role) | Segment resolver: `resolveStagingRfmCustomerIds()`, `resolveStagingProgramCustomerIds()` |
+| 3 | `app/api/audience/[id]/route.ts:134–143` | **SELECT** (indirect, via `fetchProfileImport`) | `createAdminClient()` (service role) | Profile detail: tanggal lahir, kota, RFM, program participation |
+| 4 | `lib/crm/staging-constants.ts` | Tidak ada query — hanya konstanta | N/A | Definisi kolom, program list, RFM values, date parser |
+| 5 | `components/audience/profile-detail.tsx:1260–1315` | Tidak ada query — hanya render | N/A | UI rendering data impor (program participation) |
+
+**Semua query runtime menggunakan `createAdminClient()` (service role).** Tidak ada satu pun query ke `staging_20fit_data` yang menggunakan anon key atau authenticated client dari kode CRM.
+
+#### E.2.2 SQL Migrations / Functions (Database-side)
+
+| # | Migrasi | Operasi | Konteks |
+|---|---|---|---|
+| 1 | `20260813000000_create_crm_staging_segment_ids.sql` | **SELECT** (semi-join) | RPC `crm_staging_segment_ids` — SECURITY DEFINER, EXECUTE hanya service_role. Join `staging_20fit_data.Email` ke `master_customer.email_normalized` untuk resolve segment criteria (RFM/program) |
+| 2 | `20260813091255_create_crm_customer_mirror.sql:131` | **SELECT** | Matview `crm_customer_mirror` definition — LEFT JOIN ke staging untuk DOB, RFM, Fitco marker |
+| 3 | `20260814040554_add_is_fitco_member_matched_to_crm_customer_mirror.sql:87–93` | **SELECT** | Matview refresh — same LEFT JOIN pattern |
+| 4 | `20260818041017_precompute_dashboard_stats_at_refresh.sql:128,194` | **SELECT** | Dashboard stats precompute — count DOB rows, staging coverage |
+| 5 | `20260821060000_unify_identity_sources_aplus.sql:323–329,429` | **SELECT** | Matview definition — LEFT JOIN untuk RFM, DOB, Fitco marker |
+| 6 | `20260907060000_crm_mirror_bod_daily_stats.sql:132` | **SELECT** | BOD daily stats — staging DOB count |
+
+**Semua akses database-side adalah SELECT.** Tidak ada INSERT, UPDATE, atau DELETE ke `staging_20fit_data` dari migrasi CRM mana pun. Semua fungsi yang membaca staging berjalan sebagai SECURITY DEFINER (service_role).
+
+#### E.2.3 RPC yang Reference Tabel Ini
+
+| RPC | Migrasi | Akses | EXECUTE Grant |
+|---|---|---|---|
+| `crm_staging_segment_ids` | Migrasi 14 | SELECT (semi-join staging↔master) | service_role saja |
+| `crm_refresh_customer_mirror` (implicit) | Matview refresh | SELECT (LEFT JOIN) | service_role saja |
+
+#### E.2.4 Dokumentasi & Test
+
+| File | Konteks |
+|---|---|
+| `docs/RISIKO-masking-bypass.md` | Memo risiko T-02 lengkap |
+| `docs/ESKALASI-paparan-data-sensitif.md` | Eskalasi paparan PII |
+| `docs/MENUNGGU-TINDAKAN-MANUSIA.md` (B8) | Opsional: indeks email di staging |
+| `docs/riwayat/TEMUAN.md` (T-02) | Temuan asli Sprint 3B |
+| `docs/riwayat/FAKTA-DATA.md` | Fakta data: 88.536 baris |
+| `docs/RINGKASAN-SISTEM-CRM.md` | Arsitektur: staging sebagai sumber ekosistem |
+| `lib/crm/quality-types.ts` | Type definitions untuk coverage stats |
+| `lib/crm/dashboard-blocks.test.ts:79` | Test: memastikan staging tabel termasuk |
+| `lib/crm/segment.test.ts:33` | Test: staging segment criteria |
+| `lib/i18n/messages/id.ts`, `en.ts` | Label UI dan penjelasan staging |
+
+#### E.2.5 Apakah Ada Aplikasi/Service Lain?
+
+**Ya, kemungkinan besar.** Berdasarkan `docs/RISIKO-masking-bypass.md`:
+
+- Tabel dibuat di luar CRM (tidak ada `CREATE TABLE` di repo ini)
+- Project Supabase `cpvzwqptzcxnwzfzgrmt` dibagi oleh banyak aplikasi: arena, clinic, my20fit, shop, rb, dll.
+- Anon key yang sama dipakai semua aplikasi tersebut
+- **Tidak bisa dipastikan dari codebase CRM saja** apakah ada pipeline ETL, dashboard BI, atau service lain yang membaca `staging_20fit_data` menggunakan anon/authenticated key
+- **Ini harus diinvestigasi di luar repo CRM sebelum mengubah RLS/grants**
+
+### E.3 Tabel `staging_*` Lain
+
+Dari pencarian menyeluruh di seluruh codebase:
+
+| Tabel | Ditemukan di codebase? | RLS | Catatan |
+|---|---|---|---|
+| `staging_20fit_data` | Ya (lihat E.2) | **OFF** | Satu-satunya tabel `staging_*` yang direferensi di codebase CRM |
+| Tabel `staging_*` lain | **Tidak ditemukan** | — | Tidak ada `CREATE TABLE staging_*` di migrasi CRM. Tidak ada referensi ke tabel staging lain di kode aplikasi. |
+
+**Kesimpulan:** `staging_20fit_data` adalah satu-satunya tabel staging yang digunakan oleh CRM. Namun, karena tabel dibuat di luar CRM, mungkin ada tabel staging lain di database yang tidak direferensi repo ini. Verifikasi:
+```sql
+SELECT tablename
+FROM pg_tables
+WHERE schemaname = 'public'
+  AND tablename LIKE 'staging_%';
+```
+
+### E.4 Rekomendasi
+
+#### E.4.1 Apakah Aman untuk ENABLE RLS + REVOKE Grants?
+
+**Ya, AMAN untuk kode CRM.** Berdasarkan temuan E.2:
+
+1. **Semua** query ke `staging_20fit_data` dari kode CRM menggunakan `createAdminClient()` (service role yang bypass RLS)
+2. **Semua** fungsi SQL yang membaca staging adalah SECURITY DEFINER (berjalan sebagai owner/service_role)
+3. **Nol** query menggunakan anon atau authenticated client
+4. **Nol** operasi tulis — tabel hanya dibaca
+
+**Risiko** bukan dari CRM, tapi dari **aplikasi/pipeline lain** di project Supabase yang sama:
+- Pipeline ETL/ingestion yang mengisi tabel ini
+- Dashboard BI atau tool lain yang membaca tabel ini
+- Aplikasi lain (arena, clinic, my20fit, shop, rb) yang mungkin query tabel ini
+
+**Rekomendasi: investigasi di luar CRM WAJIB sebelum eksekusi.**
+
+#### E.4.2 SQL yang Direkomendasikan
+
+```sql
+-- ============================================================================
+-- T-02: Perketat akses staging_20fit_data
+-- GATED — JANGAN JALANKAN TANPA INVESTIGASI APLIKASI LAIN (E.4.1)
+-- ============================================================================
+
+-- LANGKAH 0: Audit sebelum perubahan
+-- Verifikasi grants saat ini:
+SELECT grantee, privilege_type
+FROM information_schema.table_privileges
+WHERE table_name = 'staging_20fit_data'
+  AND grantee IN ('anon', 'authenticated', 'service_role', 'postgres');
+
+-- Verifikasi RLS status:
+SELECT relname, relrowsecurity
+FROM pg_class WHERE relname = 'staging_20fit_data';
+
+-- Verifikasi apakah ada tabel staging lain:
+SELECT tablename FROM pg_tables
+WHERE schemaname = 'public' AND tablename LIKE 'staging_%';
+
+-- LANGKAH 1: Enable RLS
+ALTER TABLE public.staging_20fit_data ENABLE ROW LEVEL SECURITY;
+
+-- LANGKAH 2: Cabut grant dari anon & authenticated
+REVOKE ALL PRIVILEGES ON TABLE public.staging_20fit_data FROM anon, authenticated;
+
+-- LANGKAH 3: Grant eksplisit ke service_role (best practice, meskipun BYPASSRLS)
+GRANT SELECT ON TABLE public.staging_20fit_data TO service_role;
+-- HANYA SELECT — CRM tidak menulis ke tabel ini. Jika pipeline ETL perlu menulis,
+-- tambahkan INSERT/UPDATE sesuai kebutuhan pipeline.
+
+-- LANGKAH 4: Verifikasi setelah perubahan
+-- Harus 0 baris untuk anon/authenticated:
+SELECT grantee, privilege_type
+FROM information_schema.table_privileges
+WHERE table_name = 'staging_20fit_data'
+  AND grantee IN ('anon', 'authenticated');
+
+-- RLS harus ON:
+SELECT relname, relrowsecurity
+FROM pg_class WHERE relname = 'staging_20fit_data';
+-- relrowsecurity harus = true
+```
+
+#### E.4.3 Rollback Plan
+
+```sql
+-- ROLLBACK T-02 — Kembalikan jika ada pipeline/aplikasi lain yang rusak
+-- HANYA jalankan sebagai langkah darurat
+
+-- Kembalikan grant
+GRANT SELECT ON TABLE public.staging_20fit_data TO anon, authenticated;
+
+-- Matikan RLS kembali
+ALTER TABLE public.staging_20fit_data DISABLE ROW LEVEL SECURITY;
+
+-- CATATAN: rollback ini mengembalikan paparan PII 88.536 baris.
+-- Hanya jalankan jika pipeline kritis rusak, dan segera investigasi
+-- pipeline mana yang bergantung pada akses anon/authenticated.
+```
+
+#### E.4.4 Apakah Tabel Ini Masih Dibutuhkan?
+
+**Ya, masih aktif digunakan.** Tabel ini dibaca untuk:
+
+1. **Profile detail** — tanggal lahir (5.467 baris, master_customer punya 0), kota, RFM, program participation
+2. **Segment resolver** — RPC `crm_staging_segment_ids` melakukan semi-join staging↔master untuk filter RFM dan program
+3. **Dashboard** — statistik DOB coverage dan RFM spread
+4. **Materialized view** `crm_customer_mirror` — LEFT JOIN ke staging untuk DOB, RFM, Fitco marker (di-refresh tiap malam)
+5. **Quality page** — coverage stats, DOB parse quality metrics
+
+**Archive belum bisa dilakukan** selama data staging belum sepenuhnya dimigrasikan ke tabel `crm_*`. Secara khusus:
+- Tanggal lahir sudah ada jalur tulis ke `crm_profile_demographic` (via `crm_upsert_profile_demographic`), tapi belum di-backfill dari staging
+- RFM dan program participation belum ada tabel `crm_*` yang menyimpannya
+- Selama backfill belum selesai, staging tetap menjadi satu-satunya sumber data ini
+
+**Rekomendasi jangka panjang:**
+1. **Jangka pendek:** Enable RLS + REVOKE grants (setelah investigasi pipeline lain)
+2. **Jangka menengah:** Backfill DOB, RFM, program ke tabel `crm_*`
+3. **Jangka panjang:** Setelah backfill selesai dan terverifikasi, archive atau drop `staging_20fit_data`
+
+#### E.4.5 Urutan Eksekusi yang Aman
+
+```
+Fase 0: Investigasi (WAJIB sebelum perubahan)
+├── 0.1  Jalankan query audit (Langkah 0 di E.4.2)
+├── 0.2  Cari SEMUA aplikasi/pipeline di project Supabase yang query
+│        staging_20fit_data — terutama:
+│        ├── Pipeline ETL/ingestion yang mengisi tabel
+│        ├── Dashboard BI (Metabase, Retool, dll)
+│        ├── Aplikasi arena, clinic, my20fit, shop, rb
+│        └── Cron job atau edge function di luar CRM
+├── 0.3  Untuk setiap consumer yang ditemukan: apakah pakai service_role
+│        atau anon/authenticated? Jika anon/authenticated → akan putus
+└── 0.4  Cek Supabase Realtime subscription aktif ke staging_20fit_data
+
+Fase 1: Eksekusi (GATED — perlu persetujuan pemilik data)
+├── 1.1  ALTER TABLE … ENABLE ROW LEVEL SECURITY
+├── 1.2  REVOKE ALL dari anon & authenticated
+├── 1.3  GRANT SELECT ke service_role
+└── 1.4  Verifikasi (Langkah 4 di E.4.2)
+
+Fase 2: Verifikasi CRM (segera setelah Fase 1)
+├── 2.1  Buka /audience/[id] — cek section "Data Impor 20FIT"
+├── 2.2  Buka /quality — cek staging coverage stats
+├── 2.3  Buka /bod — cek dashboard cards (DOB, RFM)
+├── 2.4  Buat segment dengan kriteria RFM — cek jumlah match
+└── 2.5  Buat segment dengan kriteria program — cek jumlah match
+
+Fase 3: Verifikasi pipeline lain (jika ditemukan di Fase 0)
+└── 3.x  Per-pipeline: pastikan masih berfungsi setelah perubahan
+```
+
+### E.5 Ringkasan Risiko
+
+| Aspek | Status | Detail |
+|---|---|---|
+| **PII terpapar** | 88.536 baris | Nama, email, nomor telepon, tanggal lahir, kota, RFM, program |
+| **Siapa yang bisa akses** | Siapa pun dengan anon key | Anon key bersifat publik, ditanam di bundel klien semua aplikasi 20FIT |
+| **Bypass kontrol CRM** | Ya | Masking server-side, audit `list.viewed`, dan RBAC semua dilewati |
+| **Dampak ke kode CRM jika RLS ON** | **Nol** | Semua akses CRM via service_role (bypass RLS) |
+| **Dampak ke pipeline lain** | **Tidak diketahui** | Harus diinvestigasi (Fase 0.2) |
+| **Urgensi** | **Tinggi** | Setara dengan peluncuran fitur kontak (lihat `docs/RISIKO-masking-bypass.md`) |
