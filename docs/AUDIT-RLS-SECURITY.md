@@ -2,7 +2,7 @@
 
 > **Tanggal audit:** 13 September 2026
 > **Cakupan:** Semua tabel CRM di Supabase PostgreSQL
-> **Status:** P0-6 SELESAI (13 Sep 2026) — lihat §C.2
+> **Status:** P0-6 SELESAI (13 Sep 2026) — lihat §C.2 | T-02 SELESAI (14 Sep 2026) — lihat §A.4
 
 ---
 
@@ -85,7 +85,7 @@ adalah satu-satunya yang bisa mengakses.
 
 | Tabel | RLS | Risiko | Catatan |
 |---|---|---|---|
-| `staging_20fit_data` | **OFF** | **Sedang (T-02)** — 88.536 baris PII (email, nama, RFM, tanggal lahir) bisa dibaca siapa pun dengan anon key. Bypass masking dan audit CRM. | Terdokumentasi di `docs/RISIKO-masking-bypass.md` |
+| `staging_20fit_data` | ON | ~~**Sedang (T-02)**~~ **SELESAI 14 Sep 2026** — RLS ON, anon diblokir total, authenticated read-only (SELECT via policy `authenticated_read_only`), service_role full access. | Lihat `sql/20260914_fix_rls_staging_20fit_data.sql`. Memo risiko di `docs/RISIKO-masking-bypass.md` |
 
 ### A.5 Storage Bucket Policy
 
@@ -414,4 +414,4 @@ terhadap state aktual database produksi (dengan menjalankan query di C.2 Langkah
 dilakukan sebelum eksekusi perubahan.*
 
 ⏱ DIUKUR: 13 September 2026
-⏱ DIPERBARUI: 13 September 2026 — P0-6 SELESAI, add-contact dimigrasikan ke RPC
+⏱ DIPERBARUI: 14 September 2026 — T-02 SELESAI: staging_20fit_data RLS ON, anon diblokir, authenticated read-only
