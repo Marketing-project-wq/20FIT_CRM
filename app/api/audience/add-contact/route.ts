@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUserRole } from "@/lib/auth/current-role";
 import { canImportAudience } from "@/lib/auth/roles";
 import { normalizeEmail, normalizePhoneID } from "@/lib/crm/normalize";
+import { correctEmailDomainWithLog } from "@/lib/crm/email-domain-correct";
 import { isOperatorTag } from "@/lib/crm/tags";
 import { logApiFailure } from "@/lib/crm/failure-log";
 
@@ -53,13 +54,20 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "bad_json" }, { status: 400 });
   }
 
-  const emailRaw = typeof body.email === "string" ? body.email.trim() : "";
+  let emailRaw = typeof body.email === "string" ? body.email.trim() : "";
   const fullName = typeof body.fullName === "string" ? body.fullName.trim() : "";
   if (!emailRaw) {
     return NextResponse.json({ error: "email_required" }, { status: 400 });
   }
   if (!fullName) {
     return NextResponse.json({ error: "name_required" }, { status: 400 });
+  }
+
+  const domainFix = correctEmailDomainWithLog(emailRaw);
+  let domainCorrectionNote: string | null = null;
+  if (domainFix.corrected) {
+    domainCorrectionNote = `Email domain corrected: ${domainFix.originalDomain} → ${domainFix.correctedDomain}`;
+    emailRaw = domainFix.email;
   }
 
   const emailNorm = normalizeEmail(emailRaw);
@@ -214,5 +222,9 @@ export async function POST(req: Request) {
     // mirror refresh failure is not fatal
   }
 
-  return NextResponse.json({ ok: true, outcome });
+  return NextResponse.json({
+    ok: true,
+    outcome,
+    ...(domainCorrectionNote ? { note: domainCorrectionNote } : {}),
+  });
 }

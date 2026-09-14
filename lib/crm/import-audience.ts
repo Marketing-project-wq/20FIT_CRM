@@ -1,4 +1,5 @@
 import { normalizeEmail, normalizePhoneID } from "./normalize";
+import { correctEmailDomain } from "./email-domain-correct";
 import { isOperatorTag, parseTagCell, slugifyTagValue } from "./tags";
 
 /**
@@ -184,6 +185,13 @@ export function normalizeMappedRow(raw: Record<string, string>, mapping: ColumnM
       } else {
         nsInvalid.push(tag);
       }
+    }
+  }
+  if (email) {
+    const corrected = correctEmailDomain(email);
+    if (corrected !== email.trim().toLowerCase()) {
+      console.log(`[import] email domain corrected: ${email.trim().toLowerCase()} → ${corrected}`);
+      email = corrected;
     }
   }
   const phoneExcelBroken = isExcelBrokenPhone(phone);
