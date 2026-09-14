@@ -72,6 +72,18 @@ export interface EventComparison {
   demographicsB: DemographicBreakdown;
 }
 
+export type InsightSentiment = "positive" | "negative" | "neutral";
+export type InsightCategory = "growth" | "retention" | "demographic" | "action";
+
+export interface Insight {
+  category: InsightCategory;
+  icon: string;
+  labelKey: string;
+  textKey: string;
+  replacements: Record<string, string>;
+  sentiment: InsightSentiment;
+}
+
 export interface EventAnalyticsData {
   events: EventInfo[];
   groups: EventGroup[];
@@ -85,6 +97,7 @@ export interface EventAnalyticsData {
   skipAfterOneReturn: number;
   demographics: EventDemographic[];
   comparison: EventComparison | null;
+  insights: Insight[];
 }
 
 export interface EventAnalyticsFilter {
@@ -462,7 +475,7 @@ export async function fetchEventAnalytics(admin: AdminClient, filter?: EventAnal
     };
   }
 
-  return {
+  const analyticsBase = {
     events: eventInfos,
     groups,
     totalPeople,
@@ -476,9 +489,208 @@ export async function fetchEventAnalytics(admin: AdminClient, filter?: EventAnal
     demographics,
     comparison,
   };
+
+  return { ...analyticsBase, insights: generateInsights(analyticsBase) };
 }
 
-export { eventGroupKey };
+export { eventGroupKey, generateInsights };
+
+function generateInsights(data: Omit<EventAnalyticsData, "insights">): Insight[] {
+  const insights: Insight[] = [];
+  const MAX_INSIGHTS = 10;
+
+  // --- GROWTH & TREND ---
+
+  if (data.groups.length >= 2) {
+    const last = data.groups[data.groups.length - 1];
+    const prev = data.groups[data.groups.length - 2];
+    if (prev.total > 0) {
+      const growthPct = Math.round(((last.total - prev.total) / prev.total) * 1000) / 10;
+      if (growthPct > 0) {
+        insights.push({
+          category: "growth",
+          icon: "TrendingUp",
+          labelKey: "insightGrowthLabel",
+          textKey: "insightGrowthUp",
+          replacements: { pct: String(Math.abs(growthPct)), curr: last.groupLabel, prev: prev.groupLabel },
+          sentiment: "positive",
+        });
+      } else if (growthPct < -10) {
+        insights.push({
+          category: "growth",
+          icon: "TrendingDown",
+          labelKey: "insightGrowthLabel",
+          textKey: "insightGrowthDown",
+          replacements: { pct: String(Math.abs(growthPct)), curr: last.groupLabel, prev: prev.groupLabel },
+          sentiment: "negative",
+        });
+      }
+    }
+  }
+
+  if (data.groups.length >= 1) {
+    const best = data.groups.reduce((a, b) => (a.total > b.total ? a : b));
+    if (best.total > 0) {
+      insights.push({
+        category: "growth",
+        icon: "Trophy",
+        labelKey: "insightGrowthLabel",
+        textKey: "insightTopEvent",
+        replacements: { label: best.groupLabel, n: String(best.total) },
+        sentiment: "neutral",
+      });
+    }
+  }
+
+  // --- RETENTION ---
+
+  if (data.cohort.length >= 2) {
+    const first = data.cohort[0];
+    const second = data.cohort[1];
+    if (first.retention.length > 0 && second.retention.length > 0) {
+      const firstRet = first.retention[0];
+      const secondRet = second.retention[0];
+      if (secondRet < firstRet) {
+        insights.push({
+          category: "retention",
+          icon: "TrendingDown",
+          labelKey: "insightRetentionLabel",
+          textKey: "insightRetWeakening",
+          replacements: { a: first.cohortLabel, pctA: String(firstRet), b: second.cohortLabel, pctB: String(secondRet) },
+          sentiment: "negative",
+        });
+      } else if (secondRet > firstRet) {
+        insights.push({
+          category: "retention",
+          icon: "TrendingUp",
+          labelKey: "insightRetentionLabel",
+          textKey: "insightRetStrengthening",
+          replacements: { pctA: String(firstRet), b: second.cohortLabel, pctB: String(secondRet) },
+          sentiment: "positive",
+        });
+      }
+    }
+  }
+
+  if (data.churn.length > 0) {
+    const worst = data.churn.reduce((a, b) => (a.notReturnedPct > b.notReturnedPct ? a : b));
+    if (worst.notReturnedPct > 80) {
+      insights.push({
+        category: "retention",
+        icon: "AlertTriangle",
+        labelKey: "insightRetentionLabel",
+        textKey: "insightHighChurnNew",
+        replacements: { label: worst.label, pct: String(worst.notReturnedPct) },
+        sentiment: "negative",
+      });
+    }
+  }
+
+  if (data.returningPct >= 30) {
+    insights.push({
+      category: "retention",
+      icon: "Heart",
+      labelKey: "insightRetentionLabel",
+      textKey: "insightStrongLoyalty",
+      replacements: { pct: String(data.returningPct) },
+      sentiment: "positive",
+    });
+  }
+
+  // --- DEMOGRAPHIC ---
+
+  const allDemo = data.demographics;
+  if (allDemo.length > 0) {
+    let totalMale = 0, totalFemale = 0, totalDemo = 0;
+    for (const d of allDemo) {
+      totalMale += d.demographics.gender.male;
+      totalFemale += d.demographics.gender.female;
+      totalDemo += d.demographics.total;
+    }
+    if (totalDemo > 0) {
+      const malePct = Math.round((totalMale / totalDemo) * 1000) / 10;
+      const femalePct = Math.round((totalFemale / totalDemo) * 1000) / 10;
+      if (malePct > 70 || femalePct > 70) {
+        const dominant = malePct > femalePct ? "male" : "female";
+        const domPct = dominant === "male" ? malePct : femalePct;
+        insights.push({
+          category: "demographic",
+          icon: "Users",
+          labelKey: "insightDemographicLabel",
+          textKey: "insightGenderSkew",
+          replacements: { gender: dominant, pct: String(domPct) },
+          sentiment: "neutral",
+        });
+      }
+    }
+
+    const ageTotals = new Map<string, number>();
+    for (const d of allDemo) {
+      for (const ab of d.demographics.ageBrackets) {
+        if (ab.label === "Unknown") continue;
+        ageTotals.set(ab.label, (ageTotals.get(ab.label) ?? 0) + ab.count);
+      }
+    }
+    if (ageTotals.size > 0) {
+      let topBracket = "";
+      let topCount = 0;
+      ageTotals.forEach((count, label) => {
+        if (count > topCount) { topCount = count; topBracket = label; }
+      });
+      if (topBracket && totalDemo > 0) {
+        const bracketPct = Math.round((topCount / totalDemo) * 1000) / 10;
+        insights.push({
+          category: "demographic",
+          icon: "BarChart3",
+          labelKey: "insightDemographicLabel",
+          textKey: "insightTopAge",
+          replacements: { bracket: topBracket, pct: String(bracketPct) },
+          sentiment: "neutral",
+        });
+      }
+    }
+  }
+
+  // --- ACTIONABLE RECOMMENDATIONS ---
+
+  if (data.returningPct < 15 && data.totalPeople > 0) {
+    insights.push({
+      category: "action",
+      icon: "Lightbulb",
+      labelKey: "insightActionLabel",
+      textKey: "insightRecLowReturn",
+      replacements: { pct: String(data.returningPct) },
+      sentiment: "negative",
+    });
+  }
+
+  if (data.skipAfterOneReturn > 0) {
+    insights.push({
+      category: "action",
+      icon: "Target",
+      labelKey: "insightActionLabel",
+      textKey: "insightRecSkipReturn",
+      replacements: { n: String(data.skipAfterOneReturn) },
+      sentiment: "positive",
+    });
+  }
+
+  if (data.churn.length > 0) {
+    const worstChurn = data.churn.reduce((a, b) => (a.notReturnedPct > b.notReturnedPct ? a : b));
+    if (worstChurn.notReturnedPct > 50) {
+      insights.push({
+        category: "action",
+        icon: "MessageCircle",
+        labelKey: "insightActionLabel",
+        textKey: "insightRecSurvey",
+        replacements: { label: worstChurn.label, pct: String(worstChurn.notReturnedPct) },
+        sentiment: "negative",
+      });
+    }
+  }
+
+  return insights.slice(0, MAX_INSIGHTS);
+}
 
 function productToSlug(product: string): string {
   return "event:" + product.toLowerCase().replace(/\s+/g, "-");
