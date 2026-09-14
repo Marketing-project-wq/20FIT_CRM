@@ -20,6 +20,9 @@ interface Template {
   subject?: string | null;
   body?: string;
   sender_name?: string;
+  display_name?: string | null;
+  description?: string | null;
+  category?: string | null;
 }
 
 interface EmailTemplateBuilderProps {
@@ -38,10 +41,11 @@ export function EmailTemplateBuilder({ template, onClose }: EmailTemplateBuilder
   // "blank" pick starts in Blocks mode (set in pickStarter). Others open in HTML.
   const [mode, setMode] = useState<EditMode>("html");
   const [senderName, setSenderName] = useState(template?.sender_name || "20FIT");
-  // The from-ADDRESS the active provider actually sends as (TAMBAHAN A) — fetched from the server, never
-  // hardcoded, so the preview can't promise crm@ while Resend sends info@. "" until loaded.
   const [fromAddress, setFromAddress] = useState("");
   const [subject, setSubject] = useState(template?.subject || "");
+  const [displayName, setDisplayName] = useState(template?.display_name || "");
+  const [description, setDescription] = useState(template?.description || "");
+  const [category, setCategory] = useState(template?.category || "other");
   const [htmlContent, setHtmlContent] = useState(template?.body || DEFAULT_HTML);
   // Block state — only authoritative while mode === "blocks". Switching to HTML/Preview flushes it
   // to htmlContent; we never parse HTML back to blocks (one-way, honest).
@@ -156,14 +160,21 @@ export function EmailTemplateBuilder({ template, onClose }: EmailTemplateBuilder
 
   const handleSave = async () => {
     const finalHtml = injectUnsubscribeLink(currentHtml());
-    const templateKey = template?.template_key || `email_${Date.now()}`;
+    const autoKey = displayName.trim()
+      ? `email_${displayName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")}`
+      : `email_${Date.now()}`;
+    const templateKey = template?.template_key || autoKey;
+    const nameField = displayName.trim() || subject || "Untitled Email";
     try {
       const res = await fetch("/api/templates", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           template_key: templateKey, channel: "email", language: "id",
-          name: subject || "Untitled Email", subject, body: finalHtml, sender_name: senderName,
+          name: nameField, subject, body: finalHtml, sender_name: senderName,
+          display_name: displayName.trim() || null,
+          description: description.trim() || null,
+          category: category || "other",
         }),
       });
       if (!res.ok) { const err = await res.json(); alert(`Failed to save: ${err.error}`); return; }
@@ -198,6 +209,10 @@ export function EmailTemplateBuilder({ template, onClose }: EmailTemplateBuilder
             senderName={senderName} setSenderName={setSenderName}
             fromAddress={fromAddress}
             subject={subject} setSubject={setSubject}
+            displayName={displayName} setDisplayName={setDisplayName}
+            description={description} setDescription={setDescription}
+            category={category} setCategory={setCategory}
+            templateKey={template?.template_key}
             htmlContent={htmlContent} setHtmlContent={(v: string) => { setHtmlContent(v); setHtmlEdited(true); }}
             blocks={blocks} setBlocks={setBlocks}
             htmlEdited={htmlEdited}
@@ -337,8 +352,48 @@ function StarterGallery({ onPick }: { onPick: (id: string) => void }) {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function EditorBody(p: any) {
+  const autoKey = p.displayName?.trim()
+    ? `email_${p.displayName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")}`
+    : "";
+
   return (
     <div className="flex flex-1 flex-col gap-4 overflow-auto p-6">
+      {/* Row 1: Display name + Category */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="sm:col-span-2">
+          <label className="mb-2 block font-display text-[13px] font-bold text-ink">Nama Tampilan</label>
+          <input type="text" value={p.displayName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => p.setDisplayName(e.target.value)}
+            className="w-full rounded-md border border-glass-border bg-glass px-3 py-2 font-body text-[14px] text-ink focus:border-ink focus:outline-none" placeholder="Nama yang terlihat di daftar template" />
+        </div>
+        <div>
+          <label className="mb-2 block font-display text-[13px] font-bold text-ink">Kategori</label>
+          <select value={p.category} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => p.setCategory(e.target.value)}
+            className="h-[38px] w-full rounded-md border border-glass-border bg-glass px-3 font-body text-[14px] text-ink focus:border-ink focus:outline-none">
+            <option value="newsletter">Newsletter</option>
+            <option value="promo">Promo</option>
+            <option value="event">Event</option>
+            <option value="notification">Notifikasi</option>
+            <option value="other">Lainnya</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Row 2: Description */}
+      <div>
+        <label className="mb-2 block font-display text-[13px] font-bold text-ink">Deskripsi</label>
+        <input type="text" value={p.description} onChange={(e: React.ChangeEvent<HTMLInputElement>) => p.setDescription(e.target.value)}
+          className="w-full rounded-md border border-glass-border bg-glass px-3 py-2 font-body text-[14px] text-ink focus:border-ink focus:outline-none" placeholder="Tujuan atau catatan singkat tentang template ini" />
+      </div>
+
+      {/* Template key (auto-generated, read-only for new; shown for edit) */}
+      {!p.templateKey && autoKey && (
+        <p className="font-mono text-[11px] text-ink-faint">Kunci template: <span className="text-ink">{autoKey}</span></p>
+      )}
+      {p.templateKey && (
+        <p className="font-mono text-[11px] text-ink-faint">Kunci template: <span className="text-ink">{p.templateKey}</span></p>
+      )}
+
+      {/* Row 3: Sender name + Subject */}
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="mb-2 block font-display text-[13px] font-bold text-ink">Nama Pengirim</label>
