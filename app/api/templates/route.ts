@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { template_key, channel, language, name, subject, body: content } = body;
+    const { template_key, channel, language, name, subject, body: content, display_name, description, category } = body;
 
     if (!template_key || !channel || !language || !name || !content) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -91,6 +91,9 @@ export async function POST(req: NextRequest) {
       variables.add(match[1]);
     }
 
+    const VALID_CATEGORIES = ["newsletter", "promo", "event", "notification", "other"];
+    const safeCategory = VALID_CATEGORIES.includes(category) ? category : "other";
+
     const { data, error } = await admin
       .from("crm_message_template")
       .insert({
@@ -99,13 +102,17 @@ export async function POST(req: NextRequest) {
         language,
         version: nextVersion,
         name,
+        display_name: display_name || null,
+        description: description || null,
+        category: safeCategory,
+        status: "active",
         subject: channel === "email" ? subject : null,
         body: content,
-        sender_name: senderCheck.value, // T-74: was silently dropped (never destructured); now persisted
+        sender_name: senderCheck.value,
         variables: Array.from(variables),
         wa_approval_status: channel === "whatsapp" ? "draft" : "not_applicable",
         is_active: true,
-        created_by: role, // Store role as created_by for now
+        created_by: role,
       })
       .select()
       .single();

@@ -27,19 +27,19 @@ async function loadEligibleTemplates(): Promise<TemplateOption[]> {
     const admin = createAdminClient();
     const { data, error } = await admin
       .from("crm_message_template")
-      .select("template_key, name, subject, body, version")
+      .select("template_key, name, display_name, subject, body, version")
       .eq("channel", "email")
       .eq("is_active", true)
       .order("version", { ascending: false });
     if (error) return [];
     const seen = new Set<string>();
     const out: TemplateOption[] = [];
-    for (const r of (data ?? []) as { template_key: string; name: string; subject: string | null; body: string }[]) {
+    for (const r of (data ?? []) as { template_key: string; name: string; display_name: string | null; subject: string | null; body: string }[]) {
       if (isInternalTestTemplateKey(r.template_key)) continue;
       if (seen.has(r.template_key)) continue;
       seen.add(r.template_key);
       if (extractVariables(`${r.subject ?? ""}\n${r.body}`).includes("unsubscribe_url")) {
-        out.push({ key: r.template_key, name: r.name, subject: r.subject, body: r.body });
+        out.push({ key: r.template_key, name: r.display_name || r.name, subject: r.subject, body: r.body });
       }
     }
     return out;
