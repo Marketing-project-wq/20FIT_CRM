@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { Printer, RefreshCw, ChevronDown, ChevronRight, TrendingDown, X, Search, Check, Filter, ArrowUpRight, ArrowDownRight, Equal } from "lucide-react";
+import { Printer, RefreshCw, ChevronDown, ChevronRight, TrendingDown, TrendingUp, X, Search, Check, Filter, ArrowUpRight, ArrowDownRight, Equal, Trophy, AlertTriangle, Heart, Users, BarChart3, Lightbulb, Target, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { EventAnalyticsData, EventGroup, EventComparison, DemographicBreakdown } from "@/lib/crm/event-analytics";
+import type { EventAnalyticsData, EventGroup, EventComparison, DemographicBreakdown, Insight, InsightCategory } from "@/lib/crm/event-analytics";
 import { EventAnalysisLoader } from "@/components/analytics/event-analysis-loader";
 import { useI18n } from "@/components/i18n/lang-provider";
 import { formatCount, formatPct, type Lang } from "@/lib/i18n";
@@ -514,8 +514,8 @@ export function EventAnalysis({
         </div>
       </section>
 
-      {/* Insight Box */}
-      <InsightBox data={data} lang={lang} te={te} />
+      {/* Key Insights */}
+      <KeyInsights insights={data.insights} te={te} />
 
       {/* Churn */}
       {data.churn.length > 0 && (
@@ -586,10 +586,6 @@ export function EventAnalysis({
       )}
 
       {/* Expandable sections */}
-      <ExpandableSection title={te.recsTitle} defaultOpen={false}>
-        <Recommendations data={data} te={te} lang={lang} />
-      </ExpandableSection>
-
       <ExpandableSection title={te.dataNotes} defaultOpen={false}>
         <div className="space-y-2 font-body text-[13px] text-ink-soft">
           <p>{te.dataNote1}</p>
@@ -956,100 +952,123 @@ function cohortCellFg(pct: number): string {
   return "var(--green)";
 }
 
-function InsightBox({ data, lang, te }: { data: EventAnalyticsData; lang: Lang; te: Te }) {
-  if (data.cohort.length < 2) return null;
+const INSIGHT_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  TrendingUp, TrendingDown, Trophy, AlertTriangle, Heart, Users, BarChart3, Lightbulb, Target, MessageCircle,
+};
 
-  const insights: string[] = [];
-  const first = data.cohort[0];
-  const second = data.cohort[1];
+const CATEGORY_ORDER: InsightCategory[] = ["growth", "retention", "demographic", "action"];
 
-  if (first.retention.length > 0 && second.retention.length > 0) {
-    const firstRet = first.retention[0];
-    const secondRet = second.retention[0];
-    if (secondRet < firstRet) {
-      insights.push(
-        te.insightWeakening
-          .replace("{a}", first.cohortLabel)
-          .replace("{pctA}", formatPct(firstRet, lang))
-          .replace("{b}", second.cohortLabel)
-          .replace("{pctB}", formatPct(secondRet, lang)),
-      );
-    } else if (secondRet > firstRet) {
-      insights.push(
-        te.insightStrengthening
-          .replace("{pctA}", formatPct(firstRet, lang))
-          .replace("{b}", second.cohortLabel)
-          .replace("{pctB}", formatPct(secondRet, lang)),
-      );
+const CATEGORY_STYLE: Record<InsightCategory, { tint: string; catKey: keyof Te }> = {
+  growth: { tint: "text-blue", catKey: "insightCatGrowth" },
+  retention: { tint: "text-amber", catKey: "insightCatRetention" },
+  demographic: { tint: "text-purple", catKey: "insightCatDemographic" },
+  action: { tint: "text-green", catKey: "insightCatAction" },
+};
+
+const SENTIMENT_STYLE: Record<string, string> = {
+  positive: "border-l-green bg-green/5",
+  negative: "border-l-red bg-red/5",
+  neutral: "border-l-ink-faint bg-surface-raised",
+};
+
+function resolveText(template: string, replacements: Record<string, string>, te: Te): string {
+  let result = template;
+  for (const [key, val] of Object.entries(replacements)) {
+    if (key === "gender") {
+      const genderKey = val === "male" ? "insightGenderMale" : "insightGenderFemale";
+      result = result.replace(`{${key}}`, (te as Record<string, string>)[genderKey] ?? val);
+    } else {
+      result = result.replace(`{${key}}`, val);
     }
   }
-
-  if (data.churn.length > 0) {
-    const worst = data.churn.reduce((a, b) => (a.notReturnedPct > b.notReturnedPct ? a : b));
-    if (worst.notReturnedPct > 80) {
-      insights.push(
-        te.insightHighChurn
-          .replace("{label}", worst.label)
-          .replace("{pct}", formatPct(worst.notReturnedPct, lang)),
-      );
-    }
-  }
-
-  if (insights.length === 0) return null;
-
-  return (
-    <section className="tint-amber rounded-card px-5 py-4">
-      <div className="space-y-1.5">
-        {insights.map((text, i) => (
-          <p key={i} className="font-body text-[13px] leading-relaxed text-ink">
-            {text}
-          </p>
-        ))}
-      </div>
-    </section>
-  );
+  return result;
 }
 
-function Recommendations({
-  data,
-  te,
-  lang,
-}: {
-  data: EventAnalyticsData;
-  te: Te;
-  lang: Lang;
-}) {
-  const recs: string[] = [];
+function KeyInsights({ insights, te }: { insights: Insight[]; te: Te }) {
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
-  if (data.returningPct < 15) {
-    recs.push(te.recLowReturn.replace("{pct}", formatPct(data.returningPct, lang)));
-  }
-
-  if (data.skipAfterOneReturn > 0) {
-    recs.push(te.recSkipReturn.replace("{n}", formatCount(data.skipAfterOneReturn, lang)));
-  }
-
-  if (data.churn.length > 0) {
-    const worstChurn = data.churn.reduce((a, b) =>
-      a.notReturnedPct > b.notReturnedPct ? a : b,
-    );
-    recs.push(
-      te.recHighChurn
-        .replace("{label}", worstChurn.label)
-        .replace("{pct}", formatPct(worstChurn.notReturnedPct, lang)),
+  if (insights.length === 0) {
+    return (
+      <section className="card px-5 py-4">
+        <h2 className="mb-2 font-display text-[16px] font-bold text-ink">{te.keyInsightsTitle}</h2>
+        <p className="font-body text-[13px] text-ink-faint">{te.insightNoData}</p>
+      </section>
     );
   }
 
-  if (recs.length === 0) {
-    recs.push(te.recNoData);
+  const grouped = new Map<InsightCategory, Insight[]>();
+  for (const cat of CATEGORY_ORDER) grouped.set(cat, []);
+  for (const insight of insights) {
+    grouped.get(insight.category)?.push(insight);
   }
+
+  const activeCategories = CATEGORY_ORDER.filter((c) => (grouped.get(c)?.length ?? 0) > 0);
 
   return (
-    <ul className="list-disc space-y-2 pl-5 font-body text-[13px] text-ink-soft">
-      {recs.map((r, i) => (
-        <li key={i}>{r}</li>
-      ))}
-    </ul>
+    <section className="card overflow-hidden">
+      <div className="px-5 py-4">
+        <h2 className="font-display text-[16px] font-bold text-ink">{te.keyInsightsTitle}</h2>
+      </div>
+      <div className="grid grid-cols-1 gap-0 border-t border-surface-border md:grid-cols-2">
+        {activeCategories.map((cat) => {
+          const style = CATEGORY_STYLE[cat];
+          const items = grouped.get(cat)!;
+          const isCollapsed = collapsed[cat] ?? false;
+
+          return (
+            <div key={cat} className="border-b border-surface-border last:border-b-0 md:[&:nth-last-child(-n+2)]:border-b-0">
+              <button
+                type="button"
+                onClick={() => setCollapsed((prev) => ({ ...prev, [cat]: !prev[cat] }))}
+                className="flex w-full items-center gap-2 px-5 py-3 text-left"
+              >
+                <span className={`font-display text-[13px] font-semibold ${style.tint}`}>
+                  {(te as Record<string, string>)[style.catKey]}
+                </span>
+                <span className="ml-auto text-ink-faint">
+                  {isCollapsed ? (
+                    <ChevronRight className="h-4 w-4" aria-hidden />
+                  ) : (
+                    <ChevronDown className="h-4 w-4" aria-hidden />
+                  )}
+                </span>
+              </button>
+              {!isCollapsed && (
+                <div className="space-y-2 px-5 pb-4">
+                  {items.map((insight, i) => {
+                    const IconComp = INSIGHT_ICONS[insight.icon];
+                    const text = resolveText(
+                      (te as Record<string, string>)[insight.textKey] ?? "",
+                      insight.replacements,
+                      te,
+                    );
+                    return (
+                      <div
+                        key={i}
+                        className={`flex items-start gap-3 rounded-lg border-l-[3px] px-3 py-2.5 ${SENTIMENT_STYLE[insight.sentiment]}`}
+                      >
+                        {IconComp && (
+                          <IconComp
+                            className={`mt-0.5 h-4 w-4 shrink-0 ${
+                              insight.sentiment === "positive"
+                                ? "text-green"
+                                : insight.sentiment === "negative"
+                                  ? "text-red"
+                                  : "text-ink-faint"
+                            }`}
+                          />
+                        )}
+                        <p className="font-body text-[13px] leading-relaxed text-ink">{text}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
