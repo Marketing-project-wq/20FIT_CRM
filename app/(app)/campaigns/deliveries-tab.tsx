@@ -2,16 +2,20 @@
 
 import { useState, useMemo, type ReactNode } from "react";
 import Link from "next/link";
-import { Search } from "lucide-react";
+import { Search, ChevronDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useI18n } from "@/components/i18n/lang-provider";
+import { isInternalTestTemplateKey } from "@/lib/crm/send-test-constants";
 import type { Dict } from "@/lib/i18n";
 import type { DeliveryRow, DeliveryState, DeliveryDetail } from "@/lib/crm/deliveries";
 import { CancelDeliveryButton } from "./cancel-delivery-button";
 import { DrainControlButtons } from "./drain-control-buttons";
 import { RecipientTable } from "./recipient-table";
 
-const STATE_META: Record<DeliveryState, { key: keyof Dict["campaignsPage"]["deliveries"]; tone: "blue" | "amber" | "green" | "red" | "neutral" }> = {
+type BadgeTone = "blue" | "amber" | "green" | "red" | "neutral";
+type DeliveryLabels = Dict["campaignsPage"]["deliveries"];
+
+const STATE_META: Record<DeliveryState, { key: keyof DeliveryLabels; tone: BadgeTone }> = {
   upcoming: { key: "stateUpcoming", tone: "blue" },
   overdue: { key: "stateOverdue", tone: "red" },
   running: { key: "stateRunning", tone: "amber" },
@@ -23,6 +27,21 @@ const STATE_META: Record<DeliveryState, { key: keyof Dict["campaignsPage"]["deli
   stopped: { key: "stateStopped", tone: "red" },
   cancelled: { key: "stateCancelled", tone: "neutral" },
 };
+
+type DisplayStatus = { key: keyof DeliveryLabels; tone: BadgeTone; note?: string };
+
+function getDisplayStatus(row: DeliveryRow, labels: DeliveryLabels): DisplayStatus {
+  const base = STATE_META[row.state];
+  if (row.state !== "partial" || row.recipientCount === 0) return base;
+  const failPct = (row.failedCount / row.recipientCount) * 100;
+  if (failPct < 5) {
+    return { key: "stateDone", tone: "green", note: labels.partialNote.replace("{x}", String(row.failedCount)) };
+  }
+  if (failPct <= 20) {
+    return { key: "stateDoneWithNote", tone: "amber", note: labels.partialNote.replace("{x}", String(row.failedCount)) };
+  }
+  return { key: "statePartial", tone: "red" };
+}
 
 function wibDisplay(utcIso: string): string {
   const d = new Date(utcIso);
@@ -41,13 +60,12 @@ function Stat({ label, value, sub }: { label: string; value: ReactNode; sub?: st
   );
 }
 
-function ProgressBar({ row, labels }: { row: DeliveryRow; labels: Dict["campaignsPage"]["deliveries"] }) {
+function ProgressBar({ row, labels }: { row: DeliveryRow; labels: DeliveryLabels }) {
   const total = row.recipientCount;
   const delivered = row.deliveredCount;
   const sent = row.sentCount;
   const good = sent + delivered;
   const bad = row.failedCount + row.bouncedCount;
-  const remaining = Math.max(0, total - good - bad);
   const pctDelivered = (delivered / total) * 100;
   const pctSent = (sent / total) * 100;
   const pctBad = (bad / total) * 100;
@@ -56,8 +74,8 @@ function ProgressBar({ row, labels }: { row: DeliveryRow; labels: Dict["campaign
   const text = labels.progressSent.replace("{x}", String(good)).replace("{y}", String(total));
 
   return (
-    <div className="flex flex-col gap-1">
-      <div className="flex h-2 w-full overflow-hidden rounded-full bg-ink-faint/20">
+    <div className="flex items-center gap-2">
+      <div className="flex h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-ink-faint/20">
         {pctDelivered > 0 && (
           <div className="bg-green transition-all duration-300" style={{ width: `${pctDelivered}%` }} />
         )}
@@ -74,39 +92,12 @@ function ProgressBar({ row, labels }: { row: DeliveryRow; labels: Dict["campaign
           />
         )}
       </div>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 font-body text-[11px] text-ink-faint">
-        <span>{text}</span>
-        {delivered > 0 && (
-          <span className="flex items-center gap-1">
-            <span className="inline-block h-2 w-2 rounded-full bg-green" />
-            {labels.progressConfirmed}
-          </span>
-        )}
-        {sent > 0 && (
-          <span className="flex items-center gap-1">
-            <span className="inline-block h-2 w-2 rounded-full bg-green-dim" />
-            {labels.progressDelivered}
-          </span>
-        )}
-        {bad > 0 && (
-          <span className="flex items-center gap-1">
-            <span className="inline-block h-2 w-2 rounded-full bg-red" />
-            {labels.progressFailed}
-          </span>
-        )}
-        {remaining > 0 && (
-          <span className="flex items-center gap-1">
-            <span className="inline-block h-2 w-2 rounded-full bg-ink-faint/30" />
-            {labels.progressRemaining}
-          </span>
-        )}
-      </div>
+      <span className="shrink-0 font-body text-[11px] text-ink-faint">{text}</span>
     </div>
   );
 }
 
-function CompactStats({ row, labels }: { row: DeliveryRow; labels: Dict["campaignsPage"]["deliveries"] }) {
-  const total = row.recipientCount;
+function CompactStats({ row, labels }: { row: DeliveryRow; labels: DeliveryLabels }) {
   const delivered = row.deliveredCount;
   const sent = row.sentCount + delivered;
   const bounced = row.bouncedCount;
@@ -116,16 +107,16 @@ function CompactStats({ row, labels }: { row: DeliveryRow; labels: Dict["campaig
   const openRate = delivered > 0 ? ((opened / delivered) * 100).toFixed(1) : null;
   const clickRate = delivered > 0 ? ((clicked / delivered) * 100).toFixed(1) : null;
 
-  return (
-    <div className="flex flex-wrap gap-x-4 gap-y-1 font-body text-[11px] text-ink-faint">
-      <span>{labels.statSent} {sent}/{total}</span>
-      <span>{labels.statDelivered} {delivered}</span>
-      {opened > 0 && <span>{labels.statOpened} {opened}{openRate != null && ` (${openRate}%)`}</span>}
-      {clicked > 0 && <span>{labels.statClicked} {clicked}{clickRate != null && ` (${clickRate}%)`}</span>}
-      {bounced > 0 && <span className="text-red">{labels.statBounced} {bounced}</span>}
-      {failed > 0 && <span className="text-red">{labels.statFailed} {failed}</span>}
-    </div>
-  );
+  const parts: ReactNode[] = [];
+  if (delivered > 0) parts.push(<span key="del">{labels.statDelivered} {delivered}</span>);
+  else if (sent > 0) parts.push(<span key="sent">{labels.statSent} {sent}</span>);
+  if (opened > 0) parts.push(<span key="open">{labels.statOpened} {opened}{openRate != null && ` (${openRate}%)`}</span>);
+  if (clicked > 0) parts.push(<span key="click">{labels.statClicked} {clicked}{clickRate != null && ` (${clickRate}%)`}</span>);
+  if (bounced > 0) parts.push(<span key="bounce" className="text-red">{labels.statBounced} {bounced}</span>);
+  if (failed > 0) parts.push(<span key="fail" className="text-red">{labels.statFailed} {failed}</span>);
+
+  if (parts.length === 0) return null;
+  return <div className="flex flex-wrap gap-x-4 gap-y-1 font-body text-[11px] text-ink-faint">{parts}</div>;
 }
 
 // ── Filter logic ──
@@ -141,7 +132,7 @@ const FILTER_STATES: Record<Exclude<FilterChip, "all">, DeliveryState[]> = {
   draft: ["upcoming", "overdue", "cancelled"],
 };
 
-const CHIP_KEYS: Record<FilterChip, keyof Dict["campaignsPage"]["deliveries"]> = {
+const CHIP_KEYS: Record<FilterChip, keyof DeliveryLabels> = {
   all: "chipAll",
   done: "chipDone",
   sending: "chipSending",
@@ -150,15 +141,17 @@ const CHIP_KEYS: Record<FilterChip, keyof Dict["campaignsPage"]["deliveries"]> =
 };
 
 const TEST_RE = /test|uji|gmail\s*test/i;
+const DOORPRIZE_RE = /doorprize/i;
 
 function isTestEntry(row: DeliveryRow): boolean {
+  if (isInternalTestTemplateKey(row.templateKey)) return true;
   if (TEST_RE.test(row.label ?? "")) return true;
-  if (row.recipientCount <= 3) return true;
+  if (row.recipientCount <= 5 && !DOORPRIZE_RE.test(row.label ?? "")) return true;
   return false;
 }
 
 function readShowTest(): boolean {
-  try { return localStorage.getItem("crm_campaign_hide_test") === "0"; }
+  try { return localStorage.getItem("crm_show_test_campaigns") === "1"; }
   catch { return false; }
 }
 
@@ -180,13 +173,23 @@ export function DeliveriesTab({
   const [filter, setFilter] = useState<FilterChip>("all");
   const [page, setPage] = useState(0);
   const [showTest, setShowTest] = useState(readShowTest);
+  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const [expandedErrors, setExpandedErrors] = useState<Set<string>>(new Set());
 
   function toggleShowTest() {
     const next = !showTest;
     setShowTest(next);
     setPage(0);
-    try { localStorage.setItem("crm_campaign_hide_test", next ? "0" : "1"); } catch { /* noop */ }
+    try { localStorage.setItem("crm_show_test_campaigns", next ? "1" : "0"); } catch { /* noop */ }
+  }
+
+  function toggleCard(key: string) {
+    setExpandedCards((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   }
 
   function toggleError(key: string) {
@@ -326,7 +329,7 @@ export function DeliveriesTab({
     <div className="flex flex-col gap-4">
       <p className="font-body text-[13px] leading-relaxed text-ink-soft">{d.subtitle}</p>
 
-      {/* A1: Search */}
+      {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" aria-hidden />
         <input
@@ -338,7 +341,7 @@ export function DeliveriesTab({
         />
       </div>
 
-      {/* A2: Filter chips + A5: Test toggle */}
+      {/* Filter chips + Test toggle */}
       <div className="flex flex-wrap items-center gap-2">
         {(["all", "done", "sending", "failed", "draft"] as FilterChip[]).map((chip) => (
           <button
@@ -360,7 +363,7 @@ export function DeliveriesTab({
         </label>
       </div>
 
-      {/* A4: Compact cards */}
+      {/* Compact cards */}
       {paged.length === 0 ? (
         <div className="rounded-card border border-dashed border-glass-border px-6 py-16 text-center">
           <p className="font-body text-[13px] text-ink-soft">{d.empty}</p>
@@ -368,33 +371,42 @@ export function DeliveriesTab({
       ) : (
         <div className="flex flex-col gap-2">
           {paged.map((row) => {
-            const st = STATE_META[row.state];
+            const ds = getDisplayStatus(row, d);
             const cardKey = `${row.kind}:${row.id}`;
+            const expanded = expandedCards.has(cardKey);
             const errorExpanded = expandedErrors.has(cardKey);
             return (
               <div key={cardKey} className="glass flex flex-col gap-1.5 rounded-card p-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge tone={st.tone}>{d[st.key]}</Badge>
-                  <Badge tone={row.source === "auto" ? "blue" : "neutral"}>
-                    {row.source === "auto" ? d.sourceAuto : d.sourceManual}
-                  </Badge>
-                  <span className="font-body text-[13px] font-semibold text-ink">{row.label ?? d.unnamedRun}</span>
-                  <span className="ml-auto font-mono text-[11px] text-ink-faint">{wibDisplay(row.time)}</span>
-                </div>
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 font-body text-[11px] text-ink-soft">
-                  <span>{row.ownerName ?? <span className="italic text-ink-faint">{d.ownerUnresolved}</span>}</span>
-                  <span className="font-mono">{row.templateKey}</span>
-                  <span>{d.colRecipients}: {row.recipientCount}</span>
-                  {row.failedCount > 0 && (
-                    <span className="font-semibold text-red">{row.failedCount} {d.statFailed}</span>
-                  )}
-                </div>
+                <button
+                  type="button"
+                  onClick={() => toggleCard(cardKey)}
+                  className="flex w-full items-center gap-2 text-left"
+                >
+                  <Badge tone={ds.tone}>{d[ds.key]}</Badge>
+                  {ds.note && <span className="font-body text-[11px] text-ink-faint">{ds.note}</span>}
+                  <span className="min-w-0 flex-1 truncate font-body text-[13px] font-semibold text-ink">
+                    {row.label ?? d.unnamedRun}
+                  </span>
+                  <span className="shrink-0 font-mono text-[11px] text-ink-faint">{wibDisplay(row.time)}</span>
+                  <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-ink-faint transition-transform ${expanded ? "rotate-180" : ""}`} aria-hidden />
+                </button>
+
                 {row.kind === "run" && row.recipientCount > 0 && (
                   <>
                     <ProgressBar row={row} labels={d} />
                     <CompactStats row={row} labels={d} />
                   </>
                 )}
+
+                {expanded && (
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-glass-border pt-2 font-body text-[11px] text-ink-soft">
+                    <span><span className="text-ink-faint">{d.detailOwner}:</span> {row.ownerName ?? <span className="italic text-ink-faint">{d.ownerUnresolved}</span>}</span>
+                    <span><span className="text-ink-faint">{d.detailTemplate}:</span> <span className="font-mono">{row.templateKey}</span></span>
+                    <span><span className="text-ink-faint">{d.colRecipients}:</span> {row.recipientCount}</span>
+                    {row.source === "auto" && <Badge tone="blue">{d.sourceAuto}</Badge>}
+                  </div>
+                )}
+
                 {row.lastError && (
                   <button
                     type="button"
@@ -424,7 +436,7 @@ export function DeliveriesTab({
         </div>
       )}
 
-      {/* A3: Pagination */}
+      {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-center gap-3 pt-2">
           <button

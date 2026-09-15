@@ -144,30 +144,6 @@ export default async function CampaignsPage({
             realSend={enabled}
             builder={{ cityFillPct: cityFill.cityFillPct, cityFilled: cityFill.cityFilled, total: cityFill.total, canViewHealth, canBuild }}
           />
-          <details className="glass-strong rounded-card p-5">
-            <summary className="cursor-pointer select-none font-body text-[13px] font-semibold text-ink">{c.docsTitle}</summary>
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
-              <div>
-                <h2 className="font-body text-[13px] font-semibold text-ink">{c.flowTitle}</h2>
-                <ol className="mt-3 flex list-decimal flex-col gap-2 pl-4 font-body text-[13px] leading-relaxed text-ink-soft">
-                  <li>{c.flow1}</li>
-                  <li>{c.flow2}</li>
-                  <li>{c.flow3}</li>
-                  <li>{c.flow4}</li>
-                  <li>{c.flow5}</li>
-                </ol>
-                <p className="mt-3 font-body text-[12px] leading-relaxed text-ink-faint">{c.suppressionNote}</p>
-              </div>
-              <div>
-                <h2 className="font-body text-[13px] font-semibold text-ink">{c.limitsTitle}</h2>
-                <ul className="mt-3 flex list-disc flex-col gap-2 pl-4 font-body text-[13px] leading-relaxed text-ink-soft">
-                  <li>{c.limit1}</li>
-                  <li>{c.limit2}</li>
-                  <li>{c.limit3}</li>
-                </ul>
-              </div>
-            </div>
-          </details>
         </div>
       )}
 
