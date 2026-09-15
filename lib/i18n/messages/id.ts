@@ -135,103 +135,37 @@ export const id = {
     title: "Dashboard",
     subtitle: "Audience Data & CRM 20FIT",
     tz: "WIB",
-    // Kesegaran per blok — kata-kata SAMA di seluruh layar (satu baris kecil per blok):
-    todayLabel: "Hari ini", // memperjelas tanggal di kepala = hari ini, BUKAN kapan data diperbarui
-    freshLive: "dihitung saat halaman dibuka",
-    freshSnapshot: "snapshot cermin", // + tanggal-waktu refresh
-    freshManual: "diukur manual", // + tanggal pengukuran
-    // Progressive-load: skeleton = sedang dihitung; state gagal per bagian; tombol coba lagi.
+    todayLabel: "Hari ini",
     computing: "Sedang menghitung…",
-    // Penanda pratinjau — IKUT ter-render (bukan hanya di URL /dev/preview), supaya screenshot
-    // fixture tak pernah lagi salah dibaca sebagai produksi. Hanya muncul saat isPreview.
-    previewBanner: "PRATINJAU · DATA FIXTURE — BUKAN ANGKA PRODUKSI",
     blockFailed: "Bagian ini gagal dimuat.",
     blockRetry: "Coba lagi",
-    // Judul + catatan lapis bawah. Batas antar-lapis DINYATAKAN, bukan disiratkan: yang dulu salah
-    // bukan "halaman punya lebih dari satu kesegaran", melainkan "punya beberapa kesegaran tanpa ada
-    // yang mengatakannya" (K-61 revisi).
-    opsTitle: "Detail operasional",
-    opsNote:
-      "Bagian di bawah ini BUKAN bagian dari ringkasan di atas, dan waktunya berbeda. Sebagian dihitung saat halaman ini dibuka, sebagian lagi berasal dari perhitungan harian — masing-masing blok menyebutkan sendiri yang mana. Kalau sebuah angka di sini tampak berbeda dari angka di ringkasan, cek dulu waktunya sebelum menyimpulkan ada yang salah.",
-    audienceSize: "Ukuran audiens",
-    audienceSizeHint: "data audiens 20FIT (baca saja)",
-    reachEmail: "Bisa dikirimi email",
-    reachEmailHint: "punya alamat email dan tidak sedang berhenti berlangganan",
-    reachWhatsapp: "Bisa dihubungi WhatsApp",
-    reachWhatsappHint: "punya nomor telepon dan tidak sedang berhenti berlangganan",
-    reachGapNote:
-      "Selisih keduanya nyata: sebagian orang punya email tanpa nomor, sebagian sebaliknya. Jangan dilebur jadi satu angka.",
-    workflowActive: "Workflow",
-    // {count} = enrollment yang masih mengantre. Angkanya DIISI dari data, tak pernah ditulis di sini (K-60).
-    workflowActiveHint: "{count} orang menunggu giliran dikirimi di dalam workflow",
-    workflowActiveHintEmpty: "belum ada orang yang menunggu di dalam workflow",
-    lastProfile: "Profil terakhir bertambah",
-    // {n} = jumlah muatan, {dates} = daftar tanggalnya — keduanya dihitung dari created_at.
-    lastProfileHint: "{n} muatan sejauh ini ({dates}) — bukan feed berkelanjutan",
-    lastProfileHintTruncated: "lebih dari {n} muatan — daftar ini belum lengkap",
-    manualBadge: "ANGKA MANUAL",
-    importDob: "Tanggal lahir · data impor",
-    importDobHint:
-      "baris data impor 20FIT punya tanggal lahir yang belum ada di pool utama · ~99,5% cocok ke profil. Angka kecocokan ini TIDAK dihitung dari data — diukur manual 24 Agu 2026 dan belum diukur ulang sejak itu.",
-    rfmTitle: "Sebaran tingkat pelanggan · data impor 20FIT",
-    // The RFM note keeps the "− = no bucket, not empty" nuance and the "spelling kept" rule.
-    rfmNote:
-      'Tingkat pelanggan (aslinya “RFM”: seberapa baru, sering, dan besar transaksinya) — berasal dari data impor, bukan dari aktivitas terkini, jadi belum layak jadi dasar kampanye. “−” = tanpa kelompok (bukan kosong). Tiap kelompok selalu tampil (0 = terukur, bukan hilang). Ejaan tersimpan dipertahankan apa adanya.',
-    rfmNoBucket: "− (tanpa kelompok)",
-    // Dashboard Visual sprint — tiga lapis, visualisasi, kesegaran.
-    liveTitle: "Sumber hidup versus pool beku",
-    liveNote: "Pool CRM hanya bertambah lewat muatan manual — tak ada pipeline yang menyalurkan pendaftar baru ke dalamnya. Sumber di bawah dihitung langsung tiap request, jadi selisih “belum di pool” naik sendiri saat ada pendaftar baru — itu jawaban jujur untuk “terupdate otomatis”.",
-    poolBaseline:
-      "Pembanding untuk tabel di bawah adalah seluruh profil yang sudah ada di CRM — angkanya, beserta riwayat muatannya, ada di ringkasan atas. Di sini yang dihitung adalah orang di sistem lain yang BELUM ada di antara mereka.",
-    srcMy20fit: "my20fit",
-    srcHyrox: "Hyrox",
-    srcArena: "Arena",
-    srcGym: "Gym",
-    srcClinic: "Klinik",
-    totalLabel: "di sumber",
-    gapLabel: "belum di pool",
-    gapWhy: "“Belum di pool” = orang di sistem sumber yang belum punya profil master (dicocokkan lewat email/telepon ternormalisasi). Angka per sumber TIDAK dijumlahkan: satu orang bisa ada di dua sumber, dan menggabungkan kunci email vs telepon tak bisa diandalkan. Dihitung langsung, nol tulis, nol salin.",
-    unitTitle: "Sebaran unit bisnis",
-    unitNote: "Profil distinct per unit ekosistem. Lima unit dibaca dari cermin (snapshot); shop dihitung langsung (cermin tak punya kolomnya).",
-    unitScaleNote: "Panjang batang memakai skala akar, BUKAN sebanding lurus — supaya unit terkecil (gym, shop) tetap terlihat di sebelah yang terbesar. Angkanya yang benar; batang hanya isyarat.",
-    snapshotBadge: "snapshot",
-    refreshedPrefix: "cermin diperbarui ",
-    staleA: "Snapshot cermin berumur lebih dari ",
-    staleB: " jam — angka unit bisa tertinggal dari sumber hidup. Jalankan refresh cermin untuk menyegarkan.",
-    eventTitle: "Sebaran event",
-    eventNote: "Pendaftaran per produk event plus event dari tag CRM (tag event: dan kategori: menghitung orang distinct). Diurut terbanyak.",
-    eventShowTop: "Tampilkan sepuluh teratas saja",
-    eventShowAllA: "Tampilkan semua (+",
-    eventShowAllB: " lagi)",
-    coverageTitle: "Cakupan kontak",
-    coverageBoth: "Email dan telepon",
+    kpiTotalContacts: "Total kontak",
+    kpiHasEmail: "Punya email",
+    kpiTotalProfiles: "Total profil",
+    kpiBounceRate: "Bounce rate",
+    kpiThisMonth: "bulan ini",
+    kpiOfTotal: "dari total",
+    kpiFromSnapshot: "dari snapshot harian",
+    kpiSuppressed: "tersuppresi",
+    panelGrowth: "Pertumbuhan audience",
+    panelGrowthNote: "Kumulatif profil yang diimpor. Titik = hari dengan impor baru.",
+    panelGrowthAdded: "ditambahkan",
+    panelGrowthEmpty: "Belum ada data pertumbuhan.",
+    panelDelivery: "Kesehatan pengiriman",
+    panelDeliveryNote: "Statistik pengiriman email 30 hari terakhir.",
+    deliveryDelivered: "Terkirim",
+    deliveryQueued: "Menunggu",
+    deliverySoftBounce: "Soft bounce",
+    deliveryHardBounce: "Hard bounce",
+    panelTopEvents: "Top 5 event",
+    panelTopEventsNote: "Event dengan peserta terbanyak.",
+    panelTopEventsEmpty: "Belum ada data event.",
+    panelCoverage: "Cakupan kontak",
+    panelCoverageNote: "Sebaran ketersediaan email dan telepon.",
+    coverageBoth: "Email + telepon",
     coverageEmailOnly: "Email saja",
     coveragePhoneOnly: "Telepon saja",
-    coverageNeither: "Tak punya keduanya",
-    coveragePhoneNote: "“Telepon” = nomor telepon tersimpan. Status WhatsApp BELUM diverifikasi — jangan susun kampanye WhatsApp di atas angka ini. “Tak punya keduanya” = 0 terukur (bukan disembunyikan).",
-    // Ekspor per kategori cakupan kontak → lewat mesin ekspor segmen yang sudah ada.
-    coveragePhoneOnlyWarn: "Kategori “telepon saja” tak punya email — daftar ini tak bisa dipakai untuk kampanye email.",
-    // D redesign — satu kartu ringkas (pool + jangkauan), tabel selisih, kartu kandidat, Fitco.
-    summaryTitle: "Pool & jangkauan",
-    summaryPoolLabel: "Data audiens 20FIT",
-    summaryReachAll: "seluruh pool dapat dihubungi · nol berhenti berlangganan",
-    gapTableSource: "Sumber",
-    candTitle: "Kandidat belum di pool",
-    candLabel: "belum jadi audiens · bukan pool · bukan bisa dipasarkan",
-    candNote:
-      "Angka ini BEDA dari selisih live di atas: populasi sumbernya berbeda (mis. di sini arena_bookings 4; di selisih live arena dihitung dari tabel arena lain). Kandidat = snapshot cermin (dedup lintas sumber); selisih = dihitung saat halaman dibuka. Keduanya benar, menghitung hal berbeda.",
-    candSourceCol: "Sumber (mentah)",
-    candCountCol: "Kandidat",
-    candSecondaryNote:
-      "Angka sekunder. Sinyal hidup — orang yang benar-benar di luar pool — ada di ringkasan di atas.",
-    candAsOf: "Data per", // + tanggal baris kandidat terbaru (umur DATA, bukan waktu hitung ulang)
-    candFrozenSince: "Beku sejak", // + tanggal · N hari
-    candFrozenDays: "hari tanpa perubahan",
-    candFrozenWhy:
-      "Jumlah ini dihitung ulang tiap malam, tapi tabel sumbernya tak bertambah sejak backfill — jadi angkanya beku, bukan segar. Selisih live di atas adalah angka yang benar-benar hidup.",
-    fitcoTitle: "Partisipasi Fitco",
-    fitcoMatched: "tercocokkan ke profil",
-    fitcoUnmatched: "belum tercocokkan",
+    coverageNeither: "Tanpa kontak",
   },
 
   // /audience page (Sprint 4D screen 1) — browse pool + single-person search + quality banner.

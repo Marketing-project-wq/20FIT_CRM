@@ -150,6 +150,17 @@ export interface ImmediateBlock {
   loads: Load[];
   /** The discovery walk hit its cap — `loads` is a prefix, and the screen must say so. */
   loadsTruncated: boolean;
+  /** Profiles added this calendar month (WIB), for the % growth KPI. */
+  thisMonthCount: number;
+  /** Active email suppressions (bounce/complaint), for the bounce-rate KPI. */
+  suppressedEmailCount: number;
+}
+
+export interface DeliveryBlock {
+  delivered: number;
+  queued: number;
+  softBounce: number;
+  hardBounce: number;
 }
 /**
  * REACH — replaces the old "Contactable · marketing" / "Contactable · service" pair, which was
@@ -181,12 +192,13 @@ export interface SourcesBlock {
   liveSources: SourceGap[];
 }
 
-export type DashboardBlockName = "immediate" | "reach" | "mirror" | "events" | "sources";
+export type DashboardBlockName = "immediate" | "reach" | "mirror" | "events" | "sources" | "delivery";
 
 /** IMMEDIATE — the cheap head:true counts, all in parallel. Throws on error so the block shows a
  *  failure state; these are the most reliable queries on the page. */
 export async function fetchImmediateBlock(admin: SupabaseClient): Promise<ImmediateBlock> {
-  const [size, fresh, contactCoverage, importDob, wf, wfQueued, history] = await Promise.all([
+  const firstOfMonth = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Jakarta" }).replace(/,.*/, "")).toISOString().slice(0, 7) + "-01T00:00:00+07:00";
+  const [size, fresh, contactCoverage, importDob, wf, wfQueued, history, thisMonth, suppressed] = await Promise.all([
     admin.from("master_customer").select("*", { count: "exact", head: true }),
     admin
       .from("master_customer")
@@ -199,6 +211,8 @@ export async function fetchImmediateBlock(admin: SupabaseClient): Promise<Immedi
     admin.from("crm_workflow").select("*", { count: "exact", head: true }),
     admin.from("crm_workflow_enrollment").select("*", { count: "exact", head: true }).eq("status", "queued"),
     fetchLoadHistory(admin),
+    admin.from("master_customer").select("*", { count: "exact", head: true }).gte("created_at", firstOfMonth),
+    admin.from("crm_suppression").select("*", { count: "exact", head: true }).eq("status", "active").eq("identity_kind", "email"),
   ]);
   if (size.error) throw size.error;
   if (fresh.error) throw fresh.error;
@@ -213,6 +227,8 @@ export async function fetchImmediateBlock(admin: SupabaseClient): Promise<Immedi
     workflowQueued: wfQueued.count ?? 0,
     loads: history.loads,
     loadsTruncated: history.truncated,
+    thisMonthCount: thisMonth.count ?? 0,
+    suppressedEmailCount: suppressed.count ?? 0,
   };
 }
 
@@ -292,6 +308,27 @@ export async function fetchEventsBlock(admin: SupabaseClient): Promise<EventsBlo
 /** SOURCES — the per-source live gap vs the frozen pool (each source already runs in parallel). */
 export async function fetchSourcesBlock(admin: SupabaseClient): Promise<SourcesBlock> {
   return { liveSources: await fetchLiveSourceGaps(admin) };
+}
+
+/** DELIVERY — 30-day message log stats for the delivery health panel. */
+export async function fetchDeliveryBlock(admin: SupabaseClient): Promise<DeliveryBlock> {
+  const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
+  const q = () => admin.from("crm_message_log").select("*", { count: "exact", head: true }).gte("created_at", since);
+  const [delivered, queued, bounced, hardBounce] = await Promise.all([
+    q().eq("status", "delivered"),
+    q().in("status", ["queued", "sent"]),
+    q().eq("status", "bounced"),
+    q().eq("status", "bounced").eq("failure_cause", "hard_bounce"),
+  ]);
+  for (const r of [delivered, queued, bounced, hardBounce]) if (r.error) throw r.error;
+  const totalBounced = bounced.count ?? 0;
+  const hard = hardBounce.count ?? 0;
+  return {
+    delivered: delivered.count ?? 0,
+    queued: queued.count ?? 0,
+    softBounce: totalBounced - hard,
+    hardBounce: hard,
+  };
 }
 
 /** All blocks composed — the fixture type + any caller that wants the whole thing at once. */

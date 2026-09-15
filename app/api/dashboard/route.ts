@@ -9,6 +9,7 @@ import {
   fetchMirrorBlock,
   fetchEventsBlock,
   fetchSourcesBlock,
+  fetchDeliveryBlock,
   type DashboardBlockName,
 } from "@/lib/crm/dashboard";
 import { logApiFailure } from "@/lib/crm/failure-log";
@@ -35,6 +36,7 @@ const BLOCKS: Record<DashboardBlockName, (admin: SupabaseClient) => Promise<unkn
   mirror: fetchMirrorBlock,
   events: fetchEventsBlock,
   sources: fetchSourcesBlock,
+  delivery: fetchDeliveryBlock,
 };
 
 function isBlockName(v: string | null): v is DashboardBlockName {
