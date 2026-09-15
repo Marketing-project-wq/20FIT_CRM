@@ -1167,6 +1167,60 @@ export const en: Messages = {
     pause: "Pause",
     activate: "Activate",
     prelaunchNote: "Real sending is off — running a workflow only sends to internal @20fit.id addresses; customer recipients are withheld.",
+    // Kebab menu
+    menuEdit: "Edit",
+    menuPreview: "Preview template",
+    menuDelete: "Delete",
+    menuHistory: "Enrollment history",
+    menuRun: "Run manually",
+    // Card enrichment
+    cardTemplate: "Template",
+    cardCreatedBy: "Created by",
+    cardCreatedAt: "Created",
+    cardLastEnrolled: "Last enrolled",
+    cardNever: "—",
+    // Status breakdown
+    statusQueued: "Queued",
+    statusSent: "Sent",
+    statusFailed: "Failed",
+    statusSkipped: "Skipped",
+    // Toggle
+    toggleActivateTitle: "Activate workflow?",
+    toggleActivateDesc: "This workflow will run automatically when scheduled. Make sure the trigger settings and template are correct.",
+    togglePauseTitle: "Pause workflow?",
+    togglePauseDesc: "The workflow will not send emails while paused. Existing enrollments are not affected.",
+    toggleConfirm: "Yes, proceed",
+    // Edit dialog
+    editTitle: "Edit workflow",
+    editSave: "Save",
+    errUpdate: "Failed to save changes.",
+    // Delete dialog
+    deleteTitle: "Delete workflow?",
+    deleteDesc: "Workflow \"{name}\" and all its enrollment data will be permanently deleted. This action cannot be undone.",
+    deleteConfirm: "Delete",
+    errDelete: "Failed to delete workflow.",
+    errHasRuns: "This workflow has send history and cannot be deleted.",
+    // Preview dialog
+    previewTitle: "Template preview",
+    previewSubject: "Subject",
+    previewLoading: "Loading…",
+    previewFailed: "Failed to load template.",
+    // Enrollment history dialog
+    historyTitle: "Enrollment history",
+    historyEmail: "Email",
+    historyStatus: "Status",
+    historyEnrolledAt: "Enrolled",
+    historySentAt: "Sent at",
+    historyLoading: "Loading…",
+    historyEmpty: "No enrollments yet.",
+    // Run confirmation
+    runTitle: "Run workflow?",
+    runDesc: "Workflow \"{name}\" will compute recipients based on the trigger, enroll new ones, then send emails.",
+    runConfirm: "Run",
+    // Empty state
+    emptyIcon: "No workflows yet",
+    emptyDesc: "Workflows send automated emails based on activity — welcome new joiners or re-engage the quiet ones.",
+    emptyCta: "Create your first workflow",
   },
 
   tagRegistryPage: {

@@ -1255,6 +1255,60 @@ export const id = {
     pause: "Jeda",
     activate: "Aktifkan",
     prelaunchNote: "Kirim nyata mati — menjalankan workflow hanya mengirim ke alamat internal @20fit.id; penerima pelanggan ditahan.",
+    // Kebab menu
+    menuEdit: "Edit",
+    menuPreview: "Pratinjau template",
+    menuDelete: "Hapus",
+    menuHistory: "Riwayat pendaftaran",
+    menuRun: "Jalankan manual",
+    // Card enrichment
+    cardTemplate: "Template",
+    cardCreatedBy: "Dibuat oleh",
+    cardCreatedAt: "Dibuat",
+    cardLastEnrolled: "Pendaftaran terakhir",
+    cardNever: "—",
+    // Status breakdown
+    statusQueued: "Antrean",
+    statusSent: "Terkirim",
+    statusFailed: "Gagal",
+    statusSkipped: "Dilewati",
+    // Toggle
+    toggleActivateTitle: "Aktifkan workflow?",
+    toggleActivateDesc: "Workflow ini akan dijalankan otomatis saat dijadwalkan. Pastikan pengaturan trigger dan template sudah benar.",
+    togglePauseTitle: "Jeda workflow?",
+    togglePauseDesc: "Workflow tidak akan mengirim email selama dijeda. Pendaftaran yang sudah ada tidak terpengaruh.",
+    toggleConfirm: "Ya, lanjutkan",
+    // Edit dialog
+    editTitle: "Edit workflow",
+    editSave: "Simpan",
+    errUpdate: "Gagal menyimpan perubahan.",
+    // Delete dialog
+    deleteTitle: "Hapus workflow?",
+    deleteDesc: "Workflow \"{name}\" dan semua data pendaftarannya akan dihapus permanen. Tindakan ini tidak bisa dibatalkan.",
+    deleteConfirm: "Hapus",
+    errDelete: "Gagal menghapus workflow.",
+    errHasRuns: "Workflow ini punya riwayat pengiriman dan tidak bisa dihapus.",
+    // Preview dialog
+    previewTitle: "Pratinjau template",
+    previewSubject: "Subjek",
+    previewLoading: "Memuat…",
+    previewFailed: "Gagal memuat template.",
+    // Enrollment history dialog
+    historyTitle: "Riwayat pendaftaran",
+    historyEmail: "Email",
+    historyStatus: "Status",
+    historyEnrolledAt: "Terdaftar",
+    historySentAt: "Terkirim",
+    historyLoading: "Memuat…",
+    historyEmpty: "Belum ada pendaftaran.",
+    // Run confirmation
+    runTitle: "Jalankan workflow?",
+    runDesc: "Workflow \"{name}\" akan menghitung penerima berdasarkan trigger, mendaftarkan yang baru, lalu mengirim email.",
+    runConfirm: "Jalankan",
+    // Empty state
+    emptyIcon: "Belum ada workflow",
+    emptyDesc: "Workflow mengirim email otomatis berdasarkan aktivitas — sambut yang baru bergabung atau aktifkan kembali yang sudah diam.",
+    emptyCta: "Buat workflow pertama",
   },
 
   // Campaigns console (send path) — compose flow + pre-launch block. Born bilingual.

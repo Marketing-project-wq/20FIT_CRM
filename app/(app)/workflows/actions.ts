@@ -8,10 +8,14 @@ import {
   listWorkflows,
   createWorkflow,
   setWorkflowActive,
+  updateWorkflow,
+  deleteWorkflow,
+  listEnrollments,
   getWorkflowById,
   type WorkflowWithCounts,
   type WorkflowType,
   type WorkflowTriggerSource,
+  type EnrollmentRow,
 } from "@/lib/crm/workflow-store";
 import { resolveActivityTimeIds, resolvePoolNewIds } from "@/lib/crm/activity";
 import { sendCampaign } from "@/lib/crm/send-campaign";
@@ -61,6 +65,51 @@ export async function setWorkflowActiveAction(id: string, active: boolean): Prom
   const role = await getCurrentUserRole();
   if (grantFor(role, "send.at_or_below_threshold") === "deny") return { ok: false };
   return setWorkflowActive(id, active);
+}
+
+export async function updateWorkflowAction(id: string, input: {
+  name?: string;
+  templateKey?: string;
+  triggerDays?: number;
+  triggerSource?: WorkflowTriggerSource;
+}): Promise<{ ok: boolean; error?: string }> {
+  const role = await getCurrentUserRole();
+  if (grantFor(role, "send.at_or_below_threshold") === "deny") return { ok: false, error: "denied" };
+  return updateWorkflow(id, input);
+}
+
+export async function deleteWorkflowAction(id: string): Promise<{ ok: boolean; error?: string }> {
+  const role = await getCurrentUserRole();
+  if (grantFor(role, "send.at_or_below_threshold") === "deny") return { ok: false, error: "denied" };
+  return deleteWorkflow(id);
+}
+
+export async function listEnrollmentsAction(workflowId: string): Promise<{ ok: boolean; enrollments: EnrollmentRow[] }> {
+  const role = await getCurrentUserRole();
+  if (grantFor(role, "send.at_or_below_threshold") === "deny") return { ok: false, enrollments: [] };
+  return { ok: true, enrollments: await listEnrollments(workflowId) };
+}
+
+export async function getTemplatePreviewAction(templateKey: string): Promise<{ ok: boolean; subject?: string; body?: string }> {
+  const role = await getCurrentUserRole();
+  if (grantFor(role, "send.at_or_below_threshold") === "deny") return { ok: false };
+  try {
+    const admin = createAdminClient();
+    const { data, error } = await admin
+      .from("crm_message_template")
+      .select("subject, body")
+      .eq("template_key", templateKey)
+      .eq("channel", "email")
+      .eq("is_active", true)
+      .order("version", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error || !data) return { ok: false };
+    const row = data as { subject: string | null; body: string };
+    return { ok: true, subject: row.subject ?? undefined, body: row.body };
+  } catch {
+    return { ok: false };
+  }
 }
 
 export interface WorkflowRunResult {

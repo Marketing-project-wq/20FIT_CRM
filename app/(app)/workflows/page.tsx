@@ -13,23 +13,22 @@ import { WorkflowsClient, type TemplateOpt } from "./workflows-client";
 export const metadata: Metadata = { title: "Workflows" };
 export const dynamic = "force-dynamic";
 
-/** Email templates carrying {{unsubscribe_url}} — same eligibility as campaigns. */
 async function loadEligibleTemplates(): Promise<TemplateOpt[]> {
   try {
     const admin = createAdminClient();
     const { data, error } = await admin
       .from("crm_message_template")
-      .select("template_key, name, subject, body, version")
+      .select("template_key, name, display_name, subject, body, version")
       .eq("channel", "email").eq("is_active", true)
       .order("version", { ascending: false });
     if (error) return [];
     const seen = new Set<string>();
     const out: TemplateOpt[] = [];
-    for (const r of (data ?? []) as { template_key: string; name: string; subject: string | null; body: string }[]) {
+    for (const r of (data ?? []) as { template_key: string; name: string; display_name: string | null; subject: string | null; body: string }[]) {
       if (isInternalTestTemplateKey(r.template_key) || seen.has(r.template_key)) continue;
       seen.add(r.template_key);
       if (extractVariables(`${r.subject ?? ""}\n${r.body}`).includes("unsubscribe_url")) {
-        out.push({ key: r.template_key, name: r.name });
+        out.push({ key: r.template_key, name: r.display_name || r.name });
       }
     }
     return out;
