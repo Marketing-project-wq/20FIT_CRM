@@ -161,6 +161,9 @@ export interface DeliveryBlock {
   queued: number;
   softBounce: number;
   hardBounce: number;
+  bounceRate: number;
+  totalSent: number;
+  totalBounced: number;
 }
 /**
  * REACH — replaces the old "Contactable · marketing" / "Contactable · service" pair, which was
@@ -310,24 +313,32 @@ export async function fetchSourcesBlock(admin: SupabaseClient): Promise<SourcesB
   return { liveSources: await fetchLiveSourceGaps(admin) };
 }
 
-/** DELIVERY — 30-day message log stats for the delivery health panel. */
+/** DELIVERY — 30-day message log stats for the delivery health panel.
+ *  "Queued" = sent in the last 24h only (older sent rows are treated as delivered with a missed webhook). */
 export async function fetchDeliveryBlock(admin: SupabaseClient): Promise<DeliveryBlock> {
-  const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
-  const q = () => admin.from("crm_message_log").select("*", { count: "exact", head: true }).gte("created_at", since);
+  const since30d = new Date(Date.now() - 30 * 86_400_000).toISOString();
+  const since24h = new Date(Date.now() - 86_400_000).toISOString();
+  const q30 = () => admin.from("crm_message_log").select("*", { count: "exact", head: true }).gte("created_at", since30d);
   const [delivered, queued, bounced, hardBounce] = await Promise.all([
-    q().eq("status", "delivered"),
-    q().in("status", ["queued", "sent"]),
-    q().eq("status", "bounced"),
-    q().eq("status", "bounced").eq("failure_cause", "hard_bounce"),
+    q30().eq("status", "delivered"),
+    admin.from("crm_message_log").select("*", { count: "exact", head: true }).eq("status", "sent").gte("sent_at", since24h),
+    q30().eq("status", "bounced"),
+    q30().eq("status", "bounced").eq("failure_cause", "hard_bounce"),
   ]);
   for (const r of [delivered, queued, bounced, hardBounce]) if (r.error) throw r.error;
   const totalBounced = bounced.count ?? 0;
   const hard = hardBounce.count ?? 0;
+  const deliveredN = delivered.count ?? 0;
+  const totalSent = deliveredN + totalBounced;
+  const rate = totalSent > 0 ? +((totalBounced / totalSent) * 100).toFixed(1) : 0;
   return {
-    delivered: delivered.count ?? 0,
+    delivered: deliveredN,
     queued: queued.count ?? 0,
     softBounce: totalBounced - hard,
     hardBounce: hard,
+    bounceRate: rate,
+    totalSent,
+    totalBounced,
   };
 }
 

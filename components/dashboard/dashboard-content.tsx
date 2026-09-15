@@ -23,6 +23,9 @@ interface DeliveryBlock {
   queued: number;
   softBounce: number;
   hardBounce: number;
+  bounceRate: number;
+  totalSent: number;
+  totalBounced: number;
 }
 
 interface EventsBlock { eventRegistrations: { product: string; registrations: number }[] }
@@ -156,7 +159,6 @@ export function DashboardContent({
   const emailPct = totalKontak > 0 ? ((emailCount / totalKontak) * 100).toFixed(1) : "0";
   const poolTotal = summary?.reach.poolTotal ?? 0;
   const suppressedCount = imm?.suppressedEmailCount ?? 0;
-  const bounceRate = emailCount > 0 ? ((suppressedCount / emailCount) * 100).toFixed(1) : "0";
   const thisMonthCount = imm?.thisMonthCount ?? 0;
   const monthPct = totalKontak > 0 ? ((thisMonthCount / totalKontak) * 100).toFixed(1) : "0";
 
@@ -215,12 +217,12 @@ export function DashboardContent({
           />
           <KpiCard
             label={d.kpiBounceRate}
-            value={immediate.status === "ready" ? `${bounceRate}%` : "—"}
-            sub={immediate.status === "ready" ? `${formatCount(suppressedCount, lang)} ${d.kpiSuppressed}` : undefined}
-            tone={suppressedCount > 0 ? "red" : undefined}
+            value={delivery.status === "ready" && del ? `${del.bounceRate.toFixed(1)}%` : "—"}
+            sub={immediate.status === "ready" ? `~${formatCount(suppressedCount, lang)} ${d.kpiSuppressed}` : undefined}
+            tone={del && del.totalBounced > 0 ? "red" : undefined}
             icon={<ShieldAlert className="h-4 w-4" />}
-            loading={immediate.status === "loading"}
-            error={immediate.status === "error" ? d.blockFailed : undefined}
+            loading={delivery.status === "loading"}
+            error={delivery.status === "error" ? d.blockFailed : undefined}
           />
         </section>
       )}
@@ -312,7 +314,7 @@ export function DashboardContent({
                     { label: d.coverageEmailOnly, value: cov.emailOnly, barClass: "bg-blue" },
                     { label: d.coveragePhoneOnly, value: cov.phoneOnly, barClass: "bg-amber" },
                     { label: d.coverageNeither, value: cov.neither, barClass: "bg-red" },
-                  ]} />
+                  ].filter((item) => item.value > 0)} />
               ) : immediate.status === "error" ? (
                 <BlockFail t={t} onRetry={() => loadBlock("immediate")} />
               ) : (
