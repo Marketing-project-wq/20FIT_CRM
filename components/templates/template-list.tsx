@@ -1,10 +1,13 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { Mail, MessageCircle, Edit, Eye, ExternalLink, Trash2, Search, SlidersHorizontal } from "lucide-react";
+import { useState, useMemo, useRef, useEffect } from "react";
+import {
+  Mail, MessageCircle, Eye, ExternalLink, Edit, Trash2,
+  Copy, Archive, RotateCcw, MoreVertical, Search, SlidersHorizontal,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { formatDateTime } from "@/lib/i18n";
+import { formatDateTime, formatCount } from "@/lib/i18n";
 import { EmailTemplateBuilder } from "./email-template-builder";
 import { WhatsAppTemplateBuilder } from "./whatsapp-template-builder";
 
@@ -59,12 +62,22 @@ interface TemplatesPageDict {
   delete: string;
   deleteConfirm: string;
   previewTitle: string;
+  sentCount: string;
+  neverSent: string;
+  duplicate: string;
+  archive: string;
+  activate: string;
+  archiveConfirm: string;
+  activateConfirm: string;
+  showArchived: string;
+  hideArchived: string;
 }
 
 interface TemplateListProps {
   templates: Template[];
   lang: "id" | "en";
   t: TemplatesPageDict;
+  sentCounts: Record<string, number>;
 }
 
 const CATEGORY_LABELS: Record<TemplateCategory, keyof TemplatesPageDict> = {
@@ -97,22 +110,24 @@ const STATUS_TONES: Record<TemplateStatus, "neutral" | "green" | "red"> = {
 
 type SortKey = "name" | "date" | "version";
 
-export function TemplateList({ templates, lang, t }: TemplateListProps) {
+export function TemplateList({ templates, lang, t, sentCounts }: TemplateListProps) {
   const [showEmailBuilder, setShowEmailBuilder] = useState(false);
   const [showWhatsAppBuilder, setShowWhatsAppBuilder] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
-  const [isLoadingEdit, setIsLoadingEdit] = useState(false);
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<TemplateCategory | "all">("all");
   const [statusFilter, setStatusFilter] = useState<TemplateStatus | "all">("all");
   const [sortBy, setSortBy] = useState<SortKey>("date");
   const [showFilters, setShowFilters] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
 
   const filtered = useMemo(() => {
     let list = templates;
+    if (!showArchived) {
+      list = list.filter((tpl) => (tpl.status ?? "active") !== "archived");
+    }
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       list = list.filter((tpl) => {
@@ -138,13 +153,12 @@ export function TemplateList({ templates, lang, t }: TemplateListProps) {
       sorted.sort((a, b) => b.version - a.version);
     }
     return sorted;
-  }, [templates, search, categoryFilter, statusFilter, sortBy]);
+  }, [templates, search, categoryFilter, statusFilter, sortBy, showArchived]);
 
   const emailTemplates = filtered.filter((tpl) => tpl.channel === "email");
   const whatsappTemplates = filtered.filter((tpl) => tpl.channel === "whatsapp");
 
   async function openEdit(id: string, isWhatsApp: boolean) {
-    setIsLoadingEdit(true);
     try {
       const res = await fetch(`/api/templates?id=${id}`);
       if (!res.ok) throw new Error("Failed to fetch template");
@@ -154,8 +168,6 @@ export function TemplateList({ templates, lang, t }: TemplateListProps) {
     } catch (err) {
       console.error("Failed to load template:", err);
       alert("Failed to load template for editing");
-    } finally {
-      setIsLoadingEdit(false);
     }
   }
 
@@ -177,21 +189,76 @@ export function TemplateList({ templates, lang, t }: TemplateListProps) {
 
   async function onDelete(key: string, displayName: string) {
     if (!confirm(t.deleteConfirm.replace("{name}", displayName))) return;
-    setDeleting(key);
     try {
       const res = await fetch(`/api/templates?key=${encodeURIComponent(key)}`, { method: "DELETE" });
       if (!res.ok) { const e = await res.json().catch(() => ({})); alert(`Gagal menghapus: ${e.error ?? res.status}`); return; }
       window.location.reload();
-    } finally {
-      setDeleting(null);
+    } catch {
+      alert("Network error");
+    }
+  }
+
+  async function onArchiveToggle(key: string, displayName: string, currentStatus: TemplateStatus) {
+    const isArchived = currentStatus === "archived";
+    const msg = isArchived
+      ? t.activateConfirm.replace("{name}", displayName)
+      : t.archiveConfirm.replace("{name}", displayName);
+    if (!confirm(msg)) return;
+    try {
+      const res = await fetch(`/api/templates`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key, status: isArchived ? "active" : "archived" }),
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        alert(e.error ?? `Error ${res.status}`);
+        return;
+      }
+      window.location.reload();
+    } catch {
+      alert("Network error");
+    }
+  }
+
+  async function onDuplicate(id: string) {
+    try {
+      const res = await fetch(`/api/templates?id=${id}`);
+      if (!res.ok) throw new Error("Failed to fetch template");
+      const { template } = await res.json();
+      const newKey = `${template.template_key}_copy`;
+      const dup = await fetch("/api/templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          template_key: newKey,
+          channel: template.channel,
+          language: template.language,
+          name: `${template.name} (copy)`,
+          display_name: template.display_name ? `${template.display_name} (copy)` : null,
+          description: template.description,
+          category: template.category,
+          subject: template.subject,
+          body: template.body,
+          sender_name: template.sender_name,
+        }),
+      });
+      if (!dup.ok) {
+        const e = await dup.json().catch(() => ({}));
+        alert(e.error ?? `Error ${dup.status}`);
+        return;
+      }
+      window.location.reload();
+    } catch {
+      alert("Failed to duplicate template");
     }
   }
 
   const hasFilters = search.trim() || categoryFilter !== "all" || statusFilter !== "all";
+  const archivedCount = templates.filter((tpl) => (tpl.status ?? "active") === "archived").length;
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Toolbar: search + filters + create buttons */}
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative flex-1">
@@ -207,6 +274,12 @@ export function TemplateList({ templates, lang, t }: TemplateListProps) {
           <Button size="sm" variant="outline" onClick={() => setShowFilters((v) => !v)}>
             <SlidersHorizontal className="h-4 w-4" />
           </Button>
+          {archivedCount > 0 && (
+            <Button size="sm" variant="outline" onClick={() => setShowArchived((v) => !v)}>
+              <Archive className="h-4 w-4" />
+              {showArchived ? t.hideArchived : t.showArchived}
+            </Button>
+          )}
           <Button size="sm" variant="outline" onClick={() => { setEditingTemplate(null); setShowEmailBuilder(true); }}>
             <Mail className="h-4 w-4" />
             {t.createEmail}
@@ -261,7 +334,6 @@ export function TemplateList({ templates, lang, t }: TemplateListProps) {
         </p>
       </div>
 
-      {/* Empty state */}
       {templates.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-4 rounded-card border border-dashed border-glass-border px-6 py-20 text-center">
           <div className="flex gap-2">
@@ -290,11 +362,12 @@ export function TemplateList({ templates, lang, t }: TemplateListProps) {
                     tpl={tpl}
                     lang={lang}
                     t={t}
-                    isLoadingEdit={isLoadingEdit}
-                    deleting={deleting}
+                    sentCount={sentCounts[tpl.template_key] ?? 0}
                     onPreview={() => openPreview(tpl.id)}
                     onEdit={() => openEdit(tpl.id, false)}
                     onDelete={() => onDelete(tpl.template_key, tpl.display_name || tpl.name)}
+                    onDuplicate={() => onDuplicate(tpl.id)}
+                    onArchiveToggle={() => onArchiveToggle(tpl.template_key, tpl.display_name || tpl.name, (tpl.status ?? "active") as TemplateStatus)}
                   />
                 ))}
               </div>
@@ -311,11 +384,12 @@ export function TemplateList({ templates, lang, t }: TemplateListProps) {
                     tpl={tpl}
                     lang={lang}
                     t={t}
-                    isLoadingEdit={isLoadingEdit}
-                    deleting={deleting}
+                    sentCount={sentCounts[tpl.template_key] ?? 0}
                     onPreview={() => openPreview(tpl.id)}
                     onEdit={() => openEdit(tpl.id, true)}
                     onDelete={() => onDelete(tpl.template_key, tpl.display_name || tpl.name)}
+                    onDuplicate={() => onDuplicate(tpl.id)}
+                    onArchiveToggle={() => onArchiveToggle(tpl.template_key, tpl.display_name || tpl.name, (tpl.status ?? "active") as TemplateStatus)}
                   />
                 ))}
               </div>
@@ -344,7 +418,7 @@ export function TemplateList({ templates, lang, t }: TemplateListProps) {
             <div className="flex items-center justify-between border-b border-glass-border px-6 py-4">
               <h2 className="font-display text-[16px] font-bold text-ink">{t.previewTitle}</h2>
               <button onClick={() => setPreviewHtml(null)} className="rounded p-2 hover:bg-glass">
-                <span className="font-display text-[13px] font-bold text-ink-soft">✕</span>
+                <span className="font-display text-[13px] font-bold text-ink-soft">&times;</span>
               </button>
             </div>
             <iframe srcDoc={previewHtml} sandbox="allow-same-origin" className="flex-1 rounded-b-lg bg-white" title="Preview" />
@@ -371,45 +445,129 @@ function FilterChip({ active, onClick, children }: { active: boolean; onClick: (
   );
 }
 
+function KebabMenu({ children }: { children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="rounded p-1 hover:bg-glass"
+      >
+        <MoreVertical className="h-4 w-4 text-ink-soft" />
+      </button>
+      {open && (
+        <div
+          className="absolute right-0 top-full z-30 mt-1 min-w-[160px] rounded-md border border-glass-border bg-surface py-1 shadow-lg"
+          onClick={() => setOpen(false)}
+        >
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MenuItem({ icon: Icon, label, onClick, danger }: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  onClick: () => void;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left font-body text-[13px] transition-colors hover:bg-glass ${
+        danger ? "text-red" : "text-ink"
+      }`}
+    >
+      <Icon className="h-3.5 w-3.5" />
+      {label}
+    </button>
+  );
+}
+
 function TemplateCard({
-  tpl, lang, t, isLoadingEdit, deleting, onPreview, onEdit, onDelete,
+  tpl, lang, t, sentCount,
+  onPreview, onEdit, onDelete, onDuplicate, onArchiveToggle,
 }: {
   tpl: Template;
   lang: "id" | "en";
   t: TemplatesPageDict;
-  isLoadingEdit: boolean;
-  deleting: string | null;
+  sentCount: number;
   onPreview: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onDuplicate: () => void;
+  onArchiveToggle: () => void;
 }) {
   const label = tpl.display_name || tpl.name;
   const category = (tpl.category ?? "other") as TemplateCategory;
   const status = (tpl.status ?? "active") as TemplateStatus;
   const isWhatsApp = tpl.channel === "whatsapp";
+  const hasDescription = tpl.description && tpl.description.trim().length > 0;
+  const subjectDiffers = tpl.channel === "email" && tpl.subject && tpl.subject !== label;
 
   return (
-    <div className="card group relative flex flex-col gap-3 p-4">
-      {/* Header: name + channel icon */}
+    <div className={`card group relative flex flex-col gap-2 p-4 ${status === "archived" ? "opacity-60" : ""}`}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 overflow-hidden">
           <h3 className="truncate font-display text-[14px] font-bold text-ink">{label}</h3>
-          {tpl.channel === "email" && tpl.subject && (
+          {subjectDiffers && (
             <p className="mt-0.5 truncate font-body text-[12px] text-ink-soft">{tpl.subject}</p>
           )}
         </div>
-        {isWhatsApp
-          ? <MessageCircle className="h-4 w-4 flex-shrink-0 text-ink-faint" />
-          : <Mail className="h-4 w-4 flex-shrink-0 text-ink-faint" />
-        }
+        <div className="flex shrink-0 items-center gap-1">
+          {isWhatsApp
+            ? <MessageCircle className="h-4 w-4 text-ink-faint" />
+            : <Mail className="h-4 w-4 text-ink-faint" />
+          }
+          <KebabMenu>
+            <MenuItem icon={Eye} label={t.preview} onClick={onPreview} />
+            {!isWhatsApp && (
+              <a
+                href={`/api/templates/preview?id=${tpl.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left font-body text-[13px] text-ink transition-colors hover:bg-glass"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                {t.previewNewTab}
+              </a>
+            )}
+            <MenuItem icon={Edit} label={t.edit} onClick={onEdit} />
+            <MenuItem icon={Copy} label={t.duplicate} onClick={onDuplicate} />
+            <div className="my-1 h-px bg-glass-border" />
+            <MenuItem
+              icon={status === "archived" ? RotateCcw : Archive}
+              label={status === "archived" ? t.activate : t.archive}
+              onClick={onArchiveToggle}
+            />
+            {tpl.template_key !== "__uji_internal__" && (
+              <MenuItem icon={Trash2} label={t.delete} onClick={onDelete} danger />
+            )}
+          </KebabMenu>
+        </div>
       </div>
 
-      {/* Description */}
-      <p className="line-clamp-2 font-body text-[12px] leading-snug text-ink-soft">
-        {tpl.description || t.cardNoDescription}
-      </p>
+      {hasDescription && (
+        <p className="line-clamp-2 font-body text-[12px] leading-snug text-ink-soft">
+          {tpl.description}
+        </p>
+      )}
 
-      {/* Badges: category + status + WA approval */}
       <div className="flex flex-wrap items-center gap-1.5">
         <Badge tone={CATEGORY_TONES[category]} className="text-[10px]">
           {t[CATEGORY_LABELS[category]]}
@@ -433,38 +591,17 @@ function TemplateCard({
                   : "Draft"}
           </Badge>
         )}
+        <Badge tone={sentCount > 0 ? "green" : "neutral"} className="text-[10px]">
+          {sentCount > 0
+            ? t.sentCount.replace("{n}", formatCount(sentCount, lang))
+            : t.neverSent}
+        </Badge>
       </div>
 
-      {/* Meta: key · version · language */}
-      <div className="flex items-center gap-2 text-[11px] text-ink-faint">
-        <span className="truncate font-mono">{tpl.template_key}</span>
-        <span>·</span>
-        <span>{t.cardVersion.replace("{v}", String(tpl.version))}</span>
-        <span>·</span>
-        <span>{tpl.language.toUpperCase()}</span>
-      </div>
-
-      {/* Footer: date + action buttons */}
       <div className="flex items-center justify-between">
         <span className="font-mono text-[11px] text-ink-faint">
           {formatDateTime(tpl.created_at, lang)}
         </span>
-        <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-          <button className="rounded p-1 hover:bg-glass" title={t.preview} onClick={onPreview}>
-            <Eye className="h-3.5 w-3.5 text-ink-soft" />
-          </button>
-          {!isWhatsApp && (
-            <a className="rounded p-1 hover:bg-glass" title={t.previewNewTab} href={`/api/templates/preview?id=${tpl.id}`} target="_blank" rel="noopener noreferrer">
-              <ExternalLink className="h-3.5 w-3.5 text-ink-soft" />
-            </a>
-          )}
-          <button className="rounded p-1 hover:bg-glass" title={t.edit} disabled={isLoadingEdit} onClick={onEdit}>
-            <Edit className="h-3.5 w-3.5 text-ink-soft" />
-          </button>
-          <button className="rounded p-1 hover:bg-glass" title={t.delete} disabled={deleting === tpl.template_key} onClick={onDelete}>
-            <Trash2 className="h-3.5 w-3.5 text-ink-soft hover:text-red" />
-          </button>
-        </div>
       </div>
     </div>
   );

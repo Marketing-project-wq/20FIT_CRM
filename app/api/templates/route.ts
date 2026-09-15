@@ -130,6 +130,38 @@ export async function POST(req: NextRequest) {
 }
 
 /**
+ * PATCH /api/templates — toggle template status (archive / activate).
+ * Body: { key: string, status: "active" | "archived" }
+ */
+export async function PATCH(req: NextRequest) {
+  try {
+    const role = await getCurrentUserRole();
+    if (grantFor(role, "workflow.create") === "deny") {
+      return NextResponse.json({ error: "Access denied" }, { status: 403 });
+    }
+    const body = await req.json();
+    const { key, status } = body;
+    if (!key || !["active", "archived"].includes(status)) {
+      return NextResponse.json({ error: "Missing key or invalid status" }, { status: 400 });
+    }
+    const admin = createAdminClient();
+    const { error } = await admin
+      .from("crm_message_template")
+      .update({ status })
+      .eq("template_key", key)
+      .eq("is_active", true);
+    if (error) {
+      console.error("Failed to update template status:", error);
+      return NextResponse.json({ error: "Failed to update status" }, { status: 500 });
+    }
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    console.error("Template PATCH error:", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+/**
  * DELETE /api/templates?key=<template_key> — soft-delete ALL versions of a template (is_active=false).
  * The append-only table keeps the rows (audit/history), they just stop appearing in lists/sends.
  * Gate: workflow.create. The internal-test template key is protected (never deletable via UI).

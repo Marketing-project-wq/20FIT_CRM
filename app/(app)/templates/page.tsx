@@ -38,6 +38,40 @@ async function loadTemplates() {
   }
 }
 
+async function loadSentCounts(): Promise<Record<string, number>> {
+  try {
+    const admin = createAdminClient();
+    const { data, error } = await admin
+      .rpc("template_sent_counts")
+      .select("template_key, sent_count");
+
+    if (!error && data) {
+      const counts: Record<string, number> = {};
+      for (const row of data as { template_key: string; sent_count: number }[]) {
+        counts[row.template_key] = row.sent_count;
+      }
+      return counts;
+    }
+  } catch {}
+
+  try {
+    const admin = createAdminClient();
+    const { data, error } = await admin
+      .from("crm_message_log")
+      .select("template_key")
+      .in("status", ["delivered", "sent"]);
+
+    if (error || !data) return {};
+    const counts: Record<string, number> = {};
+    for (const row of data as { template_key: string }[]) {
+      if (row.template_key) counts[row.template_key] = (counts[row.template_key] ?? 0) + 1;
+    }
+    return counts;
+  } catch {
+    return {};
+  }
+}
+
 export default async function TemplatesPage() {
   const role = await getCurrentUserRole();
   const { t, lang } = getServerDict();
@@ -54,12 +88,12 @@ export default async function TemplatesPage() {
     );
   }
 
-  const templates = await loadTemplates();
+  const [templates, sentCounts] = await Promise.all([loadTemplates(), loadSentCounts()]);
 
   return (
     <div className="flex flex-col gap-6">
       <h1 className="font-display text-[32px] font-black uppercase leading-none text-ink">{t.nav.templates}</h1>
-      <TemplateList templates={templates} lang={lang} t={t.templatesPage} />
+      <TemplateList templates={templates} lang={lang} t={t.templatesPage} sentCounts={sentCounts} />
     </div>
   );
 }
