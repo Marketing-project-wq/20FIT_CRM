@@ -80,7 +80,7 @@ export function SegmentsTab({
         </button>
       )}
 
-      {/* ── LIST: segmen tersimpan ── */}
+      {/* ── B1: compact segment table ── */}
       <section className="flex flex-col gap-3">
         <h2 className="font-display text-[15px] font-bold uppercase tracking-wide text-ink">{s.savedTitle}</h2>
         {deleteMsg && (
@@ -89,30 +89,46 @@ export function SegmentsTab({
         {segments.length === 0 ? (
           <p className="font-body text-[13px] text-ink-soft">{s.savedEmpty}</p>
         ) : (
-          <div className="flex flex-col gap-2">
-            {segments.map((seg) => (
-              <div key={seg.id} className="flex items-center gap-3 rounded-card border border-glass-border bg-glass px-4 py-3">
-                <div className="min-w-0 flex-1">
-                  <span className="font-body text-[14px] font-semibold text-ink">{seg.name}</span>
-                  {seg.requiresClinical && <Badge tone="amber" className="ml-2">⚕ Klinis</Badge>}
-                  <span className="ml-3 font-mono text-[11px] text-ink-faint">
-                    {formatDateTime(seg.createdAt, lang)}
-                    {seg.createdBy && ` · ${seg.createdBy}`}
-                  </span>
-                </div>
-                {canBuild && (
-                  <button
-                    type="button"
-                    onClick={() => onDelete(seg.id, seg.name)}
-                    disabled={deleting === seg.id}
-                    aria-label={`${s.deleteLabel} ${seg.name}`}
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-ink-faint transition-colors hover:text-red disabled:opacity-50"
-                  >
-                    <Trash2 className="h-4 w-4" aria-hidden />
-                  </button>
-                )}
-              </div>
-            ))}
+          <div className="overflow-x-auto rounded-card border border-glass-border">
+            <table className="w-full text-left font-body text-[13px]">
+              <thead>
+                <tr className="border-b border-glass-border bg-glass text-[11px] uppercase tracking-wide text-ink-faint">
+                  <th className="px-4 py-2.5 font-display font-bold">{s.colName}</th>
+                  <th className="px-4 py-2.5 font-display font-bold">{s.colCreated}</th>
+                  <th className="hidden px-4 py-2.5 font-display font-bold sm:table-cell">{s.colCreator}</th>
+                  {canBuild && <th className="px-4 py-2.5 text-right font-display font-bold">{s.colActions}</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {segments.map((seg) => (
+                  <tr key={seg.id} className="border-b border-glass-border last:border-0">
+                    <td className="px-4 py-2.5">
+                      <span className="font-semibold text-ink">{seg.name}</span>
+                      {seg.requiresClinical && <Badge tone="amber" className="ml-2">&#9877;</Badge>}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-2.5 font-mono text-[11px] text-ink-faint">
+                      {formatDateTime(seg.createdAt, lang)}
+                    </td>
+                    <td className="hidden whitespace-nowrap px-4 py-2.5 text-[12px] text-ink-soft sm:table-cell">
+                      {seg.createdBy ?? "—"}
+                    </td>
+                    {canBuild && (
+                      <td className="px-4 py-2.5 text-right">
+                        <button
+                          type="button"
+                          onClick={() => onDelete(seg.id, seg.name)}
+                          disabled={deleting === seg.id}
+                          aria-label={`${s.deleteLabel} ${seg.name}`}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-sm text-ink-faint transition-colors hover:text-red disabled:opacity-50"
+                        >
+                          <Trash2 className="h-4 w-4" aria-hidden />
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </section>

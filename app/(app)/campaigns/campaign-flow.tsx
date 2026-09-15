@@ -338,8 +338,36 @@ export function CampaignFlow({
   // dropping the focused input's focus on each keystroke (the "Nama kampanye" bug). Hoisting gives it a
   // stable identity; `open`/`setOpen` pass as props. Guarded by campaign-step-stable-identity.test.ts.
 
+  const completedSteps = [step0Done, step1Done, step2Done, step3Done].filter(Boolean).length;
+  const totalSteps = 4;
+
   return (
     <div className="flex flex-col gap-3">
+
+      {/* C1: progress indicator */}
+      <div className="glass flex items-center gap-4 rounded-card px-5 py-3">
+        <span className="font-display text-[13px] font-bold uppercase tracking-wide text-ink">
+          {c.progressStep} {completedSteps}/{totalSteps}
+        </span>
+        <div className="flex flex-1 items-center gap-1">
+          {[step0Done, step1Done, step2Done, step3Done].map((done, i) => (
+            <div
+              key={i}
+              className={`h-2 flex-1 rounded-full transition-colors ${done ? "bg-red" : "bg-ink-faint/20"}`}
+            />
+          ))}
+        </div>
+        <div className="flex gap-1">
+          {[step0Done, step1Done, step2Done, step3Done].map((done, i) => (
+            <span
+              key={i}
+              className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${done ? "bg-red text-white" : "bg-ink-faint/20 text-ink-faint"}`}
+            >
+              {done ? <Check className="h-3 w-3" /> : i + 1}
+            </span>
+          ))}
+        </div>
+      </div>
 
       {/* Bounce-back confirmation: a segment was just created and auto-selected. */}
       {toast && (

@@ -1,37 +1,29 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { useState, useMemo, type ReactNode } from "react";
 import Link from "next/link";
+import { Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { getServerDict } from "@/lib/i18n/server";
+import { useI18n } from "@/components/i18n/lang-provider";
 import type { Dict } from "@/lib/i18n";
 import type { DeliveryRow, DeliveryState, DeliveryDetail } from "@/lib/crm/deliveries";
 import { CancelDeliveryButton } from "./cancel-delivery-button";
 import { DrainControlButtons } from "./drain-control-buttons";
 import { RecipientTable } from "./recipient-table";
 
-/**
- * Deliveries tab (Campaigns) — one chronological list of scheduled sends + campaign runs. A run row
- * links to its per-recipient detail (traceable to the run, fix #2); a pending scheduled send can be
- * cancelled straight from its row (an uncancellable scheduled send is a trap). Manual vs automated
- * (workflow) sends are tagged so they read differently when tracing a problem.
- */
-
 const STATE_META: Record<DeliveryState, { key: keyof Dict["campaignsPage"]["deliveries"]; tone: "blue" | "amber" | "green" | "red" | "neutral" }> = {
   upcoming: { key: "stateUpcoming", tone: "blue" },
-  overdue: { key: "stateOverdue", tone: "red" }, // past its time but never ran — the T-40 #8 symptom, made loud
+  overdue: { key: "stateOverdue", tone: "red" },
   running: { key: "stateRunning", tone: "amber" },
-  paused: { key: "statePaused", tone: "blue" }, // P0-3: spent today's daily budget — waits for a human Lanjutkan
-  stalled: { key: "stateStalled", tone: "red" }, // P0-3: drain-active but the executor went silent — a zombie made loud
+  paused: { key: "statePaused", tone: "blue" },
+  stalled: { key: "stateStalled", tone: "red" },
   done: { key: "stateDone", tone: "green" },
-  // Two states a run can now land in honestly instead of being filed as "Selesai" (T-42): some
-  // recipients failed (partial) or every one did (failed).
   partial: { key: "statePartial", tone: "amber" },
   failed: { key: "stateFailed", tone: "red" },
   stopped: { key: "stateStopped", tone: "red" },
   cancelled: { key: "stateCancelled", tone: "neutral" },
 };
 
-/** UTC ISO → "YYYY-MM-DD HH:mm WIB" (WIB = UTC+7). Scheduled sends are entered in WIB, so showing WIB
- *  keeps the displayed time consistent with what the operator typed. */
 function wibDisplay(utcIso: string): string {
   const d = new Date(utcIso);
   if (Number.isNaN(d.getTime())) return utcIso;
@@ -136,6 +128,42 @@ function CompactStats({ row, labels }: { row: DeliveryRow; labels: Dict["campaig
   );
 }
 
+// ── Filter logic ──
+
+const PAGE_SIZE = 10;
+
+type FilterChip = "all" | "done" | "sending" | "failed" | "draft";
+
+const FILTER_STATES: Record<Exclude<FilterChip, "all">, DeliveryState[]> = {
+  done: ["done"],
+  sending: ["running", "paused", "stalled"],
+  failed: ["failed", "partial", "stopped"],
+  draft: ["upcoming", "overdue", "cancelled"],
+};
+
+const CHIP_KEYS: Record<FilterChip, keyof Dict["campaignsPage"]["deliveries"]> = {
+  all: "chipAll",
+  done: "chipDone",
+  sending: "chipSending",
+  failed: "chipFailed",
+  draft: "chipDraft",
+};
+
+const TEST_RE = /test|uji|gmail\s*test/i;
+
+function isTestEntry(row: DeliveryRow): boolean {
+  if (TEST_RE.test(row.label ?? "")) return true;
+  if (row.recipientCount <= 3) return true;
+  return false;
+}
+
+function readShowTest(): boolean {
+  try { return localStorage.getItem("crm_campaign_hide_test") === "0"; }
+  catch { return false; }
+}
+
+// ── Component ──
+
 export function DeliveriesTab({
   deliveries,
   detail,
@@ -145,10 +173,47 @@ export function DeliveriesTab({
   detail: DeliveryDetail | null;
   detailRequested: boolean;
 }) {
-  const { t } = getServerDict();
+  const { t } = useI18n();
   const d = t.campaignsPage.deliveries;
 
-  // ── DETAIL: the full picture of one delivery ──
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<FilterChip>("all");
+  const [page, setPage] = useState(0);
+  const [showTest, setShowTest] = useState(readShowTest);
+  const [expandedErrors, setExpandedErrors] = useState<Set<string>>(new Set());
+
+  function toggleShowTest() {
+    const next = !showTest;
+    setShowTest(next);
+    setPage(0);
+    try { localStorage.setItem("crm_campaign_hide_test", next ? "0" : "1"); } catch { /* noop */ }
+  }
+
+  function toggleError(key: string) {
+    setExpandedErrors((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  const filtered = useMemo(() => {
+    let rows = deliveries;
+    if (!showTest) rows = rows.filter((r) => !isTestEntry(r));
+    if (filter !== "all") rows = rows.filter((r) => FILTER_STATES[filter].includes(r.state));
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      rows = rows.filter((r) => (r.label ?? "").toLowerCase().includes(q));
+    }
+    return rows;
+  }, [deliveries, showTest, filter, search]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages - 1);
+  const paged = filtered.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
+
+  // ── DETAIL ──
   if (detailRequested) {
     const backLink = (
       <Link href="/campaigns?tab=kiriman" className="font-body text-[13px] text-red hover:underline">
@@ -167,7 +232,6 @@ export function DeliveriesTab({
       <div className="flex flex-col gap-6">
         {backLink}
 
-        {/* Summary */}
         <section className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={detail.source === "auto" ? "blue" : "neutral"}>
@@ -186,7 +250,6 @@ export function DeliveriesTab({
           {detail.lastError && <p className="font-body text-[12px] text-red">{d.lastError}: {detail.lastError}</p>}
         </section>
 
-        {/* Audience — the four numbers computed at send time */}
         <section className="flex flex-col gap-2">
           <h3 className="font-body text-[13px] font-semibold text-ink">{d.audienceTitle}</h3>
           {detail.audience ? (
@@ -201,7 +264,6 @@ export function DeliveriesTab({
           )}
         </section>
 
-        {/* Result report — from crm_message_log (webhook-filled). */}
         <section className="flex flex-col gap-2">
           <h3 className="font-body text-[13px] font-semibold text-ink">{d.resultTitle}</h3>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
@@ -226,7 +288,6 @@ export function DeliveriesTab({
           )}
         </section>
 
-        {/* Email preview — the EXACT version sent, skeleton-wrapped, isolated in a sandboxed iframe */}
         <section className="flex flex-col gap-2">
           <h3 className="font-body text-[13px] font-semibold text-ink">{d.previewTitle}</h3>
           {detail.preview ? (
@@ -251,7 +312,6 @@ export function DeliveriesTab({
           )}
         </section>
 
-        {/* Recipient list */}
         <section className="flex flex-col gap-2">
           <h3 className="font-body text-[13px] font-semibold text-ink">{d.recipientsTitle}</h3>
           <p className="font-body text-[12px] leading-relaxed text-ink-faint">{d.maskNote}</p>
@@ -261,36 +321,73 @@ export function DeliveriesTab({
     );
   }
 
-  // ── LIST: the merged timeline ──
+  // ── LIST ──
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-4">
       <p className="font-body text-[13px] leading-relaxed text-ink-soft">{d.subtitle}</p>
 
-      {deliveries.length === 0 ? (
+      {/* A1: Search */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" aria-hidden />
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+          placeholder={d.searchCampaign}
+          className="h-10 w-full rounded-sm border border-glass-border bg-glass pl-10 pr-3 font-body text-[14px] text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-red"
+        />
+      </div>
+
+      {/* A2: Filter chips + A5: Test toggle */}
+      <div className="flex flex-wrap items-center gap-2">
+        {(["all", "done", "sending", "failed", "draft"] as FilterChip[]).map((chip) => (
+          <button
+            key={chip}
+            type="button"
+            onClick={() => { setFilter(chip); setPage(0); }}
+            className={`rounded-full px-3 py-1 font-display text-[12px] font-bold uppercase tracking-wide transition-colors ${
+              filter === chip
+                ? "bg-red text-white"
+                : "border border-glass-border bg-glass text-ink-soft hover:text-ink"
+            }`}
+          >
+            {d[CHIP_KEYS[chip]]}
+          </button>
+        ))}
+        <label className="ml-auto flex cursor-pointer items-center gap-1.5 font-body text-[12px] text-ink-faint">
+          <input type="checkbox" checked={showTest} onChange={toggleShowTest} className="h-3.5 w-3.5 accent-red" />
+          {d.showTest}
+        </label>
+      </div>
+
+      {/* A4: Compact cards */}
+      {paged.length === 0 ? (
         <div className="rounded-card border border-dashed border-glass-border px-6 py-16 text-center">
           <p className="font-body text-[13px] text-ink-soft">{d.empty}</p>
         </div>
       ) : (
         <div className="flex flex-col gap-2">
-          {deliveries.map((row) => {
+          {paged.map((row) => {
             const st = STATE_META[row.state];
+            const cardKey = `${row.kind}:${row.id}`;
+            const errorExpanded = expandedErrors.has(cardKey);
             return (
-              <div key={`${row.kind}:${row.id}`} className="glass flex flex-col gap-2 rounded-card p-4">
+              <div key={cardKey} className="glass flex flex-col gap-1.5 rounded-card p-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge tone={st.tone}>{d[st.key]}</Badge>
                   <Badge tone={row.source === "auto" ? "blue" : "neutral"}>
                     {row.source === "auto" ? d.sourceAuto : d.sourceManual}
                   </Badge>
-                  <span className="font-body text-[14px] font-semibold text-ink">{row.label ?? d.unnamedRun}</span>
+                  <span className="font-body text-[13px] font-semibold text-ink">{row.label ?? d.unnamedRun}</span>
+                  <span className="ml-auto font-mono text-[11px] text-ink-faint">{wibDisplay(row.time)}</span>
                 </div>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-body text-[12px] text-ink-soft">
-                  <span>{d.colOwner}: {row.ownerName ?? <span className="italic text-ink-faint">{d.ownerUnresolved}</span>}</span>
-                  <span>{d.colTemplate}: <span className="font-mono">{row.templateKey}</span></span>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 font-body text-[11px] text-ink-soft">
+                  <span>{row.ownerName ?? <span className="italic text-ink-faint">{d.ownerUnresolved}</span>}</span>
+                  <span className="font-mono">{row.templateKey}</span>
                   <span>{d.colRecipients}: {row.recipientCount}</span>
                   {row.failedCount > 0 && (
-                    <span className="font-semibold text-red">{d.colFailed}: {row.failedCount}</span>
+                    <span className="font-semibold text-red">{row.failedCount} {d.statFailed}</span>
                   )}
-                  <span className="font-mono">{wibDisplay(row.time)}</span>
                 </div>
                 {row.kind === "run" && row.recipientCount > 0 && (
                   <>
@@ -299,13 +396,19 @@ export function DeliveriesTab({
                   </>
                 )}
                 {row.lastError && (
-                  <p className="font-body text-[12px] text-red">{d.lastError}: {row.lastError}</p>
+                  <button
+                    type="button"
+                    onClick={() => toggleError(cardKey)}
+                    className={`text-left font-body text-[12px] text-red ${!errorExpanded ? "truncate" : ""}`}
+                  >
+                    {d.lastError}: {row.lastError}
+                  </button>
                 )}
                 <div className="flex flex-wrap gap-2">
                   {row.runId && (
                     <Link
                       href={`/campaigns?tab=kiriman&run=${row.runId}`}
-                      className="font-body text-[13px] text-red hover:underline"
+                      className="font-body text-[12px] text-red hover:underline"
                     >
                       {d.viewRecipients}
                     </Link>
@@ -318,6 +421,31 @@ export function DeliveriesTab({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* A3: Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-3 pt-2">
+          <button
+            type="button"
+            disabled={safePage === 0}
+            onClick={() => setPage(safePage - 1)}
+            className="rounded-sm border border-glass-border px-3 py-1.5 font-body text-[12px] text-ink-soft transition-colors hover:text-ink disabled:opacity-40"
+          >
+            {d.prevPage}
+          </button>
+          <span className="font-body text-[13px] text-ink-soft">
+            {safePage + 1} {d.pageOf} {totalPages}
+          </span>
+          <button
+            type="button"
+            disabled={safePage >= totalPages - 1}
+            onClick={() => setPage(safePage + 1)}
+            className="rounded-sm border border-glass-border px-3 py-1.5 font-body text-[12px] text-ink-soft transition-colors hover:text-ink disabled:opacity-40"
+          >
+            {d.nextPage}
+          </button>
         </div>
       )}
     </div>

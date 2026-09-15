@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Filter, Clock, Users, Send, Sparkles } from "lucide-react";
+import { Filter, Clock, Users, Send, Sparkles, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EMPTY_CRITERIA, type SegmentCriteria } from "@/lib/crm/segment";
 import { describePresence } from "@/lib/crm/segment-describe";
@@ -104,6 +104,8 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiProposal, setAiProposal] = useState<AssistProposal | null>(null);
   const [tagMode, setTagMode] = useState<"any" | "all">("any");
+  const [tagsOpen, setTagsOpen] = useState(false);
+  const [excludeOpen, setExcludeOpen] = useState(false);
 
   // Save the DEFINITION (criteria + validated tree), never a member list (K-40). Enabled only after
   // a compute, so a saved segment is one whose size the operator has just seen.
@@ -394,52 +396,79 @@ export function SegmentBuilder({ cityFillPct, cityFilled, total, canViewHealth, 
             canViewHealth={canViewHealth}
           />
 
-        {/* TAG filter (TUGAS D redesign) — segment by the tags imports write. Folded + searchable +
-            counted, with selected tags as include/exclude chips (one list, two states — no second
-            duplicate list). Filters master_customer.tags directly, so a just-imported tag is usable
-            IMMEDIATELY. Hidden when the pool carries no operator tags yet. */}
+        {/* B2: collapsible TAG section */}
         {tagCounts.length > 0 && (
-          <div className="tint-neutral mt-4 rounded-card p-4">
-            <h4 className="font-display text-[13px] font-bold uppercase tracking-wide text-ink">{t.segments.tags.title}</h4>
-            <p className="mt-1 font-body text-[12px] leading-relaxed text-ink-faint">{t.segments.tags.immediate}</p>
-            <div className="mt-3">
-              <TagFilter
-                entries={tagCounts}
-                namespacePeople={tagVocab.namespacePeople}
-                included={positiveTags}
-                excluded={c.exclude.tagsAny}
-                mode={tagMode}
-                onSetIncluded={setIncludedTags}
-                onSetExcluded={setExcludedTags}
-                onModeChange={changeTagMode}
-                lang={lang}
-                w={t.segments.tags}
-              />
-            </div>
+          <div className="tint-neutral mt-4 rounded-card">
+            <button
+              type="button"
+              onClick={() => setTagsOpen((v) => !v)}
+              className="flex w-full items-center gap-2 px-4 py-3 text-left"
+            >
+              <ChevronDown className={`h-4 w-4 shrink-0 text-ink-soft transition-transform ${tagsOpen ? "rotate-0" : "-rotate-90"}`} aria-hidden />
+              <h4 className="font-display text-[13px] font-bold uppercase tracking-wide text-ink">
+                {t.segments.tags.title}
+                <span className="ml-2 font-body text-[11px] font-normal normal-case text-ink-faint">
+                  ({tagCounts.reduce((s, e) => s + e.people, 0).toLocaleString()} {t.segments.tags.peopleSuffix} · {tagCounts.length} {lang === "id" ? "nilai" : "values"})
+                </span>
+              </h4>
+            </button>
+            {tagsOpen && (
+              <div className="px-4 pb-4">
+                <p className="font-body text-[12px] leading-relaxed text-ink-faint">{t.segments.tags.immediate}</p>
+                <div className="mt-3">
+                  <TagFilter
+                    entries={tagCounts}
+                    namespacePeople={tagVocab.namespacePeople}
+                    included={positiveTags}
+                    excluded={c.exclude.tagsAny}
+                    mode={tagMode}
+                    onSetIncluded={setIncludedTags}
+                    onSetExcluded={setExcludedTags}
+                    onModeChange={changeTagMode}
+                    lang={lang}
+                    w={t.segments.tags}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         )}
 
-        {/* Exclusion (Track A) — "X but NOT Y". Each toggle REMOVES profiles that have that trait. */}
-        <div className="tint-neutral mt-4 rounded-card p-4">
-          <h4 className="font-display text-[13px] font-bold uppercase tracking-wide text-ink">{t.segments.exclude.title}</h4>
-          <p className="mt-1 font-body text-[12px] leading-relaxed text-ink-soft">{t.segments.exclude.intro}</p>
-          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {([
-              ["notMember", c.exclude.ecoUnit === "membership", (v: boolean) => setEx("ecoUnit", v ? "membership" : null)],
-              ["neverArena", c.exclude.srcArena, (v: boolean) => setEx("srcArena", v)],
-              ["neverGym", c.exclude.srcGym, (v: boolean) => setEx("srcGym", v)],
-              ["neverHyrox", c.exclude.srcHyrox, (v: boolean) => setEx("srcHyrox", v)],
-              ["noApp", c.exclude.srcMy20fit, (v: boolean) => setEx("srcMy20fit", v)],
-              ["noRecency", c.exclude.srcRecency, (v: boolean) => setEx("srcRecency", v)],
-            ] as const).map(([key, checked, onChange]) => (
-              <label key={key} className="flex items-center gap-2 font-body text-[13px] text-ink">
-                <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="h-4 w-4 accent-red" />
-                {t.segments.exclude[key]}
-              </label>
-            ))}
-          </div>
-          {/* Tag exclusions now live as include/exclude chips in the Tag filter above (T2) — no second
-              duplicate tag list here. This block keeps only the non-tag presence exclusions. */}
+        {/* B3: collapsible Exclusion section */}
+        <div className="tint-neutral mt-4 rounded-card">
+          <button
+            type="button"
+            onClick={() => setExcludeOpen((v) => !v)}
+            className="flex w-full items-center gap-2 px-4 py-3 text-left"
+          >
+            <ChevronDown className={`h-4 w-4 shrink-0 text-ink-soft transition-transform ${excludeOpen ? "rotate-0" : "-rotate-90"}`} aria-hidden />
+            <h4 className="font-display text-[13px] font-bold uppercase tracking-wide text-ink">
+              {t.segments.exclude.title}
+              <span className="ml-2 font-body text-[11px] font-normal normal-case text-ink-faint">
+                (6 {t.segments.exclude.optionCount})
+              </span>
+            </h4>
+          </button>
+          {excludeOpen && (
+            <div className="px-4 pb-4">
+              <p className="font-body text-[12px] leading-relaxed text-ink-soft">{t.segments.exclude.intro}</p>
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {([
+                  ["notMember", c.exclude.ecoUnit === "membership", (v: boolean) => setEx("ecoUnit", v ? "membership" : null)],
+                  ["neverArena", c.exclude.srcArena, (v: boolean) => setEx("srcArena", v)],
+                  ["neverGym", c.exclude.srcGym, (v: boolean) => setEx("srcGym", v)],
+                  ["neverHyrox", c.exclude.srcHyrox, (v: boolean) => setEx("srcHyrox", v)],
+                  ["noApp", c.exclude.srcMy20fit, (v: boolean) => setEx("srcMy20fit", v)],
+                  ["noRecency", c.exclude.srcRecency, (v: boolean) => setEx("srcRecency", v)],
+                ] as const).map(([key, checked, onChange]) => (
+                  <label key={key} className="flex items-center gap-2 font-body text-[13px] text-ink">
+                    <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="h-4 w-4 accent-red" />
+                    {t.segments.exclude[key]}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Filter terbaca — the readable presence sentence, exclusions stated in plain words. Tag
