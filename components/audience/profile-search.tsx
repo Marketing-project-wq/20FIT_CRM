@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Search, UserSearch, Lock, ArrowRight } from "lucide-react";
+import { UserSearch, Lock, ArrowRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SEARCH_KINDS, detectSearchKind, type SearchKind } from "@/lib/crm/search";
@@ -90,43 +90,30 @@ export function ProfileSearch() {
   }
 
   return (
-    <section className="card p-5">
-      <div className="flex items-center gap-2">
-        <UserSearch className="h-4 w-4 text-ink-soft" aria-hidden />
-        <h2 className="font-display text-[15px] font-bold uppercase tracking-wide text-ink">
-          {t.audience.searchTitle}
-        </h2>
-      </div>
-      <p className="mt-1 font-body text-[13px] leading-relaxed text-ink-soft">
-        {t.audience.warn.searchIntro}
-      </p>
-
-      <form onSubmit={submit} className="mt-4 flex flex-wrap items-center gap-2">
+    <div className="space-y-2">
+      <form onSubmit={submit} className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-[16rem] flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" />
+          <UserSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" />
           <input
             value={q}
             onChange={(e) => {
               setQ(e.target.value);
-              setOverride(null); // typing re-runs auto-detection; a manual override is cleared
+              setOverride(null);
               setResult({ status: "idle" });
               setError(null);
             }}
-            placeholder={PLACEHOLDER[kind]}
+            placeholder={`${t.audience.searchTitle} — ${PLACEHOLDER[kind]}`}
             inputMode={kind === "phone" ? "tel" : kind === "email" ? "email" : "text"}
             className="h-10 w-full rounded-sm border border-surface-border bg-surface pl-9 pr-3 font-body text-[14px] text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-red"
           />
         </div>
-
         <Button type="submit" disabled={busy}>
           {busy ? t.audience.searching : t.audience.searchBtn}
         </Button>
       </form>
 
-      {/* Detected kind, shown BEFORE searching so a wrong guess never silently reads as
-          "person not found". Overridable for edge cases. */}
       {q.trim() !== "" && (
-        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <span className="font-body text-[12px] text-ink-soft">
             {t.audience.detectedAsPre}
             <span className="font-display font-bold uppercase tracking-wide text-ink">{KIND_LABEL[kind]}</span>
@@ -163,22 +150,22 @@ export function ProfileSearch() {
         </div>
       )}
 
-      {error && <p className="mt-3 font-body text-[13px] text-red">{error}</p>}
+      {error && <p className="font-body text-[13px] text-red">{error}</p>}
 
       {result.status === "empty" && (
-        <p className="mt-3 font-body text-[13px] text-ink-soft">
+        <p className="font-body text-[13px] text-ink-soft">
           {kind === "name" ? t.audience.notFoundName : t.audience.notFoundId}
         </p>
       )}
 
       {result.status === "too_many" && (
-        <p className="mt-3 font-body text-[13px] text-ink-soft">
+        <p className="font-body text-[13px] text-ink-soft">
           {t.audience.warn.tooManyA}{result.cap}{t.audience.warn.tooManyB}
         </p>
       )}
 
       {result.status === "ok" && (
-        <div className="mt-4 space-y-2">
+        <div className="space-y-2">
           <div className="flex items-center gap-2">
             <span className="font-mono text-[12px] text-ink-faint">{formatCount(result.rows.length, lang)}{t.audience.resultsSuffix}</span>
             {result.masked && (
@@ -207,6 +194,6 @@ export function ProfileSearch() {
           </ul>
         </div>
       )}
-    </section>
+    </div>
   );
 }

@@ -265,6 +265,8 @@ export const en: Messages = {
       footer:
         "Read-only · no edit or delete buttons · click a name to open a profile · every open is recorded · contacts are masked for roles without permission to see them.",
     },
+    colToggle: "Columns",
+    bannerDismiss: "Close warning",
   },
 
   consent: {

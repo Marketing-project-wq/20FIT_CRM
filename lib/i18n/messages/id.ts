@@ -291,6 +291,8 @@ export const id = {
       // contact is masked ON THE SERVER for analyst — not hidden in the client.
       footer: "Baca saja · tak ada tombol ubah atau hapus · klik nama untuk membuka profil · setiap pembukaan tercatat · kontak disamarkan bagi peran tanpa izin melihatnya.",
     },
+    colToggle: "Kolom",
+    bannerDismiss: "Tutup peringatan",
   },
 
   // /consent (Sprint 4D screen 2) — consent register + do-not-contact list + two write dialogs.

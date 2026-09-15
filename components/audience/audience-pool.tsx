@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Lock, AlertTriangle, Search } from "lucide-react";
+import { Lock, AlertTriangle, Search, X, ChevronDown } from "lucide-react";
 import { formatDisplayName } from "@/lib/crm/display-name";
 import { Badge } from "@/components/ui/badge";
 import { Why } from "@/components/ui/why";
@@ -15,9 +15,7 @@ import {
   AUDIENCE_SEGMENTS,
 } from "@/lib/crm/audience-constants";
 
-/** Incremental page size (Sprint 5A): show 10, then "Load more" appends the next 10. The server's
- *  per-request maximum still applies; this only sets how many a single fetch asks for. */
-const AUDIENCE_INCREMENT = 10;
+const AUDIENCE_INCREMENT = 25;
 
 // Row shape mirrors lib/crm/audience.ts AudienceRow (phone/email already masked
 // server-side when `masked`). customer_id IS received (Sprint 3C) — used only as the
@@ -49,11 +47,8 @@ function formatIdr(value: number, lang: Lang): string {
   return `Rp ${formatCount(value, lang)}`;
 }
 
-/** Explicitly-empty cell. Empty data is SHOWN, never hidden (Sprint 3A honesty rule);
- *  the label is "belum terisi" / "not filled in" — the field is blank, not a measured zero. */
 function Empty() {
-  const { t } = useI18n();
-  return <span className="font-body text-[13px] italic text-ink-faint">{t.audience.empty}</span>;
+  return <span className="text-ink-faint">—</span>;
 }
 
 /**
@@ -74,14 +69,23 @@ function Empty() {
 function QualityBanner() {
   const { t } = useI18n();
   const w = t.audience.warn;
-  // K-28: the screen-wide warning is the one line (the title). The per-field specifics and the
-  // "computed live on /quality" note are the same content as before, now collapsed under "Why?"
-  // instead of taking half the screen before any data appears.
+  const [dismissed, setDismissed] = useState(() => {
+    try { return localStorage.getItem("crm_banner_dismissed") === "1"; } catch { return false; }
+  });
+  if (dismissed) return null;
   return (
     <div className="tint-amber rounded-card p-4">
       <div className="flex items-center gap-2">
         <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
-        <p className="font-body text-[13px] font-semibold leading-snug text-ink">{w.bannerTitle}</p>
+        <p className="flex-1 font-body text-[13px] font-semibold leading-snug text-ink">{w.bannerTitle}</p>
+        <button
+          type="button"
+          aria-label={t.audience.bannerDismiss}
+          onClick={() => { setDismissed(true); try { localStorage.setItem("crm_banner_dismissed", "1"); } catch {} }}
+          className="shrink-0 rounded p-0.5 text-ink-soft transition-colors hover:text-ink"
+        >
+          <X className="h-4 w-4" />
+        </button>
       </div>
       <Why>
         <ul className="space-y-1.5 text-[13px] leading-relaxed text-ink-soft">
@@ -110,6 +114,54 @@ function QualityBanner() {
 const selectCls =
   "h-10 rounded-sm border border-surface-border bg-surface px-3 font-body text-[14px] text-ink focus:outline-none focus:ring-2 focus:ring-red";
 
+type ColKey = "name" | "phone" | "email" | "city" | "unit" | "segment" | "ltv" | "created";
+const ALL_COLS: ColKey[] = ["name", "phone", "email", "city", "unit", "segment", "ltv", "created"];
+const DEFAULT_COLS: ColKey[] = ["name", "phone", "email", "city", "created"];
+const LS_KEY = "crm_audience_columns";
+
+function readCols(): Set<ColKey> {
+  try {
+    const v = localStorage.getItem(LS_KEY);
+    if (v) { const arr = JSON.parse(v) as ColKey[]; if (Array.isArray(arr) && arr.length) return new Set(arr); }
+  } catch {}
+  return new Set(DEFAULT_COLS);
+}
+
+function ColumnToggle({ visible, onToggle, t }: { visible: Set<ColKey>; onToggle: (c: ColKey) => void; t: ReturnType<typeof useI18n>["t"] }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const labels: Record<ColKey, string> = {
+    name: t.audience.thName, phone: t.audience.thPhone, email: t.audience.thEmail,
+    city: t.audience.thCity, unit: t.audience.thUnit, segment: t.audience.thSegment,
+    ltv: t.audience.thLtv, created: t.audience.thCreated,
+  };
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+  return (
+    <div className="relative" ref={ref}>
+      <button type="button" onClick={() => setOpen(!open)}
+        className="inline-flex h-10 items-center gap-1.5 rounded-sm border border-surface-border bg-surface px-3 font-display text-[13px] font-bold uppercase tracking-wide text-ink-soft transition-colors hover:bg-surface-2">
+        {t.audience.colToggle} <ChevronDown className="h-3.5 w-3.5" />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-20 mt-1 min-w-[10rem] rounded-sm border border-surface-border bg-surface p-2 shadow-lg">
+          {ALL_COLS.map((c) => (
+            <label key={c} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-[13px] text-ink hover:bg-surface-2">
+              <input type="checkbox" checked={visible.has(c)} onChange={() => onToggle(c)}
+                className="h-3.5 w-3.5 rounded border-surface-border accent-red" />
+              {labels[c]}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Fixture payload for the dev preview — the same shape one /api/audience page returns. When present,
  *  the component renders these rows directly and skips every fetch (so a session-less dev page shows
  *  the REAL component, not a facsimile). */
@@ -122,6 +174,18 @@ export interface AudiencePoolPreview {
 export function AudiencePool({ preview }: { preview?: AudiencePoolPreview } = {}) {
   const isPreview = preview != null;
   const { lang, t } = useI18n();
+  const [visCols, setVisCols] = useState<Set<ColKey>>(readCols);
+  const toggleCol = (c: ColKey) => {
+    setVisCols((prev) => {
+      const next = new Set(prev);
+      if (next.has(c)) next.delete(c); else next.add(c);
+      try { localStorage.setItem(LS_KEY, JSON.stringify(Array.from(next))); } catch {}
+      return next;
+    });
+  };
+  const col = (k: ColKey) => visCols.has(k);
+  const colSpan = visCols.size;
+
   const [unit, setUnit] = useState("");
   const [segment, setSegment] = useState("");
   const [revenue, setRevenue] = useState<RevenueFilter>("all");
@@ -233,13 +297,13 @@ export function AudiencePool({ preview }: { preview?: AudiencePoolPreview } = {}
       {/* Find ONE person (search.performed). Above the filters, visually separate. */}
       <ProfileSearch />
 
-      {/* Filter the LIST (list.viewed). Distinct from the single-person search above:
-          this browses a paged, audited-as-a-list view. No segment builder, no export,
-          no edit — evaluation only. */}
       <div className="space-y-2">
-        <p className="font-display text-[12px] font-bold uppercase tracking-wide text-ink-faint">
-          {t.audience.filterListLabel}
-        </p>
+        <div className="flex items-center justify-between gap-3">
+          <p className="font-display text-[12px] font-bold uppercase tracking-wide text-ink-faint">
+            {t.audience.filterListLabel}
+          </p>
+          <ColumnToggle visible={visCols} onToggle={toggleCol} t={t} />
+        </div>
         <div className="flex flex-wrap items-center gap-3">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" />
@@ -298,67 +362,67 @@ export function AudiencePool({ preview }: { preview?: AudiencePoolPreview } = {}
         <table className="w-full border-collapse text-left">
           <thead>
             <tr className="border-b border-surface-border font-display text-[12px] uppercase tracking-wide text-ink-faint">
-              <th className="px-4 py-3 font-bold">{t.audience.thName}</th>
-              <th className="px-4 py-3 font-bold">
+              {col("name") && <th className="px-4 py-3 font-bold">{t.audience.thName}</th>}
+              {col("phone") && <th className="px-4 py-3 font-bold">
                 <span className="inline-flex items-center gap-1.5">
                   {t.audience.thPhone} {masked && <Lock className="h-3 w-3 text-amber" />}
                 </span>
-              </th>
-              <th className="px-4 py-3 font-bold">
+              </th>}
+              {col("email") && <th className="px-4 py-3 font-bold">
                 <span className="inline-flex items-center gap-1.5">
                   {t.audience.thEmail} {masked && <Lock className="h-3 w-3 text-amber" />}
                 </span>
-              </th>
-              <th className="px-4 py-3 font-bold">{t.audience.thCity}</th>
-              <th className="px-4 py-3 font-bold">{t.audience.thUnit}</th>
-              <th className="px-4 py-3 font-bold">{t.audience.thSegment}</th>
-              <th className="px-4 py-3 text-right font-bold">{t.audience.thLtv}</th>
-              <th className="px-4 py-3 font-bold">{t.audience.thCreated}</th>
+              </th>}
+              {col("city") && <th className="px-4 py-3 font-bold">{t.audience.thCity}</th>}
+              {col("unit") && <th className="px-4 py-3 font-bold">{t.audience.thUnit}</th>}
+              {col("segment") && <th className="px-4 py-3 font-bold">{t.audience.thSegment}</th>}
+              {col("ltv") && <th className="px-4 py-3 text-right font-bold">{t.audience.thLtv}</th>}
+              {col("created") && <th className="px-4 py-3 font-bold">{t.audience.thCreated}</th>}
             </tr>
           </thead>
           <tbody className="font-body text-[14px] text-ink">
             {loading ? (
               <tr>
-                <td colSpan={8} className="px-4 py-16 text-center text-ink-soft">
+                <td colSpan={colSpan} className="px-4 py-16 text-center text-ink-soft">
                   {t.audience.loading}
                 </td>
               </tr>
             ) : error ? (
               <tr>
-                <td colSpan={8} className="px-4 py-16 text-center">
+                <td colSpan={colSpan} className="px-4 py-16 text-center">
                   <Badge tone="red">{t.audience.failed}</Badge>
                   <p className="mt-2 font-body text-[13px] text-ink-soft">{error}</p>
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-4 py-16 text-center text-ink-soft">
+                <td colSpan={colSpan} className="px-4 py-16 text-center text-ink-soft">
                   {t.audience.noMatch}
                 </td>
               </tr>
             ) : (
               rows.map((r) => (
                 <tr key={r.customer_id} className="border-b border-surface-border last:border-0 hover:bg-surface-2">
-                  <td className="px-4 py-3">
+                  {col("name") && <td className="px-4 py-3">
                     <Link
                       href={`/audience/${r.customer_id}`}
                       className="font-semibold text-ink underline decoration-surface-border underline-offset-2 hover:decoration-red"
                     >
                       {formatDisplayName(r.full_name) ?? t.audience.noName}
                     </Link>
-                  </td>
-                  <td className="px-4 py-3 font-mono text-[13px]">{r.phone ? r.phone : <Empty />}</td>
-                  <td className="px-4 py-3 font-mono text-[13px]">{r.email ? r.email : <Empty />}</td>
-                  <td className="px-4 py-3">{r.city ? r.city : <Empty />}</td>
-                  <td className="px-4 py-3">{r.first_unit ? r.first_unit : <Empty />}</td>
-                  <td className="px-4 py-3">
+                  </td>}
+                  {col("phone") && <td className="px-4 py-3 font-mono text-[13px]">{r.phone ? r.phone : <Empty />}</td>}
+                  {col("email") && <td className="px-4 py-3 font-mono text-[13px]">{r.email ? r.email : <Empty />}</td>}
+                  {col("city") && <td className="px-4 py-3">{r.city ? r.city : <Empty />}</td>}
+                  {col("unit") && <td className="px-4 py-3">{r.first_unit ? r.first_unit : <Empty />}</td>}
+                  {col("segment") && <td className="px-4 py-3">
                     {r.segment ? (
                       <Badge tone="neutral">{r.segment}</Badge>
                     ) : (
-                      <span className="font-body text-[13px] italic text-ink-faint">{t.audience.noSegment}</span>
+                      <span className="text-ink-faint">—</span>
                     )}
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono text-[13px]">
+                  </td>}
+                  {col("ltv") && <td className="px-4 py-3 text-right font-mono text-[13px]">
                     {r.lifetime_value != null ? (
                       r.lifetime_value > 0 ? (
                         formatIdr(r.lifetime_value, lang)
@@ -368,8 +432,8 @@ export function AudiencePool({ preview }: { preview?: AudiencePoolPreview } = {}
                     ) : (
                       <Empty />
                     )}
-                  </td>
-                  <td className="px-4 py-3 font-mono text-[12px] text-ink-soft">{fmtDate(r.created_at, lang)}</td>
+                  </td>}
+                  {col("created") && <td className="px-4 py-3 font-mono text-[12px] text-ink-soft">{fmtDate(r.created_at, lang)}</td>}
                 </tr>
               ))
             )}
