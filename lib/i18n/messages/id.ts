@@ -320,6 +320,18 @@ export const id = {
     basisNoteOptin: "opt-in eksplisit tercatat — dasar terkuat, mengizinkan semua purpose",
     basisFooter: "Dua nilai ini bukan daftar lengkap. Status sign-off: docs/SIGNOFF-legal-consent.md.",
     sectionConsent: "Catatan consent (arsip dasar hukum)",
+    // Consent summary cards (C1)
+    consentSummaryTotal: "Total catatan",
+    consentSummaryActive: "Aktif",
+    consentSummaryRevoked: "Dicabut",
+    consentSummaryMarketing: "Marketing",
+    consentSummaryTransactional: "Transactional",
+    consentSummaryLegacy: "Legacy import",
+    consentSummaryOptin: "Explicit opt-in",
+    // Collapse toggle (C2)
+    consentShowTable: "Lihat detail catatan consent",
+    consentHideTable: "Sembunyikan tabel",
+    consentRecordCount: "{n} catatan",
     sectionSuppression: "Daftar berhenti berlangganan (unsubscribe)",
     thProfile: "Profil",
     thChannel: "Channel",
@@ -879,6 +891,36 @@ export const id = {
       artifact1: "Artefak uji trigger append-only (Sprint 2B) — bukan aktivitas.",
       artifact5: "Artefak verifikasi retensi (Sprint 3A) — pemangkasan uji, bukan aktivitas.",
     },
+    // Log summary cards (A1)
+    summaryToday: "Hari ini",
+    summaryTopActions: "Aksi terbanyak",
+    summaryTopActor: "Paling aktif",
+    summaryEntries: "entri",
+    // Date group headers (A2)
+    dateToday: "Hari ini",
+    dateYesterday: "Kemarin",
+    // Compact row expand (A3)
+    expandDetail: "Detail",
+    collapseDetail: "Tutup",
+    // Date range presets (A4)
+    rangeToday: "Hari ini",
+    range7d: "7 hari",
+    range30d: "30 hari",
+    rangeAll: "Semua",
+    // Manager tab — inline actions (B1–B5)
+    editRole: "Ubah peran",
+    revokeAccess: "Cabut akses",
+    revokeDialogTitle: "Cabut akses?",
+    revokeDialogDesc: "Cabut akses \"{email}\"? Pengguna tidak akan bisa login ke CRM lagi.",
+    revokeDialogConfirm: "Ya, cabut",
+    grantDialogTitle: "Beri / ubah peran?",
+    grantDialogDesc: "Beri peran {role} ke \"{email}\"? Pengguna akan mendapat seluruh izin sesuai peran ini.",
+    grantDialogConfirm: "Ya, simpan",
+    // Role permissions summary (B4)
+    rolePermTitle: "Ringkasan izin per peran",
+    rolePermSuperAdmin: "Semua akses — kelola peran, buat kampanye, kelola audience, settings, ekspor, audit log.",
+    rolePermCrmManager: "Buat kampanye, kelola audience, templates, lihat audit log (tidak bisa kelola peran).",
+    rolePermViewer: "Baca saja — dashboard, daftar audience, riwayat pengiriman.",
   },
 
   // /quality — data-quality dashboard (Sprint 5B). The app's largest warning surface: fill-rate

@@ -171,3 +171,37 @@ export async function revokeRoleAction(input: { email: string }): Promise<RoleAc
 
   return { ok: true, email, previousRole: state.targetCurrentRole };
 }
+
+export interface RoleRowData {
+  userId: string;
+  email: string | null;
+  role: string;
+  grantedAt: string | null;
+}
+
+export async function loadRoleRowsAction(): Promise<{ ok: boolean; rows: RoleRowData[] }> {
+  const role = await getCurrentUserRole();
+  if (!canManageRoles(role)) return { ok: false, rows: [] };
+  try {
+    const admin = createAdminClient();
+    const { data, error } = await admin
+      .from("crm_user_role")
+      .select("user_id, role, granted_at")
+      .order("granted_at", { ascending: true });
+    if (error) return { ok: false, rows: [] };
+    const rawRows = (data ?? []) as { user_id: string; role: string; granted_at: string | null }[];
+    const { resolveUserEmails } = await import("@/lib/auth/user-directory");
+    const emails = await resolveUserEmails(rawRows.map((r) => r.user_id));
+    return {
+      ok: true,
+      rows: rawRows.map((r) => ({
+        userId: r.user_id,
+        email: emails[r.user_id] ?? null,
+        role: r.role,
+        grantedAt: r.granted_at,
+      })),
+    };
+  } catch {
+    return { ok: false, rows: [] };
+  }
+}

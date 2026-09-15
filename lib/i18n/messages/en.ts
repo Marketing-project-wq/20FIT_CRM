@@ -287,6 +287,16 @@ export const en: Messages = {
     basisNoteOptin: "an explicit opt-in on record — the strongest basis, allowing every purpose",
     basisFooter: "These two values are not the complete list. Sign-off status: docs/SIGNOFF-legal-consent.md.",
     sectionConsent: "Consent record (lawful-basis archive)",
+    consentSummaryTotal: "Total records",
+    consentSummaryActive: "Active",
+    consentSummaryRevoked: "Revoked",
+    consentSummaryMarketing: "Marketing",
+    consentSummaryTransactional: "Transactional",
+    consentSummaryLegacy: "Legacy import",
+    consentSummaryOptin: "Explicit opt-in",
+    consentShowTable: "View consent record details",
+    consentHideTable: "Hide table",
+    consentRecordCount: "{n} records",
     sectionSuppression: "Unsubscribe list",
     thProfile: "Profile",
     thChannel: "Channel",
@@ -808,6 +818,36 @@ export const en: Messages = {
       artifact1: "Append-only trigger test artefact (Sprint 2B) — not activity.",
       artifact5: "Retention verification artefact (Sprint 3A) — a test prune, not activity.",
     },
+    // Log summary cards (A1)
+    summaryToday: "Today",
+    summaryTopActions: "Top actions",
+    summaryTopActor: "Most active",
+    summaryEntries: "entries",
+    // Date group headers (A2)
+    dateToday: "Today",
+    dateYesterday: "Yesterday",
+    // Compact row expand (A3)
+    expandDetail: "Details",
+    collapseDetail: "Close",
+    // Date range presets (A4)
+    rangeToday: "Today",
+    range7d: "7 days",
+    range30d: "30 days",
+    rangeAll: "All",
+    // Manager tab — inline actions (B1–B5)
+    editRole: "Change role",
+    revokeAccess: "Revoke access",
+    revokeDialogTitle: "Revoke access?",
+    revokeDialogDesc: "Revoke access for \"{email}\"? They will no longer be able to log in to the CRM.",
+    revokeDialogConfirm: "Yes, revoke",
+    grantDialogTitle: "Grant / change role?",
+    grantDialogDesc: "Grant the {role} role to \"{email}\"? They will receive all permissions for this role.",
+    grantDialogConfirm: "Yes, save",
+    // Role permissions summary (B4)
+    rolePermTitle: "Permissions by role",
+    rolePermSuperAdmin: "Full access — manage roles, create campaigns, manage audience, settings, exports, audit log.",
+    rolePermCrmManager: "Create campaigns, manage audience, templates, view audit log (cannot manage roles).",
+    rolePermViewer: "Read only — dashboard, audience list, send history.",
   },
 
   activityCoverage: {

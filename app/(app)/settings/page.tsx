@@ -110,9 +110,7 @@ export default async function SettingsPage({
 
       {tab === "manager" && (
         <div className="space-y-6">
-          <RolesPanel />
-          {/* Role administration is SUPER-ADMIN EXCLUSIVE (K-43). CRM Manager sees the list (audit.view)
-              but NOT this form; the server action re-checks canManageRoles regardless. */}
+          <RolesPanel canManage={canManageRoles(role)} />
           {canManageRoles(role) && <RoleGrantForm />}
         </div>
       )}
