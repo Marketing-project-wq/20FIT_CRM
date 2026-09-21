@@ -24,6 +24,10 @@ export const maxDuration = 60;
 const MAX_CSV_BYTES = 15 * 1024 * 1024; // 15 MB of text — well above a 20k-row contact CSV, blocks abuse
 const PHASES: ReadonlySet<string> = new Set<ImportPhase>(["analyze", "dry_run", "execute"]);
 
+/** Rows per RPC call. The RPC runs inside an 8 s statement_timeout; 500 rows ≈ 1–1,5 s (measured),
+ *  leaving a wide margin. A 2.866-row file becomes 6 batches instead of one doomed call. */
+const IMPORT_BATCH_SIZE = 500;
+
 /**
  * CSV audience import (Fase 1). ONE route, three phases (analyze → dry_run → execute). The server
  * parses the CSV (papaparse), plans via the pure planner, and — only on `execute` — writes through the
@@ -98,35 +102,64 @@ export async function POST(request: NextRequest) {
       return loadImportKeys(admin as unknown as ImportReadClient, emails, phones);
     },
     async commit(insertRows: NormalizedRow[], meta) {
-      const payload = insertRows.map((r) => ({
-        full_name: r.fullName,
-        email: r.email,
-        email_normalized: r.emailNormalized,
-        phone_normalized: r.phoneNormalized,
-        city: r.city,
-        gender: r.gender,
-        date_of_birth: r.dateOfBirth,
-        blood_type: r.bloodType,
-        tags: r.tags,
-      }));
-      const { data, error } = await admin.rpc("crm_ingest_csv_people", {
-        p_rows: payload,
-        p_batch_id: batchId,
-        p_collection_source: meta.collectionSource,
-        p_uploaded_by: userId,
-        // Decided by the planner, never re-derived in SQL — the dry-run count and the write act on
-        // the SAME list (K-58). Phone-only matches are NOT here: they are different people, inserted.
-        p_tag_rows: meta.tagTargets,
-      });
-      // PII-FREE: carry the database's CODE, never its message. A Postgres error message can quote
-      // the offending row ("Key (email_normalized)=(…) already exists") — see safeCode.
-      if (error) throw rpcFailure(error.code);
-      const r = (data ?? {}) as { inserted?: number; tagged_existing?: number; shared_phone_in_batch?: number };
       const num = (v: unknown) => (typeof v === "number" ? v : 0);
+      let totalInserted = 0;
+      let totalTagged = 0;
+      let totalSharedBat = 0;
+      let lastError: (Error & { code: string | null }) | null = null;
+      let batchesFailed = 0;
+
+      // Split insert rows into batches to stay under the 8 s statement_timeout.
+      const batches: NormalizedRow[][] = [];
+      for (let i = 0; i < insertRows.length; i += IMPORT_BATCH_SIZE) {
+        batches.push(insertRows.slice(i, i + IMPORT_BATCH_SIZE));
+      }
+      // Tag-only import (0 inserts, N tags): still need one call for the tag targets.
+      if (batches.length === 0) batches.push([]);
+
+      for (let bi = 0; bi < batches.length; bi++) {
+        const payload = batches[bi].map((r) => ({
+          full_name: r.fullName,
+          email: r.email,
+          email_normalized: r.emailNormalized,
+          phone_normalized: r.phoneNormalized,
+          city: r.city,
+          gender: r.gender,
+          date_of_birth: r.dateOfBirth,
+          blood_type: r.bloodType,
+          tags: r.tags,
+        }));
+        try {
+          const { data, error } = await admin.rpc("crm_ingest_csv_people", {
+            p_rows: payload,
+            p_batch_id: batchId,
+            p_collection_source: meta.collectionSource,
+            p_uploaded_by: userId,
+            // Tag targets go with the FIRST batch only — they update existing people, independent
+            // of the insert rows. Subsequent batches send an empty array.
+            p_tag_rows: bi === 0 ? meta.tagTargets : [],
+          });
+          if (error) throw rpcFailure(error.code);
+          const r = (data ?? {}) as { inserted?: number; tagged_existing?: number; shared_phone_in_batch?: number };
+          totalInserted += num(r.inserted);
+          totalTagged += num(r.tagged_existing);
+          totalSharedBat += num(r.shared_phone_in_batch);
+        } catch (e) {
+          batchesFailed++;
+          lastError = e as Error & { code: string | null };
+          logApiFailure("/audience/import", "import_batch_failed", {
+            code: safeCode((e as { code?: unknown } | null)?.code),
+          });
+        }
+      }
+
+      // All batches failed → throw so the caller sees the failure.
+      if (batchesFailed === batches.length && lastError) throw lastError;
+
       return {
-        inserted: num(r.inserted),
-        taggedExisting: num(r.tagged_existing),
-        sharedPhoneInBatch: num(r.shared_phone_in_batch),
+        inserted: totalInserted,
+        taggedExisting: totalTagged,
+        sharedPhoneInBatch: totalSharedBat,
       };
     },
     async audit(plan: ImportPlan, meta) {
