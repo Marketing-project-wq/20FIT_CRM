@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Check, Lock, Users, Mail, Send, MessageCircle, Plus, Eye } from "lucide-react";
+import { Check, Lock, Users, Mail, Send, MessageCircle, Plus, Eye, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useI18n } from "@/components/i18n/lang-provider";
@@ -13,6 +13,7 @@ import { segmentBuilderUrlFromCompose } from "@/lib/crm/campaign-nav";
 import { PreviewEmailPanel } from "./preview-email-panel";
 import { MergeDataPanel, type MergeRow } from "./merge-data-panel";
 import { detectMergePlaceholders } from "@/lib/crm/merge-fields";
+import { saveDraftAction, deleteDraftAction, loadDraftAction } from "./draft-actions";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -126,6 +127,68 @@ export function CampaignFlow({
   const [mergeRows, setMergeRows] = useState<MergeRow[] | null>(null);
   const mergeReady = mergeRows !== null && mergeRows.length > 0;
 
+  // Server-side saved draft (crm_campaign_draft table). `draftId` tracks the current draft row so
+  // updates upsert instead of inserting a new row. Cleared on a successful send.
+  const [draftId, setDraftId] = useState<string | null>(null);
+  const [draftSaving, setDraftSaving] = useState(false);
+  const [draftNotice, setDraftNotice] = useState<string | null>(null);
+  const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cd = t.campaignsPage.drafts;
+
+  const doSaveDraft = useCallback(async (silent = false) => {
+    if (draftSaving) return;
+    setDraftSaving(true);
+    setDraftNotice(null);
+    try {
+      const res = await saveDraftAction({
+        id: draftId ?? undefined,
+        channel: channel ?? "email",
+        segmentId: segmentId || null,
+        templateKey: templateKey || null,
+        label: newLabel,
+        whenMode: when,
+        dateWib: dateWib || null,
+        timeWib: timeWib || null,
+      });
+      if (res.ok && res.id) {
+        setDraftId(res.id);
+        if (!silent) setDraftNotice(cd.saved);
+      } else if (!silent) {
+        setDraftNotice(cd.saveFailed);
+      }
+    } catch {
+      if (!silent) setDraftNotice(cd.saveFailed);
+    } finally {
+      setDraftSaving(false);
+    }
+  }, [draftSaving, draftId, channel, segmentId, templateKey, newLabel, when, dateWib, timeWib, cd.saved, cd.saveFailed]);
+
+  // Auto-save every 30 seconds when the form has been touched (channel picked).
+  useEffect(() => {
+    if (!channel) return;
+    autoSaveTimer.current = setInterval(() => {
+      doSaveDraft(true);
+    }, 30_000);
+    return () => {
+      if (autoSaveTimer.current) clearInterval(autoSaveTimer.current);
+    };
+  }, [channel, doSaveDraft]);
+
+  // Clear draft notice after a few seconds.
+  useEffect(() => {
+    if (!draftNotice) return;
+    const id = setTimeout(() => setDraftNotice(null), 4000);
+    return () => clearTimeout(id);
+  }, [draftNotice]);
+
+  // On a successful send, delete the server-side draft (it's now a real run).
+  const cleanupDraftOnSend = useCallback(async () => {
+    if (draftId) {
+      try { await deleteDraftAction(draftId); } catch { /* best-effort */ }
+      setDraftId(null);
+    }
+  }, [draftId]);
+
   // Restore a draft saved before jumping to the Segmen tab, and auto-select a just-created segment.
   // In an effect (not render) so it never causes a hydration mismatch, and runs once on mount.
   //
@@ -137,6 +200,26 @@ export function CampaignFlow({
   // unmounts on a tab switch, this effect never re-runs on Back, and the draft is silently lost (and,
   // because we clear it below, gone for good). Guarded by campaign-tab-is-searchparam.test.ts.
   useEffect(() => {
+    // Server-side saved draft: ?draft=<uuid> loads a crm_campaign_draft row into the composer.
+    const draftParam = searchParams.get("draft");
+    if (draftParam) {
+      loadDraftAction(draftParam).then((res) => {
+        if (res.ok && res.draft) {
+          const d = res.draft;
+          setDraftId(d.id);
+          setChannel(d.channel);
+          setSegmentId(d.segmentId ?? "");
+          setTemplateKey(d.templateKey ?? "");
+          setNewLabel(d.label);
+          setWhen(d.whenMode);
+          setDateWib(d.dateWib ?? "");
+          setTimeWib(d.timeWib ?? "09:00");
+          setOpen(d.segmentId ? (d.templateKey ? 2 : 1) : 0);
+        }
+      });
+      return; // Don't restore session-storage draft when loading a server-side one.
+    }
+
     const draft = loadCampaignDraft();
     if (draft) {
       setChannel(draft.channel);
@@ -156,11 +239,8 @@ export function CampaignFlow({
         setOpen(1);
         setToast(`${cc.segmentCreatedA}${found.name}${cc.segmentCreatedB}`);
       }
-      // If the id isn't in the (fresh) list we simply don't auto-select — no silent error, no crash.
     }
-    // Restored once, then cleared so it never leaks into the next compose session.
     clearCampaignDraft();
-    // Mount-only: segments/searchParams are the initial server props for this render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -289,6 +369,7 @@ export function CampaignFlow({
         return;
       }
       setResult(r);
+      cleanupDraftOnSend();
       const refreshed = await listRunsAction(segmentId, templateKey);
       setRuns(refreshed.ok ? refreshed.runs ?? [] : []);
       setRunSel(null);
@@ -320,6 +401,7 @@ export function CampaignFlow({
         return;
       }
       setScheduledMsg(`${cc.scheduledOk} ${dateWib} ${timeWib} WIB`);
+      cleanupDraftOnSend();
     } catch { setNotice(cc.errSendThrew); }
     finally { setSending(false); }
   }
@@ -367,7 +449,24 @@ export function CampaignFlow({
             </span>
           ))}
         </div>
+        {channel && (
+          <button
+            type="button"
+            disabled={draftSaving}
+            onClick={() => doSaveDraft(false)}
+            className="ml-auto flex items-center gap-1.5 rounded-sm border border-glass-border px-3 py-1.5 font-body text-[12px] text-ink-soft transition-colors hover:bg-glass-strong disabled:opacity-50"
+          >
+            <Save className="h-3.5 w-3.5" />
+            {draftSaving ? cd.saving : cd.saveBtn}
+          </button>
+        )}
       </div>
+
+      {draftNotice && (
+        <div role="status" className="flex items-center gap-2 rounded-card px-4 py-2 bg-glass border border-glass-border">
+          <span className="font-body text-[12px] text-ink-soft">{draftNotice}</span>
+        </div>
+      )}
 
       {/* Bounce-back confirmation: a segment was just created and auto-selected. */}
       {toast && (
@@ -689,6 +788,15 @@ export function CampaignFlow({
                 {sending ? cc.scheduling : !realSend ? cc.blockedBtn : cc.scheduleBtn}
               </Button>
             )}
+            <button
+              type="button"
+              disabled={draftSaving || !channel}
+              onClick={() => doSaveDraft(false)}
+              className="flex items-center gap-1.5 rounded-sm border border-glass-border px-3 py-2 font-body text-[13px] text-ink-soft transition-colors hover:bg-glass-strong disabled:opacity-50"
+            >
+              <Save className="h-3.5 w-3.5" />
+              {draftSaving ? cd.saving : cd.saveBtn}
+            </button>
             {when === "now" && !runSel && realSend && <span className="font-body text-[12px] text-ink-soft">{cc.runChooseFirst}</span>}
           </div>
 

@@ -14,6 +14,7 @@ import { extractVariables } from "@/lib/crm/template";
 import { isInternalTestTemplateKey } from "@/lib/crm/send-test-constants";
 import { loadCityFill } from "@/lib/crm/city-fill";
 import { listDeliveries, deliveryDetail } from "@/lib/crm/deliveries";
+import { listDrafts } from "@/lib/crm/campaign-draft-store";
 import { CAMPAIGN_COMPOSE_TAB } from "@/lib/crm/campaign-nav";
 import { CampaignFlow, type TemplateOption } from "./campaign-flow";
 import { SegmentsTab } from "./segments-tab";
@@ -96,7 +97,9 @@ export default async function CampaignsPage({
   // Deliveries tab data — the merged scheduled+run timeline, and (when a run is picked) its recipients.
   const admin = createAdminClient();
   const detailRequested = tab === "kiriman" && !!runParam;
-  const deliveries = tab === "kiriman" && !detailRequested ? await listDeliveries(admin) : [];
+  const [deliveries, drafts] = tab === "kiriman" && !detailRequested
+    ? await Promise.all([listDeliveries(admin), listDrafts()])
+    : [[], []];
   const detail = detailRequested ? await deliveryDetail(admin, runParam!) : null;
 
   // The pool's operator-tag vocabulary for the segment builder's tag picker (TUGAS D). Fetched only
@@ -162,7 +165,7 @@ export default async function CampaignsPage({
       )}
 
       {/* ── TAB: KIRIMAN (deliveries — scheduled + runs, one timeline) ── */}
-      {tab === "kiriman" && <DeliveriesTab deliveries={deliveries} detail={detail} detailRequested={detailRequested} />}
+      {tab === "kiriman" && <DeliveriesTab deliveries={deliveries} detail={detail} detailRequested={detailRequested} drafts={drafts} />}
     </div>
   );
 }

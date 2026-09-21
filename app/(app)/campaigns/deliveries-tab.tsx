@@ -1,13 +1,16 @@
 "use client";
 
-import { useState, useMemo, type ReactNode } from "react";
+import { useState, useMemo, useTransition, type ReactNode } from "react";
 import Link from "next/link";
-import { Search, ChevronDown } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Search, ChevronDown, Trash2, Play } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useI18n } from "@/components/i18n/lang-provider";
 import { isInternalTestTemplateKey } from "@/lib/crm/send-test-constants";
 import type { Dict } from "@/lib/i18n";
 import type { DeliveryRow, DeliveryState, DeliveryDetail } from "@/lib/crm/deliveries";
+import type { SavedDraft } from "./draft-actions";
+import { deleteDraftAction } from "./draft-actions";
 import { CancelDeliveryButton } from "./cancel-delivery-button";
 import { DrainControlButtons } from "./drain-control-buttons";
 import { RecipientTable } from "./recipient-table";
@@ -157,17 +160,116 @@ function readShowTest(): boolean {
 
 // ── Component ──
 
+function DraftList({
+  drafts,
+  cd,
+  router,
+}: {
+  drafts: SavedDraft[];
+  cd: Dict["campaignsPage"]["drafts"];
+  router: ReturnType<typeof useRouter>;
+}) {
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [, startTransition] = useTransition();
+
+  async function handleDelete(id: string) {
+    setDeleting(id);
+    try {
+      const res = await deleteDraftAction(id);
+      if (res.ok) {
+        startTransition(() => router.refresh());
+      }
+    } finally {
+      setDeleting(null);
+      setConfirmId(null);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <h3 className="font-display text-[13px] font-bold uppercase tracking-wide text-ink">{cd.title}</h3>
+      {drafts.map((draft) => (
+        <div
+          key={draft.id}
+          className="glass flex flex-col gap-1.5 rounded-card border border-dashed border-glass-border p-3"
+        >
+          <div className="flex items-center gap-2">
+            <Badge tone="amber">{cd.badge}</Badge>
+            <span className="min-w-0 flex-1 truncate font-body text-[13px] font-semibold text-ink">
+              {draft.label || cd.noName}
+            </span>
+            <span className="shrink-0 font-body text-[11px] text-ink-faint">
+              {draft.updatedAt ? new Date(draft.updatedAt).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }) : ""}
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 font-body text-[11px] text-ink-faint">
+            <span>{draft.segmentName ?? cd.noSegment}</span>
+            <span>{draft.templateKey ?? cd.noTemplate}</span>
+            {draft.whenMode === "schedule" && draft.dateWib && (
+              <span>{draft.dateWib} {draft.timeWib ?? ""}</span>
+            )}
+            {draft.createdBy && <span>{draft.createdBy}</span>}
+          </div>
+          <div className="flex items-center gap-2 pt-1">
+            <a
+              href={`/campaigns?tab=kirim&draft=${draft.id}`}
+              className="flex items-center gap-1 rounded-sm border border-red px-2.5 py-1 font-body text-[12px] font-semibold text-red transition-colors hover:bg-red hover:text-white"
+            >
+              <Play className="h-3 w-3" />
+              {cd.resumeBtn}
+            </a>
+            {confirmId === draft.id ? (
+              <div className="flex items-center gap-1.5">
+                <span className="font-body text-[11px] text-ink-soft">{cd.deleteConfirm}</span>
+                <button
+                  type="button"
+                  disabled={deleting === draft.id}
+                  onClick={() => handleDelete(draft.id)}
+                  className="rounded-sm bg-red px-2 py-0.5 font-body text-[11px] font-semibold text-white disabled:opacity-50"
+                >
+                  {cd.deleteBtn}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmId(null)}
+                  className="font-body text-[11px] text-ink-faint hover:text-ink"
+                >
+                  ✕
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmId(draft.id)}
+                className="flex items-center gap-1 rounded-sm border border-glass-border px-2.5 py-1 font-body text-[12px] text-ink-soft transition-colors hover:border-red hover:text-red"
+              >
+                <Trash2 className="h-3 w-3" />
+                {cd.deleteBtn}
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function DeliveriesTab({
   deliveries,
   detail,
   detailRequested,
+  drafts = [],
 }: {
   deliveries: DeliveryRow[];
   detail: DeliveryDetail | null;
   detailRequested: boolean;
+  drafts?: SavedDraft[];
 }) {
   const { t } = useI18n();
   const d = t.campaignsPage.deliveries;
+  const cd = t.campaignsPage.drafts;
+  const router = useRouter();
 
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterChip>("all");
@@ -362,6 +464,11 @@ export function DeliveriesTab({
           {d.showTest}
         </label>
       </div>
+
+      {/* ── Saved drafts ── */}
+      {drafts.length > 0 && (
+        <DraftList drafts={drafts} cd={cd} router={router} />
+      )}
 
       {/* Compact cards */}
       {paged.length === 0 ? (
