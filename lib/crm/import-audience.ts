@@ -139,6 +139,52 @@ export interface NormalizedRow {
   generatedTagLabels: Record<string, string>;
 }
 
+/** Normalize a CSV gender value to the DB convention ('L'/'P'), or null if unrecognizable. The CHECK
+ *  constraint on master_customer.gender only accepts ('L','P') — raw CSV values like 'M', 'Male',
+ *  'Laki-laki' etc. violate it (23514). This is the ONE canon: every write path uses it. */
+const GENDER_MAP: Record<string, "L" | "P"> = {
+  l: "L", laki: "L", "laki-laki": "L", "laki laki": "L", m: "L", male: "L", pria: "L",
+  p: "P", perempuan: "P", f: "P", female: "P", wanita: "P",
+};
+
+export function normalizeGender(raw: string | null | undefined): string | null {
+  if (raw == null) return null;
+  const trimmed = raw.trim();
+  if (trimmed === "") return null;
+  return GENDER_MAP[trimmed.toLowerCase()] ?? null;
+}
+
+/** Normalize a CSV date-of-birth to ISO (YYYY-MM-DD), or null if invalid/unparseable. The RPC casts
+ *  `::date`, which fails on non-ISO formats the operator's spreadsheet may export (DD/MM/YYYY is
+ *  standard in Indonesia). Validates the result is a real calendar date. */
+export function normalizeDateOfBirth(raw: string | null | undefined): string | null {
+  if (raw == null) return null;
+  const trimmed = raw.trim();
+  if (trimmed === "") return null;
+
+  let y: number, m: number, d: number;
+
+  // YYYY-MM-DD (ISO)
+  const iso = trimmed.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+  if (iso) {
+    [, y, m, d] = iso.map(Number) as [number, number, number, number];
+  } else {
+    // DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY (Indonesian convention: day first)
+    const dmy = trimmed.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/);
+    if (dmy) {
+      [d, m, y] = [Number(dmy[1]), Number(dmy[2]), Number(dmy[3])];
+    } else {
+      return null;
+    }
+  }
+
+  if (m < 1 || m > 12 || d < 1 || d > 31 || y < 1900 || y > 2100) return null;
+  const date = new Date(y, m - 1, d);
+  if (date.getFullYear() !== y || date.getMonth() !== m - 1 || date.getDate() !== d) return null;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${y}-${pad(m)}-${pad(d)}`;
+}
+
 /** Excel silently rewrites a long number (a phone!) as scientific notation when a column isn't Text:
  *  "6.28129E+12" / "6,28129E+12" / "6E+12". The digits are lost for good. We DETECT and REJECT — never
  *  "repair" — because there is nothing left to repair. Fix at source: format the column as Text. */
@@ -169,8 +215,8 @@ export function normalizeMappedRow(raw: Record<string, string>, mapping: ColumnM
     else if (field === "email") email = v;
     else if (field === "phone") phone = v;
     else if (field === "city") city = v;
-    else if (field === "gender") gender = v;
-    else if (field === "date_of_birth") dateOfBirth = v;
+    else if (field === "gender") gender = normalizeGender(v);
+    else if (field === "date_of_birth") dateOfBirth = normalizeDateOfBirth(v);
     else if (field === "tags") tagCell = v;
     else if (typeof field === "string" && field.startsWith("ns:")) {
       const ns = field.slice(3);

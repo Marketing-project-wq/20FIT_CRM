@@ -13,6 +13,8 @@ import {
   importActionableTotal,
   canRunImport,
   reconcileImport,
+  normalizeGender,
+  normalizeDateOfBirth,
 } from "./import-audience";
 
 const noKeys: ImportKeys = {
@@ -141,7 +143,7 @@ describe("normalizeMappedRow", () => {
 });
 
 describe("normalizeMappedRow — profile fields", () => {
-  it("maps gender, date_of_birth through to NormalizedRow", () => {
+  it("normalizes gender to L/P convention (CHECK constraint)", () => {
     const mapping: ColumnMapping = {
       email: "email",
       gender: "gender",
@@ -151,9 +153,58 @@ describe("normalizeMappedRow — profile fields", () => {
       { email: "a@x.com", gender: "Male", dob: "1990-01-15" },
       mapping,
     );
-    expect(n.gender).toBe("Male");
+    expect(n.gender).toBe("L");
     expect(n.dateOfBirth).toBe("1990-01-15");
     expect(n.bloodType).toBeNull();
+  });
+
+  it("normalizes Female/F/Perempuan/Wanita → P", () => {
+    const mapping: ColumnMapping = { email: "email", gender: "gender" };
+    for (const raw of ["Female", "F", "f", "Perempuan", "perempuan", "Wanita", "P", "p"]) {
+      const n = normalizeMappedRow({ email: "a@x.com", gender: raw }, mapping);
+      expect(n.gender, `gender "${raw}"`).toBe("P");
+    }
+  });
+
+  it("normalizes Male/M/Laki-laki/Pria → L", () => {
+    const mapping: ColumnMapping = { email: "email", gender: "gender" };
+    for (const raw of ["Male", "M", "m", "Laki-laki", "laki-laki", "Pria", "L", "l", "Laki"]) {
+      const n = normalizeMappedRow({ email: "a@x.com", gender: raw }, mapping);
+      expect(n.gender, `gender "${raw}"`).toBe("L");
+    }
+  });
+
+  it("nulls unrecognizable gender values instead of violating CHECK", () => {
+    const mapping: ColumnMapping = { email: "email", gender: "gender" };
+    for (const raw of ["X", "Other", "Nonbinary", "123", "-"]) {
+      const n = normalizeMappedRow({ email: "a@x.com", gender: raw }, mapping);
+      expect(n.gender, `gender "${raw}"`).toBeNull();
+    }
+  });
+
+  it("normalizes DD/MM/YYYY dates to ISO (Indonesian convention)", () => {
+    const mapping: ColumnMapping = { email: "email", dob: "date_of_birth" };
+    const n = normalizeMappedRow({ email: "a@x.com", dob: "15/01/1990" }, mapping);
+    expect(n.dateOfBirth).toBe("1990-01-15");
+  });
+
+  it("normalizes DD-MM-YYYY and DD.MM.YYYY dates to ISO", () => {
+    const mapping: ColumnMapping = { email: "email", dob: "date_of_birth" };
+    expect(normalizeMappedRow({ email: "a@x.com", dob: "15-01-1990" }, mapping).dateOfBirth).toBe("1990-01-15");
+    expect(normalizeMappedRow({ email: "a@x.com", dob: "15.01.1990" }, mapping).dateOfBirth).toBe("1990-01-15");
+  });
+
+  it("rejects invalid calendar dates (Feb 30, etc.)", () => {
+    const mapping: ColumnMapping = { email: "email", dob: "date_of_birth" };
+    expect(normalizeMappedRow({ email: "a@x.com", dob: "30/02/1990" }, mapping).dateOfBirth).toBeNull();
+    expect(normalizeMappedRow({ email: "a@x.com", dob: "1990-02-30" }, mapping).dateOfBirth).toBeNull();
+  });
+
+  it("rejects unparseable date strings", () => {
+    const mapping: ColumnMapping = { email: "email", dob: "date_of_birth" };
+    for (const raw of ["not-a-date", "Jan 15 1990", "15 Jan 1990", "abc"]) {
+      expect(normalizeMappedRow({ email: "a@x.com", dob: raw }, mapping).dateOfBirth, `dob "${raw}"`).toBeNull();
+    }
   });
 
   it("nulls empty profile fields", () => {
@@ -660,5 +711,71 @@ describe("slugifyTagValue", () => {
   });
   it("preserves digits", () => {
     expect(slugifyTagValue("Sportfest 3 2026")).toBe("sportfest-3-2026");
+  });
+});
+
+describe("normalizeGender — maps CSV values to DB convention L/P", () => {
+  it("maps male-like values → L", () => {
+    for (const v of ["L", "l", "Laki-laki", "laki-laki", "Laki", "M", "m", "Male", "male", "Pria", "pria"]) {
+      expect(normalizeGender(v), `"${v}"`).toBe("L");
+    }
+  });
+  it("maps female-like values → P", () => {
+    for (const v of ["P", "p", "Perempuan", "perempuan", "F", "f", "Female", "female", "Wanita", "wanita"]) {
+      expect(normalizeGender(v), `"${v}"`).toBe("P");
+    }
+  });
+  it("returns null for unrecognizable values", () => {
+    for (const v of ["X", "Other", "Nonbinary", "123", "-", "Laki laki typo"]) {
+      expect(normalizeGender(v), `"${v}"`).toBeNull();
+    }
+  });
+  it("returns null for empty/null/undefined", () => {
+    expect(normalizeGender(null)).toBeNull();
+    expect(normalizeGender(undefined)).toBeNull();
+    expect(normalizeGender("")).toBeNull();
+    expect(normalizeGender("   ")).toBeNull();
+  });
+  it("trims whitespace", () => {
+    expect(normalizeGender("  Male  ")).toBe("L");
+    expect(normalizeGender(" P ")).toBe("P");
+  });
+});
+
+describe("normalizeDateOfBirth — ISO output or null", () => {
+  it("keeps ISO dates unchanged", () => {
+    expect(normalizeDateOfBirth("1990-01-15")).toBe("1990-01-15");
+    expect(normalizeDateOfBirth("2000-12-31")).toBe("2000-12-31");
+  });
+  it("converts DD/MM/YYYY (Indonesian convention) to ISO", () => {
+    expect(normalizeDateOfBirth("15/01/1990")).toBe("1990-01-15");
+    expect(normalizeDateOfBirth("1/2/2000")).toBe("2000-02-01");
+  });
+  it("converts DD-MM-YYYY and DD.MM.YYYY to ISO", () => {
+    expect(normalizeDateOfBirth("15-01-1990")).toBe("1990-01-15");
+    expect(normalizeDateOfBirth("15.01.1990")).toBe("1990-01-15");
+  });
+  it("converts YYYY/MM/DD to ISO", () => {
+    expect(normalizeDateOfBirth("1990/01/15")).toBe("1990-01-15");
+  });
+  it("rejects invalid calendar dates", () => {
+    expect(normalizeDateOfBirth("30/02/1990")).toBeNull();
+    expect(normalizeDateOfBirth("1990-02-30")).toBeNull();
+    expect(normalizeDateOfBirth("31/04/2000")).toBeNull();
+  });
+  it("rejects non-date strings", () => {
+    expect(normalizeDateOfBirth("not-a-date")).toBeNull();
+    expect(normalizeDateOfBirth("Jan 15 1990")).toBeNull();
+    expect(normalizeDateOfBirth("abc")).toBeNull();
+  });
+  it("returns null for empty/null/undefined", () => {
+    expect(normalizeDateOfBirth(null)).toBeNull();
+    expect(normalizeDateOfBirth(undefined)).toBeNull();
+    expect(normalizeDateOfBirth("")).toBeNull();
+    expect(normalizeDateOfBirth("   ")).toBeNull();
+  });
+  it("rejects far-future and ancient dates", () => {
+    expect(normalizeDateOfBirth("2101-01-01")).toBeNull();
+    expect(normalizeDateOfBirth("1899-12-31")).toBeNull();
   });
 });
