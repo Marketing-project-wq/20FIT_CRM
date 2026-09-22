@@ -570,19 +570,18 @@ describe("send-run — rule 8 backoff + rule 9 pacing (8 Sep 2026)", () => {
     expect(store.sleeps).toEqual([500, 500]); // two sends → two pacing pauses; the skip added none
   });
 
-  it("DEFAULT config keeps backoff, but pacing is OFF (owner decision, 11 Sep 2026)", () => {
+  it("DEFAULT config uses pacing + smaller batches to stay under provider rate limits", () => {
     expect(DEFAULT_SEND_CONFIG.maxSendAttempts).toBe(6);
     expect(DEFAULT_SEND_CONFIG.backoffBaseMs).toBe(3000);
-    // 0, not 500: the owner required that campaigns never wait. Backoff is untouched — reacting to a
-    // 429 is not a delay we chose, it is the provider telling us to stop.
-    expect(DEFAULT_SEND_CONFIG.interRecipientDelayMs).toBe(0);
+    expect(DEFAULT_SEND_CONFIG.interRecipientDelayMs).toBe(1000);
+    expect(DEFAULT_SEND_CONFIG.batchSize).toBe(10);
   });
 
-  it("pacing is genuinely skipped at 0 — a default run performs no sleeps at all", async () => {
+  it("pacing adds a sleep after every real send attempt", async () => {
     const store = new FakeStore();
     const s = await runSend(mk(3), store, "camp", hashFor, DEFAULT_SEND_CONFIG, RNG0);
     expect(s.sent).toBe(3);
-    expect(store.sleeps).toEqual([]); // no pacing pause, and no backoff (nothing failed)
+    expect(store.sleeps).toEqual([1000, 1000, 1000]);
   });
 });
 

@@ -138,8 +138,8 @@ export const DEFAULT_SEND_CONFIG: SendConfig = {
   maxConsecutiveFailures: 200,
   maxSendAttempts: 6,
   backoffBaseMs: 3000,
-  interRecipientDelayMs: 0, // no pacing pause (owner: "tanpa jam tunggu"); batching protects the req/s
-  batchSize: RESEND_BATCH_MAX, // one API call per 100 recipients when the adapter supports it
+  interRecipientDelayMs: 1000,
+  batchSize: 10,
   maxPerInvocation: Number.MAX_SAFE_INTEGER, // no batch cap by default; only the drainer lowers it
 };
 
