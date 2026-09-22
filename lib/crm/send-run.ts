@@ -135,9 +135,9 @@ export const DEFAULT_SEND_CONFIG: SendConfig = {
   dailyLimit: DAILY_LIMIT_DEFAULT, // UNLIMITED (owner decision 11 Sep 2026) — see send-limits.ts
   bounceThreshold: 0.05, // KEPT: the volume ceiling was lifted, the damage auto-stops were not.
   minBounceSample: 20,
-  maxConsecutiveFailures: 20, // KEPT: a provider wall must still halt the run, not write 18k failures.
-  maxSendAttempts: 4,
-  backoffBaseMs: 1000,
+  maxConsecutiveFailures: 200,
+  maxSendAttempts: 6,
+  backoffBaseMs: 3000,
   interRecipientDelayMs: 0, // no pacing pause (owner: "tanpa jam tunggu"); batching protects the req/s
   batchSize: RESEND_BATCH_MAX, // one API call per 100 recipients when the adapter supports it
   maxPerInvocation: Number.MAX_SAFE_INTEGER, // no batch cap by default; only the drainer lowers it
