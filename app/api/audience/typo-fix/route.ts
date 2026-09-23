@@ -7,6 +7,7 @@ import { scanEmailTypos, applyEmailTypoFixes } from "@/lib/crm/email-typo-fix";
 import { logApiFailure } from "@/lib/crm/failure-log";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 120;
 
 /**
  * Email typo scan + auto-fix API.
