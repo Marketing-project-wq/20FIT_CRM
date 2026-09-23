@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Check, Lock, Users, Mail, Send, MessageCircle, Plus, Eye, Save } from "lucide-react";
+import { Check, Lock, Users, Mail, Send, MessageCircle, Plus, Eye, Save, Clock, ArrowRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useI18n } from "@/components/i18n/lang-provider";
@@ -682,144 +682,214 @@ export function CampaignFlow({
       </Step>
 
       {/* STEP 4 · KIRIM ke audiens */}
-      <Step n={4} title={c.step4Title} done={!!result?.ok} locked={!step3Done} open={open} setOpen={setOpen}
-        summary={result?.ok ? cc.queuedSummary : undefined}
+      <Step n={4} title={c.step4Title} done={!!result?.ok || !!scheduledMsg} locked={!step3Done} open={open} setOpen={setOpen}
+        summary={result?.ok ? cc.queuedSummary : scheduledMsg ? cc.scheduledSummary : undefined}
       >
         <div className="flex flex-col gap-4">
-          <div className="flex items-center gap-2 text-ink-soft">
-            <Send className="h-4 w-4" aria-hidden />
-            <p className="font-body text-[13px]">{c.step4Hint}</p>
-          </div>
 
-          {preview?.spread?.exceedsToday && (
-            <p className="font-body text-[13px] leading-relaxed text-ink-soft">
-              {cc.daysA}<strong>{fmt(preview.spread.daysNeeded)}</strong>{cc.daysB}
-            </p>
-          )}
-
-          {/* Run choice is ONLY shown when there are resumable runs (draft/sending). With none, a
-              fresh run is created automatically — nothing to choose. */}
-          {runsLoading ? (
-            <p className="font-body text-[12px] text-ink-soft">{cc.runsLoading}</p>
-          ) : runs.length > 0 ? (
-            <div className="flex flex-col gap-3">
-              <div>
-                <p className="font-body text-[13px] font-semibold text-ink">{cc.runTitle}</p>
-                <p className="mt-1 font-body text-[12px] leading-relaxed text-ink-soft">{cc.runHint}</p>
-              </div>
-
-              <div className="tint-blue flex flex-col gap-2 rounded-card p-3">
-                <div className="flex items-center gap-2">
-                  <Badge tone="blue">{cc.runResumeBadge}</Badge>
-                  <span className="font-body text-[13px] font-semibold text-ink">{cc.runResumeHeading}</span>
-                </div>
-                <div className="flex flex-col gap-2">
-                  {runs.map((r) => {
-                    const selected = runSel?.kind === "resume" && runSel.runId === r.id;
-                    return (
-                      <label key={r.id} className={`flex cursor-pointer items-center gap-3 rounded-sm border bg-glass px-3 py-2 ${selected ? "border-red ring-1 ring-red" : "border-glass-border"}`}>
-                        <input type="radio" name="run-choice" checked={selected} onChange={() => setRunSel({ kind: "resume", runId: r.id })} />
-                        <span className="flex flex-1 flex-wrap items-center gap-2">
-                          <span className="font-body text-[13px] text-ink">{r.label ?? cc.runUntitled}</span>
-                          {statusBadge(r)}
-                          <span className="font-body text-[12px] text-ink-soft">{fmt(r.sentCount)} {cc.runSentSuffix}</span>
-                        </span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="tint-neutral flex flex-col gap-2 rounded-card p-3">
-                <div className="flex items-center gap-2">
-                  <Badge tone="neutral">{cc.runNewBadge}</Badge>
-                  <span className="font-body text-[13px] font-semibold text-ink">{cc.runNewHeading}</span>
-                </div>
-                <label className={`flex cursor-pointer items-center gap-3 rounded-sm border bg-glass px-3 py-2 ${runSel?.kind === "new" ? "border-red ring-1 ring-red" : "border-glass-border"}`}>
-                  <input type="radio" name="run-choice" checked={runSel?.kind === "new"} onChange={() => setRunSel({ kind: "new" })} />
-                  <span className="font-body text-[13px] text-ink">{cc.runNewHeading}</span>
-                </label>
-              </div>
-            </div>
-          ) : (
-            <p className="font-body text-[12px] leading-relaxed text-ink-soft">{cc.runAutoNew}</p>
-          )}
-
-          {needsConfirm && (
-            <label className="flex items-center gap-2 font-body text-[13px] text-ink">
-              <input type="checkbox" checked={confirmLarge} onChange={(e) => setConfirmLarge(e.target.checked)} />
-              {cc.confirmLargeLabel}
-            </label>
-          )}
-
-          {/* Kirim sekarang atau jadwalkan (WIB) */}
-          <div className="flex flex-col gap-3 rounded-card border border-glass-border p-3">
-            <div className="flex flex-wrap gap-2">
-              <label className={`flex cursor-pointer items-center gap-2 rounded-sm border px-3 py-2 font-body text-[13px] ${when === "now" ? "border-red ring-1 ring-red text-ink" : "border-glass-border text-ink-soft"}`}>
-                <input type="radio" name="when" checked={when === "now"} onChange={() => setWhen("now")} />
-                {cc.sendNow}
-              </label>
-              <label className={`flex cursor-pointer items-center gap-2 rounded-sm border px-3 py-2 font-body text-[13px] ${when === "schedule" ? "border-red ring-1 ring-red text-ink" : "border-glass-border text-ink-soft"}`}>
-                <input type="radio" name="when" checked={when === "schedule"} onChange={() => setWhen("schedule")} />
-                {cc.scheduleLabel}
-              </label>
-            </div>
-            {when === "schedule" && (
-              <div className="flex flex-wrap items-end gap-3">
-                <label className="flex flex-col gap-1">
-                  <span className="font-body text-[12px] text-ink-soft">{cc.scheduleDate}</span>
-                  <input type="date" className={selectCls + " w-44"} value={dateWib} onChange={(e) => setDateWib(e.target.value)} />
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="font-body text-[12px] text-ink-soft">{cc.scheduleTime}</span>
-                  <input type="time" className={selectCls + " w-32"} value={timeWib} onChange={(e) => setTimeWib(e.target.value)} />
-                </label>
-              </div>
-            )}
-          </div>
-
-          <div className="flex items-center gap-3">
-            {when === "now" ? (
-              <Button size="lg" onClick={onSend} disabled={sendDisabled}>
-                {sending ? cc.sending : !realSend ? cc.blockedBtn : cc.sendBtn}
-              </Button>
-            ) : (
-              <Button size="lg" onClick={onSchedule} disabled={!realSend || !preview || sending || !dateWib || (runSel?.kind !== "resume" && !nameValid)}>
-                {sending ? cc.scheduling : !realSend ? cc.blockedBtn : cc.scheduleBtn}
-              </Button>
-            )}
-            <button
-              type="button"
-              disabled={draftSaving || !channel}
-              onClick={() => doSaveDraft(false)}
-              className="flex items-center gap-1.5 rounded-sm border border-glass-border px-3 py-2 font-body text-[13px] text-ink-soft transition-colors hover:bg-glass-strong disabled:opacity-50"
-            >
-              <Save className="h-3.5 w-3.5" />
-              {draftSaving ? cd.saving : cd.saveBtn}
-            </button>
-            {when === "now" && !runSel && realSend && <span className="font-body text-[12px] text-ink-soft">{cc.runChooseFirst}</span>}
-          </div>
-
-          {scheduledMsg && <p className="font-body text-[13px] font-semibold text-green">{scheduledMsg}</p>}
-          {notice && <p role="alert" className="font-body text-[13px] leading-relaxed text-red">{notice}</p>}
-
-          {/* ASYNC (P0-3): the send runs in the BACKGROUND now — no synchronous summary. Confirm the
-              run is queued, say how many will be attempted, and point at the Kiriman tab where the
-              batches, progress and any failures appear as the drainer works. */}
-          {result?.ok && result.queued && (
-            <div className="tint-green flex flex-col gap-2 rounded-card p-4" role="status">
-              <div className="flex items-center gap-2">
-                <Check className="h-4 w-4 shrink-0 text-green" aria-hidden />
-                <p className="font-body text-[13px] font-semibold text-ink">{cc.queuedTitle}</p>
-                <Badge tone={result.isNewRun ? "neutral" : "blue"}>{result.isNewRun ? cc.resRunLabelNew : cc.resRunLabelResume}</Badge>
-                <span className="font-body text-[12px] text-ink-soft">{result.runLabel ?? cc.runUntitled}</span>
-              </div>
-              <p className="font-body text-[13px] leading-relaxed text-ink-soft">
-                {cc.queuedBodyA}<strong>{fmt(result.sendable ?? 0)}</strong>{cc.queuedBodyB}
+          {/* ── SENDING IN PROGRESS ── */}
+          {sending && (
+            <div className="flex flex-col items-center gap-3 rounded-card border border-glass-border bg-glass p-8" role="status">
+              <Loader2 className="h-8 w-8 animate-spin text-red" aria-hidden />
+              <p className="font-display text-[15px] font-bold uppercase tracking-wide text-ink">
+                {when === "now" ? cc.sendingProgress : cc.schedulingProgress}
               </p>
-              <p className="font-body text-[12px] leading-relaxed text-ink-faint">{cc.queuedWatch}</p>
-              {!realSend && <p className="font-body text-[12px] leading-relaxed text-ink-faint">{cc.resInternalNote}</p>}
+              <p className="font-body text-[13px] text-ink-soft">{cc.sendingWait}</p>
             </div>
+          )}
+
+          {/* ── SUCCESS: SEND QUEUED ── */}
+          {!sending && result?.ok && result.queued && (
+            <div className="flex flex-col gap-4">
+              <div className="tint-green flex flex-col gap-3 rounded-card p-6" role="status">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green/20">
+                    <Check className="h-5 w-5 text-green" aria-hidden />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-display text-[15px] font-bold uppercase tracking-wide text-ink">{cc.queuedTitle}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <Badge tone={result.isNewRun ? "neutral" : "blue"}>{result.isNewRun ? cc.resRunLabelNew : cc.resRunLabelResume}</Badge>
+                      <span className="font-body text-[13px] text-ink-soft">{result.runLabel ?? cc.runUntitled}</span>
+                    </div>
+                  </div>
+                </div>
+                <p className="font-body text-[14px] leading-relaxed text-ink">
+                  {cc.queuedBodyA}<strong>{fmt(result.sendable ?? 0)}</strong>{cc.queuedBodyB}
+                </p>
+                <p className="font-body text-[13px] leading-relaxed text-ink-soft">{cc.queuedWatch}</p>
+                {!realSend && <p className="font-body text-[12px] leading-relaxed text-ink-faint">{cc.resInternalNote}</p>}
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <a
+                  href="/campaigns?tab=kiriman"
+                  className="inline-flex h-10 items-center gap-2 rounded-sm border border-red bg-red px-5 font-display text-[13px] font-bold uppercase tracking-wide text-white transition-opacity hover:opacity-90"
+                >
+                  {cc.goToKiriman}
+                  <ArrowRight className="h-4 w-4" aria-hidden />
+                </a>
+                <button
+                  type="button"
+                  onClick={() => { setResult(null); setRunSel(null); setConfirmLarge(false); setNotice(null); }}
+                  className="inline-flex h-10 items-center gap-2 rounded-sm border border-glass-border px-5 font-display text-[13px] font-bold uppercase tracking-wide text-ink transition-colors hover:bg-glass-strong"
+                >
+                  {cc.newCampaign}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── SUCCESS: SCHEDULED ── */}
+          {!sending && scheduledMsg && (
+            <div className="flex flex-col gap-4">
+              <div className="tint-green flex flex-col gap-3 rounded-card p-6" role="status">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green/20">
+                    <Clock className="h-5 w-5 text-green" aria-hidden />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-display text-[15px] font-bold uppercase tracking-wide text-ink">{cc.scheduledTitle}</p>
+                    <p className="mt-1 font-body text-[14px] text-ink">{scheduledMsg}</p>
+                  </div>
+                </div>
+                <p className="font-body text-[13px] leading-relaxed text-ink-soft">{cc.scheduledWatch}</p>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <a
+                  href="/campaigns?tab=kiriman"
+                  className="inline-flex h-10 items-center gap-2 rounded-sm border border-red bg-red px-5 font-display text-[13px] font-bold uppercase tracking-wide text-white transition-opacity hover:opacity-90"
+                >
+                  {cc.goToKiriman}
+                  <ArrowRight className="h-4 w-4" aria-hidden />
+                </a>
+                <button
+                  type="button"
+                  onClick={() => { setScheduledMsg(null); setRunSel(null); setConfirmLarge(false); setNotice(null); }}
+                  className="inline-flex h-10 items-center gap-2 rounded-sm border border-glass-border px-5 font-display text-[13px] font-bold uppercase tracking-wide text-ink transition-colors hover:bg-glass-strong"
+                >
+                  {cc.newCampaign}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── FORM CONTROLS (hidden during send, after success, and after schedule) ── */}
+          {!sending && !result?.ok && !scheduledMsg && (
+            <>
+              <div className="flex items-center gap-2 text-ink-soft">
+                <Send className="h-4 w-4" aria-hidden />
+                <p className="font-body text-[13px]">{c.step4Hint}</p>
+              </div>
+
+              {preview?.spread?.exceedsToday && (
+                <p className="font-body text-[13px] leading-relaxed text-ink-soft">
+                  {cc.daysA}<strong>{fmt(preview.spread.daysNeeded)}</strong>{cc.daysB}
+                </p>
+              )}
+
+              {runsLoading ? (
+                <p className="font-body text-[12px] text-ink-soft">{cc.runsLoading}</p>
+              ) : runs.length > 0 ? (
+                <div className="flex flex-col gap-3">
+                  <div>
+                    <p className="font-body text-[13px] font-semibold text-ink">{cc.runTitle}</p>
+                    <p className="mt-1 font-body text-[12px] leading-relaxed text-ink-soft">{cc.runHint}</p>
+                  </div>
+
+                  <div className="tint-blue flex flex-col gap-2 rounded-card p-3">
+                    <div className="flex items-center gap-2">
+                      <Badge tone="blue">{cc.runResumeBadge}</Badge>
+                      <span className="font-body text-[13px] font-semibold text-ink">{cc.runResumeHeading}</span>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      {runs.map((r) => {
+                        const selected = runSel?.kind === "resume" && runSel.runId === r.id;
+                        return (
+                          <label key={r.id} className={`flex cursor-pointer items-center gap-3 rounded-sm border bg-glass px-3 py-2 ${selected ? "border-red ring-1 ring-red" : "border-glass-border"}`}>
+                            <input type="radio" name="run-choice" checked={selected} onChange={() => setRunSel({ kind: "resume", runId: r.id })} />
+                            <span className="flex flex-1 flex-wrap items-center gap-2">
+                              <span className="font-body text-[13px] text-ink">{r.label ?? cc.runUntitled}</span>
+                              {statusBadge(r)}
+                              <span className="font-body text-[12px] text-ink-soft">{fmt(r.sentCount)} {cc.runSentSuffix}</span>
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="tint-neutral flex flex-col gap-2 rounded-card p-3">
+                    <div className="flex items-center gap-2">
+                      <Badge tone="neutral">{cc.runNewBadge}</Badge>
+                      <span className="font-body text-[13px] font-semibold text-ink">{cc.runNewHeading}</span>
+                    </div>
+                    <label className={`flex cursor-pointer items-center gap-3 rounded-sm border bg-glass px-3 py-2 ${runSel?.kind === "new" ? "border-red ring-1 ring-red" : "border-glass-border"}`}>
+                      <input type="radio" name="run-choice" checked={runSel?.kind === "new"} onChange={() => setRunSel({ kind: "new" })} />
+                      <span className="font-body text-[13px] text-ink">{cc.runNewHeading}</span>
+                    </label>
+                  </div>
+                </div>
+              ) : (
+                <p className="font-body text-[12px] leading-relaxed text-ink-soft">{cc.runAutoNew}</p>
+              )}
+
+              {needsConfirm && (
+                <label className="flex items-center gap-2 font-body text-[13px] text-ink">
+                  <input type="checkbox" checked={confirmLarge} onChange={(e) => setConfirmLarge(e.target.checked)} />
+                  {cc.confirmLargeLabel}
+                </label>
+              )}
+
+              {/* Kirim sekarang atau jadwalkan (WIB) */}
+              <div className="flex flex-col gap-3 rounded-card border border-glass-border p-3">
+                <div className="flex flex-wrap gap-2">
+                  <label className={`flex cursor-pointer items-center gap-2 rounded-sm border px-3 py-2 font-body text-[13px] ${when === "now" ? "border-red ring-1 ring-red text-ink" : "border-glass-border text-ink-soft"}`}>
+                    <input type="radio" name="when" checked={when === "now"} onChange={() => setWhen("now")} />
+                    {cc.sendNow}
+                  </label>
+                  <label className={`flex cursor-pointer items-center gap-2 rounded-sm border px-3 py-2 font-body text-[13px] ${when === "schedule" ? "border-red ring-1 ring-red text-ink" : "border-glass-border text-ink-soft"}`}>
+                    <input type="radio" name="when" checked={when === "schedule"} onChange={() => setWhen("schedule")} />
+                    {cc.scheduleLabel}
+                  </label>
+                </div>
+                {when === "schedule" && (
+                  <div className="flex flex-wrap items-end gap-3">
+                    <label className="flex flex-col gap-1">
+                      <span className="font-body text-[12px] text-ink-soft">{cc.scheduleDate}</span>
+                      <input type="date" className={selectCls + " w-44"} value={dateWib} onChange={(e) => setDateWib(e.target.value)} />
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className="font-body text-[12px] text-ink-soft">{cc.scheduleTime}</span>
+                      <input type="time" className={selectCls + " w-32"} value={timeWib} onChange={(e) => setTimeWib(e.target.value)} />
+                    </label>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center gap-3">
+                {when === "now" ? (
+                  <Button size="lg" onClick={onSend} disabled={sendDisabled}>
+                    {!realSend ? cc.blockedBtn : cc.sendBtn}
+                  </Button>
+                ) : (
+                  <Button size="lg" onClick={onSchedule} disabled={!realSend || !preview || !dateWib || (runSel?.kind !== "resume" && !nameValid)}>
+                    {!realSend ? cc.blockedBtn : cc.scheduleBtn}
+                  </Button>
+                )}
+                <button
+                  type="button"
+                  disabled={draftSaving || !channel}
+                  onClick={() => doSaveDraft(false)}
+                  className="flex items-center gap-1.5 rounded-sm border border-glass-border px-3 py-2 font-body text-[13px] text-ink-soft transition-colors hover:bg-glass-strong disabled:opacity-50"
+                >
+                  <Save className="h-3.5 w-3.5" />
+                  {draftSaving ? cd.saving : cd.saveBtn}
+                </button>
+                {when === "now" && !runSel && realSend && <span className="font-body text-[12px] text-ink-soft">{cc.runChooseFirst}</span>}
+              </div>
+
+              {notice && <p role="alert" className="font-body text-[13px] leading-relaxed text-red">{notice}</p>}
+            </>
           )}
         </div>
       </Step>
