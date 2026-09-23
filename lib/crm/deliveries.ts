@@ -540,19 +540,28 @@ export async function deliveryDetail(admin: SupabaseClient, runId: string): Prom
   };
   const engagementMeasured = (cOpened ?? 0) > 0 || (cClicked ?? 0) > 0;
 
-  // Log rows for this run — drives the recorded version and the per-recipient table.
-  const { data: logData } = await admin
-    .from("crm_message_log")
-    .select("customer_id, identity_hash, channel, status, failure_cause, template_version, sent_at, delivered_at, bounced_at, complained_at, unsubscribed_at, opened_at, clicked_at, created_at")
-    .eq("campaign_id", runId)
-    .order("created_at", { ascending: false })
-    .limit(2000);
-  const logs = (logData ?? []) as {
+  // Log rows for this run — drives the recorded version and the per-recipient table. Paginated
+  // because Supabase/PostgREST caps a single response at ~1000 rows regardless of .limit().
+  type LogRow = {
     customer_id: string; identity_hash: string | null; channel: string; status: string; failure_cause: string | null;
     template_version: number | null; sent_at: string | null; delivered_at: string | null;
     bounced_at: string | null; complained_at: string | null; unsubscribed_at: string | null;
     opened_at: string | null; clicked_at: string | null; created_at: string;
-  }[];
+  };
+  const LOG_COLS = "customer_id, identity_hash, channel, status, failure_cause, template_version, sent_at, delivered_at, bounced_at, complained_at, unsubscribed_at, opened_at, clicked_at, created_at";
+  const LOG_PAGE = 1000;
+  const logs: LogRow[] = [];
+  for (let from = 0; ; from += LOG_PAGE) {
+    const { data: page } = await admin
+      .from("crm_message_log")
+      .select(LOG_COLS)
+      .eq("campaign_id", runId)
+      .order("created_at", { ascending: false })
+      .range(from, from + LOG_PAGE - 1);
+    if (!page || page.length === 0) break;
+    logs.push(...(page as LogRow[]));
+    if (page.length < LOG_PAGE) break;
+  }
 
   // The version recipients actually received: the most common template_version among the log rows.
   const versionCounts = new Map<number, number>();

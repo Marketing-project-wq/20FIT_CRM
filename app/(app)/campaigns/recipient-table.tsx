@@ -45,6 +45,8 @@ function wibDisplay(utcIso: string): string {
   return `${wib.toISOString().slice(0, 16).replace("T", " ")} WIB`;
 }
 
+const REC_PAGE_SIZE = 100;
+
 export function RecipientTable({ recipients }: { recipients: DeliveryRecipient[] }) {
   const { t } = useI18n();
   const d = t.campaignsPage.deliveries;
@@ -53,6 +55,7 @@ export function RecipientTable({ recipients }: { recipients: DeliveryRecipient[]
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [page, setPage] = useState(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -92,6 +95,9 @@ export function RecipientTable({ recipients }: { recipients: DeliveryRecipient[]
   }, [recipients, debouncedQuery, statusFilter]);
 
   const isFiltering = debouncedQuery.trim() || statusFilter !== "all";
+  const totalPages = Math.max(1, Math.ceil(filtered.length / REC_PAGE_SIZE));
+  const safePage = Math.min(page, totalPages - 1);
+  const paged = filtered.slice(safePage * REC_PAGE_SIZE, (safePage + 1) * REC_PAGE_SIZE);
 
   return (
     <>
@@ -101,7 +107,7 @@ export function RecipientTable({ recipients }: { recipients: DeliveryRecipient[]
           <input
             type="text"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => { setQuery(e.target.value); setPage(0); }}
             placeholder={d.searchPlaceholder}
             className="w-full rounded-md border border-glass-border bg-glass py-2 pl-9 pr-3 font-body text-[13px] text-ink placeholder:text-ink-faint focus:border-red focus:outline-none focus:ring-1 focus:ring-red"
           />
@@ -115,7 +121,7 @@ export function RecipientTable({ recipients }: { recipients: DeliveryRecipient[]
               <button
                 key={opt.value}
                 type="button"
-                onClick={() => setStatusFilter(opt.value)}
+                onClick={() => { setStatusFilter(opt.value); setPage(0); }}
                 className={`rounded-md px-2.5 py-1 font-body text-[12px] transition-colors ${
                   active
                     ? "bg-red text-white"
@@ -128,7 +134,7 @@ export function RecipientTable({ recipients }: { recipients: DeliveryRecipient[]
           })}
         </div>
       </div>
-      {isFiltering && (
+      {(isFiltering || recipients.length > REC_PAGE_SIZE) && (
         <p className="font-body text-[12px] text-ink-faint">
           {d.showingResults.replace("{x}", String(filtered.length)).replace("{y}", String(recipients.length))}
         </p>
@@ -138,52 +144,77 @@ export function RecipientTable({ recipients }: { recipients: DeliveryRecipient[]
           <p className="font-body text-[13px] text-ink-soft">{d.detailEmpty}</p>
         </div>
       ) : (
-        <div className="glass-strong overflow-x-auto rounded-card">
-          <table className="w-full border-collapse text-left">
-            <thead>
-              <tr className="border-b border-glass-border font-body text-[11px] uppercase tracking-wide text-ink-faint">
-                <th className="px-4 py-2.5 font-medium">{d.recipientName}</th>
-                <th className="px-4 py-2.5 font-medium">{d.recipientEmail}</th>
-                <th className="px-4 py-2.5 font-medium">{d.recipientChannel}</th>
-                <th className="px-4 py-2.5 font-medium">{d.recipientStatus}</th>
-                <th className="px-4 py-2.5 font-medium">{d.recipientSentAt}</th>
-                <th className="px-4 py-2.5 font-medium">{d.recipientDeliveredAt}</th>
-                <th className="px-4 py-2.5 font-medium">{d.recipientOpenedAt}</th>
-                <th className="px-4 py-2.5 font-medium">{d.recipientClickedAt}</th>
-                <th className="px-4 py-2.5 font-medium">{d.recipientCause}</th>
-              </tr>
-            </thead>
-            <tbody className="font-body text-[13px] text-ink-soft">
-              {filtered.map((r, i) => {
-                const rst = REC_STATUS[r.status] ?? REC_STATUS.queued;
-                const displayName = r.name
-                  ? r.name
-                  : r.maskedEmail
-                    ? r.maskedEmail
-                    : null;
-                return (
-                  <tr key={i} className="border-b border-glass-border/50 last:border-0">
-                    <td className="px-4 py-2.5">
-                      {displayName
-                        ? <span className={r.name ? "" : "italic text-ink-faint"}>{displayName}</span>
-                        : <span className="italic text-ink-faint">{d.recipientUnresolved}</span>}
-                    </td>
-                    <td className="px-4 py-2.5 font-mono text-[12px] text-ink-faint">
-                      {r.rawEmail ?? "—"}
-                    </td>
-                    <td className="px-4 py-2.5">{r.channel}</td>
-                    <td className="px-4 py-2.5"><Badge tone={rst.tone}>{m[rst.key]}</Badge></td>
-                    <td className="px-4 py-2.5 font-mono text-[12px]">{r.sentAt ? wibDisplay(r.sentAt) : "—"}</td>
-                    <td className="px-4 py-2.5 font-mono text-[12px]">{r.deliveredAt ? wibDisplay(r.deliveredAt) : "—"}</td>
-                    <td className="px-4 py-2.5 font-mono text-[12px]">{r.openedAt ? wibDisplay(r.openedAt) : "—"}</td>
-                    <td className="px-4 py-2.5 font-mono text-[12px]">{r.clickedAt ? wibDisplay(r.clickedAt) : "—"}</td>
-                    <td className="px-4 py-2.5">{r.failureCause ? m[REC_CAUSE[r.failureCause] ?? "causeUnknown"] : "—"}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <>
+          <div className="glass-strong overflow-x-auto rounded-card">
+            <table className="w-full border-collapse text-left">
+              <thead>
+                <tr className="border-b border-glass-border font-body text-[11px] uppercase tracking-wide text-ink-faint">
+                  <th className="px-4 py-2.5 font-medium">{d.recipientName}</th>
+                  <th className="px-4 py-2.5 font-medium">{d.recipientEmail}</th>
+                  <th className="px-4 py-2.5 font-medium">{d.recipientChannel}</th>
+                  <th className="px-4 py-2.5 font-medium">{d.recipientStatus}</th>
+                  <th className="px-4 py-2.5 font-medium">{d.recipientSentAt}</th>
+                  <th className="px-4 py-2.5 font-medium">{d.recipientDeliveredAt}</th>
+                  <th className="px-4 py-2.5 font-medium">{d.recipientOpenedAt}</th>
+                  <th className="px-4 py-2.5 font-medium">{d.recipientClickedAt}</th>
+                  <th className="px-4 py-2.5 font-medium">{d.recipientCause}</th>
+                </tr>
+              </thead>
+              <tbody className="font-body text-[13px] text-ink-soft">
+                {paged.map((r, i) => {
+                  const rst = REC_STATUS[r.status] ?? REC_STATUS.queued;
+                  const displayName = r.name
+                    ? r.name
+                    : r.maskedEmail
+                      ? r.maskedEmail
+                      : null;
+                  return (
+                    <tr key={safePage * REC_PAGE_SIZE + i} className="border-b border-glass-border/50 last:border-0">
+                      <td className="px-4 py-2.5">
+                        {displayName
+                          ? <span className={r.name ? "" : "italic text-ink-faint"}>{displayName}</span>
+                          : <span className="italic text-ink-faint">{d.recipientUnresolved}</span>}
+                      </td>
+                      <td className="px-4 py-2.5 font-mono text-[12px] text-ink-faint">
+                        {r.rawEmail ?? "—"}
+                      </td>
+                      <td className="px-4 py-2.5">{r.channel}</td>
+                      <td className="px-4 py-2.5"><Badge tone={rst.tone}>{m[rst.key]}</Badge></td>
+                      <td className="px-4 py-2.5 font-mono text-[12px]">{r.sentAt ? wibDisplay(r.sentAt) : "—"}</td>
+                      <td className="px-4 py-2.5 font-mono text-[12px]">{r.deliveredAt ? wibDisplay(r.deliveredAt) : "—"}</td>
+                      <td className="px-4 py-2.5 font-mono text-[12px]">{r.openedAt ? wibDisplay(r.openedAt) : "—"}</td>
+                      <td className="px-4 py-2.5 font-mono text-[12px]">{r.clickedAt ? wibDisplay(r.clickedAt) : "—"}</td>
+                      <td className="px-4 py-2.5">{r.failureCause ? m[REC_CAUSE[r.failureCause] ?? "causeUnknown"] : "—"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-3 pt-1">
+              <button
+                type="button"
+                disabled={safePage === 0}
+                onClick={() => setPage(safePage - 1)}
+                className="rounded-md px-3 py-1 font-body text-[12px] text-ink-soft hover:bg-glass-border disabled:opacity-40"
+              >
+                {d.prevPage}
+              </button>
+              <span className="font-body text-[12px] text-ink-faint">
+                {safePage + 1} {d.pageOf} {totalPages}
+              </span>
+              <button
+                type="button"
+                disabled={safePage >= totalPages - 1}
+                onClick={() => setPage(safePage + 1)}
+                className="rounded-md px-3 py-1 font-body text-[12px] text-ink-soft hover:bg-glass-border disabled:opacity-40"
+              >
+                {d.nextPage}
+              </button>
+            </div>
+          )}
+        </>
       )}
     </>
   );
