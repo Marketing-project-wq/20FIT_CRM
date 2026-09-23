@@ -150,9 +150,10 @@ export async function scanEmailTypos(admin: SupabaseClient): Promise<TypoScanRes
   return { rows: allRows, totalScanned, fixable, collisions, mediumOnly };
 }
 
+const FIX_BATCH = 25;
+
 /**
- * Apply auto-fixes to all high-confidence, collision-free typo rows. Each fix is an
- * atomic UPDATE + audit-log INSERT. Returns a summary.
+ * Apply auto-fixes in parallel batches with batched audit logging.
  */
 export async function applyEmailTypoFixes(
   admin: SupabaseClient,
@@ -171,50 +172,77 @@ export async function applyEmailTypoFixes(
     errors: 0,
   };
 
-  for (const row of fixable) {
-    // Optimistic concurrency: only update if the email still matches
-    const { data, error } = await admin
-      .from("master_customer")
-      .update({
-        email: row.correctedEmail,
-        email_normalized: row.correctedNormalized,
-      })
-      .eq("customer_id", row.customerId)
-      .eq("email_normalized", row.emailNormalized)
-      .is("is_merged", false)
-      .select("customer_id")
-      .maybeSingle();
+  const auditEntries: {
+    action: string;
+    actor_email: string;
+    target_table: string;
+    target_id: string;
+    summary: string;
+    metadata: Record<string, string>;
+  }[] = [];
 
-    if (error) {
-      // 23505 = unique constraint violation (collision with existing email)
-      if ((error as { code?: string }).code === "23505") {
-        summary.collisions++;
-      } else {
+  for (let i = 0; i < fixable.length; i += FIX_BATCH) {
+    const batch = fixable.slice(i, i + FIX_BATCH);
+
+    const results = await Promise.allSettled(
+      batch.map(async (row) => {
+        const { data, error } = await admin
+          .from("master_customer")
+          .update({
+            email: row.correctedEmail,
+            email_normalized: row.correctedNormalized,
+          })
+          .eq("customer_id", row.customerId)
+          .eq("email_normalized", row.emailNormalized)
+          .is("is_merged", false)
+          .select("customer_id")
+          .maybeSingle();
+
+        return { row, data, error };
+      }),
+    );
+
+    for (const result of results) {
+      if (result.status === "rejected") {
         summary.errors++;
+        continue;
       }
-      continue;
+      const { row, data, error } = result.value;
+
+      if (error) {
+        if ((error as { code?: string }).code === "23505") {
+          summary.collisions++;
+        } else {
+          summary.errors++;
+        }
+        continue;
+      }
+
+      if (!data) {
+        summary.skipped++;
+        continue;
+      }
+
+      summary.fixed++;
+      auditEntries.push({
+        action: "email_typo.auto_fix",
+        actor_email: actorEmail,
+        target_table: "master_customer",
+        target_id: row.customerId,
+        summary: `Domain auto-corrected: @${row.domain} → @${row.suggestion}`,
+        metadata: {
+          old_domain: row.domain,
+          new_domain: row.suggestion,
+          confidence: row.confidence,
+        },
+      });
     }
+  }
 
-    if (!data) {
-      summary.skipped++;
-      continue;
-    }
-
-    summary.fixed++;
-
-    // Audit log — PII-free: only domains, not full addresses
-    await admin.from("crm_audit_log").insert({
-      action: "email_typo.auto_fix",
-      actor_email: actorEmail,
-      target_table: "master_customer",
-      target_id: row.customerId,
-      summary: `Domain auto-corrected: @${row.domain} → @${row.suggestion}`,
-      metadata: {
-        old_domain: row.domain,
-        new_domain: row.suggestion,
-        confidence: row.confidence,
-      },
-    });
+  // Batch insert audit entries (chunks of 100)
+  for (let i = 0; i < auditEntries.length; i += 100) {
+    const batch = auditEntries.slice(i, i + 100);
+    await admin.from("crm_audit_log").insert(batch);
   }
 
   return summary;
