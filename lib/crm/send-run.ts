@@ -546,7 +546,7 @@ export async function runSend(
         const oneByOne: BatchSendResult[] = [];
         for (const c of chunk) {
           if (oneByOne.length > 0) {
-            await ports.sleep(backoffDelayMs(2, config, rng));
+            await ports.sleep(backoffDelayMs(3, config, rng));
           }
           let itemResult: BatchSendResult | null = null;
           for (let attempt = 1; attempt <= config.maxSendAttempts; attempt++) {

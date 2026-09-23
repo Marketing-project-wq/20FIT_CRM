@@ -353,10 +353,9 @@ export async function retryFailedRecipients(
 }
 
 /** Max automatic retries for provider_throttled failures before giving up and leaving them for the
- *  operator's manual "Retry failed" button. 3 retries × ~1 min cooldown = the run gets ~3 extra
- *  minutes of attempts; combined with the one-by-one sequential fallback in flushChunk, this clears
- *  virtually all transient rate-limit scenarios. */
-export const MAX_THROTTLE_AUTO_RETRIES = 3;
+ *  operator's manual "Retry failed" button. Each cycle waits ~1 min (pg_cron tick interval) before
+ *  retrying, so 5 retries = ~5 min of cooldown spread across attempts. */
+export const MAX_THROTTLE_AUTO_RETRIES = 5;
 const THROTTLE_RETRY_PREFIX = "throttle_auto_retry:";
 
 /**
