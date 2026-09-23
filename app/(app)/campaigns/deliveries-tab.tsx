@@ -188,7 +188,6 @@ function DraftList({
 
   return (
     <div className="flex flex-col gap-2">
-      <h3 className="font-display text-[13px] font-bold uppercase tracking-wide text-ink">{cd.title}</h3>
       {drafts.map((draft) => (
         <div
           key={draft.id}
@@ -251,6 +250,44 @@ function DraftList({
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function DraftSection({
+  drafts,
+  cd,
+  router,
+}: {
+  drafts: SavedDraft[];
+  cd: Dict["campaignsPage"]["drafts"];
+  router: ReturnType<typeof useRouter>;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="rounded-card border border-dashed border-glass-border">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center gap-2 px-3 py-2.5 text-left"
+      >
+        <ChevronDown
+          className={`h-3.5 w-3.5 shrink-0 text-ink-faint transition-transform ${open ? "rotate-0" : "-rotate-90"}`}
+          aria-hidden
+        />
+        <span className="font-display text-[13px] font-bold uppercase tracking-wide text-ink-faint">
+          {cd.title}
+        </span>
+        <span className="rounded-full bg-ink-faint/20 px-2 py-0.5 font-body text-[11px] font-semibold text-ink-faint">
+          {drafts.length}
+        </span>
+      </button>
+      {open && (
+        <div className="border-t border-glass-border px-3 pb-3 pt-2">
+          <DraftList drafts={drafts} cd={cd} router={router} />
+        </div>
+      )}
     </div>
   );
 }
@@ -465,9 +502,9 @@ export function DeliveriesTab({
         </label>
       </div>
 
-      {/* ── Saved drafts ── */}
+      {/* ── Saved drafts (collapsible, hidden by default) ── */}
       {drafts.length > 0 && (
-        <DraftList drafts={drafts} cd={cd} router={router} />
+        <DraftSection drafts={drafts} cd={cd} router={router} />
       )}
 
       {/* Compact cards */}
