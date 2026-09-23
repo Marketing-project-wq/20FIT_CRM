@@ -282,6 +282,14 @@ export async function drainRunOnce(
       const fromLog = await finalizeRunFromLog(admin, run.id);
       if (fromLog == null) await finalizeRunStatus(run.id, summary);
       await clearRunDrain(admin, run.id);
+
+      // AUTO-RETRY throttled failures: if the run finished with provider_throttled failures, delete
+      // those rows and re-enqueue so the next pg_cron tick (1 min later) retries them. The natural
+      // 1-minute cooldown between ticks prevents hammering. Capped at MAX_THROTTLE_AUTO_RETRIES to
+      // avoid infinite loops on a persistently saturated rate limit.
+      if (summary.failed.provider_throttled > 0) {
+        await autoRetryThrottledFailures(admin, run.id, run.requestedBy);
+      }
       break;
     }
   }
@@ -335,8 +343,67 @@ export async function retryFailedRecipients(
     .eq("status", "failed");
   if (delErr) return { ok: false, cleared: 0, error: "delete_failed" };
 
+  // Reset auto-retry counter so the new cycle gets a fresh set of automatic retries.
+  await admin.from("crm_campaign_run").update({ last_error: null }).eq("id", runId);
+
   const enq = await enqueueRunDrain(admin, runId, requestedBy);
   if (!enq.ok) return { ok: false, cleared: failedCount, error: enq.conflict ? "concurrent_run" : "enqueue_failed" };
 
   return { ok: true, cleared: failedCount };
+}
+
+/** Max automatic retries for provider_throttled failures before giving up and leaving them for the
+ *  operator's manual "Retry failed" button. 3 retries × ~1 min cooldown = the run gets ~3 extra
+ *  minutes of attempts; combined with the one-by-one sequential fallback in flushChunk, this clears
+ *  virtually all transient rate-limit scenarios. */
+export const MAX_THROTTLE_AUTO_RETRIES = 3;
+const THROTTLE_RETRY_PREFIX = "throttle_auto_retry:";
+
+/**
+ * Auto-retry only `provider_throttled` failures after a drain finishes. Reads the retry counter from
+ * `last_error` (set by this function on each cycle), deletes only the throttled log rows, and
+ * re-enqueues the drain for the next pg_cron tick. Other failure causes (invalid_address, hard_bounce,
+ * provider_rejected) are permanent and left untouched.
+ */
+async function autoRetryThrottledFailures(
+  admin: SupabaseClient,
+  runId: string,
+  requestedBy: string | null,
+): Promise<void> {
+  const { data: runRow } = await admin
+    .from("crm_campaign_run")
+    .select("last_error")
+    .eq("id", runId)
+    .maybeSingle();
+
+  const lastError = (runRow as { last_error: string | null } | null)?.last_error ?? "";
+  const retryNum = lastError.startsWith(THROTTLE_RETRY_PREFIX)
+    ? parseInt(lastError.slice(THROTTLE_RETRY_PREFIX.length), 10) || 0
+    : 0;
+
+  if (retryNum >= MAX_THROTTLE_AUTO_RETRIES) return;
+
+  const { count } = await admin
+    .from("crm_message_log")
+    .select("id", { count: "exact", head: true })
+    .eq("campaign_id", runId)
+    .eq("status", "failed")
+    .eq("failure_cause", "provider_throttled");
+
+  if (!count || count === 0) return;
+
+  const { error: delErr } = await admin
+    .from("crm_message_log")
+    .delete()
+    .eq("campaign_id", runId)
+    .eq("status", "failed")
+    .eq("failure_cause", "provider_throttled");
+  if (delErr) return;
+
+  await admin
+    .from("crm_campaign_run")
+    .update({ last_error: `${THROTTLE_RETRY_PREFIX}${retryNum + 1}` })
+    .eq("id", runId);
+
+  await enqueueRunDrain(admin, runId, requestedBy);
 }
