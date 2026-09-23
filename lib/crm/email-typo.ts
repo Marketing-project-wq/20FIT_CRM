@@ -1,10 +1,12 @@
 /**
- * Email typo DETECTION — pure, client-safe (Sprint 3P, TUGAS 5).
+ * Email typo DETECTION + CORRECTION — pure, client-safe.
  *
- * This module only ever SUGGESTS. It NEVER corrects: changing someone's email on a guess
- * can send their personal data to a different person, and that harm cannot be undone. The
- * output is a flag + a suggestion + a confidence; a human confirms per row (a real write
- * path, planned in docs/RENCANA-koreksi-kontak.md, NOT built here).
+ * Detection: `detectEmailTypo()` returns a flag + suggestion + confidence.
+ * Correction: `correctEmailTypo()` applies the fix (domain swap + structural cleanup).
+ *
+ * The auto-fix path (lib/crm/email-typo-fix.ts) corrects ONLY high-confidence domain
+ * typos from KNOWN_TYPO_DOMAINS. Medium-confidence (edit-distance-1) matches are shown
+ * for review but not auto-applied — one wrong guess sends data to someone else.
  *
  * Legit lookalikes must pass clean: gmail.co.uk and yahoo.co.id are NOT typos. The
  * edit-distance-1 test naturally clears them (their distance to gmail.com / yahoo.com is
@@ -12,21 +14,65 @@
  */
 
 /** Known-bad domains → the domain they are almost certainly meant to be. HIGH confidence.
- *  gmaol.com is here because 986 rows carry it — a systematic import corruption, not 986
- *  independent typos (see docs/RENCANA-koreksi-kontak.md). */
+ *  Merged from email-domain-correct.ts (ingest-time) + original detection list. */
 export const KNOWN_TYPO_DOMAINS: Record<string, string> = {
+  // gmail
   "gmaol.com": "gmail.com",
   "gmail.con": "gmail.com",
+  "gmail.col": "gmail.com",
+  "gmail.cim": "gmail.com",
+  "gmail.vom": "gmail.com",
+  "gmail.co": "gmail.com",
+  "gmail.cm": "gmail.com",
+  "gmail.om": "gmail.com",
+  "gmail.comm": "gmail.com",
+  "gmail.coom": "gmail.com",
   "gmai.com": "gmail.com",
+  "gmal.com": "gmail.com",
   "gamil.com": "gmail.com",
   "gmial.com": "gmail.com",
-  "gmail.co": "gmail.com",
   "gnail.com": "gmail.com",
+  "gmaill.com": "gmail.com",
+  "gmali.com": "gmail.com",
+  "gmaik.com": "gmail.com",
+  "gmsil.com": "gmail.com",
+  "gmeil.com": "gmail.com",
+  "g.mail.com": "gmail.com",
+  // yahoo
+  "yahoo.con": "yahoo.com",
+  "yahoo.col": "yahoo.com",
+  "yahoo.co": "yahoo.com",
+  "yahoo.cm": "yahoo.com",
+  "yahoo.comm": "yahoo.com",
   "yaho.com": "yahoo.com",
   "yahooo.com": "yahoo.com",
+  "yaboo.com": "yahoo.com",
+  "yhaoo.com": "yahoo.com",
+  "yhoo.com": "yahoo.com",
+  "yahooo.co.id": "yahoo.co.id",
+  "yaho.co.id": "yahoo.co.id",
+  // hotmail
+  "hotmail.con": "hotmail.com",
+  "hotmail.col": "hotmail.com",
+  "hotmail.co": "hotmail.com",
   "hotmial.com": "hotmail.com",
   "hotmai.com": "hotmail.com",
+  "hmail.com": "hotmail.com",
+  "hotamil.com": "hotmail.com",
+  "hotmaill.com": "hotmail.com",
+  // outlook
+  "outlook.con": "outlook.com",
   "outlok.com": "outlook.com",
+  "outloo.com": "outlook.com",
+  "outlool.com": "outlook.com",
+  "outllok.com": "outlook.com",
+  // icloud
+  "icloud.con": "icloud.com",
+  "iclod.com": "icloud.com",
+  "icloud.co": "icloud.com",
+  // ymail
+  "ymail.con": "ymail.com",
+  "ymal.com": "ymail.com",
 };
 
 /** Popular domains used as edit-distance targets AND as an allow-list (never suspect). */
@@ -88,14 +134,17 @@ export function boundedEditDistance(a: string, b: string, max: number): number {
 
 /**
  * Detect a likely typo in an email's DOMAIN. Returns a suggestion + confidence, or
- * not-suspect. Never mutates. Order: exact known-typo (high) → edit-distance-1 to a popular
- * domain (medium) → clean. A popular/allow-listed domain is never suspect.
+ * not-suspect. Never mutates. Order: structural fix (high) → exact known-typo (high) →
+ * edit-distance-1 to a popular domain (medium) → clean. A popular/allow-listed domain
+ * is never suspect.
  */
 export function detectEmailTypo(email: string | null | undefined): EmailTypoResult {
+  const structural = fixStructuralIssues(email);
+  if (structural) return structural;
+
   const domain = emailDomain(email);
   if (domain == null) return NOT_SUSPECT;
 
-  // A real popular domain is never a typo (guards gmail.co.uk / yahoo.co.id).
   if (POPULAR_DOMAINS.includes(domain)) return { ...NOT_SUSPECT, domain };
 
   const known = KNOWN_TYPO_DOMAINS[domain];
@@ -107,4 +156,69 @@ export function detectEmailTypo(email: string | null | undefined): EmailTypoResu
     }
   }
   return { ...NOT_SUSPECT, domain };
+}
+
+/**
+ * Detect structural email issues: trailing dots, double dots in domain, missing TLD,
+ * spaces. Returns an EmailTypoResult if fixable, null if no structural issue.
+ */
+function fixStructuralIssues(email: string | null | undefined): EmailTypoResult | null {
+  if (email == null) return null;
+  const s = email.trim().toLowerCase();
+  const at = s.lastIndexOf("@");
+  if (at < 1 || at === s.length - 1) return null;
+
+  const domain = s.slice(at + 1);
+
+  // Trailing dot: user@gmail.com.
+  if (domain.endsWith(".")) {
+    const cleaned = domain.slice(0, -1);
+    if (POPULAR_DOMAINS.includes(cleaned) || KNOWN_TYPO_DOMAINS[cleaned]) {
+      const suggestion = KNOWN_TYPO_DOMAINS[cleaned] ?? cleaned;
+      return { suspect: true, suggestion, confidence: "high", domain };
+    }
+  }
+
+  // Double dot: user@gmail..com
+  if (domain.includes("..")) {
+    const cleaned = domain.replace(/\.{2,}/g, ".");
+    if (POPULAR_DOMAINS.includes(cleaned)) {
+      return { suspect: true, suggestion: cleaned, confidence: "high", domain };
+    }
+  }
+
+  // Missing TLD: user@gmail (no dot at all)
+  if (!domain.includes(".")) {
+    const withCom = domain + ".com";
+    if (POPULAR_DOMAINS.includes(withCom)) {
+      return { suspect: true, suggestion: withCom, confidence: "high", domain };
+    }
+    const withCoId = domain + ".co.id";
+    if (POPULAR_DOMAINS.includes(withCoId)) {
+      return { suspect: true, suggestion: withCoId, confidence: "high", domain };
+    }
+  }
+
+  // Space in domain: user@gm ail.com
+  if (/\s/.test(domain)) {
+    const cleaned = domain.replace(/\s+/g, "");
+    if (POPULAR_DOMAINS.includes(cleaned)) {
+      return { suspect: true, suggestion: cleaned, confidence: "high", domain };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Apply a detected typo fix to an email address. Given the original email and the
+ * corrected domain from detectEmailTypo().suggestion, returns the full corrected email.
+ * Also handles structural fixes (trailing dots, double dots, spaces).
+ */
+export function correctEmail(email: string, correctedDomain: string): string {
+  const s = email.trim().toLowerCase();
+  const at = s.lastIndexOf("@");
+  if (at < 1) return s;
+  const local = s.slice(0, at).replace(/\s+/g, "");
+  return `${local}@${correctedDomain}`;
 }

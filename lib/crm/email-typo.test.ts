@@ -3,6 +3,7 @@ import {
   detectEmailTypo,
   emailDomain,
   boundedEditDistance,
+  correctEmail,
   KNOWN_TYPO_DOMAINS,
 } from "./email-typo";
 
@@ -46,8 +47,8 @@ describe("detectEmailTypo", () => {
   });
 
   it("flags an unknown edit-distance-1 domain as medium", () => {
-    // 'gmail.cim' is not in the known list but is one edit from gmail.com
-    const r = detectEmailTypo("x@gmail.cim");
+    // 'gmail.dom' is not in the known list but is one edit from gmail.com
+    const r = detectEmailTypo("x@gmail.dom");
     expect(r.suspect).toBe(true);
     expect(r.suggestion).toBe("gmail.com");
     expect(r.confidence).toBe("medium");
@@ -66,5 +67,47 @@ describe("detectEmailTypo", () => {
   it("returns not-suspect for non-emails", () => {
     expect(detectEmailTypo("garbage").suspect).toBe(false);
     expect(detectEmailTypo(null).suspect).toBe(false);
+  });
+
+  it("detects trailing dot in domain as high confidence", () => {
+    const r = detectEmailTypo("x@gmail.com.");
+    expect(r.suspect).toBe(true);
+    expect(r.suggestion).toBe("gmail.com");
+    expect(r.confidence).toBe("high");
+  });
+
+  it("detects double dot in domain as high confidence", () => {
+    const r = detectEmailTypo("x@gmail..com");
+    expect(r.suspect).toBe(true);
+    expect(r.suggestion).toBe("gmail.com");
+    expect(r.confidence).toBe("high");
+  });
+
+  it("detects missing TLD as high confidence", () => {
+    const r = detectEmailTypo("x@gmail");
+    expect(r.suspect).toBe(true);
+    expect(r.suggestion).toBe("gmail.com");
+    expect(r.confidence).toBe("high");
+  });
+
+  it("detects space in domain as high confidence", () => {
+    const r = detectEmailTypo("x@gm ail.com");
+    expect(r.suspect).toBe(true);
+    expect(r.suggestion).toBe("gmail.com");
+    expect(r.confidence).toBe("high");
+  });
+});
+
+describe("correctEmail", () => {
+  it("replaces the domain with the corrected one", () => {
+    expect(correctEmail("budi@gmaol.com", "gmail.com")).toBe("budi@gmail.com");
+  });
+
+  it("preserves the local part and lowercases", () => {
+    expect(correctEmail("  Budi.Test@Gmail.CON  ", "gmail.com")).toBe("budi.test@gmail.com");
+  });
+
+  it("strips spaces from the local part", () => {
+    expect(correctEmail("bu di@gmail.con", "gmail.com")).toBe("budi@gmail.com");
   });
 });

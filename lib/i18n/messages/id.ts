@@ -1175,6 +1175,32 @@ export const id = {
     },
   },
 
+  // Email typo auto-detection + auto-fix panel on the quality tab.
+  typoFix: {
+    title: "Koreksi Email Typo",
+    description: "Memindai email di master_customer yang menggunakan domain salah ketik (misalnya gmaol.com, gmail.con) dan memperbaiki secara otomatis. Hanya domain berkepercayaan tinggi yang diperbaiki; domain mirip (jarak edit 1) ditampilkan untuk ditinjau.",
+    scanBtn: "Pindai",
+    fixAllBtn: "Perbaiki Semua",
+    scanning: "Memindai email…",
+    scanFailed: "Gagal memindai email.",
+    fixFailed: "Gagal memperbaiki email.",
+    fixable: "dapat diperbaiki",
+    noTypos: "Tidak ditemukan email typo — semua domain sudah benar.",
+    autoFixTitle: "Akan Diperbaiki Otomatis",
+    collisionTitle: "Dilewati (Konflik)",
+    collisionDesc: "Email yang sudah diperbaiki ternyata sudah ada di master_customer — dilewati untuk menghindari duplikat.",
+    mediumTitle: "Perlu Ditinjau Manual",
+    mediumDesc: "Domain mirip (jarak edit 1) — tidak diperbaiki otomatis karena kepercayaan sedang.",
+    colDomain: "Domain Salah",
+    colCorrection: "Koreksi",
+    colCount: "Jumlah",
+    fixDone: "Perbaikan Selesai",
+    statFixed: "Diperbaiki",
+    statSkipped: "Dilewati",
+    statCollisions: "Konflik",
+    statErrors: "Gagal",
+  },
+
   // WhatsApp Business API connection status on /settings (contacting-half TUGAS 4). Shows PRESENCE
   // of the env-var credentials only, never a value; today all absent → honest "not connected".
   messaging: {

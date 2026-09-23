@@ -1,43 +1,14 @@
 /**
  * Auto-correct known email domain typos BEFORE normalization.
  *
- * Unlike email-typo.ts (detection-only, never corrects), this module applies
- * corrections automatically at ingest entry points — CSV import and single
- * contact add. The mapping covers domains confirmed from the 419-row backfix.
- *
- * Safe to auto-correct: these are unambiguously wrong TLDs or misspellings
- * (gmail.con cannot receive mail). Unknown domains pass through unchanged —
- * they might be valid corporate domains.
+ * Uses KNOWN_TYPO_DOMAINS from email-typo.ts as the single source of truth for
+ * domain corrections. Applied at ingest entry points — CSV import and single
+ * contact add. Unknown domains pass through unchanged.
  */
 
-export const DOMAIN_CORRECTIONS: Record<string, string> = {
-  // gmail typos
-  "gmail.col": "gmail.com",
-  "gmail.con": "gmail.com",
-  "gmail.co": "gmail.com",
-  "gmail.cim": "gmail.com",
-  "gmail.vom": "gmail.com",
-  "gmial.com": "gmail.com",
-  "gmai.com": "gmail.com",
-  "gmal.com": "gmail.com",
-  "gnail.com": "gmail.com",
-  "gmaol.com": "gmail.com",
-  "gamil.com": "gmail.com",
-  // yahoo typos
-  "yahoo.con": "yahoo.com",
-  "yahoo.col": "yahoo.com",
-  "yaboo.com": "yahoo.com",
-  "yahooo.com": "yahoo.com",
-  "yaho.com": "yahoo.com",
-  // hotmail typos
-  "hotmail.con": "hotmail.com",
-  "hmail.com": "hotmail.com",
-  "hotmial.com": "hotmail.com",
-  "hotmai.com": "hotmail.com",
-  // outlook typos
-  "outlok.com": "outlook.com",
-  "outloo.com": "outlook.com",
-};
+import { KNOWN_TYPO_DOMAINS } from "./email-typo";
+
+export const DOMAIN_CORRECTIONS: Record<string, string> = KNOWN_TYPO_DOMAINS;
 
 export interface DomainCorrectionResult {
   email: string;
