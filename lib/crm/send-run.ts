@@ -531,23 +531,54 @@ export async function runSend(
       }
     }
 
-    // ONE BAD ADDRESS MUST NOT FAIL NINETY-NINE GOOD ONES. Resend validates a batch as a whole, so a
-    // single malformed recipient rejects the entire request with a 4xx. Blaming all 100 for it would
-    // be a lie in the log AND would burn the 20-in-a-row wall instantly. So on a RECIPIENT-LEVEL
-    // rejection (non-retryable → not a 429/network blip) the chunk is re-sent ONE BY ONE: the culprit
-    // fails alone and the rest go out normally. A retryable error that survived its backoff is a real
-    // provider wall — every item genuinely failed, and retrying singly would just repeat it 100 times.
-    if (thrown !== null && !isRetryableSendError(thrown)) {
-      results = await Promise.all(
-        chunk.map(async (c): Promise<BatchSendResult> => {
-          try {
-            const res = await ports.send(c.recipient, c.message);
-            return { ok: true, providerMessageId: res.providerMessageId };
-          } catch (e) {
-            return { ok: false, error: e };
+    // FALLBACK TO ONE-BY-ONE when the batch request itself failed (thrown !== null). Two cases:
+    //
+    // A) NON-RETRYABLE (a 4xx that is NOT throttle): one bad address rejected the whole batch. Re-send
+    //    in parallel to isolate the culprit; the rest go out normally.
+    //
+    // B) RETRYABLE / THROTTLE (429/503/network): the batch endpoint is rate-limited, but individual
+    //    sends through POST /emails may still succeed at a gentler pace. Send one-by-one SEQUENTIALLY
+    //    with a delay between each email so we trickle through the shared rate limit instead of
+    //    hammering it with repeated 78-email batch requests. Each individual email gets its own retry
+    //    cycle — the batch endpoint's 429 doesn't mean individual sends will also fail.
+    if (thrown !== null) {
+      if (isRetryableSendError(thrown)) {
+        const oneByOne: BatchSendResult[] = [];
+        for (const c of chunk) {
+          if (oneByOne.length > 0) {
+            await ports.sleep(backoffDelayMs(2, config, rng));
           }
-        }),
-      );
+          let itemResult: BatchSendResult | null = null;
+          for (let attempt = 1; attempt <= config.maxSendAttempts; attempt++) {
+            try {
+              const res = await ports.send(c.recipient, c.message);
+              itemResult = { ok: true, providerMessageId: res.providerMessageId };
+              break;
+            } catch (e) {
+              if (isRetryableSendError(e) && attempt < config.maxSendAttempts) {
+                summary.retriedSends++;
+                await ports.sleep(backoffDelayMs(attempt, config, rng));
+                continue;
+              }
+              itemResult = { ok: false, error: e };
+              break;
+            }
+          }
+          oneByOne.push(itemResult!);
+        }
+        results = oneByOne;
+      } else {
+        results = await Promise.all(
+          chunk.map(async (c): Promise<BatchSendResult> => {
+            try {
+              const res = await ports.send(c.recipient, c.message);
+              return { ok: true, providerMessageId: res.providerMessageId };
+            } catch (e) {
+              return { ok: false, error: e };
+            }
+          }),
+        );
+      }
       thrown = null;
     }
 

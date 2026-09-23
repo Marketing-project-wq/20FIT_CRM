@@ -782,16 +782,23 @@ describe("send-run — batch sending", () => {
     expect(store.rows.get("camp:c0:email")?.status).toBe("sent");
   });
 
-  it("a THROTTLED chunk is retried whole under backoff, then recorded as provider_throttled", async () => {
+  it("a THROTTLED batch falls back to one-by-one sequential sends after retries exhaust", async () => {
     const store = new BatchStore();
-    store.failBatchWith = { status: 429 }; // retryable, thrown every time
+    store.failBatchWith = { status: 429 }; // batch always throttled
+    const s = await runSend(mk(5), store, "camp", hashFor, { ...BATCHED, maxSendAttempts: 2 }, () => 0);
+    expect(s.sent).toBe(5);
+    expect(s.failed.provider_throttled).toBe(0);
+    expect(store.batchCalls).toHaveLength(2); // 1 attempt + 1 retry before fallback
+    expect(store.sentCustomers).toHaveLength(5);
+  });
+
+  it("a true provider wall (both batch and individual throttled) records all as provider_throttled", async () => {
+    const store = new BatchStore();
+    store.failBatchWith = { status: 429 };
+    for (let i = 0; i < 5; i++) store.failFor.set(`c${i}`, { status: 429 });
     const s = await runSend(mk(5), store, "camp", hashFor, { ...BATCHED, maxSendAttempts: 2 }, () => 0);
     expect(s.sent).toBe(0);
     expect(s.failed.provider_throttled).toBe(5);
-    expect(s.retriedSends).toBe(1); // the REQUEST was retried once, not five recipients separately
-    expect(store.batchCalls).toHaveLength(2);
-    // Critically NOT the one-by-one fallback: a real provider wall must not be hammered per recipient.
-    expect(store.sentCustomers).toEqual([]);
   });
 
   it("a SHORT batch response fails the missing recipients — it never promotes them to sent", async () => {
