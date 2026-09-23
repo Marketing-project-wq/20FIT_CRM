@@ -6,7 +6,7 @@ import { grantFor } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { cancelScheduledSend } from "@/lib/crm/scheduled-send";
-import { resumeRunDrain, stopRunDrain } from "@/lib/crm/send-drain";
+import { resumeRunDrain, stopRunDrain, retryFailedRecipients } from "@/lib/crm/send-drain";
 
 /**
  * Cancel a pending scheduled send from the Deliveries tab. A scheduled send that can't be cancelled is
@@ -53,6 +53,19 @@ export async function stopDrainAction(runId: string): Promise<{ ok: boolean }> {
   const role = await getCurrentUserRole();
   if (grantFor(role, "send.at_or_below_threshold") === "deny") return { ok: false };
   const res = await stopRunDrain(createAdminClient(), runId);
+  if (res.ok) revalidatePath("/campaigns");
+  return res;
+}
+
+/**
+ * "Kirim ulang gagal" on a finished run with failed recipients: delete the failed log rows (freeing
+ * their idempotency keys) and re-arm the drain. The engine re-sends only the previously-failed
+ * recipients; already-delivered ones are skipped by idempotency. Gated by send.*.
+ */
+export async function retryFailedAction(runId: string): Promise<{ ok: boolean; cleared?: number; error?: string }> {
+  const role = await getCurrentUserRole();
+  if (grantFor(role, "send.at_or_below_threshold") === "deny") return { ok: false, error: "denied" };
+  const res = await retryFailedRecipients(createAdminClient(), runId, await actorEmail());
   if (res.ok) revalidatePath("/campaigns");
   return res;
 }

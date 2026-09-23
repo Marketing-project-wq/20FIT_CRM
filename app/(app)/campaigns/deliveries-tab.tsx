@@ -13,6 +13,7 @@ import type { SavedDraft } from "./draft-actions";
 import { deleteDraftAction } from "./draft-actions";
 import { CancelDeliveryButton } from "./cancel-delivery-button";
 import { DrainControlButtons } from "./drain-control-buttons";
+import { RetryFailedButton } from "./retry-failed-button";
 import { RecipientTable } from "./recipient-table";
 
 type BadgeTone = "blue" | "amber" | "green" | "red" | "neutral";
@@ -427,6 +428,9 @@ export function DeliveriesTab({
             <p className="font-body text-[12px] leading-relaxed text-ink-faint">
               {d.engagementPending}
             </p>
+          )}
+          {detail.result.failed > 0 && ["sent", "partial", "stopped", "failed"].includes(detail.status) && (
+            <RetryFailedButton runId={detail.runId} failedCount={detail.result.failed} />
           )}
         </section>
 

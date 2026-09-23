@@ -508,7 +508,39 @@ export async function deliveryDetail(admin: SupabaseClient, runId: string): Prom
       ? (await admin.from("crm_segment").select("name").eq("id", run.segment_id).maybeSingle()).data?.name ?? null
       : null;
 
-  // All log rows for this run — drives the result report, the recorded version, and the recipients.
+  // Result report: exact counts across ALL log rows (no row-count limit). Runs in parallel.
+  const [
+    { count: cSent },
+    { count: cDelivered },
+    { count: cOpened },
+    { count: cClicked },
+    { count: cBounced },
+    { count: cComplained },
+    { count: cUnsubscribed },
+    { count: cFailed },
+  ] = await Promise.all([
+    admin.from("crm_message_log").select("id", { count: "exact", head: true }).eq("campaign_id", runId).not("sent_at", "is", null),
+    admin.from("crm_message_log").select("id", { count: "exact", head: true }).eq("campaign_id", runId).not("delivered_at", "is", null),
+    admin.from("crm_message_log").select("id", { count: "exact", head: true }).eq("campaign_id", runId).not("opened_at", "is", null),
+    admin.from("crm_message_log").select("id", { count: "exact", head: true }).eq("campaign_id", runId).not("clicked_at", "is", null),
+    admin.from("crm_message_log").select("id", { count: "exact", head: true }).eq("campaign_id", runId).not("bounced_at", "is", null),
+    admin.from("crm_message_log").select("id", { count: "exact", head: true }).eq("campaign_id", runId).not("complained_at", "is", null),
+    admin.from("crm_message_log").select("id", { count: "exact", head: true }).eq("campaign_id", runId).not("unsubscribed_at", "is", null),
+    admin.from("crm_message_log").select("id", { count: "exact", head: true }).eq("campaign_id", runId).eq("status", "failed"),
+  ]);
+  const result = {
+    sent: cSent ?? 0,
+    delivered: cDelivered ?? 0,
+    opened: cOpened ?? 0,
+    clicked: cClicked ?? 0,
+    bounced: cBounced ?? 0,
+    complained: cComplained ?? 0,
+    unsubscribed: cUnsubscribed ?? 0,
+    failed: cFailed ?? 0,
+  };
+  const engagementMeasured = (cOpened ?? 0) > 0 || (cClicked ?? 0) > 0;
+
+  // Log rows for this run — drives the recorded version and the per-recipient table.
   const { data: logData } = await admin
     .from("crm_message_log")
     .select("customer_id, identity_hash, channel, status, failure_cause, template_version, sent_at, delivered_at, bounced_at, complained_at, unsubscribed_at, opened_at, clicked_at, created_at")
@@ -531,18 +563,6 @@ export async function deliveryDetail(admin: SupabaseClient, runId: string): Prom
     const n = versionCounts.get(v)!;
     if (n > best) { best = n; templateVersion = v; }
   }
-
-  const result = {
-    sent: logs.filter((l) => l.status === "sent" || l.status === "delivered" || l.sent_at != null).length,
-    delivered: logs.filter((l) => l.delivered_at != null).length,
-    opened: logs.filter((l) => l.opened_at != null).length,
-    clicked: logs.filter((l) => l.clicked_at != null).length,
-    bounced: logs.filter((l) => l.bounced_at != null).length,
-    complained: logs.filter((l) => l.complained_at != null).length,
-    unsubscribed: logs.filter((l) => l.unsubscribed_at != null).length,
-    failed: logs.filter((l) => l.status === "failed").length,
-  };
-  const engagementMeasured = logs.some((l) => l.opened_at != null || l.clicked_at != null);
 
   // The four audience numbers, from the run's send-audit row (campaign.sent, keyed by campaign_id).
   let audience: DeliveryDetail["audience"] = null;

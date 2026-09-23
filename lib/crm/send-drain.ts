@@ -299,3 +299,44 @@ async function markStoppedWithReason(admin: SupabaseClient, runId: string, reaso
 export async function enqueueRunDrainById(runId: string, requestedBy: string | null): Promise<{ ok: boolean }> {
   return enqueueRunDrain(createAdminClient(), runId, requestedBy);
 }
+
+/**
+ * Retry FAILED recipients of a finished run: delete the failed crm_message_log rows so their
+ * idempotency keys are freed, then re-arm the drain. When the engine runs again it resolves the
+ * segment, finds ALL recipients, claims each one — and the already-delivered recipients are skipped
+ * (their log row still exists), while the previously-failed ones get a fresh attempt.
+ *
+ * Guarded: only a segment-owned run at a terminal status (sent/partial/stopped/failed) with at
+ * least one failed log row may be retried. Returns the count of failed rows cleared.
+ */
+export async function retryFailedRecipients(
+  admin: SupabaseClient,
+  runId: string,
+  requestedBy: string | null,
+): Promise<{ ok: boolean; cleared: number; error?: string }> {
+  const run = await loadRunForControl(admin, runId);
+  if (!run || !run.isCampaign) return { ok: false, cleared: 0, error: "not_a_campaign_run" };
+
+  const terminalStatuses = ["sent", "partial", "stopped", "failed"];
+  if (!terminalStatuses.includes(run.status)) return { ok: false, cleared: 0, error: "run_not_terminal" };
+
+  const { count: failedCount } = await admin
+    .from("crm_message_log")
+    .select("id", { count: "exact", head: true })
+    .eq("campaign_id", runId)
+    .eq("status", "failed");
+
+  if (!failedCount || failedCount === 0) return { ok: false, cleared: 0, error: "no_failed_rows" };
+
+  const { error: delErr } = await admin
+    .from("crm_message_log")
+    .delete()
+    .eq("campaign_id", runId)
+    .eq("status", "failed");
+  if (delErr) return { ok: false, cleared: 0, error: "delete_failed" };
+
+  const enq = await enqueueRunDrain(admin, runId, requestedBy);
+  if (!enq.ok) return { ok: false, cleared: failedCount, error: enq.conflict ? "concurrent_run" : "enqueue_failed" };
+
+  return { ok: true, cleared: failedCount };
+}
