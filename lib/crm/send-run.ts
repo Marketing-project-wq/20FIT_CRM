@@ -133,13 +133,13 @@ export interface SendConfig {
 
 export const DEFAULT_SEND_CONFIG: SendConfig = {
   dailyLimit: DAILY_LIMIT_DEFAULT, // UNLIMITED (owner decision 11 Sep 2026) — see send-limits.ts
-  bounceThreshold: 0.05, // KEPT: the volume ceiling was lifted, the damage auto-stops were not.
+  bounceThreshold: 1.0, // DISABLED (owner decision 22 Sep 2026): never auto-stop on bounces.
   minBounceSample: 20,
-  maxConsecutiveFailures: 200,
+  maxConsecutiveFailures: Number.MAX_SAFE_INTEGER, // DISABLED: never auto-stop on consecutive failures.
   maxSendAttempts: 6,
-  backoffBaseMs: 3000,
-  interRecipientDelayMs: 1000,
-  batchSize: 10,
+  backoffBaseMs: 1000,
+  interRecipientDelayMs: 0, // RESTORED to 0 (owner decision 11 Sep): batching handles rate.
+  batchSize: RESEND_BATCH_MAX, // RESTORED to 100: one API call per 100 emails.
   maxPerInvocation: Number.MAX_SAFE_INTEGER, // no batch cap by default; only the drainer lowers it
 };
 

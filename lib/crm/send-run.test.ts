@@ -433,10 +433,10 @@ describe("send-run — consecutive-failure auto-stop", () => {
     }
     const summary = await runSend(all, store, "camp1", hashFor);
 
-    expect(summary.stoppedConsecutiveFailures).toBe(true);
-    expect(summary.attempted).toBe(200); // exactly the threshold — the other 800 were never touched
-    expect(summary.failed.provider_throttled).toBe(200);
-    expect(store.rows.size).toBe(200); // and no log row was written for the remaining 800
+    expect(summary.stoppedConsecutiveFailures).toBe(false);
+    expect(summary.attempted).toBe(1000); // no consecutive-failure wall — all 1000 tried
+    expect(summary.failed.provider_throttled).toBe(1000);
+    expect(store.rows.size).toBe(1000);
   });
 
   it("uses the configured threshold", async () => {
@@ -454,15 +454,14 @@ describe("send-run — consecutive-failure auto-stop", () => {
   it("the streak is CONSECUTIVE — a success in between clears it", async () => {
     const store = new FakeStore();
     const all = mk(400);
-    // Fail everyone except c199, sitting one short of the threshold. The run must survive past it.
+    // Fail everyone except c199. With no consecutive-failure wall, the run processes all 400.
     for (const r of all) {
       if (r.customerId !== "c199") store.failFor.set(r.customerId, { status: 500 });
     }
     const summary = await runSend(all, store, "camp1", hashFor);
     expect(summary.sent).toBe(1);
-    // 199 failures, the success resets the counter, then 200 more failures trip the wall.
     expect(summary.attempted).toBe(400);
-    expect(summary.stoppedConsecutiveFailures).toBe(true);
+    expect(summary.stoppedConsecutiveFailures).toBe(false);
   });
 
   it("does not fire on a run that is merely failing sometimes", async () => {
@@ -477,13 +476,13 @@ describe("send-run — consecutive-failure auto-stop", () => {
     expect(summary.sent).toBe(30);
   });
 
-  it("DEFAULT_SEND_CONFIG carries the raised threshold of 200", () => {
-    expect(DEFAULT_SEND_CONFIG.maxConsecutiveFailures).toBe(200);
+  it("DEFAULT_SEND_CONFIG has no consecutive-failure wall", () => {
+    expect(DEFAULT_SEND_CONFIG.maxConsecutiveFailures).toBe(Number.MAX_SAFE_INTEGER);
   });
 });
 
 describe("send-run — rule 8 backoff + rule 9 pacing (8 Sep 2026)", () => {
-  const RNG0 = () => 0; // deterministic: backoffDelayMs → half the base (1500, 3000, 6000, ...)
+  const RNG0 = () => 0; // deterministic: backoffDelayMs → half the base (500, 1000, 2000, ...)
 
   /** Pacing is OFF by default since 11 Sep 2026 (owner: campaigns must not wait), but the pacing
    *  MECHANISM is still a supported knob an operator can turn back on — so these tests drive it
@@ -500,8 +499,8 @@ describe("send-run — rule 8 backoff + rule 9 pacing (8 Sep 2026)", () => {
     expect(s.retriedSends).toBe(1);
     expect(store.sendAttempts.filter((c) => c === "c0")).toHaveLength(2); // failed once, then sent
     expect(store.rows.get("camp:c0:email")?.status).toBe("sent");
-    // one backoff wait (1500 at rng=0) BEFORE the retry, then one pacing pause (500) after success.
-    expect(store.sleeps).toEqual([1500, 500]);
+    // one backoff wait (500 at rng=0) BEFORE the retry, then one pacing pause (500) after success.
+    expect(store.sleeps).toEqual([500, 500]);
   });
 
   it("throttle ALWAYS → fails after max attempts, recorded provider_throttled (not a recipient fault)", async () => {
@@ -516,8 +515,8 @@ describe("send-run — rule 8 backoff + rule 9 pacing (8 Sep 2026)", () => {
     expect(row?.status).toBe("failed");
     expect(row?.failureCause).toBe("provider_throttled");
     expect(row?.code).toBe("503"); // the PII-free status still recorded
-    // 5 backoff waits (1500,3000,6000,12000,24000) then one pacing pause (500).
-    expect(store.sleeps).toEqual([1500, 3000, 6000, 12000, 24000, 500]);
+    // 5 backoff waits (500,1000,2000,4000,8000) then one pacing pause (500).
+    expect(store.sleeps).toEqual([500, 1000, 2000, 4000, 8000, 500]);
   });
 
   it("backoff does NOT change the outcome for a NON-throttle failure — no retry, one attempt", async () => {
@@ -541,13 +540,13 @@ describe("send-run — rule 8 backoff + rule 9 pacing (8 Sep 2026)", () => {
   });
 
   it("backoffDelayMs doubles per attempt and stays within [half, full] with jitter", () => {
-    expect(backoffDelayMs(1, DEFAULT_SEND_CONFIG, () => 0)).toBe(1500);
-    expect(backoffDelayMs(1, DEFAULT_SEND_CONFIG, () => 1)).toBe(3000);
-    expect(backoffDelayMs(2, DEFAULT_SEND_CONFIG, () => 0)).toBe(3000);
-    expect(backoffDelayMs(3, DEFAULT_SEND_CONFIG, () => 0)).toBe(6000);
+    expect(backoffDelayMs(1, DEFAULT_SEND_CONFIG, () => 0)).toBe(500);
+    expect(backoffDelayMs(1, DEFAULT_SEND_CONFIG, () => 1)).toBe(1000);
+    expect(backoffDelayMs(2, DEFAULT_SEND_CONFIG, () => 0)).toBe(1000);
+    expect(backoffDelayMs(3, DEFAULT_SEND_CONFIG, () => 0)).toBe(2000);
     const mid = backoffDelayMs(1, DEFAULT_SEND_CONFIG, () => 0.5);
-    expect(mid).toBeGreaterThanOrEqual(1500);
-    expect(mid).toBeLessThanOrEqual(3000);
+    expect(mid).toBeGreaterThanOrEqual(500);
+    expect(mid).toBeLessThanOrEqual(1000);
   });
 
   it("a transient throttle that a retry clears does NOT burn a slot in the 20-in-a-row wall", async () => {
@@ -570,18 +569,18 @@ describe("send-run — rule 8 backoff + rule 9 pacing (8 Sep 2026)", () => {
     expect(store.sleeps).toEqual([500, 500]); // two sends → two pacing pauses; the skip added none
   });
 
-  it("DEFAULT config uses pacing + smaller batches to stay under provider rate limits", () => {
+  it("DEFAULT config uses full-speed batching with no pacing", () => {
     expect(DEFAULT_SEND_CONFIG.maxSendAttempts).toBe(6);
-    expect(DEFAULT_SEND_CONFIG.backoffBaseMs).toBe(3000);
-    expect(DEFAULT_SEND_CONFIG.interRecipientDelayMs).toBe(1000);
-    expect(DEFAULT_SEND_CONFIG.batchSize).toBe(10);
+    expect(DEFAULT_SEND_CONFIG.backoffBaseMs).toBe(1000);
+    expect(DEFAULT_SEND_CONFIG.interRecipientDelayMs).toBe(0);
+    expect(DEFAULT_SEND_CONFIG.batchSize).toBe(100);
   });
 
-  it("pacing adds a sleep after every real send attempt", async () => {
+  it("pacing is OFF by default — no sleeps between sends", async () => {
     const store = new FakeStore();
     const s = await runSend(mk(3), store, "camp", hashFor, DEFAULT_SEND_CONFIG, RNG0);
     expect(s.sent).toBe(3);
-    expect(store.sleeps).toEqual([1000, 1000, 1000]);
+    expect(store.sleeps).toEqual([]);
   });
 });
 
