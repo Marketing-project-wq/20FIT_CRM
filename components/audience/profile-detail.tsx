@@ -1425,6 +1425,7 @@ export function ProfileDetail({
   const coreCurrent = {
     full_name: p.full_name,
     phone: p.phone,
+    email: p.email,
     city: p.city,
     first_unit: p.first_unit,
     segment: p.segment,

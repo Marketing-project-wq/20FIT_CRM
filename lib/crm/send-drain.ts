@@ -200,6 +200,26 @@ export async function drainRunOnce(
     return { next: "error", sent: 0, detail: "not_a_campaign_run" };
   }
 
+  // Throttle cooldown: auto-retry cycles encode a "resume after" Unix timestamp in last_error
+  // (e.g. "throttle_auto_retry:3:1727172000"). If the cooldown hasn't elapsed, release the claim
+  // and skip this tick — the next pg_cron tick will check again.
+  {
+    const { data: runMeta } = await admin
+      .from("crm_campaign_run")
+      .select("last_error")
+      .eq("id", run.id)
+      .maybeSingle();
+    const le = (runMeta as { last_error: string | null } | null)?.last_error ?? "";
+    if (le.startsWith(THROTTLE_RETRY_PREFIX)) {
+      const parts = le.split(":");
+      const cooldownTs = parts.length >= 3 ? parseInt(parts[2], 10) : 0;
+      if (cooldownTs > 0 && Math.floor(new Date(nowIso).getTime() / 1000) < cooldownTs) {
+        await releaseRunDrainClaim(admin, run.id);
+        return { next: "continue", sent: 0 };
+      }
+    }
+  }
+
   const seg = await getSegmentById(run.segmentId);
   if (!seg) {
     await clearRunDrain(admin, run.id);
@@ -354,9 +374,10 @@ export async function retryFailedRecipients(
 }
 
 /** Max automatic retries for provider_throttled failures before giving up and leaving them for the
- *  operator's manual "Retry failed" button. Each cycle waits ~1 min (pg_cron tick interval) before
- *  retrying, so 5 retries = ~5 min of cooldown spread across attempts. */
-export const MAX_THROTTLE_AUTO_RETRIES = 5;
+ *  operator's manual "Retry failed" button. Each cycle has an escalating cooldown (cycle N waits
+ *  N*2 minutes, capped at 10 min) on top of the pg_cron tick interval, giving the shared rate limit
+ *  progressively more breathing room. 10 retries ≈ 80 min of total cooldown. */
+export const MAX_THROTTLE_AUTO_RETRIES = 10;
 const THROTTLE_RETRY_PREFIX = "throttle_auto_retry:";
 
 /**
@@ -412,9 +433,18 @@ async function autoRetryThrottledFailures(
   ]);
   if (delResults.some((r) => r.error)) return;
 
+  // Escalating cooldown: cycle 1 → immediate, cycle 2+ → (N*2) minutes, capped at 10 min.
+  // Encoded as `throttle_auto_retry:N:UNIX_SECONDS` so the executor can skip ticks until the
+  // cooldown has elapsed, giving the shared Resend rate limit time to recover.
+  const nextRetry = retryNum + 1;
+  const cooldownMinutes = nextRetry >= 2 ? Math.min(nextRetry * 2, 10) : 0;
+  const marker = cooldownMinutes > 0
+    ? `${THROTTLE_RETRY_PREFIX}${nextRetry}:${Math.floor(Date.now() / 1000 + cooldownMinutes * 60)}`
+    : `${THROTTLE_RETRY_PREFIX}${nextRetry}`;
+
   await admin
     .from("crm_campaign_run")
-    .update({ last_error: `${THROTTLE_RETRY_PREFIX}${retryNum + 1}` })
+    .update({ last_error: marker })
     .eq("id", runId);
 
   await enqueueRunDrain(admin, runId, requestedBy);

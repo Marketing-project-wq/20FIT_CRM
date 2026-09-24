@@ -9,13 +9,14 @@ import { SEGMENT_VALUES, FIRST_UNIT_DROPDOWN_VALUES } from "@/lib/crm/core-vocab
 /**
  * The FIRST in-app editor of master_customer core fields (Bagian B, 8 Sep 2026). One dialog for both
  * the Kontak and Atribut cards. It sends ONLY fields the operator changed; blanks are left as
- * "don't touch" (v1 cannot CLEAR a field — stated on screen). email is absent by design (K-57).
+ * "don't touch" (v1 cannot CLEAR a field — stated on screen).
  * Every guarantee is server-side: the RPC requires an actor, validates the closed vocab, catches a
  * phone collision as phone_taken (no other customer's PII), and refuses merged rows.
  */
 export interface CoreCurrent {
   full_name: string | null;
   phone: string | null;
+  email: string | null;
   city: string | null;
   first_unit: string | null;
   segment: string | null;
@@ -40,13 +41,14 @@ export function EditCoreDialog({
   // Empty string = "leave unchanged" (v1 cannot clear). Selects start at the current value.
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [city, setCity] = useState("");
   const [firstUnit, setFirstUnit] = useState(current.first_unit ?? "");
   const [segment, setSegment] = useState(current.segment ?? "");
   const [ltv, setLtv] = useState("");
 
   function reset() {
-    setFullName(""); setPhone(""); setCity("");
+    setFullName(""); setPhone(""); setEmail(""); setCity("");
     setFirstUnit(current.first_unit ?? ""); setSegment(current.segment ?? ""); setLtv("");
     setErr(null);
   }
@@ -58,6 +60,7 @@ export function EditCoreDialog({
     const payload: Record<string, unknown> = {};
     if (fullName.trim() !== "") payload.full_name = fullName.trim();
     if (phone.trim() !== "") payload.phone_raw = phone.trim();
+    if (email.trim() !== "") payload.email = email.trim();
     if (city.trim() !== "") payload.city = city.trim();
     if (firstUnit !== "" && firstUnit !== (current.first_unit ?? "")) payload.first_unit = firstUnit;
     if (segment !== "" && segment !== (current.segment ?? "")) payload.segment = segment;
@@ -79,6 +82,8 @@ export function EditCoreDialog({
         setErr(
           body.error === "phone_taken" ? E.errPhoneTaken
           : body.error === "row_merged" ? E.errRowMerged
+          : body.error === "email_taken" ? E.errEmailTaken
+          : body.error === "email_invalid" ? E.errEmailInvalid
           : body.error === "forbidden" ? E.errForbidden
           : body.message ?? E.errGeneric,
         );
@@ -118,6 +123,7 @@ export function EditCoreDialog({
             <div className="space-y-3">
               <Text label={E.fName} value={fullName} onChange={setFullName} placeholder={current.full_name ?? E.empty} max={120} />
               <Text label={E.fPhone} value={phone} onChange={setPhone} placeholder={current.phone ?? E.empty} />
+              <Text label={E.fEmail} value={email} onChange={setEmail} placeholder={current.email ?? E.empty} max={254} />
               <Text label={E.fCity} value={city} onChange={setCity} placeholder={current.city ?? E.empty} max={80} />
               <Select label={E.fFirstUnit} value={firstUnit} onChange={setFirstUnit} options={FIRST_UNIT_DROPDOWN_VALUES} none={E.pick} />
               <Select label={E.fSegment} value={segment} onChange={setSegment} options={SEGMENT_VALUES} none={E.pick} />
@@ -127,7 +133,7 @@ export function EditCoreDialog({
             {/* The three things the operator must be TOLD, not discover (T-56 class). */}
             <ul className="mt-4 space-y-1 font-body text-[12px] leading-relaxed text-ink-faint">
               <li>{E.noteBlankKeeps}</li>
-              <li>{E.noteEmailLocked}</li>
+              <li>{E.noteEmailDedup}</li>
               <li>{E.noteFirstUnitOrigin}</li>
             </ul>
 
