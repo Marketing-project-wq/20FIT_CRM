@@ -200,6 +200,26 @@ export async function drainRunOnce(
     return { next: "error", sent: 0, detail: "not_a_campaign_run" };
   }
 
+  // Throttle cooldown: auto-retry cycles encode a "resume after" Unix timestamp in last_error
+  // (e.g. "throttle_auto_retry:3:1727172000"). If the cooldown hasn't elapsed, release the claim
+  // and skip this tick — the next pg_cron tick will check again.
+  {
+    const { data: runMeta } = await admin
+      .from("crm_campaign_run")
+      .select("last_error")
+      .eq("id", run.id)
+      .maybeSingle();
+    const le = (runMeta as { last_error: string | null } | null)?.last_error ?? "";
+    if (le.startsWith(THROTTLE_RETRY_PREFIX)) {
+      const parts = le.split(":");
+      const cooldownTs = parts.length >= 3 ? parseInt(parts[2], 10) : 0;
+      if (cooldownTs > 0 && Math.floor(new Date(nowIso).getTime() / 1000) < cooldownTs) {
+        await releaseRunDrainClaim(admin, run.id);
+        return { next: "continue", sent: 0 };
+      }
+    }
+  }
+
   const seg = await getSegmentById(run.segmentId);
   if (!seg) {
     await clearRunDrain(admin, run.id);
@@ -282,6 +302,14 @@ export async function drainRunOnce(
       const fromLog = await finalizeRunFromLog(admin, run.id);
       if (fromLog == null) await finalizeRunStatus(run.id, summary);
       await clearRunDrain(admin, run.id);
+
+      // AUTO-RETRY throttled failures: if the run finished with provider_throttled failures, delete
+      // those rows and re-enqueue so the next pg_cron tick (1 min later) retries them. The natural
+      // 1-minute cooldown between ticks prevents hammering. Capped at MAX_THROTTLE_AUTO_RETRIES to
+      // avoid infinite loops on a persistently saturated rate limit.
+      if (summary.failed.provider_throttled > 0) {
+        await autoRetryThrottledFailures(admin, run.id, run.requestedBy);
+      }
       break;
     }
   }
@@ -301,13 +329,14 @@ export async function enqueueRunDrainById(runId: string, requestedBy: string | n
 }
 
 /**
- * Retry FAILED recipients of a finished run: delete the failed crm_message_log rows so their
- * idempotency keys are freed, then re-arm the drain. When the engine runs again it resolves the
- * segment, finds ALL recipients, claims each one — and the already-delivered recipients are skipped
- * (their log row still exists), while the previously-failed ones get a fresh attempt.
+ * Retry FAILED + QUEUED recipients of a finished run: delete both failed and queued crm_message_log
+ * rows so their idempotency keys are freed, then re-arm the drain. When the engine runs again it
+ * resolves the segment, finds ALL recipients, claims each one — and the already-delivered recipients
+ * are skipped (their log row still exists), while the previously-failed/queued ones get a fresh
+ * attempt. "Queued" rows are recipients the drain logged but never sent (drain stopped mid-way).
  *
  * Guarded: only a segment-owned run at a terminal status (sent/partial/stopped/failed) with at
- * least one failed log row may be retried. Returns the count of failed rows cleared.
+ * least one retryable (failed or queued) log row may be retried. Returns the count of rows cleared.
  */
 export async function retryFailedRecipients(
   admin: SupabaseClient,
@@ -320,23 +349,103 @@ export async function retryFailedRecipients(
   const terminalStatuses = ["sent", "partial", "stopped", "failed"];
   if (!terminalStatuses.includes(run.status)) return { ok: false, cleared: 0, error: "run_not_terminal" };
 
-  const { count: failedCount } = await admin
+  const { count: retryableCount } = await admin
     .from("crm_message_log")
     .select("id", { count: "exact", head: true })
     .eq("campaign_id", runId)
-    .eq("status", "failed");
+    .in("status", ["failed", "queued"]);
 
-  if (!failedCount || failedCount === 0) return { ok: false, cleared: 0, error: "no_failed_rows" };
+  if (!retryableCount || retryableCount === 0) return { ok: false, cleared: 0, error: "no_failed_rows" };
 
   const { error: delErr } = await admin
     .from("crm_message_log")
     .delete()
     .eq("campaign_id", runId)
-    .eq("status", "failed");
+    .in("status", ["failed", "queued"]);
   if (delErr) return { ok: false, cleared: 0, error: "delete_failed" };
 
-  const enq = await enqueueRunDrain(admin, runId, requestedBy);
-  if (!enq.ok) return { ok: false, cleared: failedCount, error: enq.conflict ? "concurrent_run" : "enqueue_failed" };
+  // Reset auto-retry counter so the new cycle gets a fresh set of automatic retries.
+  await admin.from("crm_campaign_run").update({ last_error: null }).eq("id", runId);
 
-  return { ok: true, cleared: failedCount };
+  const enq = await enqueueRunDrain(admin, runId, requestedBy);
+  if (!enq.ok) return { ok: false, cleared: retryableCount, error: enq.conflict ? "concurrent_run" : "enqueue_failed" };
+
+  return { ok: true, cleared: retryableCount };
+}
+
+/** Max automatic retries for provider_throttled failures before giving up and leaving them for the
+ *  operator's manual "Retry failed" button. Each cycle has an escalating cooldown (cycle N waits
+ *  N*2 minutes, capped at 10 min) on top of the pg_cron tick interval, giving the shared rate limit
+ *  progressively more breathing room. 10 retries ≈ 80 min of total cooldown. */
+export const MAX_THROTTLE_AUTO_RETRIES = 10;
+const THROTTLE_RETRY_PREFIX = "throttle_auto_retry:";
+
+/**
+ * Auto-retry `provider_throttled` failures + orphaned `queued` rows after a drain finishes. Reads
+ * the retry counter from `last_error` (set by this function on each cycle), deletes the throttled
+ * log rows AND any still-queued rows (recipients the drain logged but never sent because it stopped
+ * mid-way), and re-enqueues the drain for the next pg_cron tick. Other failure causes
+ * (invalid_address, hard_bounce, provider_rejected) are permanent and left untouched.
+ */
+async function autoRetryThrottledFailures(
+  admin: SupabaseClient,
+  runId: string,
+  requestedBy: string | null,
+): Promise<void> {
+  const { data: runRow } = await admin
+    .from("crm_campaign_run")
+    .select("last_error")
+    .eq("id", runId)
+    .maybeSingle();
+
+  const lastError = (runRow as { last_error: string | null } | null)?.last_error ?? "";
+  const retryNum = lastError.startsWith(THROTTLE_RETRY_PREFIX)
+    ? parseInt(lastError.slice(THROTTLE_RETRY_PREFIX.length), 10) || 0
+    : 0;
+
+  if (retryNum >= MAX_THROTTLE_AUTO_RETRIES) return;
+
+  const [{ count: throttledCount }, { count: queuedCount }] = await Promise.all([
+    admin
+      .from("crm_message_log")
+      .select("id", { count: "exact", head: true })
+      .eq("campaign_id", runId)
+      .eq("status", "failed")
+      .eq("failure_cause", "provider_throttled"),
+    admin
+      .from("crm_message_log")
+      .select("id", { count: "exact", head: true })
+      .eq("campaign_id", runId)
+      .eq("status", "queued"),
+  ]);
+
+  if ((!throttledCount || throttledCount === 0) && (!queuedCount || queuedCount === 0)) return;
+
+  const delResults = await Promise.all([
+    throttledCount && throttledCount > 0
+      ? admin.from("crm_message_log").delete()
+          .eq("campaign_id", runId).eq("status", "failed").eq("failure_cause", "provider_throttled")
+      : { error: null },
+    queuedCount && queuedCount > 0
+      ? admin.from("crm_message_log").delete()
+          .eq("campaign_id", runId).eq("status", "queued")
+      : { error: null },
+  ]);
+  if (delResults.some((r) => r.error)) return;
+
+  // Escalating cooldown: cycle 1 → immediate, cycle 2+ → (N*2) minutes, capped at 10 min.
+  // Encoded as `throttle_auto_retry:N:UNIX_SECONDS` so the executor can skip ticks until the
+  // cooldown has elapsed, giving the shared Resend rate limit time to recover.
+  const nextRetry = retryNum + 1;
+  const cooldownMinutes = nextRetry >= 2 ? Math.min(nextRetry * 2, 10) : 0;
+  const marker = cooldownMinutes > 0
+    ? `${THROTTLE_RETRY_PREFIX}${nextRetry}:${Math.floor(Date.now() / 1000 + cooldownMinutes * 60)}`
+    : `${THROTTLE_RETRY_PREFIX}${nextRetry}`;
+
+  await admin
+    .from("crm_campaign_run")
+    .update({ last_error: marker })
+    .eq("id", runId);
+
+  await enqueueRunDrain(admin, runId, requestedBy);
 }

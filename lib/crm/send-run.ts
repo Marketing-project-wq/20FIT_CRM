@@ -544,9 +544,14 @@ export async function runSend(
     if (thrown !== null) {
       if (isRetryableSendError(thrown)) {
         const oneByOne: BatchSendResult[] = [];
+        let consecutiveThrottles = 0;
         for (const c of chunk) {
           if (oneByOne.length > 0) {
-            await ports.sleep(backoffDelayMs(2, config, rng));
+            // Adaptive delay: escalate when consecutive emails keep getting throttled,
+            // giving the shared rate limit more breathing room. Starts at level 3
+            // (~2-4s), escalates up to level 6 (~16-32s) on persistent throttling.
+            const delayLevel = Math.min(3 + consecutiveThrottles, 6);
+            await ports.sleep(backoffDelayMs(delayLevel, config, rng));
           }
           let itemResult: BatchSendResult | null = null;
           for (let attempt = 1; attempt <= config.maxSendAttempts; attempt++) {
@@ -563,6 +568,11 @@ export async function runSend(
               itemResult = { ok: false, error: e };
               break;
             }
+          }
+          if (itemResult && !itemResult.ok && isRetryableSendError(itemResult.error)) {
+            consecutiveThrottles++;
+          } else {
+            consecutiveThrottles = 0;
           }
           oneByOne.push(itemResult!);
         }
