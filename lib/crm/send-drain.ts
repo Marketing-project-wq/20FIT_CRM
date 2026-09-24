@@ -309,13 +309,14 @@ export async function enqueueRunDrainById(runId: string, requestedBy: string | n
 }
 
 /**
- * Retry FAILED recipients of a finished run: delete the failed crm_message_log rows so their
- * idempotency keys are freed, then re-arm the drain. When the engine runs again it resolves the
- * segment, finds ALL recipients, claims each one — and the already-delivered recipients are skipped
- * (their log row still exists), while the previously-failed ones get a fresh attempt.
+ * Retry FAILED + QUEUED recipients of a finished run: delete both failed and queued crm_message_log
+ * rows so their idempotency keys are freed, then re-arm the drain. When the engine runs again it
+ * resolves the segment, finds ALL recipients, claims each one — and the already-delivered recipients
+ * are skipped (their log row still exists), while the previously-failed/queued ones get a fresh
+ * attempt. "Queued" rows are recipients the drain logged but never sent (drain stopped mid-way).
  *
  * Guarded: only a segment-owned run at a terminal status (sent/partial/stopped/failed) with at
- * least one failed log row may be retried. Returns the count of failed rows cleared.
+ * least one retryable (failed or queued) log row may be retried. Returns the count of rows cleared.
  */
 export async function retryFailedRecipients(
   admin: SupabaseClient,
@@ -328,28 +329,28 @@ export async function retryFailedRecipients(
   const terminalStatuses = ["sent", "partial", "stopped", "failed"];
   if (!terminalStatuses.includes(run.status)) return { ok: false, cleared: 0, error: "run_not_terminal" };
 
-  const { count: failedCount } = await admin
+  const { count: retryableCount } = await admin
     .from("crm_message_log")
     .select("id", { count: "exact", head: true })
     .eq("campaign_id", runId)
-    .eq("status", "failed");
+    .in("status", ["failed", "queued"]);
 
-  if (!failedCount || failedCount === 0) return { ok: false, cleared: 0, error: "no_failed_rows" };
+  if (!retryableCount || retryableCount === 0) return { ok: false, cleared: 0, error: "no_failed_rows" };
 
   const { error: delErr } = await admin
     .from("crm_message_log")
     .delete()
     .eq("campaign_id", runId)
-    .eq("status", "failed");
+    .in("status", ["failed", "queued"]);
   if (delErr) return { ok: false, cleared: 0, error: "delete_failed" };
 
   // Reset auto-retry counter so the new cycle gets a fresh set of automatic retries.
   await admin.from("crm_campaign_run").update({ last_error: null }).eq("id", runId);
 
   const enq = await enqueueRunDrain(admin, runId, requestedBy);
-  if (!enq.ok) return { ok: false, cleared: failedCount, error: enq.conflict ? "concurrent_run" : "enqueue_failed" };
+  if (!enq.ok) return { ok: false, cleared: retryableCount, error: enq.conflict ? "concurrent_run" : "enqueue_failed" };
 
-  return { ok: true, cleared: failedCount };
+  return { ok: true, cleared: retryableCount };
 }
 
 /** Max automatic retries for provider_throttled failures before giving up and leaving them for the
@@ -359,10 +360,11 @@ export const MAX_THROTTLE_AUTO_RETRIES = 5;
 const THROTTLE_RETRY_PREFIX = "throttle_auto_retry:";
 
 /**
- * Auto-retry only `provider_throttled` failures after a drain finishes. Reads the retry counter from
- * `last_error` (set by this function on each cycle), deletes only the throttled log rows, and
- * re-enqueues the drain for the next pg_cron tick. Other failure causes (invalid_address, hard_bounce,
- * provider_rejected) are permanent and left untouched.
+ * Auto-retry `provider_throttled` failures + orphaned `queued` rows after a drain finishes. Reads
+ * the retry counter from `last_error` (set by this function on each cycle), deletes the throttled
+ * log rows AND any still-queued rows (recipients the drain logged but never sent because it stopped
+ * mid-way), and re-enqueues the drain for the next pg_cron tick. Other failure causes
+ * (invalid_address, hard_bounce, provider_rejected) are permanent and left untouched.
  */
 async function autoRetryThrottledFailures(
   admin: SupabaseClient,
@@ -382,22 +384,33 @@ async function autoRetryThrottledFailures(
 
   if (retryNum >= MAX_THROTTLE_AUTO_RETRIES) return;
 
-  const { count } = await admin
-    .from("crm_message_log")
-    .select("id", { count: "exact", head: true })
-    .eq("campaign_id", runId)
-    .eq("status", "failed")
-    .eq("failure_cause", "provider_throttled");
+  const [{ count: throttledCount }, { count: queuedCount }] = await Promise.all([
+    admin
+      .from("crm_message_log")
+      .select("id", { count: "exact", head: true })
+      .eq("campaign_id", runId)
+      .eq("status", "failed")
+      .eq("failure_cause", "provider_throttled"),
+    admin
+      .from("crm_message_log")
+      .select("id", { count: "exact", head: true })
+      .eq("campaign_id", runId)
+      .eq("status", "queued"),
+  ]);
 
-  if (!count || count === 0) return;
+  if ((!throttledCount || throttledCount === 0) && (!queuedCount || queuedCount === 0)) return;
 
-  const { error: delErr } = await admin
-    .from("crm_message_log")
-    .delete()
-    .eq("campaign_id", runId)
-    .eq("status", "failed")
-    .eq("failure_cause", "provider_throttled");
-  if (delErr) return;
+  const delResults = await Promise.all([
+    throttledCount && throttledCount > 0
+      ? admin.from("crm_message_log").delete()
+          .eq("campaign_id", runId).eq("status", "failed").eq("failure_cause", "provider_throttled")
+      : { error: null },
+    queuedCount && queuedCount > 0
+      ? admin.from("crm_message_log").delete()
+          .eq("campaign_id", runId).eq("status", "queued")
+      : { error: null },
+  ]);
+  if (delResults.some((r) => r.error)) return;
 
   await admin
     .from("crm_campaign_run")

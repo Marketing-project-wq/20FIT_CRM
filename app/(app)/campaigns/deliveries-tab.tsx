@@ -409,16 +409,23 @@ export function DeliveriesTab({
 
         <section className="flex flex-col gap-2">
           <h3 className="font-body text-[13px] font-semibold text-ink">{d.resultTitle}</h3>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
-            <Stat label={d.resSent} value={detail.result.sent} sub={d.resSentSub} />
-            <Stat label={d.resDelivered} value={detail.result.delivered} sub={d.resDeliveredSub} />
-            <Stat label={d.resOpened} value={detail.engagementMeasured ? detail.result.opened : "—"} />
-            <Stat label={d.resClicked} value={detail.engagementMeasured ? detail.result.clicked : "—"} />
-            <Stat label={d.resBounced} value={detail.result.bounced} />
-            <Stat label={d.resComplained} value={detail.result.complained} />
-            <Stat label={d.resUnsub} value={detail.result.unsubscribed} />
-            <Stat label={d.resFailed} value={detail.result.failed} />
-          </div>
+          {(() => {
+            const r = detail.result;
+            const pct = (n: number, base: number) => base > 0 ? `${((n / base) * 100).toFixed(1)}%` : undefined;
+            return (
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
+                <Stat label={d.resSent} value={r.sent} sub={d.resSentSub} />
+                <Stat label={d.resDelivered} value={r.delivered} sub={pct(r.delivered, r.sent) ?? d.resDeliveredSub} />
+                <Stat label={d.resOpened} value={detail.engagementMeasured ? r.opened : "—"} sub={detail.engagementMeasured ? pct(r.opened, r.delivered) : undefined} />
+                <Stat label={d.resClicked} value={detail.engagementMeasured ? r.clicked : "—"} sub={detail.engagementMeasured ? pct(r.clicked, r.delivered) : undefined} />
+                <Stat label={d.resBounced} value={r.bounced} sub={pct(r.bounced, r.sent)} />
+                <Stat label={d.resComplained} value={r.complained} sub={pct(r.complained, r.sent)} />
+                <Stat label={d.resUnsub} value={r.unsubscribed} sub={pct(r.unsubscribed, r.sent)} />
+                <Stat label={d.resFailed} value={r.failed} sub={pct(r.failed, r.sent)} />
+                {r.queued > 0 && <Stat label={d.resQueued} value={r.queued} sub={pct(r.queued, r.sent)} />}
+              </div>
+            );
+          })()}
           {!detail.engagementMeasured && (
             <p className="rounded-sm border border-dashed border-glass-border px-3 py-2 font-body text-[12px] leading-relaxed text-ink-faint">
               {d.engagementNote}
@@ -429,8 +436,8 @@ export function DeliveriesTab({
               {d.engagementPending}
             </p>
           )}
-          {detail.result.failed > 0 && ["sent", "partial", "stopped", "failed"].includes(detail.status) && (
-            <RetryFailedButton runId={detail.runId} failedCount={detail.result.failed} />
+          {(detail.result.failed > 0 || detail.result.queued > 0) && ["sent", "partial", "stopped", "failed"].includes(detail.status) && (
+            <RetryFailedButton runId={detail.runId} failedCount={detail.result.failed + detail.result.queued} />
           )}
         </section>
 

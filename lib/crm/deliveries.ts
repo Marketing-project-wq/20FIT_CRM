@@ -474,6 +474,7 @@ export interface DeliveryDetail {
     complained: number;
     unsubscribed: number;
     failed: number;
+    queued: number;
   };
   // Preview of the EXACT version sent (skeleton-wrapped). null if that version can't be found.
   preview: { subject: string | null; html: string } | null;
@@ -518,6 +519,7 @@ export async function deliveryDetail(admin: SupabaseClient, runId: string): Prom
     { count: cComplained },
     { count: cUnsubscribed },
     { count: cFailed },
+    { count: cQueued },
   ] = await Promise.all([
     admin.from("crm_message_log").select("id", { count: "exact", head: true }).eq("campaign_id", runId).not("sent_at", "is", null),
     admin.from("crm_message_log").select("id", { count: "exact", head: true }).eq("campaign_id", runId).not("delivered_at", "is", null),
@@ -527,6 +529,7 @@ export async function deliveryDetail(admin: SupabaseClient, runId: string): Prom
     admin.from("crm_message_log").select("id", { count: "exact", head: true }).eq("campaign_id", runId).not("complained_at", "is", null),
     admin.from("crm_message_log").select("id", { count: "exact", head: true }).eq("campaign_id", runId).not("unsubscribed_at", "is", null),
     admin.from("crm_message_log").select("id", { count: "exact", head: true }).eq("campaign_id", runId).eq("status", "failed"),
+    admin.from("crm_message_log").select("id", { count: "exact", head: true }).eq("campaign_id", runId).eq("status", "queued"),
   ]);
   const result = {
     sent: cSent ?? 0,
@@ -537,6 +540,7 @@ export async function deliveryDetail(admin: SupabaseClient, runId: string): Prom
     complained: cComplained ?? 0,
     unsubscribed: cUnsubscribed ?? 0,
     failed: cFailed ?? 0,
+    queued: cQueued ?? 0,
   };
   const engagementMeasured = (cOpened ?? 0) > 0 || (cClicked ?? 0) > 0;
 
