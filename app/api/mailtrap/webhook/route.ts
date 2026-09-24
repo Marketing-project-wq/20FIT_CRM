@@ -32,6 +32,8 @@ export const dynamic = "force-dynamic";
  * ANTI-REPLAY: an HMAC-valid payload can be re-sent. Events older than the window are skipped, and
  * every column is filled ONLY when currently NULL (a re-sent event updates 0 rows), so a replayed
  * bounce cannot inflate the auto-stop ratio and a late `delivered` cannot overwrite a bounce.
+ * Symmetrically, a late bounce/complained never overwrites a confirmed delivery (delivered_at or
+ * opened_at already set).
  */
 export async function POST(req: Request): Promise<Response> {
   const raw = await req.text();
@@ -86,6 +88,7 @@ export async function POST(req: Request): Promise<Response> {
         let q = admin.from("crm_message_log").update(patch);
         q = q.is(effect.column, null);
         if (effect.status === "delivered") q = q.not("status", "in", '("bounced","complained")');
+        if (effect.status === "bounced" || effect.status === "complained") q = q.is("delivered_at", null).is("opened_at", null);
         q = q.eq("provider_message_id", ev.messageId);
         const { data, error } = await q.select("id");
         if (error) {
@@ -102,6 +105,7 @@ export async function POST(req: Request): Promise<Response> {
           let q = admin.from("crm_message_log").update(patch);
           q = q.is(effect.column, null);
           if (effect.status === "delivered") q = q.not("status", "in", '("bounced","complained")');
+          if (effect.status === "bounced" || effect.status === "complained") q = q.is("delivered_at", null).is("opened_at", null);
           q = q.eq("identity_hash", hashIdentity("email", norm, hashSecret));
           const { data, error } = await q.select("id");
           if (error) {

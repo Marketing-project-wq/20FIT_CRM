@@ -25,6 +25,7 @@ import { type WebhookEffect } from "./mailtrap-webhook";
  * replayer cannot alter it without breaking the signature; the route rejects a too-old timestamp AND
  * fills each cycle column only when NULL (a re-sent event updates 0 rows), so a replayed bounce can
  * never inflate the auto-stop ratio and a late `delivered` can never overwrite a terminal bad status.
+ * Symmetrically, a late bounce/complained never overwrites a confirmed delivery.
  */
 
 export const SVIX_ID_HEADER = "svix-id";
