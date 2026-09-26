@@ -22,6 +22,7 @@ import {
   type RunStatus,
 } from "@/lib/crm/campaign-run";
 import { unsubscribeHostServable, missingSendEnv } from "@/lib/crm/send-env";
+import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { runInternalSendTest, cleanupInternalSendTest, type SendTestResult, type SendTestCleanupResult } from "@/lib/crm/send-test-harness";
 import { extractVariables } from "@/lib/crm/template";
@@ -393,6 +394,8 @@ export async function sendCampaignAction(args: {
     return { ok: false, error: "enqueue_failed", runId, runLabel, isNewRun };
   }
 
+  revalidatePath("/campaigns");
+
   return {
     ok: true,
     queued: true,
@@ -481,6 +484,7 @@ export async function scheduleCampaignAction(args: {
     createdBy,
   });
   if (!res.ok) return { ok: false, error: "schedule_failed" };
+  revalidatePath("/campaigns");
   return { ok: true, scheduledAtUtc };
 }
 
