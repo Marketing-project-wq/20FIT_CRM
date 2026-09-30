@@ -35,9 +35,35 @@ export interface EmailParts {
   text: string;
 }
 
-/** A body that is already a complete HTML document (its own <html> shell) — send/preview verbatim. */
+/** A body that is already a complete HTML document (its own <html> shell) — send/preview verbatim.
+ *  Also matches templates with a <head> block but no outer <html> wrapper (malformed but common). */
 export function isFullHtmlDocument(body: string): boolean {
-  return /<!doctype\s+html|<html[\s>]/i.test(body);
+  return /<!doctype\s+html|<html[\s>]|<head[\s>]/i.test(body);
+}
+
+/** Inject color-scheme meta tags into a full HTML document to prevent email clients from applying
+ *  dark mode color inversions. Only adds if not already present. */
+function injectDarkModeGuard(html: string): string {
+  if (/color-scheme/i.test(html)) return html;
+  const meta = '<meta name="color-scheme" content="light only"><meta name="supported-color-schemes" content="light only">';
+  const style = ':root { color-scheme: light only; }';
+  // Inject meta after existing <meta> tags in <head>, or right after <head>
+  if (/<head[\s>]/i.test(html)) {
+    // Add meta right after the last <meta> tag, or after <head>
+    const lastMeta = html.lastIndexOf('</head>');
+    if (lastMeta !== -1) {
+      html = html.slice(0, lastMeta) + meta + '\n' + html.slice(lastMeta);
+    } else {
+      html = html.replace(/(<head[^>]*>)/i, `$1\n${meta}`);
+    }
+  }
+  // Add inline style for color-scheme in <style> or as a new <style> block
+  if (/<style[\s>]/i.test(html)) {
+    html = html.replace(/(<style[^>]*>)/i, `$1\n${style}`);
+  } else if (/<\/head>/i.test(html)) {
+    html = html.replace(/<\/head>/i, `<style>${style}</style>\n</head>`);
+  }
+  return html;
 }
 
 /** Does the string contain any HTML tag at all? (else it is plain text). */
@@ -75,7 +101,10 @@ export function wrapEmailSkeleton(contentHtml: string, unsubscribeUrl: string): 
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="color-scheme" content="light only">
+<meta name="supported-color-schemes" content="light only">
 <!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->
+<style>:root { color-scheme: light only; }</style>
 </head>
 <body style="margin:0;padding:0;background:#f4f4f5;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f4f4f5;">
@@ -109,7 +138,7 @@ ${contentHtml}
 export function renderEmailDocument(renderedBody: string, unsubscribeUrl: string): EmailParts {
   let html: string;
   if (isFullHtmlDocument(renderedBody)) {
-    html = renderedBody;
+    html = injectDarkModeGuard(renderedBody);
   } else if (hasAnyHtmlTag(renderedBody)) {
     html = wrapEmailSkeleton(renderedBody, unsubscribeUrl);
   } else {

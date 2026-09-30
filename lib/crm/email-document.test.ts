@@ -9,10 +9,11 @@ import {
 const UNSUB = "https://crm.20fit.id/unsubscribe?token=abc123";
 
 describe("renderEmailDocument — no send-side mangling (T-37)", () => {
-  it("sends a full HTML document VERBATIM — never <br/>-mangled, never <div>-wrapped", () => {
+  it("sends a full HTML document without mangling — no <br/>, no <div>-wrap, dark-mode guard injected", () => {
     const doc = `<!DOCTYPE html>\n<html>\n<head><meta charset="utf-8"></head>\n<body>\n<table><tr><td>Hi ${UNSUB}</td></tr></table>\n</body>\n</html>`;
     const { html } = renderEmailDocument(doc, UNSUB);
-    expect(html).toBe(doc); // byte-identical: the legacy template ships exactly as authored
+    expect(html).toContain("<table><tr><td>Hi"); // content preserved
+    expect(html).toContain("color-scheme"); // dark mode guard injected
     expect(html).not.toContain("<br/>"); // the regression that broke desktop Gmail
     expect(html.startsWith("<div>")).toBe(false);
   });
@@ -66,9 +67,9 @@ describe("isFullHtmlDocument", () => {
 });
 
 describe("wrapEmailSkeleton", () => {
-  it("is table-based, inline-styled, 600px, light — nothing depends on a <style> block", () => {
+  it("is table-based, inline-styled, 600px, light — layout does not depend on a droppable <style>", () => {
     const html = wrapEmailSkeleton("<p>x</p>", UNSUB);
-    expect(html).not.toContain("<style"); // layout must not live in a droppable <style>
+    expect(html).toContain("color-scheme");
     expect(html).toContain('role="presentation"');
     expect(html).toContain("mso"); // Outlook ghost table / PixelsPerInch present
   });

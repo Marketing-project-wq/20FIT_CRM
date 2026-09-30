@@ -362,8 +362,9 @@ function InsertPlaceholder({ onInsert, subject, htmlContent }: { onInsert: (tag:
 
   const existing = Array.from(
     new Set(
-      Array.from(`${subject}\n${htmlContent}`.matchAll(/\{\{\s*([A-Z][A-Z0-9_]*)\s*\}\}/g))
-        .map((m) => m[1])
+      Array.from(`${subject}\n${htmlContent}`.matchAll(/\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g))
+        .map((m) => m[1].toUpperCase())
+        .filter((n) => !["FULL_NAME", "FIRST_NAME", "CITY", "UNSUBSCRIBE_URL"].includes(n))
     )
   );
 
