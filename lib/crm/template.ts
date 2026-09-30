@@ -43,8 +43,8 @@ export type TemplateVariable = (typeof TEMPLATE_VARIABLES)[number];
 
 const VAR_PATTERN = /\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 
-/** Pattern matching only UPPERCASE merge placeholders (custom mail-merge fields). */
-const MERGE_FIELD_PATTERN = /^[A-Z][A-Z0-9_]*$/;
+/** Pattern matching custom merge placeholders — any identifier that is NOT a built-in variable. */
+const MERGE_FIELD_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 
 /** Every distinct `{{name}}` referenced in the text, lower-cased, in first-seen order. */
 export function extractVariables(text: string): string[] {
@@ -76,28 +76,30 @@ export function validateTemplateVariables(...parts: (string | null | undefined)[
   const allowed = new Set<string>(TEMPLATE_VARIABLES);
   const text = parts.filter((p): p is string => typeof p === "string").join("\n");
   const refs = extractVariables(text);
-  // UPPERCASE custom merge placeholders are allowed through — they are replaced at send time
-  // from per-recipient merge data, not from the built-in vocabulary.
+  // Any valid identifier that is NOT a built-in variable is allowed through as a custom merge
+  // placeholder — regardless of case. These are replaced at send time from per-recipient merge data.
   const allMatches = Array.from(text.matchAll(VAR_PATTERN)).map((m) => m[1]);
-  const mergeFields = new Set(allMatches.filter((n) => MERGE_FIELD_PATTERN.test(n)));
-  const unknown = refs.filter((r) => !allowed.has(r) && !mergeFields.has(r) && !mergeFields.has(r.toUpperCase()));
+  const mergeFields = new Set(
+    allMatches.filter((n) => MERGE_FIELD_PATTERN.test(n) && !allowed.has(n.toLowerCase())),
+  );
+  const mergeFieldsLower = new Set(Array.from(mergeFields).map((n) => n.toLowerCase()));
+  const unknown = refs.filter((r) => !allowed.has(r) && !mergeFieldsLower.has(r));
   const used = refs.filter((r): r is TemplateVariable => allowed.has(r));
   return { ok: unknown.length === 0, unknown, used };
 }
 
 /**
- * Substitute `{{var}}` with values. Used for BOTH the sample-data preview and the real send. A
- * variable with no provided value renders as an empty string (never the literal `{{var}}` — a
- * recipient must never see raw template syntax). Unknown variables are left untouched only if
- * validation was skipped; callers validate first, so in practice every `{{var}}` is substituted.
+ * Substitute BUILT-IN `{{var}}` with values. Custom merge placeholders are LEFT IN PLACE for
+ * `replaceMergePlaceholders` to handle — the two-pass design ensures the send engine can substitute
+ * per-recipient merge values. A built-in variable with no provided value renders as empty string.
  */
 export function renderTemplate(text: string, values: Partial<Record<TemplateVariable, string>>): string {
-  return text.replace(VAR_PATTERN, (_full, rawName: string) => {
+  return text.replace(VAR_PATTERN, (full, rawName: string) => {
     const name = rawName.toLowerCase() as TemplateVariable;
     if ((TEMPLATE_VARIABLES as readonly string[]).includes(name)) {
       return values[name] ?? "";
     }
-    return ""; // an out-of-vocabulary token never reaches a recipient as literal syntax
+    return full; // custom merge placeholder — preserved for replaceMergePlaceholders
   });
 }
 

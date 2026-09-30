@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json({ error: "bad_request", message: "Body bukan JSON yang valid." }, { status: 400 });
   }
-  const b = body as { phase?: unknown; csvText?: unknown; mapping?: unknown; collectionSource?: unknown; filename?: unknown };
+  const b = body as { phase?: unknown; csvText?: unknown; mapping?: unknown; collectionSource?: unknown; filename?: unknown; extraTags?: unknown };
   const phase = String(b.phase ?? "");
   if (!PHASES.has(phase)) {
     return NextResponse.json({ error: "bad_request", message: "Fase tidak dikenal." }, { status: 400 });
@@ -189,6 +189,7 @@ export async function POST(request: NextRequest) {
     mapping: (b.mapping as ImportInput["mapping"]) ?? undefined,
     collectionSource: typeof b.collectionSource === "string" ? b.collectionSource : undefined,
     filename: typeof b.filename === "string" ? b.filename : undefined,
+    extraTags: Array.isArray(b.extraTags) ? (b.extraTags as string[]).filter((t) => typeof t === "string") : undefined,
   };
 
   let result;

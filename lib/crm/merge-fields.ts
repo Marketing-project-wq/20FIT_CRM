@@ -1,23 +1,29 @@
 /**
- * Mail-merge custom placeholders. Custom fields use UPPERCASE names (e.g. {{KODE_UNIK}}) to
- * distinguish them from the built-in lowercase vocabulary ({{full_name}}, {{city}}, etc.).
+ * Mail-merge custom placeholders. Any `{{variable}}` that is NOT a built-in template variable
+ * is treated as a custom merge field — regardless of case. Internally, detected field names are
+ * UPPERCASED for consistent storage and lookup (so `{{voucher_code}}` and `{{VOUCHER_CODE}}` are
+ * the same field).
  */
 
 import { TEMPLATE_VARIABLES } from "./template";
 
-const MERGE_FIELD_PATTERN = /\{\{\s*([A-Z][A-Z0-9_]*)\s*\}\}/g;
+/** Matches any `{{variable}}` placeholder — both built-in (lowercase) and custom (any case). */
+const ANY_PLACEHOLDER = /\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 
 /** Built-in variable names (lowercase) — never treated as custom merge fields. */
 const BUILTIN_SET = new Set<string>(TEMPLATE_VARIABLES.map((v) => v.toLowerCase()));
 
-/** Detect UPPERCASE custom merge placeholders in text. Returns deduplicated names in first-seen order. */
+/** Detect custom merge placeholders in text. Any `{{var}}` that is NOT a built-in variable is
+ *  returned as an UPPERCASE field name (normalized for consistent CSV column matching). */
 export function detectMergePlaceholders(...parts: (string | null | undefined)[]): string[] {
   const text = parts.filter((p): p is string => typeof p === "string").join("\n");
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const m of Array.from(text.matchAll(MERGE_FIELD_PATTERN))) {
-    const name = m[1];
-    if (!seen.has(name) && !BUILTIN_SET.has(name.toLowerCase())) {
+  for (const m of Array.from(text.matchAll(ANY_PLACEHOLDER))) {
+    const raw = m[1];
+    if (BUILTIN_SET.has(raw.toLowerCase())) continue;
+    const name = raw.toUpperCase();
+    if (!seen.has(name)) {
       seen.add(name);
       out.push(name);
     }
@@ -25,10 +31,15 @@ export function detectMergePlaceholders(...parts: (string | null | undefined)[])
   return out;
 }
 
-/** Replace UPPERCASE custom merge placeholders with per-recipient values. Unknown fields → empty string. */
+/** Replace custom merge placeholders with per-recipient values. Lookup is case-insensitive:
+ *  `{{voucher_code}}` finds a value stored under `VOUCHER_CODE`. Built-in vars are left alone
+ *  (they are handled by `renderTemplate` first). Unknown fields → empty string. */
 export function replaceMergePlaceholders(text: string, mergeValues: Record<string, string>): string {
-  return text.replace(MERGE_FIELD_PATTERN, (_full, name: string) => {
-    return mergeValues[name] ?? "";
+  const upper = new Map<string, string>();
+  for (const [k, v] of Object.entries(mergeValues)) upper.set(k.toUpperCase(), v);
+  return text.replace(ANY_PLACEHOLDER, (_full, raw: string) => {
+    if (BUILTIN_SET.has(raw.toLowerCase())) return _full;
+    return upper.get(raw.toUpperCase()) ?? "";
   });
 }
 
@@ -48,8 +59,9 @@ export interface MergeCSVValidation {
 
 /**
  * Validate a parsed CSV for merge data upload. Expects the first column to be "email" and remaining
- * columns to be UPPERCASE field names matching detected placeholders. Duplicate emails are allowed —
- * each row produces a separate send with its own merge values (e.g. one person, two voucher codes).
+ * columns to match detected placeholders (case-insensitive — CSV header `voucher_code` matches
+ * detected placeholder `VOUCHER_CODE`). Field names are stored UPPERCASE for consistent lookup.
+ * Duplicate emails are allowed — each row produces a separate send with its own merge values.
  */
 export function validateMergeCSV(
   headers: string[],
@@ -70,10 +82,12 @@ export function validateMergeCSV(
     return { ok: false, errors, rows: result, fields: [] };
   }
 
-  const fields = headers.slice(1).map((h) => h.trim());
-  const expectedSet = new Set(expectedFields);
-  const missingFields = expectedFields.filter((f) => !fields.includes(f));
-  const extraFields = fields.filter((f) => !expectedSet.has(f));
+  const rawFields = headers.slice(1).map((h) => h.trim());
+  const fields = rawFields.map((f) => f.toUpperCase());
+  const expectedUpper = new Set(expectedFields.map((f) => f.toUpperCase()));
+  const fieldsUpper = new Set(fields);
+  const missingFields = expectedFields.filter((f) => !fieldsUpper.has(f.toUpperCase()));
+  const extraFields = fields.filter((f) => !expectedUpper.has(f));
 
   if (missingFields.length > 0) {
     errors.push(`Field yang dibutuhkan template tidak ada di CSV: ${missingFields.join(", ")}`);

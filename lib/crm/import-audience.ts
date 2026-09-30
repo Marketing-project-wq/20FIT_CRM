@@ -419,6 +419,7 @@ export function planImport(
   rows: Record<string, string>[],
   mapping: ColumnMapping,
   keys: ImportKeys,
+  extraTags?: readonly string[],
 ): ImportPlan {
   const outcomes: RowOutcome[] = [];
   const insertRows: NormalizedRow[] = [];
@@ -444,8 +445,13 @@ export function planImport(
     netContactable: 0,
   };
 
+  const validExtra = extraTags?.filter(isOperatorTag) ?? [];
+
   rows.forEach((raw, index) => {
     const n = normalizeMappedRow(raw, mapping);
+    if (validExtra.length > 0) {
+      n.tags = Array.from(new Set([...n.tags, ...validExtra])).sort();
+    }
     for (const [tag, label] of Object.entries(n.generatedTagLabels)) {
       if (!allGeneratedTagLabels[tag]) allGeneratedTagLabels[tag] = label;
     }

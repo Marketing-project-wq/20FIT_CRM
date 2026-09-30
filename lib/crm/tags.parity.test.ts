@@ -219,7 +219,7 @@ describe("(D) tag DISPLAY labels are guarded against the tag vocabulary (Bagian 
     expect(tagValueLabel("nilai:300k-1jt", "en")).toBe("Rp 300k–1M");
     // no specific label → dashes become spaces, nothing invented
     expect(tagValueLabel("event:hyrox-sim-full", "id")).toBe("hyrox sim full");
-    expect(namespaceLabel("nilai", "id")).toBe("Nilai transaksi");
+    expect(namespaceLabel("nilai", "id")).toBe("Nilai");
   });
 
   it("groupTags splits operator namespaces from system tags and keeps MULTIPLE values per namespace", () => {

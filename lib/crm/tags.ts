@@ -146,7 +146,7 @@ export const TAG_NAMESPACE_LABELS: Record<(typeof TAG_NAMESPACES)[number], { id:
   event: { id: "Acara", en: "Event" },
   format: { id: "Format", en: "Format" },
   kategori: { id: "Kategori", en: "Category" },
-  nilai: { id: "Nilai transaksi", en: "Transaction value" },
+  nilai: { id: "Nilai", en: "Value" },
   peran: { id: "Peran", en: "Role" },
   produk: { id: "Produk", en: "Product" },
   sumber: { id: "Sumber", en: "Source" },

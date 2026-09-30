@@ -31,6 +31,10 @@ export interface ImportInput {
    *  consent evidence (not a gate). Empty/whitespace is rejected. */
   collectionSource?: string;
   filename?: string;
+  /** Operator-chosen tags applied to ALL rows in this import — e.g. `nilai:voucher-code`. Validated
+   *  against isOperatorTag inside planImport; invalid entries are silently dropped (the wizard
+   *  pre-validates, so reaching here with an invalid tag is a code bug, not operator error). */
+  extraTags?: string[];
 }
 
 export interface CommitMeta {
@@ -97,7 +101,7 @@ export async function runImportRequest(input: ImportInput, deps: ImportDeps): Pr
 
   const { emails, phones } = candidateKeys(input.rows, mapping);
   const keys = await deps.loadKeys(emails, phones);
-  const plan = planImport(input.rows, mapping, keys);
+  const plan = planImport(input.rows, mapping, keys, input.extraTags);
 
   if (input.phase === "dry_run") {
     // NO write dep is touched here — this is the property import-audience-run.test.ts pins.

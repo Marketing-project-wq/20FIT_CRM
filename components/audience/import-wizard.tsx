@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Upload, FileText, ArrowRight, CheckCircle2, AlertTriangle } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Upload, FileText, ArrowRight, CheckCircle2, AlertTriangle, X, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   MAX_IMPORT_ROWS,
@@ -13,7 +13,7 @@ import {
   type MappingTarget,
   type ImportSummary,
 } from "@/lib/crm/import-audience";
-import { parseTagCell, groupTags, namespaceLabel, tagValueLabel, slugifyTagValue } from "@/lib/crm/tags";
+import { parseTagCell, groupTags, namespaceLabel, tagValueLabel, slugifyTagValue, TAG_NAMESPACES, isOperatorTag } from "@/lib/crm/tags";
 import * as XLSX from "xlsx";
 
 /**
@@ -93,8 +93,24 @@ export function ImportWizard() {
   const [collectionSource, setCollectionSource] = useState("");
   const [report, setReport] = useState<ExecuteResponse | null>(null);
   const [generatedTagLabels, setGeneratedTagLabels] = useState<Record<string, string>>({});
+  const [extraTags, setExtraTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState("");
+  const [tagRegistry, setTagRegistry] = useState<{ slug: string; namespace: string; label: string }[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const loadTagRegistry = useCallback(async () => {
+    try {
+      const res = await fetch("/api/tags");
+      if (!res.ok) return;
+      const data = await res.json();
+      setTagRegistry(data.tags ?? []);
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => {
+    if (step === "map" && tagRegistry.length === 0) loadTagRegistry();
+  }, [step, tagRegistry.length, loadTagRegistry]);
 
   async function post(phase: "analyze" | "dry_run" | "execute", extra: Record<string, unknown> = {}) {
     setBusy(true);
@@ -103,7 +119,7 @@ export function ImportWizard() {
       const res = await fetch("/api/audience/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phase, csvText, filename, mapping, ...extra }),
+        body: JSON.stringify({ phase, csvText, filename, mapping, extraTags: extraTags.length > 0 ? extraTags : undefined, ...extra }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -215,6 +231,8 @@ export function ImportWizard() {
     setSummary(null);
     setDryOutcomes([]);
     setGeneratedTagLabels({});
+    setExtraTags([]);
+    setTagInput("");
     setCollectionSource("");
     setReport(null);
     setError(null);
@@ -335,6 +353,15 @@ export function ImportWizard() {
               </tbody>
             </table>
           </div>
+          <ExtraTagPicker
+            tags={extraTags}
+            onAdd={(tag) => { if (!extraTags.includes(tag)) setExtraTags([...extraTags, tag]); }}
+            onRemove={(tag) => setExtraTags(extraTags.filter((t) => t !== tag))}
+            input={tagInput}
+            onInputChange={setTagInput}
+            registry={tagRegistry}
+          />
+
           <div className="mt-5 flex items-center gap-2">
             <Button variant="outline" onClick={reset}>← Ganti file</Button>
             <Button onClick={runDryRun} disabled={busy}>
@@ -673,6 +700,138 @@ function UnmappedColumns({ headers, mapping }: { headers: string[]; mapping: Col
       <span className="text-ink">{ignored.join(", ")}</span>. Kembali ke pemetaan kalau salah satunya
       seharusnya dipetakan ke email, nama, atau tag namespace.
     </p>
+  );
+}
+
+/** Tag picker for assigning existing tags to ALL imported contacts. Groups by namespace so the
+ *  operator sees the same structure as Settings > Tags. */
+function ExtraTagPicker({
+  tags,
+  onAdd,
+  onRemove,
+  input,
+  onInputChange,
+  registry,
+}: {
+  tags: string[];
+  onAdd: (tag: string) => void;
+  onRemove: (tag: string) => void;
+  input: string;
+  onInputChange: (v: string) => void;
+  registry: { slug: string; namespace: string; label: string }[];
+}) {
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  const suggestions = input.trim() === ""
+    ? registry.filter((t) => !tags.includes(t.slug)).slice(0, 20)
+    : registry.filter((t) =>
+        !tags.includes(t.slug) &&
+        (t.slug.toLowerCase().includes(input.toLowerCase()) || t.label.toLowerCase().includes(input.toLowerCase()))
+      ).slice(0, 20);
+
+  const grouped = new Map<string, typeof suggestions>();
+  for (const s of suggestions) {
+    const arr = grouped.get(s.namespace) ?? [];
+    arr.push(s);
+    grouped.set(s.namespace, arr);
+  }
+
+  function addTag(slug: string) {
+    if (isOperatorTag(slug) && !tags.includes(slug)) {
+      onAdd(slug);
+      onInputChange("");
+      setShowSuggestions(false);
+    }
+  }
+
+  return (
+    <div className="mt-5">
+      <label className="mb-1 block font-display text-[13px] font-bold text-ink">
+        Tag untuk semua kontak <span className="font-body font-normal text-ink-faint">(opsional)</span>
+      </label>
+      <p className="mb-2 font-body text-[12px] text-ink-soft">
+        Pilih tag yang akan diberikan ke <strong>semua</strong> kontak yang diimpor. Berguna untuk menandai kelompok — mis. pemenang voucher, peserta event.
+      </p>
+
+      {tags.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-1.5">
+          {tags.map((tag) => {
+            const ns = tag.slice(0, tag.indexOf(":"));
+            const entry = registry.find((t) => t.slug === tag);
+            const label = entry?.label || tagValueLabel(tag, "id");
+            return (
+              <span key={tag} className="inline-flex items-center gap-1 rounded-sm bg-glass px-2 py-1 font-body text-[12px] text-ink">
+                <span className="font-display text-[10px] font-bold uppercase tracking-wide text-ink-faint">{namespaceLabel(ns, "id")}:</span>
+                {label}
+                <button type="button" onClick={() => onRemove(tag)} className="ml-0.5 text-ink-faint hover:text-red" aria-label={`Hapus ${tag}`}>
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="relative">
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => { onInputChange(e.target.value); setShowSuggestions(true); }}
+            onFocus={() => setShowSuggestions(true)}
+            placeholder="Cari tag — ketik nama atau slug"
+            className="h-9 flex-1 rounded-sm border border-glass-border bg-glass px-3 font-body text-[13px] text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-red"
+          />
+        </div>
+
+        {showSuggestions && suggestions.length > 0 && (
+          <div
+            className="absolute left-0 right-0 top-10 z-20 max-h-56 overflow-y-auto rounded-sm border border-glass-border bg-surface shadow-lg"
+            onMouseDown={(e) => e.preventDefault()}
+          >
+            {(TAG_NAMESPACES as readonly string[]).map((ns) => {
+              const items = grouped.get(ns);
+              if (!items || items.length === 0) return null;
+              return (
+                <div key={ns}>
+                  <div className="sticky top-0 bg-surface-2 px-3 py-1 font-display text-[10px] font-bold uppercase tracking-wide text-ink-faint">
+                    {namespaceLabel(ns, "id")} ({ns}:)
+                  </div>
+                  {items.map((t) => (
+                    <button
+                      key={t.slug}
+                      type="button"
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left font-body text-[12px] text-ink hover:bg-glass"
+                      onClick={() => addTag(t.slug)}
+                    >
+                      <Plus className="h-3 w-3 text-ink-faint" />
+                      <span className="font-mono text-ink-faint">{t.slug}</span>
+                      {t.label && <span className="text-ink-soft">— {t.label}</span>}
+                    </button>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {showSuggestions && suggestions.length === 0 && input.trim() !== "" && (
+          <div className="absolute left-0 right-0 top-10 z-20 rounded-sm border border-glass-border bg-surface px-3 py-2 shadow-lg">
+            {isOperatorTag(input.trim().toLowerCase()) ? (
+              <button type="button" className="font-body text-[12px] text-ink hover:text-red" onClick={() => addTag(input.trim().toLowerCase())}>
+                <Plus className="mr-1 inline h-3 w-3" />Tambahkan <span className="font-mono">{input.trim().toLowerCase()}</span>
+              </button>
+            ) : (
+              <span className="font-body text-[12px] text-ink-faint">Tidak ditemukan. Format: namespace:value (mis. nilai:voucher-code)</span>
+            )}
+          </div>
+        )}
+      </div>
+
+      {showSuggestions && (
+        <div className="fixed inset-0 z-10" onClick={() => setShowSuggestions(false)} />
+      )}
+    </div>
   );
 }
 
