@@ -363,7 +363,13 @@ export async function sendCampaignAction(args: {
     }
     for (let i = 0; i < insertRows.length; i += 500) {
       const chunk = insertRows.slice(i, i + 500);
-      await admin.from("crm_campaign_merge_data").insert(chunk);
+      const { error } = await admin.from("crm_campaign_merge_data").insert(chunk);
+      if (error) {
+        // row_index column may not exist yet (migration pending) — retry without it.
+        const withoutRowIndex = chunk.map(({ row_index: _ri, ...rest }) => rest);
+        const { error: e2 } = await admin.from("crm_campaign_merge_data").insert(withoutRowIndex);
+        if (e2) return { ok: false as const, error: "enqueue_failed" as const };
+      }
     }
   }
 

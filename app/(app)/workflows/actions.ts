@@ -182,16 +182,16 @@ export async function runWorkflowAction(workflowId: string): Promise<WorkflowRun
 
   // Resolve email untuk penerima (customer_id → email_normalized). Chunk .in().
   const idList = queuedRows.map((r) => r.customer_id);
-  const recipients: { customerId: string; email: string; language: "id" }[] = [];
+  const recipients: { customerId: string; email: string; language: "id"; fullName: string; city: string }[] = [];
   for (let i = 0; i < idList.length; i += 500) {
     const chunk = idList.slice(i, i + 500);
     const { data: profs } = await admin
       .from("master_customer")
-      .select("customer_id, email_normalized")
+      .select("customer_id, email_normalized, full_name, city")
       .in("customer_id", chunk)
       .not("email_normalized", "is", null);
-    for (const p of (profs ?? []) as { customer_id: string; email_normalized: string }[]) {
-      recipients.push({ customerId: p.customer_id, email: p.email_normalized, language: "id" });
+    for (const p of (profs ?? []) as { customer_id: string; email_normalized: string; full_name: string | null; city: string | null }[]) {
+      recipients.push({ customerId: p.customer_id, email: p.email_normalized, language: "id", fullName: p.full_name ?? "", city: p.city ?? "" });
     }
   }
   if (recipients.length === 0) return { ok: true, newlyEnrolled: toEnroll.length, sent: 0, withheld: 0, failed: 0 };

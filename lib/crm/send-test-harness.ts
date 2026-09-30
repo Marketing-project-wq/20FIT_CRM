@@ -208,6 +208,8 @@ export async function runInternalSendTest(actor: { actorId: string; actorEmail: 
           customerId: internalTestCustomerId(i), // MUST be a valid uuid (crm_message_log.customer_id)
           email,
           language: "id" as const,
+          fullName: "",
+          city: "",
         })),
       },
       nowIso,

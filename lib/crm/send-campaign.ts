@@ -107,6 +107,8 @@ interface RawRecipient {
   customerId: string;
   email: string;
   language: "id" | "en";
+  fullName: string;
+  city: string;
 }
 
 export interface EmailListResolution {
@@ -140,19 +142,19 @@ export async function resolveEmailListRecipients(
   }
   if (normalized.length === 0) return { recipients: [], unresolved: [] };
 
-  const byEmail = new Map<string, string>(); // email_normalized → customer_id
+  const byEmail = new Map<string, { customerId: string; fullName: string; city: string }>(); // email_normalized → profile
   // URL-safe chunk (EMAIL_IN_CHUNK=300), NOT PAGE=1000: 1.000 emails in one `.in()` builds a ~30 KB
   // URL the gateway rejects (T-69). 300 keeps every request under the ~24 KB limit.
   for (let i = 0; i < normalized.length; i += EMAIL_IN_CHUNK) {
     const chunk = normalized.slice(i, i + EMAIL_IN_CHUNK);
     const { data, error } = await admin
       .from("master_customer")
-      .select("customer_id, email_normalized")
+      .select("customer_id, email_normalized, full_name, city")
       .in("email_normalized", chunk);
     if (error) throw error;
-    for (const row of (data ?? []) as { customer_id: string; email_normalized: string | null }[]) {
+    for (const row of (data ?? []) as { customer_id: string; email_normalized: string | null; full_name: string | null; city: string | null }[]) {
       if (row.email_normalized && !byEmail.has(row.email_normalized)) {
-        byEmail.set(row.email_normalized, String(row.customer_id));
+        byEmail.set(row.email_normalized, { customerId: String(row.customer_id), fullName: row.full_name ?? "", city: row.city ?? "" });
       }
     }
   }
@@ -160,9 +162,9 @@ export async function resolveEmailListRecipients(
   const recipients: RawRecipient[] = [];
   const unresolved: string[] = [];
   for (const email of normalized) {
-    const customerId = byEmail.get(email);
+    const profile = byEmail.get(email);
     // Language default 'id' — master_customer carries no per-person comm language yet (hanging item).
-    if (customerId) recipients.push({ customerId, email, language: "id" });
+    if (profile) recipients.push({ customerId: profile.customerId, email, language: "id", fullName: profile.fullName, city: profile.city });
     else unresolved.push(email);
   }
   return { recipients, unresolved };
@@ -179,7 +181,7 @@ async function resolveRecipients(
   const recipients: RawRecipient[] = [];
   let noContact = 0;
 
-  const collect = (rows: { customer_id: string; email_normalized: string | null }[]) => {
+  const collect = (rows: { customer_id: string; email_normalized: string | null; full_name: string | null; city: string | null }[]) => {
     for (const row of rows) {
       const email = row.email_normalized;
       if (!email) {
@@ -187,7 +189,7 @@ async function resolveRecipients(
         continue;
       }
       // Language default 'id' — master_customer carries no per-person comm language yet (hanging item).
-      recipients.push({ customerId: String(row.customer_id), email, language: "id" });
+      recipients.push({ customerId: String(row.customer_id), email, language: "id", fullName: row.full_name ?? "", city: row.city ?? "" });
     }
   };
 
@@ -196,13 +198,13 @@ async function resolveRecipients(
   for (let from = 0; ; from += PAGE) {
     let q = admin
       .from("master_customer")
-      .select("customer_id, email_normalized")
+      .select("customer_id, email_normalized, full_name, city")
       .order("customer_id", { ascending: true })
       .range(from, from + PAGE - 1);
     q = applyMasterCriteria(q, criteria, masterFilterExpr);
     const { data, error } = await q;
     if (error) throw error;
-    const rows = (data ?? []) as unknown as { customer_id: string; email_normalized: string | null }[];
+    const rows = (data ?? []) as unknown as { customer_id: string; email_normalized: string | null; full_name: string | null; city: string | null }[];
     const inSet = restrictIds ? rows.filter((r) => restrictIds.has(String(r.customer_id))) : rows;
     collect(inSet);
     if (rows.length < PAGE) break;
@@ -321,15 +323,31 @@ export async function sendCampaign(input: CampaignSendInput, nowIso: string): Pr
     else withheldPrelaunch++;
   }
 
+  // Profile lookup for built-in template variables (full_name, first_name, city).
+  const profileByCustomerId = new Map<string, { fullName: string; city: string }>();
+  for (const r of raw) {
+    if (!profileByCustomerId.has(r.customerId)) {
+      profileByCustomerId.set(r.customerId, { fullName: r.fullName, city: r.city });
+    }
+  }
+
   // Load per-recipient merge data (mail-merge custom placeholders) for this run.
   // Grouped by (email, row_index): when the same email has multiple row indices, each becomes a
   // separate send with its own merge values (e.g. one person receiving two different voucher codes).
   const mergeDataByEmail = new Map<string, { rowIndex: number; fields: Record<string, string> }[]>();
   {
-    const { data: mergeRows } = await admin
+    // Try with row_index first (post-migration schema); fall back without it.
+    let { data: mergeRows, error } = await admin
       .from("crm_campaign_merge_data")
       .select("email_normalized, field_name, field_value, row_index")
       .eq("run_id", input.campaignId);
+    if (error) {
+      const fallback = await admin
+        .from("crm_campaign_merge_data")
+        .select("email_normalized, field_name, field_value")
+        .eq("run_id", input.campaignId);
+      mergeRows = (fallback.data ?? []).map((r: Record<string, unknown>) => ({ ...r, row_index: 0 })) as typeof mergeRows;
+    }
     if (mergeRows) {
       const temp = new Map<string, Map<number, Record<string, string>>>();
       for (const row of mergeRows as { email_normalized: string; field_name: string; field_value: string; row_index: number }[]) {
@@ -421,7 +439,14 @@ export async function sendCampaign(input: CampaignSendInput, nowIso: string): Pr
       if (!tpl) throw new Error(`No active email template for key "${input.templateKey}".`);
       const token = signUnsubscribeToken({ customerId: r.customerId, kind: "email" }, unsubSecret);
       const unsubscribeUrl = `${baseUrl}/unsubscribe?token=${encodeURIComponent(token)}`;
-      const values = { unsubscribe_url: unsubscribeUrl };
+      const profile = profileByCustomerId.get(r.customerId);
+      const fullName = profile?.fullName ?? "";
+      const values = {
+        full_name: fullName,
+        first_name: fullName.split(/\s+/)[0] ?? "",
+        city: profile?.city ?? "",
+        unsubscribe_url: unsubscribeUrl,
+      };
       const mergeEntries = mergeDataByEmail.get(r.destination);
       const mergeValues = mergeEntries
         ? (mergeEntries.find((e) => e.rowIndex === (r.mergeRowIndex ?? 0)) ?? mergeEntries[0]).fields
