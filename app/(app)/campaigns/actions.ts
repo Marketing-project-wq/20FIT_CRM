@@ -366,6 +366,7 @@ export async function sendCampaignAction(args: {
       const { error } = await admin.from("crm_campaign_merge_data").insert(chunk);
       if (error) {
         // row_index column may not exist yet (migration pending) — retry without it.
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const withoutRowIndex = chunk.map(({ row_index: _ri, ...rest }) => rest);
         const { error: e2 } = await admin.from("crm_campaign_merge_data").insert(withoutRowIndex);
         if (e2) return { ok: false as const, error: "enqueue_failed" as const };

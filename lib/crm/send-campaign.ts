@@ -337,11 +337,12 @@ export async function sendCampaign(input: CampaignSendInput, nowIso: string): Pr
   const mergeDataByEmail = new Map<string, { rowIndex: number; fields: Record<string, string> }[]>();
   {
     // Try with row_index first (post-migration schema); fall back without it.
-    let { data: mergeRows, error } = await admin
+    const result = await admin
       .from("crm_campaign_merge_data")
       .select("email_normalized, field_name, field_value, row_index")
       .eq("run_id", input.campaignId);
-    if (error) {
+    let mergeRows = result.data;
+    if (result.error) {
       const fallback = await admin
         .from("crm_campaign_merge_data")
         .select("email_normalized, field_name, field_value")
