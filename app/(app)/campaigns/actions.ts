@@ -246,7 +246,7 @@ export async function sendCampaignAction(args: {
   confirmedLargeSend: boolean;
   shownSendable: number;
   run: RunChoice;
-  mergeData?: { email: string; fields: Record<string, string> }[];
+  mergeData?: { email: string; rowIndex: number; fields: Record<string, string> }[];
 }): Promise<SendResult> {
   const role = await getCurrentUserRole();
   if (grantFor(role, "send.at_or_below_threshold") === "deny") return { ok: false, error: "denied" };
@@ -352,12 +352,12 @@ export async function sendCampaignAction(args: {
   if (args.mergeData && args.mergeData.length > 0) {
     const admin = createAdminClient();
     await admin.from("crm_campaign_merge_data").delete().eq("run_id", runId);
-    const insertRows: { run_id: string; email_normalized: string; field_name: string; field_value: string }[] = [];
+    const insertRows: { run_id: string; email_normalized: string; field_name: string; field_value: string; row_index: number }[] = [];
     for (const row of args.mergeData) {
       const email = normalizeEmail(row.email);
       if (!email) continue;
       for (const [fieldName, fieldValue] of Object.entries(row.fields)) {
-        insertRows.push({ run_id: runId, email_normalized: email, field_name: fieldName, field_value: fieldValue ?? "" });
+        insertRows.push({ run_id: runId, email_normalized: email, field_name: fieldName, field_value: fieldValue ?? "", row_index: row.rowIndex });
       }
     }
     for (let i = 0; i < insertRows.length; i += 500) {

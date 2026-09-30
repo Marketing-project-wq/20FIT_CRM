@@ -9,6 +9,7 @@ import { detectMergePlaceholders, validateMergeCSV } from "@/lib/crm/merge-field
 
 export interface MergeRow {
   email: string;
+  rowIndex: number;
   fields: Record<string, string>;
 }
 
@@ -70,9 +71,10 @@ export function MergeDataPanel({ templateSubject, templateBody, onParsed }: Merg
         return;
       }
 
-      const parsed = Array.from(validation.rows.entries()).map(([email, fields]) => ({
-        email,
-        fields,
+      const parsed = validation.rows.map((r) => ({
+        email: r.email,
+        rowIndex: r.rowIndex,
+        fields: r.fields,
       }));
       setParsedRows(parsed);
       onParsed(parsed);

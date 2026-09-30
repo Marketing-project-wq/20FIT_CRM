@@ -322,18 +322,30 @@ export async function sendCampaign(input: CampaignSendInput, nowIso: string): Pr
   }
 
   // Load per-recipient merge data (mail-merge custom placeholders) for this run.
-  const mergeDataMap = new Map<string, Record<string, string>>();
+  // Grouped by (email, row_index): when the same email has multiple row indices, each becomes a
+  // separate send with its own merge values (e.g. one person receiving two different voucher codes).
+  const mergeDataByEmail = new Map<string, { rowIndex: number; fields: Record<string, string> }[]>();
   {
     const { data: mergeRows } = await admin
       .from("crm_campaign_merge_data")
-      .select("email_normalized, field_name, field_value")
+      .select("email_normalized, field_name, field_value, row_index")
       .eq("run_id", input.campaignId);
     if (mergeRows) {
-      for (const row of mergeRows as { email_normalized: string; field_name: string; field_value: string }[]) {
-        let rec = mergeDataMap.get(row.email_normalized);
-        if (!rec) { rec = {}; mergeDataMap.set(row.email_normalized, rec); }
+      const temp = new Map<string, Map<number, Record<string, string>>>();
+      for (const row of mergeRows as { email_normalized: string; field_name: string; field_value: string; row_index: number }[]) {
+        const ri = row.row_index ?? 0;
+        let byIdx = temp.get(row.email_normalized);
+        if (!byIdx) { byIdx = new Map(); temp.set(row.email_normalized, byIdx); }
+        let rec = byIdx.get(ri);
+        if (!rec) { rec = {}; byIdx.set(ri, rec); }
         rec[row.field_name] = row.field_value;
       }
+      temp.forEach((byIdx, email) => {
+        const entries = Array.from(byIdx.entries())
+          .sort((a, b) => a[0] - b[0])
+          .map((pair) => ({ rowIndex: pair[0], fields: pair[1] }));
+        mergeDataByEmail.set(email, entries);
+      });
     }
   }
 
@@ -341,13 +353,32 @@ export async function sendCampaign(input: CampaignSendInput, nowIso: string): Pr
   const unsubSecret = unsubscribeSecret();
   const baseUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "https://crm.20fit.id").replace(/\/$/, "");
 
-  const engineRecipients: SendRecipient[] = sendable.map((r) => ({
-    customerId: r.customerId,
-    channel: "email",
-    identityKind: "email",
-    destination: r.email,
-    language: r.language,
-  }));
+  // Build engine recipients. When merge data has multiple rows for the same email, expand into one
+  // recipient per row so each gets a separate send with its own merge values.
+  const engineRecipients: SendRecipient[] = [];
+  for (const r of sendable) {
+    const mergeEntries = mergeDataByEmail.get(r.email);
+    if (mergeEntries && mergeEntries.length > 1) {
+      for (const entry of mergeEntries) {
+        engineRecipients.push({
+          customerId: r.customerId,
+          channel: "email",
+          identityKind: "email",
+          destination: r.email,
+          language: r.language,
+          mergeRowIndex: entry.rowIndex,
+        });
+      }
+    } else {
+      engineRecipients.push({
+        customerId: r.customerId,
+        channel: "email",
+        identityKind: "email",
+        destination: r.email,
+        language: r.language,
+      });
+    }
+  }
 
   const hashIdentityFor = (r: SendRecipient) =>
     hashIdentity(r.identityKind, r.destination, identitySecret);
@@ -391,7 +422,10 @@ export async function sendCampaign(input: CampaignSendInput, nowIso: string): Pr
       const token = signUnsubscribeToken({ customerId: r.customerId, kind: "email" }, unsubSecret);
       const unsubscribeUrl = `${baseUrl}/unsubscribe?token=${encodeURIComponent(token)}`;
       const values = { unsubscribe_url: unsubscribeUrl };
-      const mergeValues = mergeDataMap.get(r.destination) ?? {};
+      const mergeEntries = mergeDataByEmail.get(r.destination);
+      const mergeValues = mergeEntries
+        ? (mergeEntries.find((e) => e.rowIndex === (r.mergeRowIndex ?? 0)) ?? mergeEntries[0]).fields
+        : {};
       const renderedBody = replaceMergePlaceholders(renderTemplate(tpl.body, values), mergeValues);
       const renderedSubject = tpl.subject ? replaceMergePlaceholders(tpl.subject, mergeValues) : tpl.subject;
       const { html, text } = renderEmailDocument(renderedBody, unsubscribeUrl);

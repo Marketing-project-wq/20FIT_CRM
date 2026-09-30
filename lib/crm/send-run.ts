@@ -186,6 +186,9 @@ export interface SendRecipient {
   /** Normalized destination (email/phone). Used to SEND and to HASH; never logged raw. */
   destination: string;
   language: "id" | "en";
+  /** When the same email receives multiple sends in one campaign (different merge data per row),
+   *  each occurrence carries a distinct mergeRowIndex (0, 1, 2, …). Absent or 0 = single send. */
+  mergeRowIndex?: number;
 }
 
 export interface RenderedMessage {
@@ -331,8 +334,10 @@ export function buildIdempotencyKey(args: {
   campaignId: string;
   customerId: string;
   channel: Channel;
+  mergeRowIndex?: number;
 }): string {
-  return `${args.campaignId}:${args.customerId}:${args.channel}`;
+  const base = `${args.campaignId}:${args.customerId}:${args.channel}`;
+  return args.mergeRowIndex ? `${base}:m${args.mergeRowIndex}` : base;
 }
 
 /**
@@ -658,7 +663,7 @@ export async function runSend(
 
     // Rule 1: suppression is checked HERE, at send time — not when the segment was counted.
     if (await ports.isSuppressed(r.customerId, r.channel)) {
-      const key = buildIdempotencyKey({ campaignId, customerId: r.customerId, channel: r.channel });
+      const key = buildIdempotencyKey({ campaignId, customerId: r.customerId, channel: r.channel, mergeRowIndex: r.mergeRowIndex });
       // Record the skip (idempotent) so the skipped COUNT is visible; if the row already exists
       // (a prior run) claim returns false and we simply count it.
       const claimed = await ports.claim(key, {
@@ -684,7 +689,7 @@ export async function runSend(
     assertHasUnsubscribeLink(message);
 
     // Rule 2: claim by the deterministic key. Already-present → a prior run handled it; skip.
-    const key = buildIdempotencyKey({ campaignId, customerId: r.customerId, channel: r.channel });
+    const key = buildIdempotencyKey({ campaignId, customerId: r.customerId, channel: r.channel, mergeRowIndex: r.mergeRowIndex });
     const claimed = await ports.claim(key, {
       customerId: r.customerId,
       channel: r.channel,

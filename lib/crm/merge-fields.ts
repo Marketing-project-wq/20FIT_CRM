@@ -32,18 +32,24 @@ export function replaceMergePlaceholders(text: string, mergeValues: Record<strin
   });
 }
 
+export interface MergeCSVRow {
+  email: string;
+  rowIndex: number;
+  fields: Record<string, string>;
+}
+
 export interface MergeCSVValidation {
   ok: boolean;
   errors: string[];
-  /** Parsed rows: email_normalized → field values. */
-  rows: Map<string, Record<string, string>>;
+  rows: MergeCSVRow[];
   /** Field names found in CSV header (uppercase). */
   fields: string[];
 }
 
 /**
  * Validate a parsed CSV for merge data upload. Expects the first column to be "email" and remaining
- * columns to be UPPERCASE field names matching detected placeholders.
+ * columns to be UPPERCASE field names matching detected placeholders. Duplicate emails are allowed —
+ * each row produces a separate send with its own merge values (e.g. one person, two voucher codes).
  */
 export function validateMergeCSV(
   headers: string[],
@@ -51,7 +57,7 @@ export function validateMergeCSV(
   expectedFields: string[],
 ): MergeCSVValidation {
   const errors: string[] = [];
-  const result: Map<string, Record<string, string>> = new Map();
+  const result: MergeCSVRow[] = [];
 
   if (headers.length < 2) {
     errors.push("CSV harus punya minimal 2 kolom: email dan minimal 1 field merge.");
@@ -76,7 +82,7 @@ export function validateMergeCSV(
     errors.push(`Field di CSV tidak ada di template: ${extraFields.join(", ")}`);
   }
 
-  const seenEmails = new Set<string>();
+  const emailCount = new Map<string, number>();
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     const email = (row[0] ?? "").trim().toLowerCase();
@@ -84,17 +90,15 @@ export function validateMergeCSV(
       errors.push(`Baris ${i + 2}: email kosong.`);
       continue;
     }
-    if (seenEmails.has(email)) {
-      errors.push(`Baris ${i + 2}: email duplikat "${email}".`);
-      continue;
-    }
-    seenEmails.add(email);
+
+    const idx = emailCount.get(email) ?? 0;
+    emailCount.set(email, idx + 1);
 
     const values: Record<string, string> = {};
     for (let j = 0; j < fields.length; j++) {
       values[fields[j]] = (row[j + 1] ?? "").trim();
     }
-    result.set(email, values);
+    result.push({ email, rowIndex: idx, fields: values });
   }
 
   return { ok: errors.length === 0, errors, rows: result, fields };
