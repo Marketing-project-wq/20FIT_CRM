@@ -10,6 +10,7 @@ import { getSendConfig } from "@/lib/crm/send-config";
 import { enqueueRunDrain } from "@/lib/crm/send-drain";
 import { validateCampaignName, decideRunLabel } from "@/lib/crm/campaign-name";
 import { renderEmailDocument } from "@/lib/crm/email-document";
+import { inlineEmailCss } from "@/lib/crm/css-inline";
 import { describeCountDrift, planDailySpread, type CountDrift, type DailySpread } from "@/lib/crm/send-plan";
 import { requiresLargeSendConfirmation } from "@/lib/crm/send-run";
 import {
@@ -553,7 +554,9 @@ export async function sendPreviewEmailAction(
   const substituted = sampleMergeValues
     ? replaceMergePlaceholders(afterBuiltins, sampleMergeValues)
     : afterBuiltins.replace(/\{\{([^}]+)\}\}/g, (_, key) => `[${key}]`);
-  const { html, text } = renderEmailDocument(substituted, previewUnsubUrl);
+  const doc = renderEmailDocument(substituted, previewUnsubUrl);
+  const html = inlineEmailCss(doc.html);
+  const text = doc.text;
   const rawSubject = tpl.subject ?? tpl.name;
   const subjectRendered = renderTemplate(rawSubject, { full_name: "Budi Santoso", first_name: "Budi", city: "Jakarta", unsubscribe_url: previewUnsubUrl });
   const subject = `[PREVIEW] ${sampleMergeValues ? replaceMergePlaceholders(subjectRendered, sampleMergeValues) : subjectRendered}`;

@@ -29,6 +29,7 @@ import {
 } from "./send-run";
 import { campaignBounceStatus } from "./bounce-monitor";
 import { replaceMergePlaceholders } from "./merge-fields";
+import { inlineEmailCss } from "./css-inline";
 
 /**
  * Server adapter that wires the pure send engine (lib/crm/send-run.ts) to Supabase + Mailtrap. It
@@ -454,7 +455,9 @@ export async function sendCampaign(input: CampaignSendInput, nowIso: string): Pr
         : {};
       const renderedBody = replaceMergePlaceholders(renderTemplate(tpl.body, values), mergeValues);
       const renderedSubject = tpl.subject ? replaceMergePlaceholders(renderTemplate(tpl.subject, values), mergeValues) : tpl.subject;
-      const { html, text } = renderEmailDocument(renderedBody, unsubscribeUrl);
+      const doc = renderEmailDocument(renderedBody, unsubscribeUrl);
+      const html = inlineEmailCss(doc.html);
+      const text = doc.text;
       const message: RenderedMessage = {
         subject: renderedSubject,
         text,

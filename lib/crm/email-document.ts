@@ -41,27 +41,30 @@ export function isFullHtmlDocument(body: string): boolean {
   return /<!doctype\s+html|<html[\s>]|<head[\s>]/i.test(body);
 }
 
-/** Inject color-scheme meta tags into a full HTML document to prevent email clients from applying
- *  dark mode color inversions. Only adds if not already present. */
+/** Inject color-scheme meta tags and CSS into a full HTML document to prevent email clients from
+ *  applying dark mode color inversions. Handles documents with or without `<head>`. */
 function injectDarkModeGuard(html: string): string {
   if (/color-scheme/i.test(html)) return html;
   const meta = '<meta name="color-scheme" content="light only"><meta name="supported-color-schemes" content="light only">';
-  const style = ':root { color-scheme: light only; }';
-  // Inject meta after existing <meta> tags in <head>, or right after <head>
+  const style = ':root, body { color-scheme: light only !important; }';
+
   if (/<head[\s>]/i.test(html)) {
-    // Add meta right after the last <meta> tag, or after <head>
-    const lastMeta = html.lastIndexOf('</head>');
-    if (lastMeta !== -1) {
-      html = html.slice(0, lastMeta) + meta + '\n' + html.slice(lastMeta);
+    const headEnd = html.search(/<\/head>/i);
+    if (headEnd !== -1) {
+      html = html.slice(0, headEnd) + meta + '\n' + html.slice(headEnd);
     } else {
       html = html.replace(/(<head[^>]*>)/i, `$1\n${meta}`);
     }
+  } else if (/<html[\s>]/i.test(html)) {
+    html = html.replace(/(<html[^>]*>)/i, `$1\n<head>${meta}</head>`);
   }
-  // Add inline style for color-scheme in <style> or as a new <style> block
+
   if (/<style[\s>]/i.test(html)) {
     html = html.replace(/(<style[^>]*>)/i, `$1\n${style}`);
   } else if (/<\/head>/i.test(html)) {
     html = html.replace(/<\/head>/i, `<style>${style}</style>\n</head>`);
+  } else if (/<body[\s>]/i.test(html)) {
+    html = html.replace(/(<body[^>]*>)/i, `<style>${style}</style>\n$1`);
   }
   return html;
 }
