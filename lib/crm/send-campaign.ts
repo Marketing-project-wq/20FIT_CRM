@@ -427,7 +427,7 @@ export async function sendCampaign(input: CampaignSendInput, nowIso: string): Pr
         ? (mergeEntries.find((e) => e.rowIndex === (r.mergeRowIndex ?? 0)) ?? mergeEntries[0]).fields
         : {};
       const renderedBody = replaceMergePlaceholders(renderTemplate(tpl.body, values), mergeValues);
-      const renderedSubject = tpl.subject ? replaceMergePlaceholders(tpl.subject, mergeValues) : tpl.subject;
+      const renderedSubject = tpl.subject ? replaceMergePlaceholders(renderTemplate(tpl.subject, values), mergeValues) : tpl.subject;
       const { html, text } = renderEmailDocument(renderedBody, unsubscribeUrl);
       const message: RenderedMessage = {
         subject: renderedSubject,

@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { useI18n } from "@/components/i18n/lang-provider";
 import { sendPreviewEmailAction } from "./actions";
 
-export function PreviewEmailPanel({ templateKey }: { templateKey: string }) {
+export function PreviewEmailPanel({ templateKey, sampleMergeValues }: { templateKey: string; sampleMergeValues?: Record<string, string> }) {
   const { t } = useI18n();
   const [emails, setEmails] = useState("");
   const [sending, setSending] = useState(false);
@@ -17,7 +17,7 @@ export function PreviewEmailPanel({ templateKey }: { templateKey: string }) {
     if (targets.length === 0) return;
     setSending(true); setResult(null);
     try {
-      const r = await sendPreviewEmailAction(targets, templateKey);
+      const r = await sendPreviewEmailAction(targets, templateKey, sampleMergeValues);
       setResult(r.ok ? { ok: true, sentTo: r.sentTo } : { ok: false, error: r.error ?? "send_failed" });
     } finally {
       setSending(false);
@@ -32,6 +32,7 @@ export function PreviewEmailPanel({ templateKey }: { templateKey: string }) {
         </p>
         <p className="font-body text-[12px] text-ink-faint">
           Kirim preview template ini ke satu atau beberapa email. Pisahkan dengan koma atau baris baru.
+          {sampleMergeValues && " Merge data dari baris pertama CSV akan disubstitusi."}
         </p>
       </div>
       <textarea

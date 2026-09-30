@@ -25,7 +25,8 @@ import { unsubscribeHostServable, missingSendEnv } from "@/lib/crm/send-env";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { runInternalSendTest, cleanupInternalSendTest, type SendTestResult, type SendTestCleanupResult } from "@/lib/crm/send-test-harness";
-import { extractVariables } from "@/lib/crm/template";
+import { extractVariables, renderTemplate } from "@/lib/crm/template";
+import { replaceMergePlaceholders } from "@/lib/crm/merge-fields";
 import { normalizeEmail } from "@/lib/crm/normalize";
 import {
   wibToUtcIso,
@@ -514,6 +515,7 @@ export interface PreviewEmailResult {
 export async function sendPreviewEmailAction(
   toEmails: string[],
   templateKey: string,
+  sampleMergeValues?: Record<string, string>,
 ): Promise<PreviewEmailResult> {
   const role = await getCurrentUserRole();
   if (grantFor(role, "send.at_or_below_threshold") === "deny") return { ok: false, error: "denied" };
@@ -532,14 +534,22 @@ export async function sendPreviewEmailAction(
   if (!tplData) return { ok: false, error: "no_template" };
   const tpl = tplData as { name: string; subject: string | null; body: string; sender_name: string | null };
 
-  // Replace template variables with placeholder values for preview, then compose through the SAME
-  // email skeleton the real send uses (so a Send-test reflects the exact frame that ships).
+  // Two-pass substitution mirroring the real send path: renderTemplate handles built-in vars,
+  // then replaceMergePlaceholders handles custom merge fields from the CSV's first row.
   const previewUnsubUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? "https://crm.20fit.id"}/unsubscribe?token=PREVIEW`;
-  const substituted = tpl.body
-    .replace(/\{\{unsubscribe_url\}\}/g, previewUnsubUrl)
-    .replace(/\{\{([^}]+)\}\}/g, (_, key) => `[${key}]`);
+  const afterBuiltins = renderTemplate(tpl.body, {
+    full_name: "Budi Santoso",
+    first_name: "Budi",
+    city: "Jakarta",
+    unsubscribe_url: previewUnsubUrl,
+  });
+  const substituted = sampleMergeValues
+    ? replaceMergePlaceholders(afterBuiltins, sampleMergeValues)
+    : afterBuiltins.replace(/\{\{([^}]+)\}\}/g, (_, key) => `[${key}]`);
   const { html, text } = renderEmailDocument(substituted, previewUnsubUrl);
-  const subject = `[PREVIEW] ${tpl.subject ?? tpl.name}`;
+  const rawSubject = tpl.subject ?? tpl.name;
+  const subjectRendered = renderTemplate(rawSubject, { full_name: "Budi Santoso", first_name: "Budi", city: "Jakarta", unsubscribe_url: previewUnsubUrl });
+  const subject = `[PREVIEW] ${sampleMergeValues ? replaceMergePlaceholders(subjectRendered, sampleMergeValues) : subjectRendered}`;
 
   const { sendTransactionalEmail } = await import("@/lib/email/send");
   const sentTo: string[] = [];

@@ -670,7 +670,7 @@ export function CampaignFlow({
 
           {/* Uji kirim ke admin */}
           <div className="rounded-card border border-glass-border p-4">
-            <PreviewEmailPanel templateKey={templateKey} />
+            <PreviewEmailPanel templateKey={templateKey} sampleMergeValues={mergeRows?.[0]?.fields} />
           </div>
 
           {preview?.ok && (
