@@ -437,6 +437,7 @@ export async function scheduleCampaignAction(args: {
   runLabel: string | null;
   dateWib: string; // "YYYY-MM-DD"
   timeWib: string; // "HH:MM"
+  mergeData?: { email: string; rowIndex: number; fields: Record<string, string> }[];
 }): Promise<ScheduleResult> {
   const role = await getCurrentUserRole();
   if (grantFor(role, "send.at_or_below_threshold") === "deny") return { ok: false, error: "denied" };
@@ -491,6 +492,7 @@ export async function scheduleCampaignAction(args: {
     confirmedLargeSend: args.confirmedLargeSend,
     shownSendable: fresh.sendable,
     createdBy,
+    mergeData: args.mergeData,
   });
   if (!res.ok) return { ok: false, error: "schedule_failed" };
   revalidatePath("/campaigns");

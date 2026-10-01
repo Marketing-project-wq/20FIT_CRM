@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { wibToUtcIso, WIB_OFFSET_HOURS } from "./wib-time";
+import { normalizeEmail } from "./normalize";
 
 export { wibToUtcIso, WIB_OFFSET_HOURS };
 
@@ -20,6 +21,7 @@ export interface ScheduledSend {
   createdAt: string;
   sentAt: string | null;
   lastError: string | null;
+  mergeDataJson: MergeDataRow[] | null;
 }
 
 interface Row {
@@ -32,6 +34,7 @@ interface Row {
   created_at: string;
   sent_at: string | null;
   last_error: string | null;
+  merge_data_json?: unknown;
 }
 
 function toScheduled(r: Row): ScheduledSend {
@@ -45,7 +48,14 @@ function toScheduled(r: Row): ScheduledSend {
     createdAt: r.created_at,
     sentAt: r.sent_at,
     lastError: r.last_error,
+    mergeDataJson: Array.isArray(r.merge_data_json) ? r.merge_data_json as MergeDataRow[] : null,
   };
+}
+
+export interface MergeDataRow {
+  email: string;
+  rowIndex: number;
+  fields: Record<string, string>;
 }
 
 export async function insertScheduledSend(admin: SupabaseClient, input: {
@@ -56,18 +66,23 @@ export async function insertScheduledSend(admin: SupabaseClient, input: {
   confirmedLargeSend: boolean;
   shownSendable: number;
   createdBy: string | null;
+  mergeData?: MergeDataRow[] | null;
 }): Promise<{ ok: boolean; id?: string; error?: string }> {
+  const row: Record<string, unknown> = {
+    segment_id: input.segmentId,
+    template_key: input.templateKey,
+    run_label: input.runLabel,
+    scheduled_at: input.scheduledAtUtc,
+    confirmed_large_send: input.confirmedLargeSend,
+    shown_sendable: input.shownSendable,
+    created_by: input.createdBy,
+  };
+  if (input.mergeData && input.mergeData.length > 0) {
+    row.merge_data_json = input.mergeData;
+  }
   const { data, error } = await admin
     .from("crm_scheduled_send")
-    .insert({
-      segment_id: input.segmentId,
-      template_key: input.templateKey,
-      run_label: input.runLabel,
-      scheduled_at: input.scheduledAtUtc,
-      confirmed_large_send: input.confirmedLargeSend,
-      shown_sendable: input.shownSendable,
-      created_by: input.createdBy,
-    })
+    .insert(row)
     .select("id")
     .single();
   if (error) return { ok: false, error: error.code ?? "insert_failed" };
@@ -114,7 +129,7 @@ export async function claimDueScheduledSends(admin: SupabaseClient, nowIso: stri
       .eq("id", id)
       .eq("status", "pending")
       .is("claimed_at", null)
-      .select("id, segment_id, template_key, run_label, scheduled_at, status, created_at, sent_at, last_error")
+      .select("id, segment_id, template_key, run_label, scheduled_at, status, created_at, sent_at, last_error, merge_data_json")
       .maybeSingle();
     if (!error && data) claimed.push(toScheduled(data as Row));
   }
@@ -127,4 +142,35 @@ export async function markScheduledSent(admin: SupabaseClient, id: string): Prom
 
 export async function markScheduledFailed(admin: SupabaseClient, id: string, error: string): Promise<void> {
   await admin.from("crm_scheduled_send").update({ status: "failed", last_error: error.slice(0, 200) }).eq("id", id);
+}
+
+/** Copy merge data from a scheduled send's JSON into crm_campaign_merge_data for the new run.
+ *  Mirrors the insert logic in sendCampaignAction. */
+export async function copyMergeDataToRun(
+  admin: SupabaseClient,
+  runId: string,
+  mergeData: MergeDataRow[],
+): Promise<boolean> {
+  if (mergeData.length === 0) return true;
+  const insertRows: { run_id: string; email_normalized: string; field_name: string; field_value: string; row_index: number }[] = [];
+  for (const row of mergeData) {
+    const email = normalizeEmail(row.email);
+    if (!email) continue;
+    for (const [fieldName, fieldValue] of Object.entries(row.fields)) {
+      insertRows.push({ run_id: runId, email_normalized: email, field_name: fieldName, field_value: fieldValue ?? "", row_index: row.rowIndex });
+    }
+  }
+  if (insertRows.length === 0) return true;
+  for (let i = 0; i < insertRows.length; i += 500) {
+    const chunk = insertRows.slice(i, i + 500);
+    const { error } = await admin.from("crm_campaign_merge_data").insert(chunk);
+    if (error) {
+      // row_index column may not exist yet — retry without it.
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const withoutRowIndex = chunk.map(({ row_index: _ri, ...rest }) => rest);
+      const { error: e2 } = await admin.from("crm_campaign_merge_data").insert(withoutRowIndex);
+      if (e2) return false;
+    }
+  }
+  return true;
 }

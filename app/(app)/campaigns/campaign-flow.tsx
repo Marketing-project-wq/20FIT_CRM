@@ -388,6 +388,7 @@ export function CampaignFlow({
     try {
       const r = await scheduleCampaignAction({
         segmentId, templateKey, confirmedLargeSend: confirmLarge, shownSendable, runLabel, dateWib, timeWib,
+        mergeData: mergeRows ?? undefined,
       });
       if (!r.ok) {
         if (r.error === "count_changed" && typeof r.freshSendable === "number") {

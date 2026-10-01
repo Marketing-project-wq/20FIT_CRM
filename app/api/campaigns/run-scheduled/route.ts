@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getSegmentById } from "@/lib/crm/segment-store";
 import { createRun, recordRunError } from "@/lib/crm/campaign-run";
 import { cronRunLabel } from "@/lib/crm/campaign-label";
-import { claimDueScheduledSends, markScheduledSent, markScheduledFailed } from "@/lib/crm/scheduled-send";
+import { claimDueScheduledSends, markScheduledSent, markScheduledFailed, copyMergeDataToRun } from "@/lib/crm/scheduled-send";
 import {
   enqueueRunDrain,
   claimDrainableRuns,
@@ -62,6 +62,11 @@ export async function POST(req: NextRequest) {
         createdBy: "system:scheduled-send",
       });
       if (!run) { await markScheduledFailed(admin, s.id, "run_create_failed"); enqueueFailed++; continue; }
+
+      if (s.mergeDataJson && s.mergeDataJson.length > 0) {
+        const copied = await copyMergeDataToRun(admin, run.id, s.mergeDataJson);
+        if (!copied) { await markScheduledFailed(admin, s.id, "merge_data_copy_failed"); enqueueFailed++; continue; }
+      }
 
       // Hand the run to the drain pass, then mark the schedule 'sent' — its run represents it now
       // (deliveries.ts drops a 'sent' schedule to avoid double-counting). Any unresolvable email-list
