@@ -6,6 +6,7 @@ import { Printer, RefreshCw, ChevronDown, ChevronRight, TrendingDown, TrendingUp
 import { Button } from "@/components/ui/button";
 import type { EventAnalyticsData, EventGroup, EventComparison, DemographicBreakdown, Insight, InsightCategory, LifecycleFunnel, CategoryGrowthRow, OverlapMatrix, GeoExpansion } from "@/lib/crm/event-analytics";
 import { EventAnalysisLoader } from "@/components/analytics/event-analysis-loader";
+import { EventRegistryManager } from "@/components/analytics/event-registry-manager";
 import { useI18n } from "@/components/i18n/lang-provider";
 import { formatCount, formatPct, type Lang } from "@/lib/i18n";
 
@@ -29,10 +30,12 @@ export function EventAnalysis({
   data: initialData,
   nowMs,
   allGroups,
+  canManage = false,
 }: {
   data: EventAnalyticsData;
   nowMs: number;
   allGroups: GroupOption[];
+  canManage?: boolean;
 }) {
   const { lang, t } = useI18n();
   const router = useRouter();
@@ -112,6 +115,12 @@ export function EventAnalysis({
   );
 
   const hasFilter = selectedEvents.size > 0 || dateFrom !== "" || dateTo !== "";
+
+  // Re-pull analytics with the current filter — used after the registry changes so grouping updates
+  // live, without a full page reload. With no filter active this returns the full (unfiltered) set.
+  const refetchAll = useCallback(() => {
+    fetchFiltered(selectedEvents, dateFrom, dateTo);
+  }, [fetchFiltered, selectedEvents, dateFrom, dateTo]);
 
   useEffect(() => {
     if (!hasFilter) {
@@ -257,7 +266,8 @@ export function EventAnalysis({
             {data.groups.length} {te.groups}, {data.events.length} {te.subEvents}
           </p>
         </div>
-        <div className="flex gap-2 print:hidden">
+        <div className="flex flex-wrap gap-2 print:hidden">
+          {canManage && <EventRegistryManager onChanged={refetchAll} />}
           <Button variant="outline" size="sm" onClick={() => window.print()}>
             <Printer className="mr-1.5 h-4 w-4" aria-hidden />
             {te.printPdf}
