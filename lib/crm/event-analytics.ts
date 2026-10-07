@@ -7,11 +7,21 @@ import "server-only";
  *   1. customer_engagement WHERE unit='event'
  *   2. master_customer.tags[] event:* tags
  *   3. crm_tag_registry for labels
+ *   4. crm_event_registry (+ _tags) for CURATED grouping
  *
- * Related sub-events (JHM 5K/10K/HM, Sportfest v.02 Half/Single/…) are grouped
- * by slug prefix. All KPIs, cohort retention, and churn are computed on groups.
- * Individual events are included for the expanded view.
+ * GROUPING — registry first, prefix fallback:
+ *   - If the event registry (crm_event_registry) has entries, each registry event is a group;
+ *     its assigned tags collapse into it, and its name is the group label. Any event:* tag NOT
+ *     assigned to a registry event shows as its own individual group (so admins can migrate
+ *     tag-by-tag without losing visibility).
+ *   - If the registry is EMPTY (migration not run, or nothing defined yet), fall back to the
+ *     original automatic prefix grouping (eventGroupKey) so the page behaves exactly as before.
+ *
+ * All KPIs, cohort retention, churn, and demographics are computed on groups. Individual events
+ * are included for the expanded "all events" view.
  */
+
+import { fetchEventRegistry, type EventRegistryEntry } from "@/lib/crm/event-registry";
 
 export interface EventInfo {
   slug: string;
@@ -168,6 +178,28 @@ export async function fetchEventAnalytics(admin: AdminClient, filter?: EventAnal
     labelMap.set(r.slug, r.label ?? formatSlugLabel(r.slug));
   }
 
+  // === GROUPING STRATEGY: curated registry first, prefix fallback ===
+  // When crm_event_registry has entries, each event's assigned tags collapse into a "reg:<id>"
+  // group labelled with the event name; unassigned tags stay individual. When it is empty, fall
+  // back to the original slug-prefix grouping so the page is unchanged before any event is defined.
+  const eventRegistry: EventRegistryEntry[] = await fetchEventRegistry(admin);
+  const useRegistry = eventRegistry.length > 0;
+
+  const registryTagToGroupKey = new Map<string, string>();
+  const registryLabelByKey = new Map<string, string>();
+  for (const ev of eventRegistry) {
+    const key = "reg:" + ev.id;
+    registryLabelByKey.set(key, ev.name);
+    for (const tag of ev.tags) registryTagToGroupKey.set(tag, key);
+  }
+
+  // slug → group key. Registry: assigned → "reg:<id>", unassigned → the slug itself (its own group).
+  // No registry: the original prefix heuristic.
+  const groupKeyFor = (slug: string): string => {
+    if (useRegistry) return registryTagToGroupKey.get(slug) ?? slug;
+    return eventGroupKey(slug);
+  };
+
   // Source A: master_customer event tags + demographics (paged)
   const tagsByPerson = new Map<string, string[]>();
   const personDemo = new Map<string, { gender: string | null; dob: string | null; city: string | null }>();
@@ -232,8 +264,11 @@ export async function fetchEventAnalytics(admin: AdminClient, filter?: EventAnal
   });
 
   // === MERGE per person ===
+  // The UI stores a group key with any leading "event:" stripped. A curated group key is "reg:<id>"
+  // (never stripped). Accept BOTH the raw value and the event:-prefixed variant so the filter matches
+  // whichever shape groupKeyFor() produces (reg:<id>, event:<slug>, or a prefix group key).
   const filterGroupSet = filter?.eventSlugs?.length
-    ? new Set(filter.eventSlugs.map((s) => s.startsWith("event:") ? s : "event:" + s))
+    ? new Set(filter.eventSlugs.flatMap((s) => [s, s.startsWith("event:") ? s : "event:" + s]))
     : null;
 
   const allCustomerIds = new Set<string>();
@@ -253,7 +288,7 @@ export async function fetchEventAnalytics(admin: AdminClient, filter?: EventAnal
     if (merged.size === 0) return;
     let arr = Array.from(merged);
     if (filterGroupSet) {
-      arr = arr.filter((e) => filterGroupSet.has(eventGroupKey(e)));
+      arr = arr.filter((e) => filterGroupSet.has(groupKeyFor(e)));
       if (arr.length === 0) return;
     }
     peopleEvents.push(arr);
@@ -310,7 +345,7 @@ export async function fetchEventAnalytics(admin: AdminClient, filter?: EventAnal
   // === GROUP EVENTS ===
   const eventToGroup = new Map<string, string>();
   for (const slug of sortedEvents) {
-    eventToGroup.set(slug, eventGroupKey(slug));
+    eventToGroup.set(slug, groupKeyFor(slug));
   }
 
   const groupSubEvents = new Map<string, string[]>();
@@ -371,7 +406,8 @@ export async function fetchEventAnalytics(admin: AdminClient, filter?: EventAnal
     const subLabels = subs.map((s) => labelMap.get(s) ?? formatSlugLabel(s));
     return {
       groupKey: gk,
-      groupLabel: deriveGroupLabel(subLabels, gk),
+      // Curated events use the admin-set name; everything else derives a label from its sub-events.
+      groupLabel: registryLabelByKey.get(gk) ?? deriveGroupLabel(subLabels, gk),
       subEvents: subs.map((s, i) => ({ slug: s, label: subLabels[i] })),
       total: groupTotals.get(gk)!.size,
       newCount: groupNew.get(gk)!,

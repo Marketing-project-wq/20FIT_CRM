@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { getCurrentUserRole } from "@/lib/auth/current-role";
-import { canViewProfileList } from "@/lib/auth/roles";
+import { canViewProfileList, isPermitted } from "@/lib/auth/roles";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchEventAnalytics } from "@/lib/crm/event-analytics";
 import { EventAnalysis } from "@/components/analytics/event-analysis";
@@ -38,5 +38,8 @@ export default async function EventAnalyticsPage() {
     label: g.groupLabel,
   }));
 
-  return <EventAnalysis data={data} nowMs={Date.now()} allGroups={allGroups} />;
+  // Managing the event registry is the "admin" gate — same permission as tag management.
+  const canManage = isPermitted(role, "audit.view");
+
+  return <EventAnalysis data={data} nowMs={Date.now()} allGroups={allGroups} canManage={canManage} />;
 }
