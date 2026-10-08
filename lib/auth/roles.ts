@@ -494,6 +494,8 @@ export function canSeeNav(role: unknown, href: string, ctx: AccessContext = {}):
       return canViewProfileList(role, ctx);
     case "/analytics/events":
       return canViewProfileList(role, ctx);
+    case "/analytics/customer-360":
+      return canViewProfileList(role, ctx);
     // NOTE: "/exports" is intentionally absent — the Exports screen was removed (the route now
     // redirects to /campaigns). The export.* actions stay in the matrix for PRD 17.2 parity (K-44
     // precedent) but no nav destination surfaces them.
