@@ -17,7 +17,20 @@ type AdminClient = any;
 
 const PAGE = 1000;
 
-/** Canonical unit order + known labels. Units outside this list still render (appended, raw). */
+/**
+ * Legacy unit remap for the ENGAGEMENT footprint. The "gym" unit on customer_engagement is 2 legacy
+ * records that are really part of Membership (Fitco), so they fold into "membership" — the whole page
+ * then reads as 5 units, not 6. This applies ONLY to the per-customer unit footprint (KPIs, breakdown,
+ * matrix, combinations, journey). It is intentionally NOT applied to revenue: customer_360_transactions_v1
+ * carries real Gym transactions, and the Revenue section deliberately reports Clinic/Shop/Arena/Gym
+ * as its own scope (Membership & Event have no transaction data yet).
+ */
+const UNIT_MERGE: Record<string, string> = {
+  gym: "membership",
+};
+const mergeUnit = (unit: string): string => UNIT_MERGE[unit] ?? unit;
+
+/** Canonical unit order. Units outside this list still render (appended, raw). */
 export const KNOWN_UNITS = ["membership", "event", "arena", "clinic", "shop", "gym"] as const;
 
 export interface UnitUsers {
@@ -84,14 +97,15 @@ export async function fetchCustomer360Analytics(admin: AdminClient): Promise<Cus
     const rows = (data ?? []) as { customer_id: string; unit: string | null; first_seen_at: string | null }[];
     for (const r of rows) {
       if (!r.customer_id || !r.unit) continue;
+      const unit = mergeUnit(r.unit); // fold legacy "gym" engagement into "membership"
       let set = unitsByCustomer.get(r.customer_id);
       if (!set) { set = new Set(); unitsByCustomer.set(r.customer_id, set); }
-      set.add(r.unit);
+      set.add(unit);
 
       if (r.first_seen_at) {
         const cur = entryByCustomer.get(r.customer_id);
         if (!cur || r.first_seen_at < cur.at) {
-          entryByCustomer.set(r.customer_id, { unit: r.unit, at: r.first_seen_at });
+          entryByCustomer.set(r.customer_id, { unit, at: r.first_seen_at });
         }
       }
     }

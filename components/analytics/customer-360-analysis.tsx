@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { RefreshCw, Users, Layers, Wallet, Network, MapPin, GitMerge } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatCard } from "@/components/dashboard/stat-card";
@@ -113,31 +113,35 @@ export function Customer360Analysis({ data: initialData }: { data: Customer360Da
               value={formatCount(data.totalCustomers, lang)}
               hint={te.totalCustomersHint}
               icon={<Users className="h-4 w-4" />}
+              info={<InfoTooltip content={te.tooltipTotalCustomers} />}
             />
             <StatCard
               label={te.multiUnitUsers}
               value={formatCount(data.multiUnitUsers, lang)}
               hint={te.multiUnitUsersHint.replace("{pct}", formatPct(multiUnitPct, lang))}
               icon={<Network className="h-4 w-4" />}
+              info={<InfoTooltip content={te.tooltipMultiUnit} />}
             />
             <StatCard
               label={te.avgUnitsPerUser}
               value={formatDecimal(data.avgUnitsPerUser, lang, 1)}
               hint={te.avgUnitsPerUserHint}
               icon={<Layers className="h-4 w-4" />}
+              info={<InfoTooltip content={te.tooltipAvgUnits} />}
             />
             <StatCard
               label={te.totalRevenue}
               value={formatRupiah(data.totalRevenue, lang)}
               hint={te.totalRevenueHint.replace("{n}", formatCount(data.revenueByUnit.reduce((s, r) => s + r.txnCount, 0), lang))}
               icon={<Wallet className="h-4 w-4" />}
+              info={<InfoTooltip content={te.tooltipRevenue} />}
             />
           </div>
 
           {/* Area 2 + 6b: Unit breakdown + Units-per-customer distribution */}
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <section className="card p-5">
-              <SectionHead title={te.unitBreakdown} desc={te.unitBreakdownDesc} />
+              <SectionHead title={te.unitBreakdown} desc={te.unitBreakdownDesc} info={te.tooltipUnitDist} />
               <div className="mt-4">
                 <BarList
                   lang={lang}
@@ -151,7 +155,7 @@ export function Customer360Analysis({ data: initialData }: { data: Customer360Da
             </section>
 
             <section className="card p-5">
-              <SectionHead title={te.unitDistribution} desc={te.unitDistributionDesc} />
+              <SectionHead title={te.unitDistribution} desc={te.unitDistributionDesc} info={te.tooltipUnitsPerCustomer} />
               <div className="mt-4">
                 <BarList
                   lang={lang}
@@ -167,13 +171,13 @@ export function Customer360Analysis({ data: initialData }: { data: Customer360Da
 
           {/* Area 3: Cross-unit matrix */}
           <section className="card p-5">
-            <SectionHead title={te.crossUnitMatrix} desc={te.crossUnitMatrixDesc} icon={<Network className="h-5 w-5 text-blue" aria-hidden />} />
+            <SectionHead title={te.crossUnitMatrix} desc={te.crossUnitMatrixDesc} icon={<Network className="h-5 w-5 text-blue" aria-hidden />} info={te.tooltipMatrix} />
             <CrossUnitHeatmap matrix={data.crossUnitMatrix} lang={lang} te={te} />
           </section>
 
           {/* Area 4: Revenue by unit */}
           <section className="card p-5">
-            <SectionHead title={te.revenueByUnit} desc={te.revenueByUnitDesc} icon={<Wallet className="h-5 w-5 text-green" aria-hidden />} />
+            <SectionHead title={te.revenueByUnit} desc={te.revenueByUnitDesc} icon={<Wallet className="h-5 w-5 text-green" aria-hidden />} info={te.tooltipRevenueUnit} />
             {data.revenueByUnit.length === 0 ? (
               <p className="mt-4 font-body text-[13px] text-ink-faint">{te.noData}</p>
             ) : (
@@ -183,7 +187,7 @@ export function Customer360Analysis({ data: initialData }: { data: Customer360Da
 
           {/* Area 5: Top combinations */}
           <section className="card p-5">
-            <SectionHead title={te.topCombinations} desc={te.topCombinationsDesc} icon={<GitMerge className="h-5 w-5 text-amber" aria-hidden />} />
+            <SectionHead title={te.topCombinations} desc={te.topCombinationsDesc} icon={<GitMerge className="h-5 w-5 text-amber" aria-hidden />} info={te.tooltipCombinations} />
             {data.topCombinations.length === 0 ? (
               <p className="mt-4 font-body text-[13px] text-ink-faint">{te.noData}</p>
             ) : (
@@ -193,7 +197,7 @@ export function Customer360Analysis({ data: initialData }: { data: Customer360Da
 
           {/* Area 6: Journey — entry unit */}
           <section className="card p-5">
-            <SectionHead title={te.userJourney} desc={te.userJourneyDesc} icon={<MapPin className="h-5 w-5 text-red" aria-hidden />} />
+            <SectionHead title={te.userJourney} desc={te.userJourneyDesc} icon={<MapPin className="h-5 w-5 text-red" aria-hidden />} info={te.tooltipJourney} />
             <p className="mt-3 font-display text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
               {te.entryUnitLabel}
             </p>
@@ -214,15 +218,84 @@ export function Customer360Analysis({ data: initialData }: { data: Customer360Da
   );
 }
 
-function SectionHead({ title, desc, icon }: { title: string; desc?: string; icon?: React.ReactNode }) {
+function SectionHead({ title, desc, icon, info }: { title: string; desc?: string; icon?: React.ReactNode; info?: string }) {
   return (
     <div>
       <h2 className="flex items-center gap-2 font-display text-[16px] font-bold text-ink">
         {icon}
         {title}
+        {info && <InfoTooltip content={info} />}
       </h2>
       {desc && <p className="mt-1 font-body text-[13px] text-ink-soft">{desc}</p>}
     </div>
+  );
+}
+
+/**
+ * Small ⓘ popover explaining a section's data source / method. Click to toggle (works on touch),
+ * closes on outside-click, Escape, or scroll/resize. Dark-mode safe (glass-strong + design tokens).
+ * Mobile-safe: the panel is positioned with `fixed` against measured viewport coordinates and its
+ * left edge is clamped to a margin, so it can never run off-screen however far right the icon sits.
+ * Content uses `\n\n` for paragraph breaks, rendered with whitespace-pre-line.
+ */
+function InfoTooltip({ content }: { content: string }) {
+  const [open, setOpen] = useState(false);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
+
+  const place = useCallback(() => {
+    const el = btnRef.current;
+    if (!el || typeof window === "undefined") return;
+    const r = el.getBoundingClientRect();
+    const margin = 8;
+    const width = Math.min(288, window.innerWidth - margin * 2);
+    const left = Math.max(margin, Math.min(r.left, window.innerWidth - width - margin));
+    setPos({ top: r.bottom + 8, left, width });
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    place();
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    const close = () => setOpen(false);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [open, place]);
+
+  return (
+    <span className="inline-flex align-middle">
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
+        className="text-ink-faint transition-colors hover:text-ink-soft"
+        aria-label="Info"
+        aria-expanded={open}
+      >
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden>
+          <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5" />
+          <path d="M8 7v4M8 5.5v-.01" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      </button>
+      {open && pos && (
+        <>
+          <span className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden />
+          <span
+            role="note"
+            style={{ position: "fixed", top: pos.top, left: pos.left, width: pos.width }}
+            className="glass-strong z-50 block whitespace-pre-line rounded-lg border border-glass-border p-3 font-body text-[12px] font-normal leading-relaxed text-ink shadow-[var(--shadow-glass-lg)]"
+          >
+            {content}
+          </span>
+        </>
+      )}
+    </span>
   );
 }
 
