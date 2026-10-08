@@ -144,14 +144,20 @@ const CHIP_KEYS: Record<FilterChip, keyof DeliveryLabels> = {
   draft: "chipDraft",
 };
 
-const TEST_RE = /test|uji|gmail\s*test/i;
-const DOORPRIZE_RE = /doorprize/i;
-
+/**
+ * A Delivery-History row is a TEST send only when it came from the internal send-test harness —
+ * the one path that opens a crm_campaign_run, and it always uses the seeded test template
+ * (__uji_internal__). Regular "Send test" is a preview (sendTransactionalEmail, no run), so it
+ * never reaches this timeline; there is no other genuine test row to catch.
+ *
+ * The old heuristics — label matching /test|uji/ and recipientCount <= 5 — had NO real target here
+ * and only MISLABELED real campaigns: a small targeted send or a "Part 2" retry to a handful of
+ * people (≤ 5), or any campaign whose name happens to contain "uji"/"test" (e.g. "Internal RPC PLN
+ * …" was hidden because its retry run was small). A real send is never a test by virtue of its size
+ * or its name, so those guesses are gone — classification now uses the one reliable signal.
+ */
 function isTestEntry(row: DeliveryRow): boolean {
-  if (isInternalTestTemplateKey(row.templateKey)) return true;
-  if (TEST_RE.test(row.label ?? "")) return true;
-  if (row.recipientCount <= 5 && !DOORPRIZE_RE.test(row.label ?? "")) return true;
-  return false;
+  return isInternalTestTemplateKey(row.templateKey);
 }
 
 function readShowTest(): boolean {
