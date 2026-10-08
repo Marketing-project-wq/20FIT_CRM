@@ -17,4 +17,4 @@ export function getDictionary(lang: Lang): Dict {
 
 export type { Lang } from "./config";
 export { LANGS, DEFAULT_LANG, LANG_COOKIE, LOCALE, isLang, parseLang } from "./config";
-export { formatCount, formatPct, formatDecimal, formatDate, formatDateTime } from "./format";
+export { formatCount, formatPct, formatDecimal, formatDate, formatDateTime, formatRupiah } from "./format";

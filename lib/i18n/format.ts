@@ -22,6 +22,13 @@ export function formatPct(rate: number, lang: Lang): string {
   }).format(n)}%`;
 }
 
+/** Rupiah amount, grouped per locale, no decimals ("Rp 1.234.567"). Rupiah has no sub-unit in
+ *  practice, so cents are dropped. Non-finite input renders "Rp 0" rather than "Rp NaN". */
+export function formatRupiah(n: number, lang: Lang): string {
+  const v = Number.isFinite(n) ? Math.round(n) : 0;
+  return `Rp ${new Intl.NumberFormat(LOCALE[lang]).format(v)}`;
+}
+
 /** A number with a fixed number of decimals, per locale. */
 export function formatDecimal(n: number, lang: Lang, digits = 2): string {
   return new Intl.NumberFormat(LOCALE[lang], {
