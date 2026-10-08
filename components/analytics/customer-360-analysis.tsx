@@ -233,7 +233,7 @@ function SectionHead({ title, desc, icon, info }: { title: string; desc?: string
 
 /**
  * Small ⓘ popover explaining a section's data source / method. Click to toggle (works on touch),
- * closes on outside-click, Escape, or scroll/resize. Dark-mode safe (glass-strong + design tokens).
+ * closes on outside-click, Escape, or scroll/resize. Dark-mode safe (solid surface + design tokens).
  * Mobile-safe: the panel is positioned with `fixed` against measured viewport coordinates and its
  * left edge is clamped to a margin, so it can never run off-screen however far right the icon sits.
  * Content uses `\n\n` for paragraph breaks, rendered with whitespace-pre-line.
@@ -248,7 +248,7 @@ function InfoTooltip({ content }: { content: string }) {
     if (!el || typeof window === "undefined") return;
     const r = el.getBoundingClientRect();
     const margin = 8;
-    const width = Math.min(288, window.innerWidth - margin * 2);
+    const width = Math.min(280, window.innerWidth - margin * 2);
     const left = Math.max(margin, Math.min(r.left, window.innerWidth - width - margin));
     setPos({ top: r.bottom + 8, left, width });
   }, []);
@@ -289,7 +289,10 @@ function InfoTooltip({ content }: { content: string }) {
           <span
             role="note"
             style={{ position: "fixed", top: pos.top, left: pos.left, width: pos.width }}
-            className="glass-strong z-50 block whitespace-pre-line rounded-lg border border-glass-border p-3 font-body text-[12px] font-normal leading-relaxed text-ink shadow-[var(--shadow-glass-lg)]"
+            // Solid surface (not glass) so the card behind never shows through. normal-case +
+            // tracking-normal + font-normal reset the uppercase/letter-spacing/weight this panel
+            // would otherwise inherit from the KPI card's uppercase <p> header.
+            className="z-50 block whitespace-pre-line rounded-lg border border-surface-border bg-surface p-3 font-body text-[12px] font-normal normal-case leading-relaxed tracking-normal text-ink shadow-[var(--shadow-glass-lg)]"
           >
             {content}
           </span>
