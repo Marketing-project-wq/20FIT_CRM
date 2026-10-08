@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveRestrictIds, applyMasterCriteria } from "./segment-read";
 import { normalizeEmail } from "./normalize";
+import { correctEmailDomain } from "./email-domain-correct";
 import { renderEmailDocument } from "./email-document";
 import { fetchSuppressedCustomerIds } from "./contactability-read";
 import { EMAIL_IN_CHUNK } from "./email-list";
@@ -136,7 +137,11 @@ export async function resolveEmailListRecipients(
   const normalized: string[] = [];
   const seen = new Set<string>();
   for (const raw of emails) {
-    const email = normalizeEmail(raw);
+    // Correct known domain typos (gmail.con → gmail.com) BEFORE normalizing, exactly as ingest does
+    // (import-audience + add-contact apply correctEmailDomain). master_customer stores the corrected
+    // form, so a typo'd list address must be corrected the same way or it can never match its own
+    // audience row — the "not in the 20FIT audience data" rejection for a person who IS in the pool.
+    const email = normalizeEmail(correctEmailDomain(raw));
     if (!email || seen.has(email)) continue;
     seen.add(email);
     normalized.push(email);
