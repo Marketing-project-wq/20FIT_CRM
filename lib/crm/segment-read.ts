@@ -147,7 +147,13 @@ function hasMasterCriteria(c: SegmentCriteria, masterFilterExpr?: string | null)
   );
 }
 
-const IN_CHUNK = 500; // uuids per .in() batch — bounded URL length
+// uuids per .in() batch. MUST stay at the project's T-69 URL-safety standard (300), the same as
+// contactability-read.ts and EMAIL_IN_CHUNK: a 500-id chunk builds a ~19.6 KB request URL, which
+// overruns the ~24 KB gateway limit once any extra criterion (tags/tree/profile) is added, so the
+// read returns an HTTP error and the whole compute 500s. This path (id-set restriction AND a
+// master criterion, e.g. "been to arena" + a Produk tag) is the only one that hits this query, so
+// the oversized chunk went unnoticed until such a segment was built. 300 uuids ≈ 11 KB — safe.
+const IN_CHUNK = 300;
 
 /** Count master_customer rows that BOTH match the master criteria AND have a customer_id
  *  in `ids`. Chunks `ids` into .in() batches (head:true counts, no rows read) and sums. */
