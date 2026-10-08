@@ -64,4 +64,16 @@ describe("resolveEmailListRecipients — pool-only recipients, unresolved named"
     expect(recipients[0].customerId).toBe(A);
     expect(unresolved).toEqual([]); // "not-an-email" has no @ → dropped by normalizeEmail, not "unresolved"
   });
+
+  it("corrects a known domain typo before matching, so a gmail.con list address matches its gmail.com pool row", async () => {
+    // The pool holds the CANONICAL address — ingest ran correctEmailDomain, so the typo never reached
+    // the table. The list carries the operator's typo; it must be corrected the same way or it would
+    // be falsely reported "not in the 20FIT audience data" for a person who IS in the pool.
+    const admin = fakeAdmin({ "berulangnegatifup3klaten@gmail.com": A });
+    const { recipients, unresolved } = await resolveEmailListRecipients(admin, ["berulangnegatifup3klaten@gmail.con"]);
+    expect(unresolved).toEqual([]);
+    expect(recipients.map((r) => ({ id: r.customerId, email: r.email }))).toEqual([
+      { id: A, email: "berulangnegatifup3klaten@gmail.com" },
+    ]);
+  });
 });
