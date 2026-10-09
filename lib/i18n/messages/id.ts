@@ -129,6 +129,8 @@ export const id = {
     activateConfirm: "Aktifkan kembali template \"{name}\"?",
     showArchived: "Tampilkan arsip",
     hideArchived: "Sembunyikan arsip",
+    viewCompact: "Ringkas",
+    viewDetailed: "Detail",
     editorTitleNew: "Buat Email Template",
     editorTitleEdit: "Edit Email Template",
     editorGalleryTitle: "Pilih Template Awal",

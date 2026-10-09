@@ -28,9 +28,14 @@ async function loadEligibleTemplates(): Promise<TemplateOption[]> {
     const admin = createAdminClient();
     const { data, error } = await admin
       .from("crm_message_template")
-      .select("template_key, name, display_name, subject, body, version")
+      .select("template_key, name, display_name, subject, body, version, created_at")
+      // Newest-created template first in the composer dropdown (user request): order by created_at
+      // desc so the most recently made template is at the top. version desc is the tiebreaker, which
+      // also keeps the dedup-by-key below picking each template's latest version (highest version =
+      // newest created_at) for the body/subject that renders.
       .eq("channel", "email")
       .eq("is_active", true)
+      .order("created_at", { ascending: false })
       .order("version", { ascending: false });
     if (error) return [];
     const seen = new Set<string>();

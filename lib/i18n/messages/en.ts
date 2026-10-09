@@ -118,6 +118,8 @@ export const en: Messages = {
     activateConfirm: "Reactivate template \"{name}\"?",
     showArchived: "Show archived",
     hideArchived: "Hide archived",
+    viewCompact: "Compact",
+    viewDetailed: "Detailed",
     editorTitleNew: "Create Email Template",
     editorTitleEdit: "Edit Email Template",
     editorGalleryTitle: "Choose a Starter Template",

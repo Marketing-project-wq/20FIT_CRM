@@ -3,7 +3,7 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import {
   Mail, MessageCircle, Eye, ExternalLink, Edit, Trash2,
-  Copy, Archive, RotateCcw, MoreVertical, Search, SlidersHorizontal,
+  Copy, Archive, RotateCcw, MoreVertical, Search, SlidersHorizontal, List, LayoutGrid,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -71,6 +71,8 @@ interface TemplatesPageDict {
   activateConfirm: string;
   showArchived: string;
   hideArchived: string;
+  viewCompact: string;
+  viewDetailed: string;
 }
 
 interface TemplateListProps {
@@ -122,6 +124,20 @@ export function TemplateList({ templates, lang, t, sentCounts }: TemplateListPro
   const [sortBy, setSortBy] = useState<SortKey>("date");
   const [showFilters, setShowFilters] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  // Compact view: hide each card's description/subject/date for a denser, name-first list. Default
+  // off; the choice is remembered per browser. Read after mount (not in the initializer) so the
+  // server and first client render agree — no hydration mismatch.
+  const [compact, setCompact] = useState(false);
+  useEffect(() => {
+    try { setCompact(localStorage.getItem("crm_templates_compact") === "1"); } catch { /* noop */ }
+  }, []);
+  const toggleCompact = () => {
+    setCompact((v) => {
+      const next = !v;
+      try { localStorage.setItem("crm_templates_compact", next ? "1" : "0"); } catch { /* noop */ }
+      return next;
+    });
+  };
 
   const filtered = useMemo(() => {
     let list = templates;
@@ -274,6 +290,10 @@ export function TemplateList({ templates, lang, t, sentCounts }: TemplateListPro
           <Button size="sm" variant="outline" onClick={() => setShowFilters((v) => !v)}>
             <SlidersHorizontal className="h-4 w-4" />
           </Button>
+          <Button size="sm" variant="outline" onClick={toggleCompact} title={compact ? t.viewDetailed : t.viewCompact}>
+            {compact ? <LayoutGrid className="h-4 w-4" /> : <List className="h-4 w-4" />}
+            {compact ? t.viewDetailed : t.viewCompact}
+          </Button>
           {archivedCount > 0 && (
             <Button size="sm" variant="outline" onClick={() => setShowArchived((v) => !v)}>
               <Archive className="h-4 w-4" />
@@ -362,6 +382,7 @@ export function TemplateList({ templates, lang, t, sentCounts }: TemplateListPro
                     tpl={tpl}
                     lang={lang}
                     t={t}
+                    compact={compact}
                     sentCount={sentCounts[tpl.template_key] ?? 0}
                     onPreview={() => openPreview(tpl.id)}
                     onEdit={() => openEdit(tpl.id, false)}
@@ -384,6 +405,7 @@ export function TemplateList({ templates, lang, t, sentCounts }: TemplateListPro
                     tpl={tpl}
                     lang={lang}
                     t={t}
+                    compact={compact}
                     sentCount={sentCounts[tpl.template_key] ?? 0}
                     onPreview={() => openPreview(tpl.id)}
                     onEdit={() => openEdit(tpl.id, true)}
@@ -500,13 +522,14 @@ function MenuItem({ icon: Icon, label, onClick, danger }: {
 }
 
 function TemplateCard({
-  tpl, lang, t, sentCount,
+  tpl, lang, t, sentCount, compact = false,
   onPreview, onEdit, onDelete, onDuplicate, onArchiveToggle,
 }: {
   tpl: Template;
   lang: "id" | "en";
   t: TemplatesPageDict;
   sentCount: number;
+  compact?: boolean;
   onPreview: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -521,11 +544,11 @@ function TemplateCard({
   const subjectDiffers = tpl.channel === "email" && tpl.subject && tpl.subject !== label;
 
   return (
-    <div className={`card group relative flex flex-col gap-2 p-4 ${status === "archived" ? "opacity-60" : ""}`}>
+    <div className={`card group relative flex flex-col ${compact ? "gap-1.5 p-3" : "gap-2 p-4"} ${status === "archived" ? "opacity-60" : ""}`}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 overflow-hidden">
           <h3 className="truncate font-display text-[14px] font-bold text-ink">{label}</h3>
-          {subjectDiffers && (
+          {!compact && subjectDiffers && (
             <p className="mt-0.5 truncate font-body text-[12px] text-ink-soft">{tpl.subject}</p>
           )}
         </div>
@@ -562,7 +585,7 @@ function TemplateCard({
         </div>
       </div>
 
-      {hasDescription && (
+      {!compact && hasDescription && (
         <p className="line-clamp-2 font-body text-[12px] leading-snug text-ink-soft">
           {tpl.description}
         </p>
@@ -598,11 +621,13 @@ function TemplateCard({
         </Badge>
       </div>
 
-      <div className="flex items-center justify-between">
-        <span className="font-mono text-[11px] text-ink-faint">
-          {formatDateTime(tpl.created_at, lang)}
-        </span>
-      </div>
+      {!compact && (
+        <div className="flex items-center justify-between">
+          <span className="font-mono text-[11px] text-ink-faint">
+            {formatDateTime(tpl.created_at, lang)}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
