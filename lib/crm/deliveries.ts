@@ -62,6 +62,8 @@ export interface DeliveryRow {
   bouncedCount: number;
   openedCount: number;
   clickedCount: number;
+  complainedCount: number; // spam reports (complained_at, from the provider webhook)
+  unsubscribedCount: number; // unsubscribed_at — stamped by /api/unsubscribe on the email the person left from
   state: DeliveryState;
   time: string; // UTC ISO — scheduled_at for upcoming, created_at for a run
   cancellable: boolean; // only a pending scheduled send
@@ -132,6 +134,8 @@ interface RunCounts {
   bounced: number;
   opened: number;
   clicked: number;
+  complained: number;
+  unsubscribed: number;
 }
 
 /** Logged + FAILED recipients per run (crm_message_log.campaign_id = run.id) — two head-counts per
@@ -141,7 +145,7 @@ async function countRecipients(admin: SupabaseClient, runIds: string[]): Promise
   const counts = new Map<string, RunCounts>();
   await Promise.all(
     runIds.map(async (id) => {
-      const [{ count: logged }, { count: failed }, { count: sent }, { count: delivered }, { count: bounced }, { count: opened }, { count: clicked }] = await Promise.all([
+      const [{ count: logged }, { count: failed }, { count: sent }, { count: delivered }, { count: bounced }, { count: opened }, { count: clicked }, { count: complained }, { count: unsubscribed }] = await Promise.all([
         admin.from("crm_message_log").select("id", { count: "exact", head: true }).eq("campaign_id", id),
         admin
           .from("crm_message_log")
@@ -173,8 +177,28 @@ async function countRecipients(admin: SupabaseClient, runIds: string[]): Promise
           .select("id", { count: "exact", head: true })
           .eq("campaign_id", id)
           .not("clicked_at", "is", null),
+        admin
+          .from("crm_message_log")
+          .select("id", { count: "exact", head: true })
+          .eq("campaign_id", id)
+          .not("complained_at", "is", null),
+        admin
+          .from("crm_message_log")
+          .select("id", { count: "exact", head: true })
+          .eq("campaign_id", id)
+          .not("unsubscribed_at", "is", null),
       ]);
-      counts.set(id, { logged: logged ?? 0, failed: failed ?? 0, sent: sent ?? 0, delivered: delivered ?? 0, bounced: bounced ?? 0, opened: opened ?? 0, clicked: clicked ?? 0 });
+      counts.set(id, {
+        logged: logged ?? 0,
+        failed: failed ?? 0,
+        sent: sent ?? 0,
+        delivered: delivered ?? 0,
+        bounced: bounced ?? 0,
+        opened: opened ?? 0,
+        clicked: clicked ?? 0,
+        complained: complained ?? 0,
+        unsubscribed: unsubscribed ?? 0,
+      });
     }),
   );
   return counts;
@@ -259,6 +283,8 @@ export async function listDeliveries(admin: SupabaseClient, limit = 100, nowIso 
       bouncedCount: 0,
       openedCount: 0,
       clickedCount: 0,
+      complainedCount: 0,
+      unsubscribedCount: 0,
       state,
       time: s.scheduled_at,
       cancellable: s.status === "pending",
@@ -304,6 +330,8 @@ export async function listDeliveries(admin: SupabaseClient, limit = 100, nowIso 
       bouncedCount: counts.get(r.id)?.bounced ?? 0,
       openedCount: counts.get(r.id)?.opened ?? 0,
       clickedCount: counts.get(r.id)?.clicked ?? 0,
+      complainedCount: counts.get(r.id)?.complained ?? 0,
+      unsubscribedCount: counts.get(r.id)?.unsubscribed ?? 0,
       state,
       time: r.created_at,
       cancellable: false,

@@ -19,6 +19,9 @@ import { CAMPAIGN_COMPOSE_TAB } from "@/lib/crm/campaign-nav";
 import { CampaignFlow, type TemplateOption } from "./campaign-flow";
 import { SegmentsTab } from "./segments-tab";
 import { DeliveriesTab } from "./deliveries-tab";
+import { AgentMailTab } from "./agent-mail-tab";
+import { isAgentMailTemplateKey } from "@/lib/crm/agent-mail/guide";
+import { agentMailSecret } from "@/lib/crm/agent-mail/token";
 
 export const metadata: Metadata = { title: "Campaigns" };
 export const dynamic = "force-dynamic";
@@ -58,7 +61,9 @@ export default async function CampaignsPage({
   const { t } = getServerDict();
   const c = t.campaignsPage;
   const { tab: rawTab, run: runParam, returnTo: returnToParam } = await searchParams;
-  const tab = rawTab === "segmen" ? "segmen" : rawTab === "kiriman" ? "kiriman" : "kirim";
+  // Default = the Kampanye list (campaigns + performance, like the Mailtrap-style blast list); the
+  // composer is "Buat kampanye" (tab=kirim), Agent Mail is tab=agent.
+  const tab = rawTab === "segmen" ? "segmen" : rawTab === "kirim" ? "kirim" : rawTab === "agent" ? "agent" : "kiriman";
   // Only the composer sets this; it drives the "back to campaign" affordance in the Segmen tab.
   const returnTo = returnToParam === CAMPAIGN_COMPOSE_TAB ? CAMPAIGN_COMPOSE_TAB : null;
 
@@ -89,9 +94,10 @@ export default async function CampaignsPage({
   const hostBlocked = !host.ok;
 
   const tabs = [
-    { key: "kirim", label: c.tabKirim, href: "/campaigns?tab=kirim" },
-    { key: "segmen", label: c.tabSegmen, href: "/campaigns?tab=segmen" },
     { key: "kiriman", label: c.tabKiriman, href: "/campaigns?tab=kiriman" },
+    { key: "kirim", label: c.tabKirim, href: "/campaigns?tab=kirim" },
+    { key: "agent", label: c.tabAgent, href: "/campaigns?tab=agent" },
+    { key: "segmen", label: c.tabSegmen, href: "/campaigns?tab=segmen" },
   ];
 
   // Deliveries tab data — the merged scheduled+run timeline, and (when a run is picked) its recipients.
@@ -101,6 +107,10 @@ export default async function CampaignsPage({
     ? await Promise.all([listDeliveries(admin), listDrafts()])
     : [[], []];
   const detail = detailRequested ? await deliveryDetail(admin, runParam!) : null;
+  // Agent Mail tab: only the campaigns an agent created (template key prefix), newest first.
+  const agentRows =
+    tab === "agent" ? (await listDeliveries(admin, 60)).filter((r) => r.kind === "run" && isAgentMailTemplateKey(r.templateKey)) : [];
+  const mcpUrl = `${(process.env.NEXT_PUBLIC_APP_URL || "https://crm.20fit.id").replace(/\/+$/, "")}/api/mcp`;
 
   // The pool's operator-tag vocabulary for the segment builder's tag picker (TUGAS D). Fetched only
   // on the Segmen tab for a builder. Degrades to [] on a read error — the picker simply hides; a
@@ -161,6 +171,16 @@ export default async function CampaignsPage({
           canBuild={canBuild}
           tagVocab={tagVocab}
           returnTo={returnTo}
+        />
+      )}
+
+      {/* ── TAB: AGENT MAIL (AI agent over MCP) ── */}
+      {tab === "agent" && (
+        <AgentMailTab
+          rows={agentRows}
+          canIssue={grantFor(role, "send.at_or_below_threshold") === "allow"}
+          configured={agentMailSecret() !== ""}
+          mcpUrl={mcpUrl}
         />
       )}
 

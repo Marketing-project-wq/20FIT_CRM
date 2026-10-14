@@ -123,9 +123,43 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "write_failed" }, { status: 500 });
   }
 
+  // Per-campaign "Berhenti" (Kampanye list): stamp unsubscribed_at on the email this person most recently
+  // received — the one they unsubscribed from. The token carries no campaign id, so "latest sent email"
+  // is the attribution. Best-effort: the suppression above is what protects the person; a failed stamp
+  // only under-counts a statistic, so it is logged and never fails the request.
+  if (result.action === "added") await stampCampaignUnsubscribe(r.customerId);
+
   // action is "added" (first time), "noop" (already unsubscribed), or "lifted" (never here).
   return NextResponse.json(
     { ok: true, action: result.action, kind: r.kind, identity: maskedOf(r.kind, r.identityKey) },
     { headers: { "Cache-Control": "no-store" } },
   );
+}
+
+async function stampCampaignUnsubscribe(customerId: string): Promise<void> {
+  try {
+    const admin = createAdminClient();
+    const { data, error } = await admin
+      .from("crm_message_log")
+      .select("id")
+      .eq("customer_id", customerId)
+      .eq("channel", "email")
+      .not("sent_at", "is", null)
+      .is("unsubscribed_at", null)
+      .order("sent_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) {
+      logApiFailure("/unsubscribe", "attribution_read_failed", { code: error.code });
+      return;
+    }
+    if (!data) return;
+    const { error: upErr } = await admin
+      .from("crm_message_log")
+      .update({ unsubscribed_at: new Date().toISOString() })
+      .eq("id", (data as { id: string }).id);
+    if (upErr) logApiFailure("/unsubscribe", "attribution_write_failed", { code: upErr.code });
+  } catch {
+    logApiFailure("/unsubscribe", "attribution_failed", {});
+  }
 }

@@ -29,7 +29,11 @@ export function isPublicPath(pathname: string): boolean {
     // SCHEDULED_SEND_CRON_SECRET), same shape as the webhook. Before this was allowlisted the gate
     // redirected the POST to /login (200 login HTML), so the route never ran and scheduled sends sat
     // `pending` forever with no last_error — the 8th silent failure (T-40).
-    pathname === "/api/campaigns/run-scheduled"
+    pathname === "/api/campaigns/run-scheduled" ||
+    // Agent Mail MCP server: an AI agent (Claude Code) calls it with no CRM session. Its authorization
+    // is the signed agent token in the Authorization header (verified in the route, role re-read from
+    // crm_user_role on every request) — same shape as the cron secret above.
+    pathname === "/api/mcp"
   );
 }
 

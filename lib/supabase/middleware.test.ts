@@ -16,6 +16,10 @@ describe("isPublicPath — the no-session allowlist (Sprint 3T)", () => {
     // Before this, the gate redirected the cron POST to /login and scheduled sends never ran (T-40 #8).
     expect(isPublicPath("/api/campaigns/run-scheduled")).toBe(true);
   });
+  it("allows the Agent Mail MCP endpoint (signed agent token in the Authorization header is the auth)", () => {
+    expect(isPublicPath("/api/mcp")).toBe(true);
+    expect(isPublicPath("/api/mcp/other")).toBe(false);
+  });
   it("does NOT make protected pages public", () => {
     for (const p of ["/", "/audience", "/quality", "/settings", "/segments", "/consent"]) {
       expect(isPublicPath(p)).toBe(false);
