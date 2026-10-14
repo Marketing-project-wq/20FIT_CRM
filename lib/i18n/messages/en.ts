@@ -1383,6 +1383,8 @@ export const en: Messages = {
       noPermission: "Your role cannot send campaigns, so it cannot create a token.",
       step2Title: "2 · Send the prompt to Claude Code",
       step2Body: "Copy this template, fill in the [square brackets], then paste it into Claude Code. Mention the path to the audience file (CSV/Excel, optional) and to the HTML email.",
+      step2BodyToken: "The prompt below already carries your token and how to install the MCP. Fill in the [square brackets], then send it to any Claude Code — the agent can install the MCP itself or call it over HTTP directly.",
+      promptTokenNote: "This prompt contains your secret token. Send it only to your own Claude Code — never paste it into a group chat, shared document or repo.",
       step3Title: "3 · Watch the results",
       step3Body: "Agent Mail campaigns appear below and in the Campaigns tab with an Agent Mail label. The agent can read their performance too.",
       toolsTitle: "What the agent can do",

@@ -5,7 +5,7 @@ import { Bot, Check, Copy, KeyRound } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useI18n } from "@/components/i18n/lang-provider";
 import type { DeliveryRow } from "@/lib/crm/deliveries";
-import { AGENT_MAIL_PROMPT_TEMPLATE, AGENT_MCP_NAME } from "@/lib/crm/agent-mail/guide";
+import { AGENT_MAIL_PROMPT_TEMPLATE, agentMailInstallCommand, agentMailPromptWithToken } from "@/lib/crm/agent-mail/guide";
 import { issueAgentTokenAction } from "./agent-mail-actions";
 import { CampaignTable } from "./campaign-table";
 
@@ -68,7 +68,8 @@ export function AgentMailTab({
     });
   }
 
-  const command = `claude mcp add --transport http ${AGENT_MCP_NAME} ${mcpUrl} --header "Authorization: Bearer ${token ?? "<TOKEN>"}"`;
+  const command = agentMailInstallCommand(token ?? "<TOKEN>", mcpUrl);
+  const prompt = token ? agentMailPromptWithToken(token, mcpUrl) : AGENT_MAIL_PROMPT_TEMPLATE;
   const tools = [a.toolSegments, a.toolImport, a.toolEmail, a.toolTest, a.toolPreview, a.toolSend, a.toolStats, a.toolStop];
 
   return (
@@ -114,8 +115,9 @@ export function AgentMailTab({
 
           <section className="glass flex flex-col gap-3 rounded-card p-5">
             <h2 className="font-display text-[18px] font-black uppercase tracking-wide text-ink">{a.step2Title}</h2>
-            <p className="font-body text-[13px] leading-relaxed text-ink-soft">{a.step2Body}</p>
-            <CopyBlock label="Prompt" value={AGENT_MAIL_PROMPT_TEMPLATE} copyLabel={a.copy} copiedLabel={a.copied} mono={false} />
+            <p className="font-body text-[13px] leading-relaxed text-ink-soft">{token ? a.step2BodyToken : a.step2Body}</p>
+            {token && <p className="tint-amber rounded-sm px-3 py-2 font-body text-[12px] leading-relaxed">{a.promptTokenNote}</p>}
+            <CopyBlock label="Prompt" value={prompt} copyLabel={a.copy} copiedLabel={a.copied} mono={false} />
           </section>
         </div>
 

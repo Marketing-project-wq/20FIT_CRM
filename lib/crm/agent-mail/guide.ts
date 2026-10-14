@@ -58,3 +58,29 @@ Kirim test dulu ke: [email kamu]
 Waktu kirim: [sekarang / 2026-10-20 09:00 WIB]
 
 Setelah terkirim, laporkan run_id, jumlah penerima, dan link CRM-nya. Besok cek performanya dengan campaign_stats.`;
+
+/** The MCP install command for a token (shown on the Agent Mail tab and inside the ready prompt). */
+export function agentMailInstallCommand(token: string, mcpUrl: string): string {
+  return `claude mcp add --transport http ${AGENT_MCP_NAME} ${mcpUrl} --header "Authorization: Bearer ${token}"`;
+}
+
+/**
+ * The prompt with the token BAKED IN (owner request 2026-10-14): once a token is issued, the copied
+ * prompt is self-contained — any Claude Code can install the MCP itself, or, if the tools don't show up
+ * in that session yet (MCP servers load at session start), call the same server over plain HTTP.
+ */
+export function agentMailPromptWithToken(token: string, mcpUrl: string): string {
+  return `${AGENT_MAIL_PROMPT_TEMPLATE}
+
+---
+AKSES (rahasia — jangan tampilkan ulang token ini, jangan simpan ke file proyek atau commit):
+1. Kalau tool MCP "${AGENT_MCP_NAME}" belum ada di sesi ini, pasang dengan menjalankan di terminal:
+   ${agentMailInstallCommand(token, mcpUrl)}
+   (scope user: tambahkan -s user). Tool baru muncul di sesi Claude Code berikutnya.
+2. Kalau tool-nya belum muncul di sesi ini, panggil server yang sama lewat HTTP (JSON-RPC MCP), satu tool per request:
+   curl -s ${mcpUrl} -H "Content-Type: application/json" -H "Authorization: Bearer ${token}" \
+     -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"agent_mail_guide","arguments":{}}}'
+   Ganti "name" dan "arguments" sesuai tool (list_segments, import_audience, create_email, preview_campaign,
+   send_test_email, send_campaign, campaign_stats, list_campaigns, stop_campaign). Daftar lengkap + skema
+   argumen: method "tools/list". Untuk HTML/CSV besar, tulis body JSON ke file lalu pakai -d @file.json.`;
+}

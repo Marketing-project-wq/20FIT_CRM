@@ -1474,6 +1474,8 @@ export const id = {
       noPermission: "Role-mu tidak punya akses kirim campaign, jadi tidak bisa membuat token.",
       step2Title: "2 · Kirim prompt ke Claude Code",
       step2Body: "Salin template ini, isi bagian [kurung siku], lalu tempel ke Claude Code. Sebutkan path file audiens (CSV/Excel, opsional) dan file HTML email-nya.",
+      step2BodyToken: "Prompt di bawah sudah memuat token + cara memasang MCP-nya. Isi bagian [kurung siku], lalu kirim ke Claude Code mana pun — agent bisa memasang MCP sendiri atau langsung memanggilnya lewat HTTP.",
+      promptTokenNote: "Prompt ini berisi token rahasiamu. Kirim hanya ke Claude Code milikmu sendiri — jangan tempel di grup, dokumen bersama, atau repo.",
       step3Title: "3 · Pantau hasilnya",
       step3Body: "Campaign dari Agent Mail tampil di bawah ini dan di tab Kampanye dengan label Agent Mail. Agent juga bisa membaca performanya sendiri.",
       toolsTitle: "Yang bisa dilakukan agent",
