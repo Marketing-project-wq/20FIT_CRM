@@ -3,7 +3,6 @@ import {
   Users,
   GitBranch,
   Megaphone,
-  FileText,
   Settings,
   BarChart3,
   Radar,
@@ -33,7 +32,6 @@ export function navLabel(t: Dict, href: string, fallback: string): string {
 export const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard },
   { label: "Audience", href: "/audience", icon: Users },
-  { label: "Templates", href: "/templates", icon: FileText },
   { label: "Campaigns", href: "/campaigns", icon: Megaphone },
   { label: "Workflows", href: "/workflows", icon: GitBranch },
   { label: "Event Analysis", href: "/analytics/events", icon: BarChart3 },

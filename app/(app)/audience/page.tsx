@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
 import { AudienceActions } from "@/components/audience/audience-actions";
 import { getCurrentUserRole } from "@/lib/auth/current-role";
-import { canViewProfileList, canImportAudience, isPermitted, resolveGrant } from "@/lib/auth/roles";
+import { canViewProfileList, canImportAudience, resolveGrant } from "@/lib/auth/roles";
 import { Badge } from "@/components/ui/badge";
 import { AudiencePool } from "@/components/audience/audience-pool";
-import { SuppressionPanel } from "@/components/consent/suppression-panel";
 import { QualityDashboard } from "@/components/quality/quality-dashboard";
 import { ActivityCoveragePanel } from "@/components/quality/activity-coverage-panel";
 import { EmailTypoFixPanel } from "@/components/quality/email-typo-fix-panel";
@@ -17,12 +16,13 @@ export const metadata: Metadata = { title: "Audience" };
 // Role-dependent + audited on every load — never statically cached.
 export const dynamic = "force-dynamic";
 
-type AudienceTab = "list" | "unsubscribe" | "quality";
+type AudienceTab = "list" | "quality";
 
 /**
- * Audience — the pool, its unsubscribe (crm_suppression) list, and its data-quality dashboard, now
- * ONE screen with three tabs (nav rebuild 11→7). Quality moved here (not the dashboard) — the quality
- * numbers describe THIS pool, so they sit beside it. Unsubscribe moved from the old /consent screen.
+ * Audience — the pool and its data-quality dashboard, ONE screen with two tabs (nav rebuild 11→7).
+ * Quality moved here (not the dashboard) — the quality numbers describe THIS pool, so they sit beside it.
+ * The Unsubscribe tab was removed (owner request 2026-10-14): the crm_suppression list itself still
+ * applies to every send and /unsubscribe still records opt-outs — only the screen is gone.
  * Each tab keeps its own gate + coverage marker + the API-side re-check it always had.
  */
 export default async function AudiencePage({ searchParams }: { searchParams?: { tab?: string } }) {
@@ -44,10 +44,8 @@ export default async function AudiencePage({ searchParams }: { searchParams?: { 
     );
   }
 
-  const canUnsub = isPermitted(role, "consent.edit");
   const tabs: TabDef[] = [
     { key: "list", label: t.tabs.audienceList, href: "/audience?tab=list" },
-    ...(canUnsub ? [{ key: "unsubscribe", label: t.tabs.audienceUnsubscribe, href: "/audience?tab=unsubscribe" }] : []),
     { key: "quality", label: t.tabs.audienceQuality, href: "/audience?tab=quality" },
   ];
 
@@ -67,12 +65,6 @@ export default async function AudiencePage({ searchParams }: { searchParams?: { 
         <>
           <CoverageNotice screen="search" />
           <AudiencePool />
-        </>
-      )}
-      {active === "unsubscribe" && (
-        <>
-          <CoverageNotice screen="consent" />
-          <SuppressionPanel />
         </>
       )}
       {active === "quality" && (

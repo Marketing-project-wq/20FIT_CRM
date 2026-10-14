@@ -1495,7 +1495,7 @@ export const en: Messages = {
       pageOf: "of",
     },
     blockNoTemplateTitle: "No active email template yet",
-    blockNoTemplateBody: "The send flow stops here until there is an active template carrying an unsubscribe link. Create one in Templates first.",
+    blockNoTemplateBody: "The send flow stops here until there is an active template carrying an unsubscribe link. Ask a CRM admin to add one.",
     blockHostTitle: "Unsubscribe link domain doesn't match the host",
     blockHostBody: "The unsubscribe link would point at a different domain than the host serving the app — the send would be refused. Set NEXT_PUBLIC_APP_URL to the right host first.",
     docsTitle: "How it works & limits (explanation, not controls)",

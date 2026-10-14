@@ -1586,7 +1586,7 @@ export const id = {
       pageOf: "dari",
     },
     blockNoTemplateTitle: "Belum ada template email aktif",
-    blockNoTemplateBody: "Alur kirim berhenti di sini sampai ada template aktif yang memuat tautan unsubscribe. Buat dulu di Templates.",
+    blockNoTemplateBody: "Alur kirim berhenti di sini sampai ada template aktif yang memuat tautan unsubscribe. Minta admin CRM menambahkannya.",
     blockHostTitle: "Domain tautan unsubscribe tak cocok dengan host",
     blockHostBody: "Tautan unsubscribe akan menunjuk domain yang berbeda dari host yang menyajikan aplikasi — kirim akan ditolak. Setel NEXT_PUBLIC_APP_URL ke host yang benar dulu.",
     docsTitle: "Cara kerja & batas (penjelasan, bukan kontrol)",

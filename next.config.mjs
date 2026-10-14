@@ -16,7 +16,18 @@ const nextConfig = {
   // Don't advertise the framework on an internal tool holding PII.
   poweredByHeader: false,
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
+    return [
+      { source: "/:path*", headers: securityHeaders },
+      // Customer 360° iframe (/analytics/customer-360 embeds /api/c360/ui) — same-origin framing only.
+      // Listed after the baseline so these two keys override it for this path.
+      {
+        source: "/api/c360/:path*",
+        headers: [
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
+        ],
+      },
+    ];
   },
 };
 
