@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { getCurrentUserRole } from "@/lib/auth/current-role";
 import { canViewProfileList, isPermitted } from "@/lib/auth/roles";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { fetchEventAnalytics } from "@/lib/crm/event-analytics";
+import { eventAnalyticsCached } from "@/lib/crm/cached-loaders";
 import { EventAnalysis } from "@/components/analytics/event-analysis";
 import { Badge } from "@/components/ui/badge";
 import { getServerDict } from "@/lib/i18n/server";
@@ -31,7 +31,9 @@ export default async function EventAnalyticsPage() {
   }
 
   const admin = createAdminClient();
-  const data = await fetchEventAnalytics(admin);
+  // Pages through all of master_customer (~30 s) — a shared aggregate, cached 10 min and refreshed in
+  // the background (registry/tag/import writes drop it). See lib/crm/server-cache.ts.
+  const data = await eventAnalyticsCached(admin);
 
   const allGroups = data.groups.map((g) => ({
     key: g.groupKey,

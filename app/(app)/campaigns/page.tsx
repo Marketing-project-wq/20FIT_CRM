@@ -9,11 +9,10 @@ import { TabBar } from "@/components/shell/tab-bar";
 import { realSendEnabled } from "@/lib/crm/send-gate";
 import { unsubscribeHostServable } from "@/lib/crm/send-env";
 import { listSegments } from "@/lib/crm/segment-store";
-import { fetchPoolTagCounts } from "@/lib/crm/tag-vocab";
 import { extractVariables } from "@/lib/crm/template";
 import { isInternalTestTemplateKey } from "@/lib/crm/send-test-constants";
 import { loadCityFill } from "@/lib/crm/city-fill";
-import { listDeliveries, deliveryDetail } from "@/lib/crm/deliveries";
+import { deliveryDetail } from "@/lib/crm/deliveries";
 import { listDrafts } from "@/lib/crm/campaign-draft-store";
 import { CAMPAIGN_COMPOSE_TAB } from "@/lib/crm/campaign-nav";
 import { CampaignFlow, type TemplateOption } from "./campaign-flow";
@@ -22,6 +21,7 @@ import { DeliveriesTab } from "./deliveries-tab";
 import { AgentMailTab } from "./agent-mail-tab";
 import { isAgentMailTemplateKey } from "@/lib/crm/agent-mail/guide";
 import { agentMailSecret } from "@/lib/crm/agent-mail/token";
+import { deliveriesCached, tagVocabCached } from "@/lib/crm/cached-loaders";
 
 export const metadata: Metadata = { title: "Campaigns" };
 export const dynamic = "force-dynamic";
@@ -103,13 +103,16 @@ export default async function CampaignsPage({
   // Deliveries tab data — the merged scheduled+run timeline, and (when a run is picked) its recipients.
   const admin = createAdminClient();
   const detailRequested = tab === "kiriman" && !!runParam;
+  // The run list (≈9 head-counts per run) is a shared aggregate — cached 30 s, refreshed in the
+  // background, dropped on every send/schedule/stop (lib/crm/server-cache.ts).
+  const loadDeliveries = () => deliveriesCached(admin);
   const [deliveries, drafts] = tab === "kiriman" && !detailRequested
-    ? await Promise.all([listDeliveries(admin), listDrafts()])
+    ? await Promise.all([loadDeliveries(), listDrafts()])
     : [[], []];
   const detail = detailRequested ? await deliveryDetail(admin, runParam!) : null;
   // Agent Mail tab: only the campaigns an agent created (template key prefix), newest first.
   const agentRows =
-    tab === "agent" ? (await listDeliveries(admin, 60)).filter((r) => r.kind === "run" && isAgentMailTemplateKey(r.templateKey)) : [];
+    tab === "agent" ? (await loadDeliveries()).filter((r) => r.kind === "run" && isAgentMailTemplateKey(r.templateKey)) : [];
   const mcpUrl = `${(process.env.NEXT_PUBLIC_APP_URL || "https://crm.20fit.id").replace(/\/+$/, "")}/api/mcp`;
 
   // The pool's operator-tag vocabulary for the segment builder's tag picker (TUGAS D). Fetched only
@@ -118,7 +121,7 @@ export default async function CampaignsPage({
   // complete, fails loud separately).
   const tagVocab =
     canBuild && tab === "segmen"
-      ? await fetchPoolTagCounts(admin).catch(() => ({ entries: [], namespacePeople: {} }))
+      ? await tagVocabCached(admin).catch(() => ({ entries: [], namespacePeople: {} }))
       : { entries: [], namespacePeople: {} };
 
   return (

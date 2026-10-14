@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { invalidateCache, CACHE_KEYS } from "@/lib/crm/server-cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUserRole } from "@/lib/auth/current-role";
@@ -58,7 +59,7 @@ export async function GET() {
   }
 }
 
-export async function POST(request: NextRequest) {
+async function postImpl(request: NextRequest) {
   const role = await getCurrentUserRole();
   if (!isPermitted(role, "audit.view")) {
     return NextResponse.json({ error: "denied" }, { status: 403 });
@@ -124,7 +125,7 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ ok: true, id: event.id }, { status: 201 });
 }
 
-export async function PUT(request: NextRequest) {
+async function putImpl(request: NextRequest) {
   const role = await getCurrentUserRole();
   if (!isPermitted(role, "audit.view")) {
     return NextResponse.json({ error: "denied" }, { status: 403 });
@@ -176,7 +177,7 @@ export async function PUT(request: NextRequest) {
   return NextResponse.json({ ok: true, id: body.id });
 }
 
-export async function DELETE(request: NextRequest) {
+async function deleteImpl(request: NextRequest) {
   const role = await getCurrentUserRole();
   if (!isPermitted(role, "audit.view")) {
     return NextResponse.json({ error: "denied" }, { status: 403 });
@@ -226,3 +227,19 @@ async function replaceEventTags(
   }
   return null;
 }
+
+// Registry / tag writes change what Analisa Event and the tag picker show — drop those cached
+// aggregates after every successful write (lib/crm/server-cache.ts).
+function invalidatingWrites(fn: (req: NextRequest) => Promise<Response>) {
+  return async (req: NextRequest): Promise<Response> => {
+    const res = await fn(req);
+    if (res.ok) {
+      invalidateCache(CACHE_KEYS.eventAnalytics);
+      invalidateCache(CACHE_KEYS.tagVocab);
+    }
+    return res;
+  };
+}
+export const POST = invalidatingWrites(postImpl);
+export const PUT = invalidatingWrites(putImpl);
+export const DELETE = invalidatingWrites(deleteImpl);

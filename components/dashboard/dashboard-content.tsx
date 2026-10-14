@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Users, Mail, UserCheck, ShieldAlert, TrendingUp, TrendingDown } from "lucide-react";
+import { Users, Mail, Phone, ShieldAlert, TrendingUp, TrendingDown } from "lucide-react";
 import { BarList } from "./bar-list";
 import { GrowthChart, type GrowthPoint } from "./growth-chart";
 import type { BodSnapshot, Load } from "@/lib/crm/bod-snapshot";
@@ -30,7 +30,19 @@ interface DeliveryBlock {
 
 interface EventsBlock { eventRegistrations: { product: string; registrations: number }[] }
 
-type BlockName = "immediate" | "events" | "delivery";
+/** From c360-api /api/crm-summary — the same database as Customer 360 / admin.20fit.id/data. */
+interface Audience360Block {
+  loadedAt: string | null;
+  total: number;
+  email: number;
+  phone: number;
+  newThisMonth: number;
+  coverage: ContactCoverage;
+  growth: { month: string; added: number; total: number }[];
+  topEvents: { name: string; people: number }[];
+}
+
+type BlockName = "immediate" | "events" | "delivery" | "audience360";
 type Status = "loading" | "ready" | "error" | "denied";
 interface Block<T> { status: Status; data: T | null }
 
@@ -123,12 +135,14 @@ export function DashboardContent({
   const [immediate, setImmediate] = useState<Block<ImmediateBlock>>({ status: "loading", data: null });
   const [events, setEvents] = useState<Block<EventsBlock>>({ status: "loading", data: null });
   const [delivery, setDelivery] = useState<Block<DeliveryBlock>>({ status: "loading", data: null });
+  const [a360, setA360] = useState<Block<Audience360Block>>({ status: "loading", data: null });
 
   type Setter = (b: Block<unknown>) => void;
   const setters: Record<BlockName, Setter> = {
     immediate: setImmediate as Setter,
     events: setEvents as Setter,
     delivery: setDelivery as Setter,
+    audience360: setA360 as Setter,
   };
 
   const loadBlock = useCallback(async (name: BlockName, signal?: AbortSignal) => {
@@ -147,28 +161,40 @@ export function DashboardContent({
 
   useEffect(() => {
     const ac = new AbortController();
-    (["immediate", "events", "delivery"] as BlockName[]).forEach((n) => loadBlock(n, ac.signal));
+    (["audience360", "immediate", "events", "delivery"] as BlockName[]).forEach((n) => loadBlock(n, ac.signal));
     return () => ac.abort();
   }, [loadBlock]);
 
-  const denied = immediate.status === "denied";
+  const denied = immediate.status === "denied" || a360.status === "denied";
   const imm = immediate.data;
+  const all = a360.data;
+  // Audience numbers come from the 20FIT database (all sources). If c360-api is unreachable the
+  // CRM's own pool numbers are shown instead, so the Dashboard never goes blank.
+  const useAll = a360.status === "ready" && !!all;
+  const audienceStatus: Status = useAll ? "ready" : a360.status === "loading" ? "loading" : immediate.status;
 
-  const totalKontak = imm?.audienceSize ?? 0;
-  const emailCount = imm ? imm.contactCoverage.both + imm.contactCoverage.emailOnly : 0;
-  const emailPct = totalKontak > 0 ? ((emailCount / totalKontak) * 100).toFixed(1) : "0";
-  const poolTotal = summary?.reach.poolTotal ?? 0;
+  const totalKontak = useAll ? all!.total : imm?.audienceSize ?? 0;
+  const cov: ContactCoverage | null = useAll ? all!.coverage : imm?.contactCoverage ?? null;
+  const emailCount = useAll ? all!.email : cov ? cov.both + cov.emailOnly : 0;
+  const phoneCount = useAll ? all!.phone : cov ? cov.both + cov.phoneOnly : 0;
+  const pctOf = (n: number) => (totalKontak > 0 ? ((n / totalKontak) * 100).toFixed(1) : "0");
   const suppressedCount = imm?.suppressedEmailCount ?? 0;
-  const thisMonthCount = imm?.thisMonthCount ?? 0;
-  const monthPct = totalKontak > 0 ? ((thisMonthCount / totalKontak) * 100).toFixed(1) : "0";
+  const thisMonthCount = useAll ? all!.newThisMonth : imm?.thisMonthCount ?? 0;
+  const monthPct = pctOf(thisMonthCount);
 
-  const growthPoints = summary ? loadsToCumulative(summary.loads) : [];
+  const growthPoints: GrowthPoint[] = useAll
+    ? all!.growth.map((g) => ({ date: `${g.month}-01`, total: g.total, added: g.added }))
+    : summary ? loadsToCumulative(summary.loads) : [];
 
-  const eventList = events.data?.eventRegistrations ?? [];
-  const topEvents = eventList.slice(0, EVENT_TOP);
+  const topEventItems = useAll
+    ? all!.topEvents.slice(0, EVENT_TOP).map((e) => ({ label: e.name, value: e.people }))
+    : (events.data?.eventRegistrations ?? []).slice(0, EVENT_TOP).map((e) => ({ label: e.product, value: e.registrations }));
+  const eventsStatus: Status = useAll ? "ready" : a360.status === "loading" ? "loading" : events.status;
 
-  const cov = imm?.contactCoverage ?? null;
   const del = delivery.data;
+  const dataAt = all?.loadedAt
+    ? new Intl.DateTimeFormat(lang === "en" ? "en-US" : "id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jakarta" }).format(new Date(all.loadedAt))
+    : null;
 
   const todayLabel = new Intl.DateTimeFormat(lang === "en" ? "en-US" : "id-ID", {
     weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Jakarta",
@@ -183,7 +209,10 @@ export function DashboardContent({
           <h1 className="font-display text-[30px] font-extrabold leading-none text-ink">{d.title}</h1>
           <p className="mt-2 font-body text-[14px] text-ink-soft">{d.subtitle}</p>
         </div>
-        <p className="font-mono text-[12px] text-ink-faint">{d.todayLabel} · {todayLabel} · {d.tz}</p>
+        <div className="text-right">
+          <p className="font-mono text-[12px] text-ink-faint">{d.todayLabel} · {todayLabel} · {d.tz}</p>
+          {useAll && <p className="mt-1 font-body text-[12px] text-ink-faint">{d.sourceAll360.replace("{t}", dataAt ?? "—")}</p>}
+        </div>
       </header>
 
       {denied && <p className="font-body text-[13px] text-ink-soft">{t.access.dashboardHidden}</p>}
@@ -193,27 +222,28 @@ export function DashboardContent({
         <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
           <KpiCard
             label={d.kpiTotalContacts}
-            value={immediate.status === "ready" ? formatCount(totalKontak, lang) : "—"}
-            sub={immediate.status === "ready" && thisMonthCount > 0 ? `+${formatCount(thisMonthCount, lang)} ${d.kpiThisMonth} (+${monthPct}%)` : undefined}
+            value={audienceStatus === "ready" ? formatCount(totalKontak, lang) : "—"}
+            sub={audienceStatus === "ready" && thisMonthCount > 0 ? `+${formatCount(thisMonthCount, lang)} ${d.kpiThisMonth} (+${monthPct}%)` : undefined}
             tone={thisMonthCount > 0 ? "green" : undefined}
             icon={<Users className="h-4 w-4" />}
-            loading={immediate.status === "loading"}
-            error={immediate.status === "error" ? d.blockFailed : undefined}
+            loading={audienceStatus === "loading"}
+            error={audienceStatus === "error" ? d.blockFailed : undefined}
           />
           <KpiCard
             label={d.kpiHasEmail}
-            value={immediate.status === "ready" ? formatCount(emailCount, lang) : "—"}
-            sub={immediate.status === "ready" ? `${emailPct}% ${d.kpiOfTotal}` : undefined}
+            value={audienceStatus === "ready" ? formatCount(emailCount, lang) : "—"}
+            sub={audienceStatus === "ready" ? `${pctOf(emailCount)}% ${d.kpiOfTotal}` : undefined}
             icon={<Mail className="h-4 w-4" />}
-            loading={immediate.status === "loading"}
-            error={immediate.status === "error" ? d.blockFailed : undefined}
+            loading={audienceStatus === "loading"}
+            error={audienceStatus === "error" ? d.blockFailed : undefined}
           />
           <KpiCard
-            label={d.kpiTotalProfiles}
-            value={summary ? formatCount(poolTotal, lang) : "—"}
-            sub={d.kpiFromSnapshot}
-            icon={<UserCheck className="h-4 w-4" />}
-            loading={!summary && summary !== null}
+            label={d.kpiHasPhone}
+            value={audienceStatus === "ready" ? formatCount(phoneCount, lang) : "—"}
+            sub={audienceStatus === "ready" ? `${pctOf(phoneCount)}% ${d.kpiOfTotal}` : undefined}
+            icon={<Phone className="h-4 w-4" />}
+            loading={audienceStatus === "loading"}
+            error={audienceStatus === "error" ? d.blockFailed : undefined}
           />
           <KpiCard
             label={d.kpiBounceRate}
@@ -233,7 +263,7 @@ export function DashboardContent({
           {/* Growth chart */}
           <div className="card p-5">
             <h3 className="font-display text-[15px] font-bold text-ink">{d.panelGrowth}</h3>
-            <p className="mt-1 font-body text-[12px] text-ink-faint">{d.panelGrowthNote}</p>
+            <p className="mt-1 font-body text-[12px] text-ink-faint">{useAll ? d.panelGrowthNote360 : d.panelGrowthNote}</p>
             <div className="mt-4">
               {growthPoints.length > 0 ? (
                 <GrowthChart points={growthPoints} lang={lang} addedLabel={d.panelGrowthAdded} />
@@ -278,17 +308,16 @@ export function DashboardContent({
           {/* Top 5 events */}
           <div className="card p-5">
             <h3 className="font-display text-[15px] font-bold text-ink">{d.panelTopEvents}</h3>
-            <p className="mt-1 font-body text-[12px] text-ink-faint">{d.panelTopEventsNote}</p>
+            <p className="mt-1 font-body text-[12px] text-ink-faint">{useAll ? d.panelTopEventsNote360 : d.panelTopEventsNote}</p>
             <div className="mt-4">
-              {events.status === "ready" ? (
-                topEvents.length > 0 ? (
-                  <BarList lang={lang} barClass="bg-green"
-                    items={topEvents.map((e) => ({ label: e.product, value: e.registrations }))} />
+              {eventsStatus === "ready" ? (
+                topEventItems.length > 0 ? (
+                  <BarList lang={lang} barClass="bg-green" items={topEventItems} />
                 ) : (
                   <p className="py-8 text-center font-body text-[13px] text-ink-soft">{d.panelTopEventsEmpty}</p>
                 )
-              ) : events.status === "error" ? (
-                <BlockFail t={t} onRetry={() => loadBlock("events")} />
+              ) : eventsStatus === "error" ? (
+                <BlockFail t={t} onRetry={() => loadBlock(useAll ? "audience360" : "events")} />
               ) : (
                 <div className="space-y-3">
                   {Array.from({ length: EVENT_TOP }).map((_, i) => (
@@ -307,7 +336,7 @@ export function DashboardContent({
             <h3 className="font-display text-[15px] font-bold text-ink">{d.panelCoverage}</h3>
             <p className="mt-1 font-body text-[12px] text-ink-faint">{d.panelCoverageNote}</p>
             <div className="mt-4">
-              {immediate.status === "ready" && cov ? (
+              {audienceStatus === "ready" && cov ? (
                 <BarList lang={lang} scale="linear"
                   items={[
                     { label: d.coverageBoth, value: cov.both, barClass: "bg-green" },
@@ -315,8 +344,8 @@ export function DashboardContent({
                     { label: d.coveragePhoneOnly, value: cov.phoneOnly, barClass: "bg-amber" },
                     { label: d.coverageNeither, value: cov.neither, barClass: "bg-red" },
                   ].filter((item) => item.value > 0)} />
-              ) : immediate.status === "error" ? (
-                <BlockFail t={t} onRetry={() => loadBlock("immediate")} />
+              ) : audienceStatus === "error" ? (
+                <BlockFail t={t} onRetry={() => loadBlock("audience360")} />
               ) : (
                 <div className="space-y-3">
                   {Array.from({ length: 4 }).map((_, i) => (

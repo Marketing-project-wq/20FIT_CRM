@@ -15,6 +15,8 @@ const nextConfig = {
   reactStrictMode: true,
   // Don't advertise the framework on an internal tool holding PII.
   poweredByHeader: false,
+  // instrumentation.ts warms the cached aggregates at boot (lib/crm/cached-loaders.ts).
+  experimental: { instrumentationHook: true },
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders },

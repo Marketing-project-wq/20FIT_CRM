@@ -13,6 +13,8 @@ import {
   type DashboardBlockName,
 } from "@/lib/crm/dashboard";
 import { logApiFailure } from "@/lib/crm/failure-log";
+import { audience360Cached, dashboardBlockCached, isCachedDashboardBlock } from "@/lib/crm/cached-loaders";
+import { c360Live } from "@/lib/c360";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
@@ -65,13 +67,27 @@ export async function GET(request: NextRequest) {
   }
 
   const block = request.nextUrl.searchParams.get("block");
+  // AUDIENCE 360 — the audience numbers from the 20FIT database (c360-api, same data as Customer 360 /
+  // admin.20fit.id/data; owner 2026-10-14: the Dashboard must match all data, not the CRM's own pool).
+  if (block === "audience360") {
+    if (!c360Live()) return NextResponse.json({ error: "c360_not_configured" }, { status: 503 });
+    try {
+      const data = await audience360Cached();
+      return NextResponse.json(data, { headers: { "Cache-Control": "no-store" } });
+    } catch (e) {
+      logApiFailure("/dashboard", "block_failed:audience360", { code: (e as { code?: string })?.code });
+      return NextResponse.json({ error: "query_failed", block }, { status: 502 });
+    }
+  }
   if (!isBlockName(block)) {
     return NextResponse.json({ error: "bad_request", message: "unknown block" }, { status: 400 });
   }
 
   const admin = createAdminClient();
   try {
-    const data = await BLOCKS[block](admin);
+    // Aggregates only — cached 5 min, refreshed in the background. REACH stays live (K-60: a stale reach
+    // figure would count someone who just unsubscribed as reachable).
+    const data = isCachedDashboardBlock(block) ? await dashboardBlockCached(block, admin) : await BLOCKS[block](admin);
     return NextResponse.json(data, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     // Sprint 3K failure path — route + which block failed + the DB code. NO PII (this endpoint

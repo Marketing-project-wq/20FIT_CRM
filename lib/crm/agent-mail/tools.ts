@@ -23,6 +23,7 @@ import {
   type SendActor,
 } from "@/lib/crm/campaign-send-core";
 import { AGENT_TEMPLATE_PREFIX, AGENT_MAIL_GUIDE, isAgentMailTemplateKey } from "./guide";
+import { invalidateCache, CACHE_KEYS } from "../server-cache";
 import { ensureUnsubscribe, withPreheader } from "./html";
 
 /**
@@ -358,6 +359,8 @@ export async function callTool(ctx: AgentContext, name: string, args: Json): Pro
       if (dryRun) return { ok: true, dry_run: true, column_mapping: mapping, merge_fields_available: mergeFields, counts };
 
       await finishImportExecute(admin, result.plan!);
+      invalidateCache(CACHE_KEYS.tagVocab);
+      invalidateCache(CACHE_KEYS.cityFill);
       const seg = await saveSegment({
         name: `Agent Mail · ${audName}`.slice(0, 120),
         stored: { criteria: { ...EMPTY_CRITERIA, tagsAny: [tag] }, masterFilterExpr: null },
@@ -473,6 +476,7 @@ export async function callTool(ctx: AgentContext, name: string, args: Json): Pro
           { segmentId, templateKey, confirmedLargeSend: confirmed, shownSendable: expected, runLabel: nameCheck.value!, dateWib: m[1], timeWib: m[2], mergeData },
           ctx.servingHost,
         );
+        invalidateCache(CACHE_KEYS.deliveries);
         await audit(ctx, "schedule_campaign", `Agent Mail menjadwalkan "${label}" (${templateKey}) ${schedule} WIB.`, { segment_id: segmentId, template_key: templateKey, ok: r.ok, error: r.error ?? null });
         if (!r.ok) return fail(r.error, { fresh_sendable: r.freshSendable, detail: r.detail });
         return { ok: true, scheduled: true, scheduled_at_utc: r.scheduledAtUtc, recipients: expected };
@@ -483,6 +487,7 @@ export async function callTool(ctx: AgentContext, name: string, args: Json): Pro
         { segmentId, templateKey, confirmedLargeSend: confirmed, shownSendable: expected, run: { kind: "new", label: nameCheck.value! }, mergeData },
         ctx.servingHost,
       );
+      invalidateCache(CACHE_KEYS.deliveries);
       await audit(ctx, "send_campaign", `Agent Mail kirim "${label}" (${templateKey}).`, { segment_id: segmentId, template_key: templateKey, run_id: r.runId ?? null, ok: r.ok, error: r.error ?? null, sendable: r.sendable ?? null });
       if (!r.ok) return fail(r.error, { fresh_sendable: r.freshSendable, run_id: r.runId, detail: r.detail });
       return {
@@ -564,6 +569,7 @@ export async function callTool(ctx: AgentContext, name: string, args: Json): Pro
     case "stop_campaign": {
       const runId = str(args, "run_id");
       const r = await stopRunDrain(createAdminClient(), runId);
+      invalidateCache(CACHE_KEYS.deliveries);
       await audit(ctx, "stop_campaign", `Agent Mail menghentikan campaign ${runId}.`, { run_id: runId, ok: r.ok });
       return r.ok ? { ok: true, stopped: true } : fail("not_found", { hint: "Campaign tidak sedang mengirim (atau bukan campaign segmen)." });
     }

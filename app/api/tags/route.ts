@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { invalidateCache, CACHE_KEYS } from "@/lib/crm/server-cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUserRole } from "@/lib/auth/current-role";
 import { isPermitted } from "@/lib/auth/roles";
@@ -21,7 +22,7 @@ export async function GET() {
   return NextResponse.json({ tags: data });
 }
 
-export async function POST(request: NextRequest) {
+async function postImpl(request: NextRequest) {
   const role = await getCurrentUserRole();
   if (!isPermitted(role, "audit.view")) {
     return NextResponse.json({ error: "denied" }, { status: 403 });
@@ -64,7 +65,7 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ tag: data }, { status: 201 });
 }
 
-export async function PATCH(request: NextRequest) {
+async function patchImpl(request: NextRequest) {
   const role = await getCurrentUserRole();
   if (!isPermitted(role, "audit.view")) {
     return NextResponse.json({ error: "denied" }, { status: 403 });
@@ -97,7 +98,7 @@ export async function PATCH(request: NextRequest) {
   return NextResponse.json({ tag: data });
 }
 
-export async function DELETE(request: NextRequest) {
+async function deleteImpl(request: NextRequest) {
   const role = await getCurrentUserRole();
   if (!isPermitted(role, "audit.view")) {
     return NextResponse.json({ error: "denied" }, { status: 403 });
@@ -122,3 +123,19 @@ export async function DELETE(request: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });
 }
+
+// Registry / tag writes change what Analisa Event and the tag picker show — drop those cached
+// aggregates after every successful write (lib/crm/server-cache.ts).
+function invalidatingWrites(fn: (req: NextRequest) => Promise<Response>) {
+  return async (req: NextRequest): Promise<Response> => {
+    const res = await fn(req);
+    if (res.ok) {
+      invalidateCache(CACHE_KEYS.eventAnalytics);
+      invalidateCache(CACHE_KEYS.tagVocab);
+    }
+    return res;
+  };
+}
+export const POST = invalidatingWrites(postImpl);
+export const PATCH = invalidatingWrites(patchImpl);
+export const DELETE = invalidatingWrites(deleteImpl);

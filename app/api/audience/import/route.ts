@@ -14,6 +14,7 @@ import {
 } from "@/lib/crm/import-audience-run";
 import { importFailureMessage, MAX_IMPORT_ROWS, reconcileImport } from "@/lib/crm/import-audience";
 import { buildImportDeps, finishImportExecute } from "@/lib/crm/import-audience-deps";
+import { invalidateCache, CACHE_KEYS } from "@/lib/crm/server-cache";
 
 export const dynamic = "force-dynamic";
 // Advisory ceiling; Railway does not enforce it (persistent server). The real bounds are the row cap
@@ -135,6 +136,9 @@ export async function POST(request: NextRequest) {
       });
     }
     const { mirrorRefreshed } = await finishImportExecute(admin, result.plan);
+    invalidateCache(CACHE_KEYS.tagVocab);
+    invalidateCache(CACHE_KEYS.cityFill);
+    invalidateCache(CACHE_KEYS.eventAnalytics);
     // Not fatal to the import — the people are in; the mirror can be refreshed again. Report either way.
     return NextResponse.json(
       { ...trimmed, batch: batchId, mirrorRefreshed, reconciliation },

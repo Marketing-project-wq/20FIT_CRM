@@ -7,6 +7,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getSegmentById } from "@/lib/crm/segment-store";
 import { listResumableRuns, type ResumableRun, type RunStatus } from "@/lib/crm/campaign-run";
 import { revalidatePath } from "next/cache";
+import { invalidateCache, CACHE_KEYS } from "@/lib/crm/server-cache";
 import { headers } from "next/headers";
 import { runInternalSendTest, cleanupInternalSendTest, type SendTestResult, type SendTestCleanupResult } from "@/lib/crm/send-test-harness";
 import {
@@ -138,13 +139,19 @@ export async function listRunsAction(segmentId: string, templateKey: string): Pr
 
 export async function sendCampaignAction(args: SendArgs): Promise<SendResult> {
   const res = await sendCampaignCore(await sessionActor(), args, servingHost());
-  if (res.ok) revalidatePath("/campaigns");
+  if (res.ok) {
+    invalidateCache(CACHE_KEYS.deliveries);
+    revalidatePath("/campaigns");
+  }
   return res;
 }
 
 export async function scheduleCampaignAction(args: Parameters<typeof scheduleCampaignCore>[1]): Promise<ScheduleResult> {
   const res = await scheduleCampaignCore(await sessionActor(), args, servingHost());
-  if (res.ok) revalidatePath("/campaigns");
+  if (res.ok) {
+    invalidateCache(CACHE_KEYS.deliveries);
+    revalidatePath("/campaigns");
+  }
   return res;
 }
 
@@ -157,7 +164,9 @@ export async function listScheduledSendsAction(): Promise<{ ok: boolean; sends: 
 export async function cancelScheduledSendAction(id: string): Promise<{ ok: boolean }> {
   const role = await getCurrentUserRole();
   if (grantFor(role, "send.at_or_below_threshold") === "deny") return { ok: false };
-  return cancelScheduledSend(createAdminClient(), id);
+  const res = await cancelScheduledSend(createAdminClient(), id);
+  if (res.ok) invalidateCache(CACHE_KEYS.deliveries);
+  return res;
 }
 
 export async function sendPreviewEmailAction(

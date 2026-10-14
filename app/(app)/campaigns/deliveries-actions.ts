@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { invalidateCache, CACHE_KEYS } from "@/lib/crm/server-cache";
 import { getCurrentUserRole } from "@/lib/auth/current-role";
 import { grantFor } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
@@ -17,7 +18,10 @@ export async function cancelScheduledSendAction(id: string): Promise<{ ok: boole
   const role = await getCurrentUserRole();
   if (grantFor(role, "send.at_or_below_threshold") === "deny") return { ok: false };
   const res = await cancelScheduledSend(createAdminClient(), id);
-  if (res.ok) revalidatePath("/campaigns");
+  if (res.ok) {
+    invalidateCache(CACHE_KEYS.deliveries);
+    revalidatePath("/campaigns");
+  }
   return res;
 }
 
@@ -40,7 +44,10 @@ export async function resumeDrainAction(runId: string): Promise<{ ok: boolean }>
   const role = await getCurrentUserRole();
   if (grantFor(role, "send.at_or_below_threshold") === "deny") return { ok: false };
   const res = await resumeRunDrain(createAdminClient(), runId, await actorEmail());
-  if (res.ok) revalidatePath("/campaigns");
+  if (res.ok) {
+    invalidateCache(CACHE_KEYS.deliveries);
+    revalidatePath("/campaigns");
+  }
   return res;
 }
 
@@ -53,7 +60,10 @@ export async function stopDrainAction(runId: string): Promise<{ ok: boolean }> {
   const role = await getCurrentUserRole();
   if (grantFor(role, "send.at_or_below_threshold") === "deny") return { ok: false };
   const res = await stopRunDrain(createAdminClient(), runId);
-  if (res.ok) revalidatePath("/campaigns");
+  if (res.ok) {
+    invalidateCache(CACHE_KEYS.deliveries);
+    revalidatePath("/campaigns");
+  }
   return res;
 }
 
@@ -66,6 +76,9 @@ export async function retryFailedAction(runId: string): Promise<{ ok: boolean; c
   const role = await getCurrentUserRole();
   if (grantFor(role, "send.at_or_below_threshold") === "deny") return { ok: false, error: "denied" };
   const res = await retryFailedRecipients(createAdminClient(), runId, await actorEmail());
-  if (res.ok) revalidatePath("/campaigns");
+  if (res.ok) {
+    invalidateCache(CACHE_KEYS.deliveries);
+    revalidatePath("/campaigns");
+  }
   return res;
 }
