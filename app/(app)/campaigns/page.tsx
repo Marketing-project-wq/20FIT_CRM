@@ -82,11 +82,16 @@ export default async function CampaignsPage({
   const enabled = realSendEnabled();
   const canBuild = isPermitted(role, "segment.build");
   const canViewHealth = isPermitted(role, "profile.view_health");
-  const [segments, templates, cityFill] = await Promise.all([
-    listSegments(),
-    loadEligibleTemplates(),
-    canBuild ? loadCityFill() : Promise.resolve({ total: 0, cityFilled: 0, cityFillPct: 0 }),
-  ]);
+  // Composer data (segments, every template body, city fill) only for the tabs that render it — the
+  // Kampanye list and Agent Mail don't, and template bodies are the heaviest read on this page.
+  const needsComposer = tab === "kirim" || tab === "segmen";
+  const [segments, templates, cityFill] = needsComposer
+    ? await Promise.all([
+        listSegments(),
+        tab === "kirim" ? loadEligibleTemplates() : Promise.resolve([] as TemplateOption[]),
+        canBuild ? loadCityFill() : Promise.resolve({ total: 0, cityFilled: 0, cityFillPct: 0 }),
+      ])
+    : [[], [] as TemplateOption[], { total: 0, cityFilled: 0, cityFillPct: 0 }];
 
   const noTemplate = templates.length === 0;
   const servingHost = headers().get("host");

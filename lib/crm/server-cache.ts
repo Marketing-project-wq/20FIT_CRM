@@ -15,7 +15,11 @@
  */
 
 type Entry = { value?: unknown; at: number; inflight?: Promise<unknown> };
-const store = new Map<string, Entry>();
+// On globalThis, not module scope: Next bundles instrumentation, pages and route handlers separately,
+// and each bundle gets its own copy of this module — one process-wide Map lets the boot warmer fill the
+// same cache the screens read.
+const g = globalThis as typeof globalThis & { __crmAggregateCache?: Map<string, Entry> };
+const store: Map<string, Entry> = (g.__crmAggregateCache ??= new Map<string, Entry>());
 
 function refresh<T>(key: string, load: () => Promise<T>): Promise<T> {
   const entry: Entry = store.get(key) ?? { at: 0 };
