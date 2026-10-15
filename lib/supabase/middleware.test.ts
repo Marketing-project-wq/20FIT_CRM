@@ -18,7 +18,9 @@ describe("isPublicPath — the no-session allowlist (Sprint 3T)", () => {
   });
   it("allows the Agent Mail MCP endpoint (signed agent token in the Authorization header is the auth)", () => {
     expect(isPublicPath("/api/mcp")).toBe(true);
-    expect(isPublicPath("/api/mcp/other")).toBe(false);
+    expect(isPublicPath("/api/mcp/am1.abc.def")).toBe(true); // token-in-URL twin (claude.ai connector)
+    expect(isPublicPath("/api/mcp/a/b")).toBe(false);
+    expect(isPublicPath("/api/mcpx")).toBe(false);
   });
   it("does NOT make protected pages public", () => {
     for (const p of ["/", "/audience", "/quality", "/settings", "/segments", "/consent"]) {

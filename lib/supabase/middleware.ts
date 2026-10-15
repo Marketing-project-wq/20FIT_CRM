@@ -32,8 +32,10 @@ export function isPublicPath(pathname: string): boolean {
     pathname === "/api/campaigns/run-scheduled" ||
     // Agent Mail MCP server: an AI agent (Claude Code) calls it with no CRM session. Its authorization
     // is the signed agent token in the Authorization header (verified in the route, role re-read from
-    // crm_user_role on every request) — same shape as the cron secret above.
-    pathname === "/api/mcp"
+    // crm_user_role on every request) — same shape as the cron secret above. /api/mcp/<token> is the
+    // same server with the token in the path (claude.ai connector); exactly ONE segment, nothing deeper.
+    pathname === "/api/mcp" ||
+    /^\/api\/mcp\/[^/]+$/.test(pathname)
   );
 }
 

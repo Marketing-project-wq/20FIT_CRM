@@ -64,6 +64,11 @@ export function agentMailInstallCommand(token: string, mcpUrl: string): string {
   return `claude mcp add --transport http ${AGENT_MCP_NAME} ${mcpUrl} --header "Authorization: Bearer ${token}"`;
 }
 
+/** The token-in-URL MCP address (app/api/mcp/[token]) — what a claude.ai custom connector takes. */
+export function agentMailConnectorUrl(token: string, mcpUrl: string): string {
+  return `${mcpUrl}/${token}`;
+}
+
 /**
  * The prompt with the token BAKED IN (owner request 2026-10-14): once a token is issued, the copied
  * prompt is self-contained — any Claude Code can install the MCP itself, or, if the tools don't show up
@@ -82,5 +87,10 @@ AKSES (rahasia — jangan tampilkan ulang token ini, jangan simpan ke file proye
      -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"agent_mail_guide","arguments":{}}}'
    Ganti "name" dan "arguments" sesuai tool (list_segments, import_audience, create_email, preview_campaign,
    send_test_email, send_campaign, campaign_stats, list_campaigns, stop_campaign). Daftar lengkap + skema
-   argumen: method "tools/list". Untuk HTML/CSV besar, tulis body JSON ke file lalu pakai -d @file.json.`;
+   argumen: method "tools/list". Untuk HTML/CSV besar, tulis body JSON ke file lalu pakai -d @file.json.
+3. Kalau ini sesi Claude Code CLOUD (claude.ai/code) dan curl ke crm.20fit.id ditolak proxy (403 / policy denial):
+   itu jaringan sesi cloud, bukan CRM. Jangan bypass proxy. Minta user menambahkan connector di
+   claude.ai → Settings → Connectors → Add custom connector, URL (tanpa OAuth):
+   ${agentMailConnectorUrl(token, mcpUrl)}
+   lalu mengaktifkan connector itu di sesi ini — tool-nya lewat server Anthropic, tidak kena blokir proxy.`;
 }

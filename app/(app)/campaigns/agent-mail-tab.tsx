@@ -5,7 +5,7 @@ import { Bot, Check, Copy, KeyRound } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useI18n } from "@/components/i18n/lang-provider";
 import type { DeliveryRow } from "@/lib/crm/deliveries";
-import { AGENT_MAIL_PROMPT_TEMPLATE, agentMailInstallCommand, agentMailPromptWithToken } from "@/lib/crm/agent-mail/guide";
+import { AGENT_MAIL_PROMPT_TEMPLATE, agentMailConnectorUrl, agentMailInstallCommand, agentMailPromptWithToken } from "@/lib/crm/agent-mail/guide";
 import { issueAgentTokenAction } from "./agent-mail-actions";
 import { CampaignTable } from "./campaign-table";
 
@@ -111,6 +111,12 @@ export function AgentMailTab({
               </>
             )}
             <CopyBlock label={a.commandLabel} value={command} copyLabel={a.copy} copiedLabel={a.copied} />
+            {token && (
+              <>
+                <CopyBlock label={a.connectorLabel} value={agentMailConnectorUrl(token, mcpUrl)} copyLabel={a.copy} copiedLabel={a.copied} />
+                <p className="font-body text-[12px] leading-relaxed text-ink-soft">{a.connectorHelp}</p>
+              </>
+            )}
           </section>
 
           <section className="glass flex flex-col gap-3 rounded-card p-5">

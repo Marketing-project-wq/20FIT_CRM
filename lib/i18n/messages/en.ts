@@ -1381,6 +1381,9 @@ export const en: Messages = {
       tokenShownOnce: "The token is shown only once. Keep it safe and never share it — anyone holding it can send email as you.",
       tokenLabel: "Token",
       commandLabel: "Claude Code command",
+      connectorLabel: "Connector URL — for Claude Code cloud (claude.ai/code)",
+      connectorHelp:
+        "Cloud sessions block crm.20fit.id on their network. Add this URL at claude.ai → Settings → Connectors → Add custom connector (no OAuth), then enable the connector in the session. The URL contains the token — keep it secret.",
       copy: "Copy",
       copied: "Copied",
       notConfigured: "Agent Mail is not enabled on the server yet (AGENT_MAIL_SECRET is not set).",

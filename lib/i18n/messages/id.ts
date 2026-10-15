@@ -1472,6 +1472,9 @@ export const id = {
       tokenShownOnce: "Token hanya ditampilkan sekali. Simpan di tempat aman dan jangan dibagikan — siapa pun yang memegangnya bisa mengirim email atas namamu.",
       tokenLabel: "Token",
       commandLabel: "Perintah Claude Code",
+      connectorLabel: "URL connector — untuk Claude Code cloud (claude.ai/code)",
+      connectorHelp:
+        "Sesi cloud memblokir crm.20fit.id di jaringannya. Tambahkan URL ini di claude.ai → Settings → Connectors → Add custom connector (tanpa OAuth), lalu aktifkan connector-nya di sesi. URL ini berisi token — rahasiakan.",
       copy: "Salin",
       copied: "Tersalin",
       notConfigured: "Agent Mail belum aktif di server (AGENT_MAIL_SECRET belum di-set).",
