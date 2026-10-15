@@ -81,6 +81,13 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
     return NextResponse.next({ request });
   }
 
+  // OAuth discovery probes from MCP clients (a claude.ai connector on /api/mcp/<token>): the Agent
+  // Mail server has no OAuth, so answer a plain 404 — redirecting them to the /login HTML makes the
+  // client think discovery broke instead of "no OAuth here, connect without it".
+  if (pathname.startsWith("/.well-known/oauth-") || pathname.startsWith("/.well-known/openid-configuration")) {
+    return NextResponse.json({ error: "not_found" }, { status: 404 });
+  }
+
   const publicPath = isPublicPath(pathname);
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
