@@ -42,3 +42,25 @@ describe("flow email renderer", () => {
     expect(withUtm("https://20fit.id/?utm_source=x", "L1", "n1")).toContain("utm_source=x");
   });
 });
+
+describe("business-unit branding", () => {
+  it("picks the unit from the CTA destination", async () => {
+    const { detectBrand } = await import("./brands");
+    expect(detectBrand(undefined, "https://booking.20fit.id/clinic").key).toBe("clinic");
+    expect(detectBrand(undefined, "https://booking.20fit.id/book").key).toBe("arena");
+    expect(detectBrand(undefined, "https://ticket.20fit.id").key).toBe("event");
+    expect(detectBrand(undefined, "https://photo.20fit.id").key).toBe("photo");
+    expect(detectBrand(undefined, "https://media.20fit.id/category/lari/").key).toBe("media");
+    expect(detectBrand(undefined, "https://my.20fit.id").key).toBe("app");
+    expect(detectBrand("shop", "https://ticket.20fit.id").key).toBe("shop");
+    expect(detectBrand(undefined, "not a url").key).toBe("group");
+  });
+
+  it("renders the unit's logo, contact and sender name", () => {
+    const r = renderFlowEmail({ subject: "S", body: "x", cta_label: "Pesan", cta_url: "https://booking.20fit.id/clinic" }, vars, opts);
+    expect(r.senderName).toBe("20FIT Sports Clinic");
+    expect(r.html).toContain("logo-clinic-white.png");
+    expect(r.html).toContain("Jl. Sinabung No. 9");
+    expect(r.html).toContain("EKOSISTEM 20FIT");
+  });
+});

@@ -25,11 +25,24 @@ export interface EmailNode {
   cta_label?: string;
   cta_url?: string;
   promo_code?: string;
+  promo_note?: string;
+  hero_image_url?: string;
+  brand?: string;
   requires_promo?: boolean;
   transactional?: boolean;
   next?: string | null;
 }
-export interface WaitNode { type: "wait"; days?: number; hours?: number; minutes?: number; next?: string | null }
+export interface WaitNode {
+  type: "wait";
+  days?: number;
+  hours?: number;
+  minutes?: number;
+  /** Wait until a date in the enrollment context (e.g. "tanggal" of a calendar trigger) + offset, at hour WIB. */
+  until?: string;
+  offset_days?: number;
+  hour?: number;
+  next?: string | null;
+}
 export interface ConditionNode { type: "condition"; label?: string; rule: Rule; yes?: string | null; no?: string | null }
 export interface SplitNode {
   type: "split";
@@ -163,6 +176,7 @@ export const JOURNEYS: Record<string, string> = {
   G: "Nilai & loyalitas",
   H: "Segmen khusus",
   I: "Umpan balik",
+  K: "Kalender & momen",
   X: "Lainnya",
 };
 
@@ -173,7 +187,15 @@ export const LINE_LABEL: Record<string, string> = {
   FORM: "Form 20FIT", LEGACY: "Riwayat lama", B2B: "B2B", OTHER: "Lainnya", ALL: "Semua",
 };
 
-export const TRIGGERS: Record<string, { label: string; hint: string; params: { key: string; label: string; type: "number" | "text" | "lines" | "bool" | "select"; options?: string[] }[] }> = {
+export const TRIGGERS: Record<string, { label: string; hint: string; params: { key: string; label: string; type: "number" | "text" | "lines" | "bool" | "select" | "dates"; options?: string[] }[] }> = {
+  calendar: {
+    label: "Kalender (tanggal cantik / hari raya)",
+    hint: "Masuk pada tanggal tertentu (WIB), sekali per tanggal per orang",
+    params: [
+      { key: "dates", label: "Tanggal (satu per baris: YYYY-MM-DD = label)", type: "dates" },
+      { key: "lead_days", label: "Masuk N hari sebelum tanggal", type: "number" },
+    ],
+  },
   new_person: { label: "Orang baru masuk", hint: "Muncul pertama kali di Customer 360", params: [{ key: "days", label: "Dalam N hari terakhir", type: "number" }] },
   purchase: {
     label: "Pembelian lunas",

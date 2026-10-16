@@ -16,6 +16,7 @@ import {
   getFlowAction, saveFlowAction, setFlowStatusAction, deleteFlowAction, previewAudienceAction, renderEmailPreviewAction,
   sendNodeTestAction, startTestRunAction, runTickAction, listEnrollmentsAction,
 } from "../actions";
+import { BRANDS, detectBrand } from "@/lib/crm/flow/brands";
 
 // ── helpers ──────────────────────────────────────────────────────────────────────────────────
 const inputCls =
@@ -94,7 +95,8 @@ function newId(graph: FlowGraph): string {
 function nodeTitle(n: FlowNode): string {
   switch (n.type) {
     case "email": return n.name || n.subject || "Email";
-    case "wait": return `Tunggu ${[n.days ? `${n.days} hari` : "", n.hours ? `${n.hours} jam` : "", n.minutes ? `${n.minutes} menit` : ""].filter(Boolean).join(" ") || "0"}`;
+    case "wait": if (n.until) return `Tunggu sampai ${n.until}${n.offset_days ? ` +${n.offset_days} hari` : ""} jam ${String(n.hour ?? 7).padStart(2, "0")}.00`;
+      return `Tunggu ${[n.days ? `${n.days} hari` : "", n.hours ? `${n.hours} jam` : "", n.minutes ? `${n.minutes} menit` : ""].filter(Boolean).join(" ") || "0"}`;
     case "condition": return n.label || "Kondisi";
     case "split": return "Cabang";
     case "exit": return n.label || "Selesai";
@@ -642,6 +644,7 @@ function NodeCard({ id, node, graph, stats, selected, onClick }: { id: string; n
         </span>
       )}
       {node.type === "email" && (node.requires_promo && !node.promo_code) && <span className="tint-amber self-start rounded-full px-2 py-0.5 font-body text-[11px]">butuh kode promo</span>}
+      {node.type === "email" && <span className="tint-neutral self-start rounded-full px-2 py-0.5 font-body text-[11px]">{detectBrand(node.brand, node.cta_url).label}</span>}
       {node.type === "email" && node.transactional && <span className="tint-blue self-start rounded-full px-2 py-0.5 font-body text-[11px]">transaksional</span>}
       {node.type !== "email" && stats && (
         <span className="font-mono text-[11px] text-ink-soft">{fmt(stats.reached)} orang melewati</span>
@@ -694,7 +697,16 @@ function TriggerPanel({ graph, onChange, flowId }: { graph: FlowGraph; onChange:
       {def && <p className="font-body text-[12px] text-ink-soft">{def.hint}</p>}
       {def?.params.map((p) => (
         <Field key={p.key} label={p.label}>
-          {p.type === "lines" ? (
+          {p.type === "dates" ? (
+            <textarea id="trigger-dates" className={`${areaCls} font-mono text-[12px]`} rows={6}
+              value={((t.dates as { date: string; label?: string }[]) ?? []).map((d) => `${d.date} = ${d.label ?? ""}`).join("\n")}
+              onChange={(e) => onChange((g) => {
+                g.trigger.dates = e.target.value.split("\n").map((l) => l.trim()).filter(Boolean).map((l) => {
+                  const [date, ...rest] = l.split("=");
+                  return { date: date.trim(), label: rest.join("=").trim() || date.trim() };
+                });
+              })} />
+          ) : p.type === "lines" ? (
             <LinesPicker value={(t[p.key] as string[]) ?? []} onChange={(v) => onChange((g) => { g.trigger[p.key] = v; })} />
           ) : p.type === "select" ? (
             <select id={`trigger-${p.key}`} className={inputCls} value={String(t[p.key] ?? "")} onChange={(e) => onChange((g) => { const v = e.target.value; g.trigger[p.key] = v === "true" ? true : v === "false" ? false : v || undefined; })}>
@@ -793,6 +805,21 @@ function NodePanel({ id, node, graph, stats, flowId, canSend, testEmail, onChang
       {node.type === "wait" && (
         <>
           <PanelTitle icon={Clock} title="Tunggu" hint="Mode uji mempercepat: 1 hari = 1 menit." />
+          <label className="flex items-center gap-2 font-body text-[13px] text-ink">
+            <input id="wait-until" type="checkbox" checked={!!node.until} onChange={(e) => onChange((n) => { const w = n as unknown as Record<string, unknown>; if (e.target.checked) { w.until = "tanggal"; w.hour = 7; w.offset_days = 0; } else { delete w.until; delete w.hour; delete w.offset_days; } })} />
+            Tunggu sampai tanggal di konteks (kalender / event)
+          </label>
+          {node.until ? (
+            <div className="grid grid-cols-3 gap-2">
+              <Field label="Konteks">
+                <select id="wait-ctx" className={inputCls} value={node.until} onChange={(e) => onChange((n) => { (n as unknown as Record<string, unknown>).until = e.target.value; })}>
+                  <option value="tanggal">tanggal (kalender)</option><option value="event_mulai">event_mulai</option>
+                </select>
+              </Field>
+              <Field label="+ hari"><input id="wait-offset" className={inputCls} type="number" value={node.offset_days ?? 0} onChange={(e) => onChange((n) => { (n as unknown as Record<string, unknown>).offset_days = Number(e.target.value); })} /></Field>
+              <Field label="Jam WIB"><input id="wait-hour" className={inputCls} type="number" min={0} max={23} value={node.hour ?? 7} onChange={(e) => onChange((n) => { (n as unknown as Record<string, unknown>).hour = Number(e.target.value); })} /></Field>
+            </div>
+          ) : (
           <div className="grid grid-cols-3 gap-2">
             {(["days", "hours", "minutes"] as const).map((k) => (
               <Field key={k} label={k === "days" ? "Hari" : k === "hours" ? "Jam" : "Menit"}>
@@ -800,6 +827,7 @@ function NodePanel({ id, node, graph, stats, flowId, canSend, testEmail, onChang
               </Field>
             ))}
           </div>
+          )}
         </>
       )}
       {node.type === "condition" && (
@@ -864,6 +892,12 @@ function EmailPanel({ id, node, stats, flowId, canSend, testEmail, onChange }: {
           {Object.entries(stats.skips ?? {}).map(([k, v]) => <span key={k} className="col-span-3 text-ink-faint">{OUTCOME_LABEL[k] ?? k}: {fmt(v)}</span>)}
         </div>
       )}
+      <Field label="Unit bisnis (logo, warna, kontak, nama pengirim)">
+        <select id={`email-brand-${id}`} className={inputCls} value={node.brand ?? ""} onChange={(e) => set("brand", e.target.value || undefined)}>
+          <option value="">Otomatis dari link tombol ({detectBrand(undefined, node.cta_url).label})</option>
+          {Object.values(BRANDS).map((b) => <option key={b.key} value={b.key}>{b.label}</option>)}
+        </select>
+      </Field>
       <Field label="Nama langkah"><input id={`email-name-${id}`} className={inputCls} value={node.name ?? ""} onChange={(e) => set("name", e.target.value)} /></Field>
       <Field label="Subjek"><input id={`email-subject-${id}`} className={inputCls} value={node.subject ?? ""} onChange={(e) => set("subject", e.target.value)} /></Field>
       <Field label="Preheader"><input id={`email-pre-${id}`} className={inputCls} value={node.preheader ?? ""} onChange={(e) => set("preheader", e.target.value)} /></Field>
@@ -874,14 +908,16 @@ function EmailPanel({ id, node, stats, flowId, canSend, testEmail, onChange }: {
         <Field label="Kode promo"><input id={`email-promo-${id}`} className={inputCls} value={node.promo_code ?? ""} placeholder={node.requires_promo ? "wajib sebelum aktif" : "opsional"} onChange={(e) => set("promo_code", e.target.value)} /></Field>
       </div>
       <Field label="Link tombol (https://, UTM ditambahkan otomatis)"><input id={`email-url-${id}`} className={inputCls} value={node.cta_url ?? ""} onChange={(e) => set("cta_url", e.target.value)} /></Field>
+      <Field label="Catatan promo (masa berlaku / syarat)"><input id={`email-pnote-${id}`} className={inputCls} value={node.promo_note ?? ""} onChange={(e) => set("promo_note", e.target.value || undefined)} /></Field>
+      <Field label="Gambar hero (https, lebar 1200px, opsional)"><input id={`email-hero-${id}`} className={inputCls} value={node.hero_image_url ?? ""} onChange={(e) => set("hero_image_url", e.target.value || undefined)} /></Field>
       <label className="flex items-center gap-2 font-body text-[13px] text-ink"><input id={`email-req-${id}`} type="checkbox" checked={!!node.requires_promo} onChange={(e) => set("requires_promo", e.target.checked)} /> Wajib kode promo sebelum flow aktif (G11)</label>
       <label className="flex items-center gap-2 font-body text-[13px] text-ink"><input id={`email-tx-${id}`} type="checkbox" checked={!!node.transactional} onChange={(e) => set("transactional", e.target.checked)} /> Transaksional (tidak kena batas frekuensi & grup kontrol)</label>
       <div className="flex flex-wrap gap-2">
-        <Button variant="secondary" size="sm" disabled={busy} onClick={() => start(async () => { const r = await renderEmailPreviewAction(content, flowId, id); setHtml(r.ok ? r.html : null); setMsg(r.ok ? `Subjek: ${r.subject}` : r.error); })}><Eye /> Pratinjau</Button>
+        <Button variant="secondary" size="sm" disabled={busy} onClick={() => start(async () => { const r = await renderEmailPreviewAction(content, flowId, id); setHtml(r.ok ? r.html : null); setMsg(r.ok ? `${r.brand} · pengirim "${r.sender}" · subjek: ${r.subject}` : r.error); })}><Eye /> Pratinjau</Button>
         {canSend && <Button variant="secondary" size="sm" disabled={busy} onClick={() => start(async () => { const r = await sendNodeTestAction(content, flowId, id, testEmail); setMsg(r.ok ? `Email uji terkirim ke ${r.to}` : r.error); })}><Send /> Kirim uji</Button>}
       </div>
       {msg && <p className="font-body text-[12px] text-ink-soft">{msg}</p>}
-      {html && <iframe title="Pratinjau email" sandbox="" srcDoc={html} className="h-[520px] w-full rounded-sm border border-glass-border bg-white" />}
+      {html && <iframe title="Pratinjau email" sandbox="" srcDoc={html} className="h-[720px] w-full rounded-sm border border-glass-border bg-white" />}
     </div>
   );
 }

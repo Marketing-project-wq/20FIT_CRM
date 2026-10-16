@@ -8,7 +8,6 @@ import { flowApi } from "@/lib/crm/flow/api";
 import { renderFlowEmail, ctxVars } from "@/lib/crm/flow/email";
 import { runFlowTick, type FlowTickSummary } from "@/lib/crm/flow/tick";
 import { sendTransactionalEmail } from "@/lib/email/send";
-import { inlineEmailCss } from "@/lib/crm/css-inline";
 import type { EnrollmentRow, FlowDetail, FlowGraph } from "@/lib/crm/flow/types";
 
 /**
@@ -103,18 +102,18 @@ export async function previewAudienceAction(id: string, graph: FlowGraph): Promi
   }
 }
 
-export async function renderEmailPreviewAction(content: Record<string, unknown>, flowId: string, node: string): Promise<Res<{ subject: string; html: string }>> {
+export async function renderEmailPreviewAction(content: Record<string, unknown>, flowId: string, node: string): Promise<Res<{ subject: string; html: string; brand: string; sender: string }>> {
   const a = await actor();
   if (!a.canView) return { ok: false, error: "Akses ditolak" };
   const vars = {
-    ...ctxVars({ event: "Livin' by Mandiri | VISA × Jakarta Hybrid Race", produk: "Kelas arena", jersey: "M", kota_event: "Jakarta", perusahaan: "PT Contoh" }),
+    ...ctxVars({ event: "Livin' by Mandiri | VISA × Jakarta Hybrid Race", produk: "Kelas arena", jersey: "M", kota_event: "Jakarta", perusahaan: "PT Contoh", momen: "11.11", tanggal: "2026-11-11" }),
     first_name: "Budi",
     full_name: "Budi Santoso",
     city: "Jakarta",
     perusahaan: "PT Contoh",
   };
   const r = renderFlowEmail(content, vars, { flowId, node, unsubscribeUrl: "https://crm.20fit.id/unsubscribe?token=PREVIEW" });
-  return { ok: true, subject: r.subject, html: r.html };
+  return { ok: true, subject: r.subject, html: r.html, brand: r.brand.label, sender: r.senderName };
 }
 
 export async function sendNodeTestAction(content: Record<string, unknown>, flowId: string, node: string, to: string): Promise<Res<{ to: string }>> {
@@ -124,7 +123,7 @@ export async function sendNodeTestAction(content: Record<string, unknown>, flowI
   const p = await renderEmailPreviewAction(content, flowId, node);
   if (!p.ok) return p;
   try {
-    await sendTransactionalEmail({ to: to.trim(), subject: `[UJI ${flowId}/${node}] ${p.subject}`, text: p.subject, html: inlineEmailCss(p.html) }, "crm-flow-preview", "20FIT");
+    await sendTransactionalEmail({ to: to.trim(), subject: `[UJI ${flowId}/${node}] ${p.subject}`, text: p.subject, html: p.html }, "crm-flow-preview", p.sender);
     return { ok: true, to: to.trim() };
   } catch (e) {
     return fail(e);

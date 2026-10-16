@@ -8,7 +8,6 @@ import { realSendEnabled, maySendTo } from "@/lib/crm/send-gate";
 import { hashIdentity, identityHashSecret } from "@/lib/crm/identity-hash";
 import { signUnsubscribeToken, unsubscribeSecret } from "@/lib/crm/unsubscribe-token";
 import { sendTransactionalEmail } from "@/lib/email/send";
-import { inlineEmailCss } from "@/lib/crm/css-inline";
 import { EMAIL_IN_CHUNK } from "@/lib/crm/email-list";
 import { SEND_ACTION } from "@/lib/crm/send-constants";
 import { logApiFailure } from "@/lib/crm/failure-log";
@@ -227,10 +226,12 @@ async function sendOne(
   }
 
   try {
+    // Already fully inline + table-based (lib/crm/flow/email.ts); no css-inlining pass, which would
+    // also rewrite the Outlook VML button comments.
     const receipt = await sendTransactionalEmail(
-      { to: email, subject, text: rendered.text, html: inlineEmailCss(rendered.html) },
+      { to: email, subject, text: rendered.text, html: rendered.html },
       "crm-flow",
-      "20FIT",
+      rendered.senderName,
     );
     const sentAt = new Date().toISOString();
     await admin.from("crm_message_log").update({ status: "sent", provider_message_id: receipt.providerMessageId, sent_at: sentAt }).eq("idempotency_key", item.message_key);
