@@ -8,7 +8,7 @@ import { inHours, nextWindow, runAgent, type AgentReason } from "./agent";
 import { fmtWib } from "./meetings";
 import { conversationFor, notifyTeam, sendToConversation } from "./messaging";
 import { describeMedia, phoneFromChatId, type WahaMessageEvent } from "./waha";
-import { getConnection, getMessage, googleConfigured, header, listRecentMessageIds, messageText } from "./google";
+import { getConnection, getMessage, googleConfigured, header, labelId, listRecentMessageIds, messageText, type GmailMsg } from "./google";
 import type { Conversation, Task } from "./types";
 
 /**
@@ -105,7 +105,16 @@ export async function handleWahaEvent(ev: WahaMessageEvent): Promise<string> {
   return "stored";
 }
 
-const AUTOMATED = /(no-?reply|mailer-daemon|postmaster|notification|notifications|calendar-notification|bounce|newsletter)@/i;
+const AUTOMATED = /(no-?reply|do-?not-?reply|mailer-daemon|postmaster|notify|notification|notifications|alerts?|calendar-notification|bounce|newsletter|news|info|support|billing|team|hello|marketing)@/i;
+const PARTNER_LABEL = () => process.env.PARTNER_GMAIL_LABEL || "Partnership";
+const skipped = new Set<string>(); // message ids already judged "not partnership" (per process)
+
+/** Machine-sent mail (auto-replies, bulk, notifications) is never a partner conversation. */
+function isAutomated(m: GmailMsg, address: string): boolean {
+  const auto = header(m, "Auto-Submitted").toLowerCase();
+  const prec = header(m, "Precedence").toLowerCase();
+  return AUTOMATED.test(address) || !!header(m, "List-Unsubscribe") || !!header(m, "List-Id") || (auto !== "" && auto !== "no") || ["bulk", "list", "junk"].includes(prec) || !!header(m, "X-Autoreply");
+}
 
 async function pollGmail(): Promise<number> {
   if (!googleConfigured()) return 0;
@@ -115,22 +124,46 @@ async function pollGmail(): Promise<number> {
   if (Date.now() - last < 55_000) return 0;
   await setSetting("gmail_last_poll", Date.now());
   const me = conn.email.toLowerCase();
+  // The connected mailbox can be a shared inbox (Marketing). Only three kinds of mail are partnership
+  // mail: replies in a thread we already track, mail from a known partner contact, and mail the team
+  // put under the Gmail label "Partnership" (manually or with a Gmail filter). Everything else is
+  // ignored — it must never become a lead or get an AI reply.
+  const label = await labelId(PARTNER_LABEL()).catch(() => null);
   let n = 0;
   for (const ref of await listRecentMessageIds("newer_than:2d -in:chats -in:spam -in:trash", 40)) {
+    if (skipped.has(ref.id)) continue;
     if (await q1("select 1 from p_message where external_id = $1", [ref.id])) continue;
+    const known = await q1<Conversation>("select * from p_conversation where channel = 'email' and external_id = $1", [ref.threadId]);
     const m = await getMessage(ref.id);
     const fromRaw = header(m, "From");
     const from = (fromRaw.match(/<([^>]+)>/)?.[1] ?? fromRaw).trim().toLowerCase();
     const toRaw = header(m, "To");
     const isMine = from === me || (m.labelIds ?? []).includes("SENT");
     const counterpart = isMine ? (toRaw.match(/<([^>]+)>/)?.[1] ?? toRaw.split(",")[0]).trim().toLowerCase() : from;
-    if (!counterpart || AUTOMATED.test(counterpart) || header(m, "List-Unsubscribe")) continue;
-    if (!isMine && counterpart.endsWith("@20fit.id")) continue; // internal mail is not a partner conversation
-    let conv = await q1<Conversation>("select * from p_conversation where channel = 'email' and external_id = $1", [m.threadId]);
+    if (!counterpart || (!isMine && counterpart.endsWith("@20fit.id"))) { skipped.add(ref.id); continue; } // internal mail
+    const headerAuto = !!header(m, "List-Unsubscribe") || !!header(m, "List-Id") || !!header(m, "X-Autoreply")
+      || !["", "no"].includes(header(m, "Auto-Submitted").toLowerCase()) || ["bulk", "list", "junk"].includes(header(m, "Precedence").toLowerCase());
+    let conv = known;
+    if (!conv) {
+      const contact = await findContactByEmail(counterpart);
+      if (contact) {
+        // A reply to an email we sent through Resend arrives as a new Gmail thread: continue the
+        // contact's existing email conversation instead of opening a second one.
+        const prev = await q1<Conversation>(
+          "select * from p_conversation where channel = 'email' and contact_id = $1 and (external_id is null or external_id like 'resend:%') order by last_message_at desc nulls last limit 1",
+          [contact.id]);
+        if (prev) {
+          await q("update p_conversation set external_id = $2 where id = $1", [prev.id, m.threadId]);
+          conv = { ...prev, external_id: m.threadId };
+        }
+      }
+    }
     if (!conv) {
       let contact = await findContactByEmail(counterpart);
       if (!contact) {
-        if (isMine) continue; // our mail to someone outside the pipeline
+        // New lead ONLY from mail the team labelled "Partnership", never from bulk/automated senders.
+        const labelled = !!label && (m.labelIds ?? []).includes(label);
+        if (isMine || !labelled || headerAuto || isAutomated(m, counterpart) && !labelled) { skipped.add(ref.id); continue; }
         const name = fromRaw.replace(/<[^>]+>/, "").replace(/"/g, "").trim() || null;
         const domain = counterpart.split("@")[1] ?? "";
         const company = /gmail|yahoo|hotmail|outlook|icloud/.test(domain) ? `Lead email — ${name ?? counterpart}` : domain.split(".")[0].toUpperCase();

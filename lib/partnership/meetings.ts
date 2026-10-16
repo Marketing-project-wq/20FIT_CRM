@@ -109,7 +109,7 @@ export async function bookMeeting(input: {
       try {
         await sendResend({
           to, subject: `Undangan meeting: ${title}`, text, html: textToEmailHtml(text),
-          attachments: [{ filename: "undangan.ics", content: Buffer.from(icsFor({ uid: `${randomBytes(8).toString("hex")}@20fit.id`, title, start: input.start, end, location: where, description, organizer: (s.email_reply_to || "partnership@20fit.id"), attendees: to })).toString("base64"), content_type: "text/calendar" }],
+          attachments: [{ filename: "undangan.ics", content: Buffer.from(icsFor({ uid: `${randomBytes(8).toString("hex")}@20fit.id`, title, start: input.start, end, location: where, description, organizer: "partnership@20fit.id", attendees: to })).toString("base64"), content_type: "text/calendar" }],
         });
       } catch (e) {
         await logActivity(lead.id, "invite_failed", `Undangan email gagal: ${(e as Error).message}`, {}, input.createdBy);

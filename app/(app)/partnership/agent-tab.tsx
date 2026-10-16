@@ -213,9 +213,15 @@ function Playbook({ settings, canAdmin, onSaved }: { settings: AgentSettings; ca
         </section>
         <section className="flex flex-col gap-2 rounded-card border border-glass-border p-3 lg:col-span-2">
           <h3 className="font-display text-[15px] font-bold uppercase text-ink">Email & notifikasi</h3>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <Field label="Pengirim (kalau Google belum tersambung)"><input id="pb-from" className={inputCls} value={s.email_from} onChange={(e) => set("email_from", e.target.value)} /></Field>
-            <Field label="Reply-To (kotak yang dipantau)"><input id="pb-reply" className={inputCls} value={s.email_reply_to} onChange={(e) => set("email_reply_to", e.target.value)} /></Field>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
+            <Field label="Kirim email lewat">
+              <select id="pb-via" className={inputCls} value={s.email_via} onChange={(e) => set("email_via", e.target.value as AgentSettings["email_via"])}>
+                <option value="resend">Resend (pengirim di bawah)</option>
+                <option value="gmail">Gmail yang tersambung</option>
+              </select>
+            </Field>
+            <Field label="Pengirim Resend"><input id="pb-from" className={inputCls} value={s.email_from} onChange={(e) => set("email_from", e.target.value)} /></Field>
+            <Field label="Reply-To (kosong = Gmail tersambung)"><input id="pb-reply" className={inputCls} value={s.email_reply_to} placeholder="otomatis: kotak Gmail tersambung" onChange={(e) => set("email_reply_to", e.target.value)} /></Field>
             <Field label="Notifikasi tim (handoff, lead baru, meeting)"><input id="pb-notify" className={inputCls} value={s.notify_email} onChange={(e) => set("notify_email", e.target.value)} /></Field>
           </div>
         </section>

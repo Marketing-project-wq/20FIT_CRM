@@ -18,7 +18,15 @@ export function textToEmailHtml(text: string): string {
   return `<div>${paras.join("")}</div>`;
 }
 
-export async function sendResend(opts: { to: string[]; subject: string; text: string; html: string; replyTo?: string; from?: string; attachments?: { filename: string; content: string; content_type?: string }[] }): Promise<string | null> {
+/** Where partner replies should land: the configured Reply-To, else the connected Gmail, else the team. */
+export async function replyToAddress(): Promise<string> {
+  const s = await getAgentSettings();
+  if (s.email_reply_to.trim()) return s.email_reply_to.trim();
+  const g = googleConfigured() ? await getConnection() : null;
+  return g?.email || s.notify_email || "info@20fit.id";
+}
+
+export async function sendResend(opts: { to: string[]; subject: string; text: string; html: string; replyTo?: string; from?: string; headers?: Record<string, string>; attachments?: { filename: string; content: string; content_type?: string }[] }): Promise<string | null> {
   const key = process.env.RESEND_API_KEY;
   if (!key) throw new Error("RESEND_API_KEY belum diset");
   const s = await getAgentSettings();
@@ -31,7 +39,8 @@ export async function sendResend(opts: { to: string[]; subject: string; text: st
       subject: opts.subject,
       text: opts.text,
       html: opts.html,
-      reply_to: opts.replyTo ?? s.email_reply_to,
+      reply_to: opts.replyTo ?? (await replyToAddress()),
+      headers: opts.headers,
       attachments: opts.attachments,
     }),
     signal: AbortSignal.timeout(20_000),
@@ -87,9 +96,10 @@ export async function sendToConversation(conversationId: number, text: string, a
       const subject = opts.subject || conv.subject || "Kolaborasi dengan 20FIT";
       const html = textToEmailHtml(withSig);
       const gconn = googleConfigured() ? await getConnection() : null;
-      if (gconn) {
-        const lastIn = await q1<{ meta: { message_id?: string } }>(
-          "select meta from p_message where conversation_id = $1 and direction = 'in' order by created_at desc limit 1", [conv.id]);
+      const lastIn = await q1<{ meta: { message_id?: string } }>(
+        "select meta from p_message where conversation_id = $1 and direction = 'in' order by created_at desc limit 1", [conv.id]);
+      const replySubject = conv.subject ? (/^re:/i.test(conv.subject) ? conv.subject : `Re: ${conv.subject}`) : subject;
+      if (gconn && s.email_via === "gmail") {
         const sent = await sendGmail({
           to, subject: conv.subject ? (/^re:/i.test(conv.subject) ? conv.subject : `Re: ${conv.subject}`) : subject,
           text: withSig, html, threadId: conv.external_id, inReplyTo: lastIn?.meta?.message_id ?? null, fromName: s.persona_name,
@@ -97,7 +107,13 @@ export async function sendToConversation(conversationId: number, text: string, a
         if (!conv.external_id) await setConversationExternal(conv.id, sent.threadId, subject);
         await updateMessage(msg.id, { status: "sent", external_id: sent.id });
       } else {
-        const id = await sendResend({ to: [to], subject, text: withSig, html });
+        // Resend (default): replies thread in the partner's mail client via In-Reply-To, and come back
+        // to the Reply-To mailbox, where the Gmail poll matches them to this conversation by contact.
+        const ref = lastIn?.meta?.message_id;
+        const id = await sendResend({
+          to: [to], subject: lastIn ? replySubject : subject, text: withSig, html, from: s.email_from,
+          headers: ref ? { "In-Reply-To": ref, References: ref } : undefined,
+        });
         if (!conv.subject) await setConversationExternal(conv.id, `resend:${conv.id}`, subject);
         await updateMessage(msg.id, { status: "sent", external_id: id ? `resend:${id}` : null });
       }

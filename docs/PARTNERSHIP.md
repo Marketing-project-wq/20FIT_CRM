@@ -16,7 +16,7 @@
 
 ## Alur kasus
 
-- **Lead masuk** — WA ke nomor partnership (lead dibuat otomatis dari nama WA), email ke kotak Gmail tersambung (pengirim otomatis/newsletter/internal @20fit.id diabaikan), input manual, atau import CSV.
+- **Lead masuk** — WA ke nomor partnership (lead dibuat otomatis dari nama WA), email: hanya balasan di thread yang sudah dilacak, email dari kontak partner terdaftar, atau email yang diberi label Gmail **Partnership** (kotak tersambung = inbox umum Marketing@20fit.id; email lain tidak pernah jadi lead; pengirim otomatis/bulk/internal diabaikan), input manual, atau import CSV.
 - **Pesan pertama** — lead manual/CSV dengan autopilot: AI menulis outreach di jam proaktif (email kalau ada, WA dingin dibatasi per hari).
 - **Balasan** — pesan masuk → AI membalas 40 detik kemudian (beberapa bubble dijawab sekali), di jam balas.
 - **Meeting** — AI hanya menawarkan slot kosong (jam meeting − meeting CRM − Google busy); partner memilih → event Google Meet / tatap muka, tahap "Meeting dijadwalkan", pengingat H-1 & 1 jam via WA/email, cek hasil 2 jam setelah selesai.

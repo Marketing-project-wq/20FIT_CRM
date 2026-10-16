@@ -199,6 +199,9 @@ export interface AgentSettings {
   notify_email: string;
   email_from: string;
   email_reply_to: string;
+  /** Outbound partner email: "resend" (default, from email_from, Reply-To = the connected Gmail so replies
+   *  come back into the inbox) or "gmail" (sent from the connected mailbox itself). */
+  email_via: "resend" | "gmail";
   model: string;
 }
 
@@ -227,7 +230,8 @@ export const DEFAULT_SETTINGS: AgentSettings = {
   ],
   notify_email: "luthfi@20fit.id",
   email_from: "20FIT Partnership <partnership@20fit.id>",
-  email_reply_to: "luthfi@20fit.id",
+  email_reply_to: "",
+  email_via: "resend",
   model: "deepseek/deepseek-chat",
 };
 

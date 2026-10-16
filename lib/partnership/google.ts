@@ -118,6 +118,11 @@ export async function listRecentMessageIds(query = "newer_than:3d -in:chats", ma
   const j = await gapi<{ messages?: { id: string; threadId: string }[] }>(`https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=${max}&q=${encodeURIComponent(query)}`);
   return j.messages ?? [];
 }
+/** Id of a user label by name (case-insensitive), or null when the mailbox has no such label. */
+export async function labelId(name: string): Promise<string | null> {
+  const j = await gapi<{ labels?: { id: string; name: string }[] }>("https://gmail.googleapis.com/gmail/v1/users/me/labels");
+  return j.labels?.find((l) => l.name.toLowerCase() === name.trim().toLowerCase())?.id ?? null;
+}
 export async function getMessage(id: string): Promise<GmailMsg> {
   return gapi<GmailMsg>(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=full`);
 }

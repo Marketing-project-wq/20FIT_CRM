@@ -66,7 +66,8 @@ export function Connections({ canAdmin }: { canAdmin: boolean }) {
         {c?.google.connection ? (
           <>
             <span className="flex items-center gap-2 font-body text-[13px] text-ink"><CheckCircle2 className="h-4 w-4 text-green" /> Tersambung sebagai <b>{c.google.connection.email}</b> sejak {when(c.google.connection.connected_at)}</span>
-            <p className="font-body text-[12.5px] text-ink-soft">Email partner ke kotak ini masuk ke inbox CRM tiap menit dan dibalas di thread yang sama. Meeting online otomatis dapat link Google Meet dan undangan dikirim Google.</p>
+            <p className="font-body text-[12.5px] text-ink-soft">Meeting online otomatis dapat link Google Meet dan undangan dikirim Google. Balasan partner di thread yang sudah ada di CRM, dan email dari kontak partner yang sudah terdaftar, masuk ke inbox CRM tiap menit.</p>
+            <p className="tint-amber rounded-sm p-2 font-body text-[12.5px]">Kotak ini juga inbox umum, jadi email lain <b>tidak</b> otomatis jadi lead. Untuk memasukkan calon partner baru dari email: beri label <b>Partnership</b> di Gmail (atau buat filter Gmail yang memberi label itu). Email berlabel Partnership akan jadi lead dan dibalas AI.</p>
             {canAdmin && <Button size="sm" variant="outline" className="self-start" disabled={busy} onClick={() => { if (window.confirm("Putuskan Google?")) start(async () => { const r = await googleDisconnectAction(); setNotice(r.ok ? { tone: "green", text: "Google diputus." } : { tone: "red", text: r.error }); load(); }); }}><Unplug /> Putuskan</Button>}
           </>
         ) : c?.google.configured ? (
