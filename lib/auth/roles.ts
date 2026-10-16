@@ -483,6 +483,7 @@ export function canSeeNav(role: unknown, href: string, ctx: AccessContext = {}):
     // just not activate). resolveGrant maps draft -> draft_only, so test the raw grant.
     case "/workflows":
     case "/flows":
+    case "/partnership":
     case "/campaigns":
     case "/templates":
       return grantFor(role, "workflow.create") !== "deny";

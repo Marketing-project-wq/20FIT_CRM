@@ -14,6 +14,8 @@ import {
 } from "@/lib/crm/send-drain";
 import { runFlowTick, type FlowTickSummary } from "@/lib/crm/flow/tick";
 import { c360Live } from "@/lib/c360";
+import { partnershipTick, type PartnerTickResult } from "@/lib/partnership/engine";
+import { partnerDbConfigured } from "@/lib/partnership/db";
 
 export const dynamic = "force-dynamic";
 
@@ -126,8 +128,18 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // ── PASS 4 · PARTNERSHIP agent (WA/email replies, follow-ups, ghosting, meeting reminders) ──────
+  let partnership: PartnerTickResult | { ok: false; error: string } | null = null;
+  if (partnerDbConfigured() && process.env.PARTNER_ENGINE_ENABLED !== "false") {
+    try {
+      partnership = await partnershipTick();
+    } catch (e) {
+      partnership = { ok: false, error: (e as Error).message.slice(0, 200) };
+    }
+  }
+
   return NextResponse.json(
-    { ok: true, enqueued, enqueueFailed, drained, drainSent, outcomes, flow },
+    { ok: true, enqueued, enqueueFailed, drained, drainSent, outcomes, flow, partnership },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

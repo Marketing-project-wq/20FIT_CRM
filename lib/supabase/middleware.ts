@@ -35,7 +35,10 @@ export function isPublicPath(pathname: string): boolean {
     // crm_user_role on every request) — same shape as the cron secret above. /api/mcp/<token> is the
     // same server with the token in the path (claude.ai connector); exactly ONE segment, nothing deeper.
     pathname === "/api/mcp" ||
-    /^\/api\/mcp\/[^/]+$/.test(pathname)
+    /^\/api\/mcp\/[^/]+$/.test(pathname) ||
+    // Partnership WhatsApp webhook (WAHA on the socmed VPS): no CRM session; authorized by the
+    // X-Partner-Secret header (WAHA_WEBHOOK_SECRET), verified in the route.
+    pathname === "/api/partnership/webhooks/waha"
   );
 }
 

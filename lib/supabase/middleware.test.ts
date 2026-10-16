@@ -21,6 +21,10 @@ describe("isPublicPath — the no-session allowlist (Sprint 3T)", () => {
     expect(isPublicPath("/api/mcp/am1.abc.def")).toBe(true); // token-in-URL twin (claude.ai connector)
     expect(isPublicPath("/api/mcp/a/b")).toBe(false);
     expect(isPublicPath("/api/mcpx")).toBe(false);
+    expect(isPublicPath("/api/partnership/webhooks/waha")).toBe(true); // secret header checked in the route
+    expect(isPublicPath("/api/partnership/webhooks/waha/x")).toBe(false);
+    expect(isPublicPath("/api/partnership/google/callback")).toBe(false); // needs the signed-in user
+    expect(isPublicPath("/partnership")).toBe(false);
   });
   it("does NOT make protected pages public", () => {
     for (const p of ["/", "/audience", "/quality", "/settings", "/segments", "/consent"]) {

@@ -42,6 +42,7 @@ export const id = {
     segments: "Segments",
     workflows: "Workflows",
     flows: "Flow",
+    partnership: "Partnership",
     campaigns: "Campaigns",
     templates: "Templates",
     messages: "Messages",

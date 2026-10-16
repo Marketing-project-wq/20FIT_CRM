@@ -32,6 +32,7 @@ export const en: Messages = {
     segments: "Segments",
     workflows: "Workflows",
     flows: "Flows",
+    partnership: "Partnership",
     campaigns: "Campaigns",
     templates: "Templates",
     messages: "Messages",
