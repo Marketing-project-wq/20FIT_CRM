@@ -15,6 +15,9 @@ const nextConfig = {
   reactStrictMode: true,
   // Don't advertise the framework on an internal tool holding PII.
   poweredByHeader: false,
+  // Skew protection: a tab opened before a redeploy gets a full reload on its next navigation instead
+  // of asking the new server for client modules its old bundle does not know ("Application error").
+  deploymentId: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.RAILWAY_DEPLOYMENT_ID || undefined,
   // instrumentation.ts warms the cached aggregates at boot (lib/crm/cached-loaders.ts).
   experimental: { instrumentationHook: true, serverComponentsExternalPackages: ["pg"] },
   async headers() {
