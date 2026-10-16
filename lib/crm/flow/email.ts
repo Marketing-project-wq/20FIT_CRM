@@ -4,7 +4,7 @@
  * Every user-supplied string is HTML-escaped; {{variables}} are substituted from the recipient's
  * profile + the enrollment context. The skeleton + unsubscribe footer come from renderEmailDocument.
  */
-import { renderEmailDocument } from "@/lib/crm/email-document";
+import { renderEmailDocument } from "../email-document";
 
 export interface FlowEmailContent {
   subject?: unknown;
