@@ -986,6 +986,10 @@ function AttrRule({ rule, onChange }: { rule: Extract<Rule, { kind: "attr" }>; o
         </select>
       ) : f.type === "arr" && ["contains", "ncontains"].includes(rule.op) && ["lines", "paid_lines"].includes(rule.field) ? (
         <div className="sm:col-span-3"><LinesPicker value={(rule.value as string[]) ?? []} onChange={(v) => onChange({ ...rule, value: v })} /></div>
+      ) : f.options && ["eq", "neq"].includes(rule.op) ? (
+        <select aria-label="Nilai" className={inputCls} value={String(rule.value ?? "")} onChange={(e) => onChange({ ...rule, value: e.target.value })}>
+          {f.options.map((o) => <option key={o} value={o}>{o.replace("_", " ")}</option>)}
+        </select>
       ) : f.type === "line" ? (
         <select aria-label="Nilai" className={inputCls} value={Array.isArray(rule.value) ? String(rule.value[0] ?? "") : String(rule.value ?? "")} onChange={(e) => onChange({ ...rule, value: e.target.value })}>
           {LINES.map((l) => <option key={l} value={l}>{LINE_LABEL[l]}</option>)}

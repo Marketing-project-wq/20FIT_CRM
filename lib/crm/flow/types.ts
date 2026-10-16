@@ -252,12 +252,13 @@ export const TRIGGERS: Record<string, { label: string; hint: string; params: { k
   sunset: { label: "Tidak membuka email", hint: "N email flow terakhir tidak dibuka", params: [{ key: "unopened", label: "Jumlah email", type: "number" }] },
 };
 
-export const ATTR_FIELDS: Record<string, { label: string; type: "text" | "num" | "bool" | "arr" | "line" }> = {
-  gender: { label: "Gender", type: "text" },
+export const ATTR_FIELDS: Record<string, { label: string; type: "text" | "num" | "bool" | "arr" | "line"; options?: string[] }> = {
+  gender: { label: "Gender", type: "text", options: ["Laki-laki", "Perempuan"] },
   umur: { label: "Umur", type: "num" },
   kota: { label: "Kota", type: "text" },
+  domisili: { label: "Domisili (kota / ditebak dari perilaku)", type: "text", options: ["jabodetabek", "luar", "tidak_diketahui"] },
   jabodetabek: { label: "Tinggal di Jabodetabek", type: "bool" },
-  status_pembeli: { label: "Status pembeli", type: "text" },
+  status_pembeli: { label: "Status pembeli", type: "text", options: ["Active", "At-Risk", "Dormant"] },
   segmen_ltv: { label: "Segmen LTV", type: "text" },
   ltv_b2c: { label: "LTV B2C (Rp)", type: "num" },
   ltv_b2b: { label: "LTV B2B (Rp)", type: "num" },
