@@ -219,6 +219,8 @@ export async function hasPendingTask(leadId: number, kind: string): Promise<bool
   return !!(await q1("select 1 from p_task where lead_id = $1 and kind = $2 and status = 'pending' limit 1", [leadId, kind]));
 }
 export async function claimDueTasks(limit = 25): Promise<Task[]> {
+  await q("update p_task set status = 'pending', due_at = now(), result = 'dipulihkan (macet saat proses)' where status = 'running' and coalesce(done_at, created_at) < now() - interval '10 minutes' and due_at < now() - interval '10 minutes'");
+  await q("update p_message set status = 'failed', error = coalesce(error, 'tidak terkonfirmasi (proses terputus)') where status = 'sending' and created_at < now() - interval '10 minutes'");
   return q<Task>(
     `update p_task set status = 'running', attempts = attempts + 1 where id in (
        select id from p_task where status = 'pending' and due_at <= now() order by due_at limit $1 for update skip locked)

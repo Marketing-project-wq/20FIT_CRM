@@ -18,7 +18,7 @@ async function call<T>(path: string, init: { method?: string; body?: unknown; ra
     headers: { "X-Api-Key": KEY(), ...(init.body ? { "content-type": "application/json" } : {}) },
     body: init.body ? JSON.stringify(init.body) : undefined,
     cache: "no-store",
-    signal: AbortSignal.timeout(init.timeoutMs ?? 20_000),
+    signal: AbortSignal.timeout(init.timeoutMs ?? 12_000),
   });
   if (init.raw) return r as unknown as T;
   const text = await r.text();
@@ -103,8 +103,20 @@ export async function checkNumber(phone: string): Promise<{ exists: boolean; cha
   }
 }
 
+let statusCache: { status: string; at: number } | null = null;
+/** Session status, cached 30 s (so a disconnected number fails fast instead of timing out per call). */
+export async function sessionStatus(): Promise<string> {
+  if (statusCache && Date.now() - statusCache.at < 30_000) return statusCache.status;
+  let status = "UNKNOWN";
+  try { status = (await getSession())?.status ?? "MISSING"; } catch { status = "UNREACHABLE"; }
+  statusCache = { status, at: Date.now() };
+  return status;
+}
+
 /** Send a text with a short human-like typing pause. Returns the WhatsApp message id. */
 export async function sendText(chatId: string, text: string, opts: { typing?: boolean } = {}): Promise<string | null> {
+  const st = await sessionStatus();
+  if (st !== "WORKING") throw new Error(`WhatsApp partnership belum tersambung (status ${st}) — scan QR di tab Koneksi`);
   if (opts.typing !== false) {
     await call("/api/sendSeen", { body: { session: SESSION(), chatId } }).catch(() => undefined);
     await call("/api/startTyping", { body: { session: SESSION(), chatId } }).catch(() => undefined);
