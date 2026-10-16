@@ -6,6 +6,7 @@ import {
   Settings,
   BarChart3,
   Radar,
+  Workflow,
   type LucideIcon,
 } from "lucide-react";
 
@@ -22,6 +23,7 @@ export function navLabel(t: Dict, href: string, fallback: string): string {
     "/templates": t.nav.templates,
     "/campaigns": t.nav.campaigns,
     "/workflows": t.nav.workflows,
+    "/flows": t.nav.flows,
     "/analytics/events": t.nav.eventAnalysis,
     "/analytics/customer-360": t.nav.customer360,
     "/settings": t.nav.settings,
@@ -33,6 +35,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard },
   { label: "Audience", href: "/audience", icon: Users },
   { label: "Campaigns", href: "/campaigns", icon: Megaphone },
+  { label: "Flows", href: "/flows", icon: Workflow },
   { label: "Workflows", href: "/workflows", icon: GitBranch },
   { label: "Event Analysis", href: "/analytics/events", icon: BarChart3 },
   { label: "Customer 360°", href: "/analytics/customer-360", icon: Radar },

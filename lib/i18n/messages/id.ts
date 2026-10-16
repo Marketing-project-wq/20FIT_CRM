@@ -41,6 +41,7 @@ export const id = {
     audience: "Audience",
     segments: "Segments",
     workflows: "Workflows",
+    flows: "Flow",
     campaigns: "Campaigns",
     templates: "Templates",
     messages: "Messages",

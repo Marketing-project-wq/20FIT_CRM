@@ -12,6 +12,8 @@ import {
   DRAIN_BATCH,
   DRAIN_RUNS_PER_TICK,
 } from "@/lib/crm/send-drain";
+import { runFlowTick, type FlowTickSummary } from "@/lib/crm/flow/tick";
+import { c360Live } from "@/lib/c360";
 
 export const dynamic = "force-dynamic";
 
@@ -112,8 +114,20 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // ── PASS 3 · FLOW journeys (engine in c360-api) ──────────────────────────────────────────────
+  // Every minute: advance due people + send due flow emails. Every 5th minute also pull NEW people from
+  // the triggers (heavier SQL). Isolated: a flow failure never affects the campaign passes above.
+  let flow: FlowTickSummary | { ok: false; error: string } | null = null;
+  if (c360Live() && process.env.FLOW_ENGINE_ENABLED !== "false") {
+    try {
+      flow = await runFlowTick({ enroll: new Date().getUTCMinutes() % 5 === 0 });
+    } catch (e) {
+      flow = { ok: false, error: (e as Error).message.slice(0, 200) };
+    }
+  }
+
   return NextResponse.json(
-    { ok: true, enqueued, enqueueFailed, drained, drainSent, outcomes },
+    { ok: true, enqueued, enqueueFailed, drained, drainSent, outcomes, flow },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

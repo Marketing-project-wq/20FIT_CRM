@@ -482,6 +482,7 @@ export function canSeeNav(role: unknown, href: string, ctx: AccessContext = {}):
     // anyone who may create a workflow at all — including "draft" (they can compose,
     // just not activate). resolveGrant maps draft -> draft_only, so test the raw grant.
     case "/workflows":
+    case "/flows":
     case "/campaigns":
     case "/templates":
       return grantFor(role, "workflow.create") !== "deny";
